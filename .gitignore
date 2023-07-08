@@ -1,0 +1,25 @@
+.DS_Store
+.env.local
+.env.prod
+.env.development.local
+.env.test.local
+/.env
+.vscode/settings.json
+.venv/
+
+##
+#
+# PYTHON APPS
+#
+##
+
+.DS_Store
+*.pyc
+api/main/config/*.cfg
+.mypy_cache
+mongo_data
+mongo_data.old
+mongo_db
+db.dump
+__pycache__
+.pytest_cache
