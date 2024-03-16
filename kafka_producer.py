@@ -20,6 +20,7 @@ def get_crypto_price(crypto):
         return None
 
 while True:
+    print("producer loaded")
     # Get Bitcoin and Ethereum data
     bitcoin_price = get_crypto_price('bitcoin')
     ethereum_price = get_crypto_price('ethereum')
