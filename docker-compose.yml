@@ -23,16 +23,16 @@ services:
       - BITNAMI_DEBUG=yes
       - KAFKA_CFG_NUM_PARTITIONS=2
     
-  kafka-ui:
-    container_name: kafka-ui
-    image: provectuslabs/kafka-ui:latest
-    ports:
-      - 8080:8080
-    environment:
-      DYNAMIC_CONFIG_ENABLED: 'true'
-      LOGGING_LEVEL_ROOT: 'DEBUG'
-    volumes:
-      - /c/tools/kafka/kui/config.yml:/etc/kafkaui/dynamic_config.yaml
+  # kafka-ui:
+  #   container_name: kafka-ui
+  #   image: provectuslabs/kafka-ui:latest
+  #   ports:
+  #     - 8080:8080
+  #   environment:
+  #     DYNAMIC_CONFIG_ENABLED: 'true'
+  #     LOGGING_LEVEL_ROOT: 'DEBUG'
+  #   volumes:
+  #     - /c/tools/kafka/kui/config.yml:/etc/kafkaui/dynamic_config.yaml
 
 volumes:
   kafka_data:
