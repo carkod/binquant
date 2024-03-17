@@ -1,31 +1,22 @@
-import math
-import json
 import logging
-
 from datetime import datetime, timedelta
-from logging import info
-from time import sleep, time
-from requests import get
-
-import numpy
-import pandas as pd
-import requests
-from algorithms.ma_candlestick_drop import ma_candlestick_drop
-from algorithms.ma_candlestick_jump import ma_candlestick_jump
-from shared.apis import BinbotApi
-from shared.autotrade import process_autotrade_restrictions
-from shared.streaming.socket_client import SpotWebsocketStreamClient
-from scipy import stats
-from shared.telegram_bot import TelegramBot
-from shared.utils import handle_binance_errors, round_numbers
+from time import time
 from typing import Literal
 
-class SetupSignals(BinbotApi):
+import requests
+from shared.apis import BinbotApi
+from shared.autotrade import Autotrade
+from shared.telegram_bot import TelegramBot
+from shared.utils import handle_binance_errors
+
+
+class SignalsBase(BinbotApi):
     """
     Tools and functions that are shared by all signals
     """
+
     def __init__(self):
-        self.interval = "15m"
+        self.interval = "1h"
         self.markets_streams = None
         self.skipped_fiat_currencies = [
             "DOWN",
@@ -42,8 +33,13 @@ class SetupSignals(BinbotApi):
         # Because market domination analysis 40 weight from binance endpoints
         self.market_domination_ts = datetime.now()
         self.market_domination_trend = None
+        self.market_domination_reversal = None
+        self.top_coins_gainers = []
 
-    def _send_msg(self, msg):
+        self.btc_change_perc = 0
+        self.volatility = 0
+
+    def send_telegram(self, msg):
         """
         Send message with telegram bot
         To avoid Conflict - duplicate Bot error
@@ -62,6 +58,47 @@ class SetupSignals(BinbotApi):
         result = handle_binance_errors(res)
         return result
 
+    def ticker_24(self, symbol: str | None = None):
+        """
+        Weight 40 without symbol
+        https://github.com/carkod/binbot/issues/438
+
+        Using cache
+        """
+        url = self.ticker24_url
+        params = {"symbol": symbol}
+
+        res = requests.get(url=url, params=params)
+        data = handle_binance_errors(res)
+        return data
+
+    def get_latest_btc_price(self):
+        # Get 24hr last BTCUSDT
+        btc_ticker_24 = self.ticker_24("BTCUSDT")
+        self.btc_change_perc = float(btc_ticker_24["priceChangePercent"])
+        return self.btc_change_perc
+
+    def check_market_momentum(self, now: datetime) -> bool:
+        """
+        Check market momentum
+        If market momentum is negative, then don't trade
+        """
+        if (
+            # (now.hour == 9 and now.minute == 0)
+            # or (now.hour == 9 and now.minute == 30)
+            # or (now.hour == 10 and now.minute == 0)
+            # or (now.hour == 16 and now.minute == 0)
+            # or (now.hour == 16 and now.minute == 30)
+            # or (now.hour == 17 and now.minute == 0)
+            # or (now.hour == 12 and now.minute == 0)
+            # or (now.hour == 12 and now.minute == 30)
+            # or (now.hour == 13 and now.minute == 0)
+            now.minute == 0
+        ):
+            return True
+
+        return False
+
     def load_data(self):
         """
         Load controller data
@@ -69,17 +106,15 @@ class SetupSignals(BinbotApi):
         - Global settings for autotrade
         - Updated blacklist
         """
-        info("Loading controller and blacklist data...")
+        logging.info("Loading controller and blacklist data...")
         if self.settings and self.test_autotrade_settings:
-            info("Settings and Test autotrade settings already loaded, skipping...")
+            logging.info("Settings and Test autotrade settings already loaded, skipping...")
             return
 
         settings_res = requests.get(url=f"{self.bb_autotrade_settings_url}")
         settings_data = handle_binance_errors(settings_res)
         blacklist_res = requests.get(url=f"{self.bb_blacklist_url}")
         blacklist_data = handle_binance_errors(blacklist_res)
-
-        self.market_domination()
 
         # Show webscket errors
         if "error" in (settings_data, blacklist_res) and (
@@ -126,6 +161,8 @@ class SetupSignals(BinbotApi):
         )
         paper_trading_bots = handle_binance_errors(paper_trading_bots_res)
         self.active_test_bots = [item["pair"] for item in paper_trading_bots["data"]]
+
+        self.market_domination()
         pass
 
     def post_error(self, msg):
@@ -134,6 +171,65 @@ class SetupSignals(BinbotApi):
         )
         handle_binance_errors(res)
         return
+
+    def process_autotrade_restrictions(
+        self, symbol, algorithm, test_only=False, *args, **kwargs
+    ):
+        """
+        Refactored autotrade conditions.
+        Previously part of process_kline_stream
+
+        1. Checks if we have balance to trade
+        2. Check if we need to update websockets
+        3. Check if autotrade is enabled
+        4. Check if test autotrades
+        5. Check active strategy
+        """
+
+        """
+        Test autotrade starts
+
+        Wrap in try and except to avoid bugs stopping real bot trades
+        """
+        try:
+            if (
+                symbol not in self.active_test_bots
+                and int(self.test_autotrade_settings["autotrade"]) == 1
+            ):
+                if self.reached_max_active_autobots("paper_trading"):
+                    logging.info(
+                        "Reached maximum number of active bots set in controller settings"
+                    )
+                else:
+                    # Test autotrade runs independently of autotrade = 1
+                    test_autotrade = Autotrade(
+                        symbol, self.test_autotrade_settings, algorithm, "paper_trading"
+                    )
+                    test_autotrade.activate_autotrade(**kwargs)
+        except Exception as error:
+            print(error)
+            pass
+
+        # Check balance to avoid failed autotrades
+        balance_check = self.balance_estimate()
+        if balance_check < float(self.settings['base_order_size']):
+            print(f"Not enough funds to autotrade [bots].")
+            return
+
+        """
+        Real autotrade starts
+        """
+        if (int(self.settings["autotrade"]) == 1
+            and not test_only):
+            if self.reached_max_active_autobots("bots"):
+                logging.info("Reached maximum number of active bots set in controller settings")
+            else:
+
+                autotrade = Autotrade(symbol, self.settings, algorithm, "bots")
+                autotrade.activate_autotrade(**kwargs)
+
+        return
+
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -165,6 +261,7 @@ class SetupSignals(BinbotApi):
         if db_collection_name == "bots":
             if not self.settings:
                 self.load_data()
+
             active_bots_res = requests.get(
                 url=self.bb_bot_url, params={"status": "active"}
             )
@@ -186,36 +283,43 @@ class SetupSignals(BinbotApi):
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        if datetime.now() >= self.market_domination_ts:
-            print(f"Performing market domination analyses. Current trend: {self.market_domination_trend}")
-            res = get(url=self.bb_gainers_losers)
-            data = handle_binance_errors(res)
-            gainers = 0
-            losers = 0
-            for item in data["data"]:
-                if float(item["priceChangePercent"]) > 0:
-                    gainers += 1
-                elif float(item["priceChangePercent"]) == 0:
-                    continue
-                else:
-                    losers += 1
-
-            total = gainers + losers
-            perc_gainers = (gainers / total) * 100
-            perc_losers = (losers / total) * 100
-
-            if perc_gainers > 70:
+        now = datetime.now()
+        momentum = self.check_market_momentum(now)
+        # momentum = True
+        if (
+            # now >= self.market_domination_ts
+            momentum
+        ):
+            logging.info(
+                f"Performing market domination analyses. Current trend: {self.market_domination_trend}"
+            )
+            data = self.get_market_domination_series()
+            # reverse to make latest series more important
+            data["data"]["gainers_count"].reverse()
+            data["data"]["losers_count"].reverse()
+            gainers_count = data["data"]["gainers_count"]
+            losers_count = data["data"]["losers_count"]
+            self.market_domination_trend = None
+            if gainers_count[-1] > losers_count[-1]:
                 self.market_domination_trend = "gainers"
 
-            if perc_losers > 70:
+                # Check reversal
+                if gainers_count[-2] < losers_count[-2]:
+                    # Positive reversal
+                    self.market_domination_reversal = True
+
+            else:
                 self.market_domination_trend = "losers"
 
-            print(
-                f"[{datetime.now()}] Current USDT market trend is: {self.market_domination_trend}"
-            )
-            self._send_msg(
-                f"[{datetime.now()}] Current USDT market #trend is dominated by {self.market_domination_trend}"
-            )
-            self.market_domination_ts = datetime.now() + timedelta(minutes=15)
-        return
+                if gainers_count[-2] > losers_count[-2]:
+                    # Negative reversal
+                    self.market_domination_reversal = False
 
+            self.btc_change_perc = self.get_latest_btc_price()
+            reversal_msg = ""
+            if self.market_domination_reversal is not None:
+                reversal_msg = f"{'Positive reversal' if self.market_domination_reversal else 'Negative reversal'}"
+
+            logging.info(f"Current USDT market trend is: {reversal_msg}. BTC 24hr change: {self.btc_change_perc}")
+            self.market_domination_ts = datetime.now() + timedelta(hours=1)
+        pass
