@@ -1,7 +1,7 @@
-FROM ubuntu:23.04
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev python-setuptools python3 python3-pip wget
+FROM ubuntu:latest
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev python3-setuptools python3 python3-pip
 COPY . .
 RUN pip install --upgrade pip && pip install -r requirements.txt
-ENTRYPOINT ["python3", "-u", "__init__.py"]
+RUN apt autoremove --purge -y && rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/*.list
 STOPSIGNAL SIGTERM
-EXPOSE 80 443
+EXPOSE 9092 9094

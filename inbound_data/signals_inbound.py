@@ -1,11 +1,13 @@
 import json
 import logging
-import math
+import os
 from datetime import datetime
 from time import sleep, time
 
 import numpy
 import pandas as pd
+from kafka import KafkaProducer
+
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.price_changes import price_rise_15
 from algorithms.rally import rally_or_pullback
@@ -26,6 +28,10 @@ class SignalsInbound(SignalsBase):
             on_message=self.on_message,
             on_close=self.handle_close,
             on_error=self.handle_error,
+        )
+        self.producer = KafkaProducer(
+            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
         super().__init__()
 
