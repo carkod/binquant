@@ -4,12 +4,9 @@ import os
 from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
-
 from dotenv import load_dotenv
-from requests import Session, get
-
+from requests import Session, get, post
 from shared.utils import handle_binance_errors
-from typing import Literal
 
 load_dotenv()
 
@@ -37,7 +34,6 @@ class BinanceApi:
     avg_price = f"{BASE}/api/v3/avgPrice"
     open_orders = f"{BASE}/api/v3/openOrders"
     all_orders_url = f"{BASE}/api/v3/allOrders"
-    user_data_stream = f"{BASE}/api/v3/userDataStream"
     trade_fee = f"{BASE}/sapi/v1/asset/tradeFee"
 
     user_data_stream = f"{BASE}/api/v3/userDataStream"
@@ -193,6 +189,7 @@ class BinbotApi(BinanceApi):
     bb_bot_url = f"{bb_base_url}/bot"
     bb_activate_bot_url = f"{bb_base_url}/bot/activate"
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
+    bb_market_domination = f"{bb_base_url}/account/market-domination"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -205,6 +202,8 @@ class BinbotApi(BinanceApi):
     bb_close_order_url = f"{bb_base_url}/order/close"
     bb_stop_buy_order_url = f"{bb_base_url}/order/buy/stop-limit"
     bb_stop_sell_order_url = f"{bb_base_url}/order/sell/stop-limit"
+    bb_submit_errors = f"{bb_base_url}/bot/errors"
+    bb_liquidation_url = f"{bb_base_url}/account/one-click-liquidation"
 
     # balances
     bb_balance_url = f"{bb_base_url}/account/balance/raw"
@@ -214,6 +213,7 @@ class BinbotApi(BinanceApi):
     # research
     bb_autotrade_settings_url = f"{bb_base_url}/autotrade-settings/bots"
     bb_blacklist_url = f"{bb_base_url}/research/blacklist"
+    bb_subscribed_list = f"{bb_base_url}/research/subscribed"
 
     # paper trading
     bb_test_bot_url = f"{bb_base_url}/paper-trading"
@@ -242,15 +242,12 @@ class BinbotApi(BinanceApi):
         data = handle_binance_errors(res)
         return data
 
-class CBSApi:
-    cbs_root_url = "https://api.cryptobasescanner.com/"
-    cbs_bases = f"{cbs_root_url}/v1/bases/"
-
-    def get_cbs_bases(self, algorithm = "day_trade"):
-        params = {
-            "api_key": os.environ["CBS_KEY"],
-            "algorithm": algorithm
-        }
-        res = get(url=self.cbs_bases, params=params)
+    def update_subscribed_list(self, data):
+        res = post(url=f'{self.bb_subscribed_list}', json=data)
         data = handle_binance_errors(res)
-        return 
+        return data
+
+    def get_market_domination_series(self):
+        res = get(url=self.bb_market_domination, params={"size": 7})
+        data = handle_binance_errors(res)
+        return data

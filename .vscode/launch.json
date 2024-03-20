@@ -6,19 +6,19 @@
   "configurations": [
     {
       "name": "Python: Producer",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
-      "program": "producer/__init__.py",
+      "program": "${workspaceFolder}/binquant/producer",
       "console": "internalConsole",
       "justMyCode": true
     },
     {
-        "name": "Python: Consumer",
-        "type": "python",
-        "request": "launch",
-        "program": "consumer/__init__.py",
-        "console": "internalConsole",
-        "justMyCode": true
-      },
+      "name": "Python: Consumer",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/binquant/consumer",
+      "console": "internalConsole",
+      "justMyCode": true
+    },
   ]
 }
