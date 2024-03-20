@@ -14,10 +14,5 @@ logging.basicConfig(
 )
 
 if __name__ == "__main__":
-    try:
-        rs = SignalsInbound()
-        rs.start_stream()
-    except Exception as error:
-        logging.error(f'Hey ya normal exception: {error}')
-        rs = SignalsInbound()
-        rs.start_stream()
+    rs = SignalsInbound()
+    rs.start_stream()
