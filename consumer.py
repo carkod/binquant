@@ -1,4 +1,7 @@
 import logging
+import os
+import asyncio
+
 from datetime import datetime
 from logging import info
 from time import sleep, time
@@ -20,19 +23,28 @@ from websocket import WebSocketException
 
 from outbound_data.signals_outbound import SignalsOutbound
 
-logging.basicConfig(
-    filename="./binbot-research.log",
-    filemode="a",
-    format="%(asctime)s.%(msecs)03d UTC %(levelname)s %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    level=logging.INFO,
-)
+from kafka import KafkaConsumer
+import json
+from datetime import datetime
+import pandas as pd
+
+
+from shared.enums import KafkaTopics
+
+async def main():
+
+    print("Consumer started")
+
+    # Create a consumer instance
+    klines_consumer = KafkaConsumer(
+        KafkaTopics.processed_klines_topic.value,
+        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+        value_deserializer=lambda m: json.loads(m.decode('ascii'))
+    )
+
+    # Start consuming
+    klines_data = klines_consumer.poll()
+    print("Consumer:", klines_data)
 
 if __name__ == "__main__":
-    try:
-        rs = SignalsOutbound()
-        rs.start_stream()
-    except Exception as error:
-        logging.error(f"Hey ya normal exception: {error}")
-        rs = SignalsOutbound()
-        rs.start_stream()
+    asyncio.run(main())

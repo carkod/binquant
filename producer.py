@@ -1,9 +1,7 @@
 import logging
 
 from inbound_data.signals_inbound import SignalsInbound
-from websocket import (
-    WebSocketException,
-)
+from producers.klines_connector import KlinesConnector
 
 logging.basicConfig(
     filename="./binbot-research.log",
@@ -14,5 +12,4 @@ logging.basicConfig(
 )
 
 if __name__ == "__main__":
-    rs = SignalsInbound()
-    rs.start_stream()
+    KlinesConnector().start_stream()
