@@ -5,3 +5,4 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN apt autoremove --purge -y && rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/*.list
 STOPSIGNAL SIGTERM
 EXPOSE 9092 9094
+CMD ["faststream", "run", "serve:app"]

@@ -94,3 +94,6 @@ class CloseConditions(str, Enum):
 
     def __str__(self):
         return str(self.str)
+
+class KafkaTopics(str, Enum):
+    candlestick_data_topic = "candlestick_data_topic"

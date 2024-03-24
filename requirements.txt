@@ -12,4 +12,4 @@ py3cw==0.0.39
 aiohttp==3.8.3
 requests-cache==0.9.
 python-binance==1.0.16
-kafka-python==2.0.2
+faststream[kafka]==0.4.7

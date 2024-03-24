@@ -3,10 +3,10 @@ import logging
 import os
 from datetime import datetime
 from time import sleep, time
+from faststream.kafka import KafkaBroker, KafkaRouter
 
 import numpy
 import pandas as pd
-from kafka import KafkaProducer
 
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.price_changes import price_rise_15
@@ -14,14 +14,19 @@ from algorithms.rally import rally_or_pullback
 from algorithms.top_gainer_drop import top_gainers_drop
 from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
 
-from binquant.producers.produce_klines import KlinesProducer
-from inbound_data.signals_base import SignalsBase
+from producers.produce_klines import KlinesProducer
+from producers.base import ProducerBase
 from scipy import stats
 from shared.streaming.socket_client import SpotWebsocketStreamClient
 from shared.utils import round_numbers
+from shared.exceptions import KlinesConnectorSocketException
+from shared.enums import KafkaTopics
+from producers.base import ProducerBase
 
 
-class KlinesConnector:
+broker = KafkaBroker(f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}')
+
+class KlinesConnector(ProducerBase):
     def __init__(self) -> None:
         logging.info("Started Kafka producer SignalsInbound")
         self.last_processed_kline = {}
@@ -29,10 +34,6 @@ class KlinesConnector:
             on_message=self.on_message,
             on_close=self.handle_close,
             on_error=self.handle_error,
-        )
-        self.producer = KafkaProducer(
-            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
         super().__init__()
 
@@ -47,14 +48,14 @@ class KlinesConnector:
         self.start_stream()
 
     def handle_error(self, socket, message):
-        logging.error(f"Error research signals: {message}")
-        pass
+        raise KlinesConnectorSocketException(message)
 
     def on_message(self, ws, message):
         res = json.loads(message)
 
         if "result" in res:
-            print(f'Subscriptions: {res["result"]}')
+            if not res["result"]:
+                return
 
         if "e" in res and res["e"] == "kline":
             self.process_kline_stream(res)
@@ -103,9 +104,6 @@ class KlinesConnector:
         """
         Updates market data in DB for research
         """
-        # Sleep 1 hour because of snapshot account request weight
-        if datetime.now().time().hour == 0 and datetime.now().time().minute == 0:
-            sleep(1800)
 
         symbol = result["k"]["s"]
         if (
@@ -114,162 +112,7 @@ class KlinesConnector:
             and "s" in result["k"]
         ):
 
-            klines_producer = KlinesProducer(symbol)
-            klines_producer.produce(result["k"])
+            candlestick_data = KlinesProducer(symbol).produce(result["k"])
+            broker.publisher(candlestick_data, topic=KafkaTopics.candlestick_data_topic.value)
 
-
-            close_price = float(result["k"]["c"])
-            open_price = float(result["k"]["o"])
-            data = self._get_candlestick(symbol, self.interval, stats=True)
-
-            self.volatility = self.log_volatility(data)
-
-            df = pd.DataFrame(
-                {
-                    "date": data["trace"][0]["x"],
-                    "close": numpy.array(data["trace"][0]["close"]).astype(float),
-                }
-            )
-            slope, intercept, rvalue, pvalue, stderr = stats.linregress(
-                df["date"], df["close"]
-            )
-
-            if "error" in data and data["error"] == 1:
-                return
-
-            ma_100 = data["trace"][1]["y"]
-            ma_25 = data["trace"][2]["y"]
-            ma_7 = data["trace"][3]["y"]
-
-            macd = data["macd"]
-            macd_signal = data["macd_signal"]
-            rsi = data["rsi"]
-
-            if len(ma_100) == 0:
-                msg = f"Not enough ma_100 data: {symbol}"
-                print(msg)
-                return
-
-            # Average amplitude
-            msg = None
-            list_prices = numpy.array(data["trace"][0]["close"])
-            self.sd = round_numbers(numpy.std(list_prices.astype(numpy.single)), 4)
-
-            # historical lowest for short_buy_price
-            lowest_price = numpy.min(
-                numpy.array(data["trace"][0]["close"]).astype(numpy.single)
-            )
-
-            # COIN/BTC correlation: closer to 1 strong
-            btc_correlation = data["btc_correlation"]
-
-            if (
-                self.market_domination_trend == "gainers"
-                and self.market_domination_reversal
-            ):
-                buy_low_sell_high(
-                    self,
-                    close_price,
-                    symbol,
-                    rsi,
-                    ma_25,
-                    ma_7,
-                    ma_100,
-                )
-
-                price_rise_15(
-                    self,
-                    close_price,
-                    symbol,
-                    data["trace"][0]["close"][-2],
-                    p_value=pvalue,
-                    r_value=rvalue,
-                    btc_correlation=btc_correlation,
-                )
-
-                rally_or_pullback(
-                    self,
-                    close_price,
-                    symbol,
-                    lowest_price,
-                    pvalue,
-                    open_price,
-                    ma_7,
-                    ma_100,
-                    ma_25,
-                    slope,
-                    btc_correlation,
-                )
-
-            fast_and_slow_macd(
-                self,
-                close_price,
-                symbol,
-                macd,
-                macd_signal,
-                ma_7,
-                ma_25,
-                ma_100,
-                slope,
-                intercept,
-                rvalue,
-                pvalue,
-                stderr,
-            )
-
-            ma_candlestick_jump(
-                self,
-                close_price,
-                open_price,
-                ma_7,
-                ma_100,
-                ma_25,
-                symbol,
-                lowest_price,
-                slope,
-                intercept,
-                rvalue,
-                pvalue,
-                stderr,
-                btc_correlation=btc_correlation,
-            )
-
-            ma_candlestick_drop(
-                self,
-                close_price,
-                open_price,
-                ma_7,
-                ma_100,
-                ma_25,
-                symbol,
-                lowest_price,
-                slope=slope,
-                p_value=pvalue,
-                btc_correlation=btc_correlation,
-            )
-
-            top_gainers_drop(
-                self,
-                close_price,
-                open_price,
-                ma_7,
-                ma_100,
-                ma_25,
-                symbol,
-                lowest_price,
-                slope,
-                btc_correlation,
-            )
-
-            self.last_processed_kline[symbol] = time()
-
-        # If more than 6 hours passed has passed
-        # Then we should resume sending signals for given symbol
-        if (
-            symbol in self.last_processed_kline
-            and (float(time()) - float(self.last_processed_kline[symbol])) > 6000
-        ):
-            del self.last_processed_kline[symbol]
-
-        self.market_domination()
         pass

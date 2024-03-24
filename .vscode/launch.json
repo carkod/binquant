@@ -5,20 +5,14 @@
   "version": "0.0.2",
   "configurations": [
     {
-      "name": "Python: Producer",
+      "name": "Python: FastStream",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/binquant/producer",
-      "console": "internalConsole",
-      "justMyCode": true
-    },
-    {
-      "name": "Python: Consumer",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/binquant/consumer",
-      "console": "internalConsole",
-      "justMyCode": true
+      "module": "faststream",
+      "cwd": "${workspaceFolder}/binquant",
+      "args": ["run", "serve:app"],
+      "justMyCode": true,
+      "console": "internalConsole"
     },
   ]
 }
