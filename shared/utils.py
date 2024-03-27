@@ -4,7 +4,7 @@ import logging
 from decimal import Decimal
 from time import sleep
 from requests import HTTPError, Response
-
+from datetime import datetime
 
 class BinanceErrors(Exception):
     pass
@@ -25,6 +25,70 @@ def round_numbers(value, decimals=6):
     if decimals == 0:
         result = int(result)
     return result
+
+
+import math
+from decimal import Decimal
+import re
+
+
+def supress_trailling(value: str | float | int) -> float:
+    """
+    Supress trilling 0s
+    this function will not round the number
+    e.g. 3.140, 3.140000004
+
+    also supress scientific notation
+    e.g. 2.05-5
+    """
+    value = float(value)
+    # supress scientific notation
+    number = float(f"{value:f}")
+    number = float("{0:g}".format(number))
+    return number
+
+
+def round_numbers(value, decimals=6):
+    decimal_points = 10 ** int(decimals)
+    number = float(value)
+    result = math.floor(number * decimal_points) / decimal_points
+    if decimals == 0:
+        result = int(result)
+    return result
+
+
+def round_numbers_ceiling(value, decimals=6):
+    decimal_points = 10 ** int(decimals)
+    number = float(value)
+    result = math.ceil(number * decimal_points) / decimal_points
+    if decimals == 0:
+        result = int(result)
+    return float(result)
+
+
+def interval_to_millisecs(interval: str) -> int:
+    time, notation = re.findall(r"[A-Za-z]+|\d+", interval)
+    if notation == "m":
+        # minutes
+        return int(time) * 60 * 1000
+
+    if notation == "h":
+        # hours
+        return int(time) * 60 * 60 * 1000
+
+    if notation == "d":
+        # day
+        return int(time) * 24 * 60 * 60 * 1000
+
+    if notation == "w":
+        # weeks
+        return int(time) * 5 * 24 * 60 * 60 * 1000
+
+    if notation == "M":
+        # month
+        return int(time) * 30 * 24 * 60 * 60 * 1000
+
+    return 0
 
 
 def supress_notation(num: float, precision: int = 0):
@@ -118,3 +182,8 @@ def bollinguer_spreads(ma_100, ma_25, ma_7):
         "band_1": abs(float(supress_notation(band_1, 4))),
         "band_2": abs(float(supress_notation(band_2, 4))),
     }
+
+def timestamp_to_datetime(timestamp: str | int) -> datetime:
+    format = "%Y-%m-%d %H:%M:%S"
+    timestamp = int(round_numbers_ceiling(int(timestamp) / 1000, 0))
+    return datetime.fromtimestamp(timestamp).strftime(format)

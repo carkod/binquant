@@ -31,6 +31,8 @@ class KlinesConnector(SignalsBase):
             on_close=self.handle_close,
             on_error=self.handle_error,
         )
+        self.partition_obj = {} # symbol: partition
+        self.partition_count = 0
         super().__init__()
 
 
@@ -109,11 +111,17 @@ class KlinesConnector(SignalsBase):
             symbol
             and "k" in result
             and "s" in result["k"]
-            and result["k"]["x"]
+            # and result["k"]["x"]
         ):
+            # Allocate partition for each symbol and dedup
+            try:
+                self.partition_obj[symbol]
+            except KeyError:
+                self.partition_obj[symbol] = self.partition_count
+                self.partition_count += 1
+                pass
 
-            klines_producer = KlinesProducer(symbol)
+            klines_producer = KlinesProducer(symbol, partition=self.partition_obj[symbol])
             klines_producer.store(result["k"])
-
 
         pass
