@@ -1,7 +1,7 @@
 import logging
 import asyncio
 
-from inbound_data.signals_inbound import SignalsInbound
+from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector
 
 logging.basicConfig(
@@ -12,10 +12,16 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
+async def main():
+    base_producer = BaseProducer()
+    producer = base_producer.start_producer()
+    connector = KlinesConnector(producer)
+    connector.start_stream()
+
 if __name__ == "__main__":
     try:
-        KlinesConnector().start_stream()
+        asyncio.run(main())
     except Exception as error:
         logging.error(error)
-        KlinesConnector().start_stream()
+        asyncio.run(main())
         pass

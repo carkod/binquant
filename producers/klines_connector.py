@@ -1,39 +1,30 @@
 import json
 import logging
-import os
-from datetime import datetime
-from time import sleep, time
 
-import numpy
-import pandas as pd
-from kafka import KafkaProducer
-
-from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
-from algorithms.price_changes import price_rise_15
-from algorithms.rally import rally_or_pullback
-from algorithms.top_gainer_drop import top_gainers_drop
-from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
-
+from producers.base import BaseProducer
 from producers.produce_klines import KlinesProducer
 from inbound_data.signals_base import SignalsBase
-from scipy import stats
 from shared.streaming.socket_client import SpotWebsocketStreamClient
 from shared.utils import round_numbers
 from shared.exceptions import WebSocketError
+from database import KafkaDB
+
 
 class KlinesConnector(SignalsBase):
-    def __init__(self) -> None:
+    def __init__(self, producer) -> None:
         logging.info("Started Kafka producer SignalsInbound")
-        self.interval = "1m"
+        super().__init__()
+        self.interval = "15m"
         self.last_processed_kline = {}
         self.client = SpotWebsocketStreamClient(
             on_message=self.on_message,
             on_close=self.handle_close,
             on_error=self.handle_error,
         )
-        self.partition_obj = {} # symbol: partition
+
+        self.symbol_partitions = []
         self.partition_count = 0
-        super().__init__()
+        self.producer = producer
 
 
     def handle_close(self, message):
@@ -57,7 +48,6 @@ class KlinesConnector(SignalsBase):
 
         if "e" in res and res["e"] == "kline":
             self.process_kline_stream(res)
-
 
     def start_stream(self):
         logging.info("Initializing Research signals")
@@ -95,33 +85,28 @@ class KlinesConnector(SignalsBase):
 
         # update DB
         self.update_subscribed_list(subscription_list)
-
         self.client.klines(markets=params, interval=self.interval)
 
-    def process_kline_stream(self, result):
+    async def process_kline_stream(self, result):
         """
         Updates market data in DB for research
         """
-        # Sleep 1 hour because of snapshot account request weight
-        if datetime.now().time().hour == 0 and datetime.now().time().minute == 0:
-            sleep(1800)
 
         symbol = result["k"]["s"]
         if (
             symbol
             and "k" in result
             and "s" in result["k"]
-            # and result["k"]["x"]
         ):
             # Allocate partition for each symbol and dedup
-            try:
-                self.partition_obj[symbol]
-            except KeyError:
-                self.partition_obj[symbol] = self.partition_count
-                self.partition_count += 1
-                pass
+            # try:
+            #     self.partition_obj[symbol]
+            # except KeyError:
+            #     self.partition_obj[symbol] = self.partition_count
+            #     self.partition_count += 1
+            #     pass
 
-            klines_producer = KlinesProducer(symbol, partition=self.partition_obj[symbol])
+            klines_producer = KlinesProducer(self.producer, symbol)
             klines_producer.store(result["k"])
 
         pass
