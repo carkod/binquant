@@ -44,7 +44,13 @@ class KlinesProvider(KafkaDB):
 
             # self.check_kline_gaps(candles)
             # Pre-process
-            df = spark.createDataFrame(candles)
+
+            # For easier migration, transform into pandas
+            # in the future, conversion for RDD may be needed
+            # to support Spark scalability
+            spark_df = spark.createDataFrame(candles)
+
+            df = spark_df.pandas_api()
 
             TechnicalIndicators(df).publish()
 

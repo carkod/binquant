@@ -101,7 +101,7 @@ class KafkaDB:
     def raw_klines(self, symbol, limit=200, offset=0):
         query = self.db.kline.find(
             {"symbol": symbol},
-            {"_id": 0, "metadata": 0, "timestamp": 0},
+            {"_id": 0, "metadata": 0, "timestamp": 0, "symbol": 0, "candle_closed": 0},
             limit=limit,
             skip=offset,
         )

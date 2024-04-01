@@ -11,7 +11,7 @@ from shared.enums import KafkaTopics
 
 spark = (
     SparkSession.builder.appName("Klines Statistics analyses")
-    .config("spark.eventLog.gcMetrics.youngGenerationGarbageCollectors", "")
+    .config("spark.sql.execution.arrow.pyspark.enabled", "true")
     .getOrCreate()
 )
 
@@ -77,11 +77,7 @@ class TechnicalIndicators:
         Calculate moving averages for 7, 25, 100 days
         this also takes care of Bollinguer bands
         """
-        window = Window.orderBy(col("close_time").cast("long")).rowsBetween(
-            -self.days(period), 0
-        )
-        df = df.withColumn(f"ma_{period}", avg("close").over(window))
-
+        df = df.rolling(window=period).mean().dropna()
         return df
 
     def macd(self, df):
@@ -99,7 +95,9 @@ class TechnicalIndicators:
         # Get the 9-Day EMA of the MACD for the Trigger line
         macd_s = macd.ewm(span=9, adjust=False, min_periods=9).mean()
 
-        return macd, macd_s
+        df["macd"] = macd
+        df["macd_signal"] = macd_s
+        return df
 
     def rsi(self, df):
         """
@@ -124,7 +122,8 @@ class TechnicalIndicators:
         avg_down = change_down.rolling(14).mean().abs()
 
         rsi = 100 * avg_up / (avg_up + avg_down)
-        return rsi
+        df["rsi"] = rsi
+        return df
 
     def publish(self):
         """
@@ -137,6 +136,8 @@ class TechnicalIndicators:
         self.df = self.moving_averages(self.df, 7)
         self.df = self.moving_averages(self.df, 25)
         self.df = self.moving_averages(self.df, 100)
+        self.df = self.macd(self.df)
+        self.df = self.rsi(self.df)
 
         self.producer.send(
             KafkaTopics.technical_indicators.value, value=self.df.toJSON().collect()
