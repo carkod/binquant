@@ -66,7 +66,7 @@ class KafkaDB:
             partition_obj[item["symbol"]] = item["partition"]
         return partition_obj
 
-    def store_klines(self, kline, partition: int):
+    def store_klines(self, kline, partition: int=1):
         """
         Append metadata and store kline data in MongoDB
         """

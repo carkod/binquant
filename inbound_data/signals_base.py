@@ -16,7 +16,6 @@ class SignalsBase(BinbotApi):
     """
 
     def __init__(self):
-        self.interval = "1h"
         self.markets_streams = None
         self.skipped_fiat_currencies = [
             "DOWN",
@@ -144,7 +143,6 @@ class SignalsBase(BinbotApi):
 
         self.settings = settings_data["data"]
         self.blacklist_data = blacklist_data["data"]
-        self.interval = self.settings["candlestick_interval"]
         self.max_request = int(self.settings["max_request"])
 
         # if autrotrade enabled and it's not an already active bot

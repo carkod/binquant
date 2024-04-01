@@ -1,20 +1,16 @@
 import json
 import logging
 
-from producers.base import BaseProducer
+from kafka import KafkaProducer
 from producers.produce_klines import KlinesProducer
 from inbound_data.signals_base import SignalsBase
 from shared.streaming.socket_client import SpotWebsocketStreamClient
-from shared.utils import round_numbers
 from shared.exceptions import WebSocketError
-from database import KafkaDB
-
-
 class KlinesConnector(SignalsBase):
-    def __init__(self, producer) -> None:
+    def __init__(self, producer: KafkaProducer, interval: str="1m") -> None:
         logging.info("Started Kafka producer SignalsInbound")
         super().__init__()
-        self.interval = "15m"
+        self.interval = interval
         self.last_processed_kline = {}
         self.client = SpotWebsocketStreamClient(
             on_message=self.on_message,
@@ -87,7 +83,7 @@ class KlinesConnector(SignalsBase):
         self.update_subscribed_list(subscription_list)
         self.client.klines(markets=params, interval=self.interval)
 
-    async def process_kline_stream(self, result):
+    def process_kline_stream(self, result):
         """
         Updates market data in DB for research
         """
@@ -105,7 +101,6 @@ class KlinesConnector(SignalsBase):
             #     self.partition_obj[symbol] = self.partition_count
             #     self.partition_count += 1
             #     pass
-
             klines_producer = KlinesProducer(self.producer, symbol)
             klines_producer.store(result["k"])
 
