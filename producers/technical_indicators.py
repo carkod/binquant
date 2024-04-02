@@ -11,18 +11,29 @@ from shared.enums import KafkaTopics
 
 spark = (
     SparkSession.builder.appName("Klines Statistics analyses")
-    .config("spark.sql.execution.arrow.pyspark.enabled", "true")
+    # .config("spark.sql.execution.arrow.pyspark.enabled", "true")
+    .config("compute.ops_on_diff_frames", "true")
     .getOrCreate()
 )
 
 class TechnicalIndicators:
-    def __init__(self, df) -> None:
+    def __init__(self, df, symbol) -> None:
         base_producer = BaseProducer()
         self.producer = base_producer.start_producer()
         self.df = df
+        self.symbol = symbol
         pass
 
     def check_kline_gaps(self, data):
+        """
+        Check data consistency
+
+        Currently not implemented with kafka streams data
+        as we need to check the nature of such gaps, as now
+        data needs to be aggregated for larger windows > 1m
+        i.e. 15m -> aggregate 1m * 15
+        """
+
         ot = datetime.fromtimestamp(round(int(data["open_time"]) / 1000))
         ct = datetime.fromtimestamp(round(int(data["close_time"]) / 1000))
         time_diff = ct - ot
@@ -72,58 +83,55 @@ class TechnicalIndicators:
 
         return slope
 
-    def moving_averages(self, df, period=7):
+    def moving_averages(self, period=7):
         """
         Calculate moving averages for 7, 25, 100 days
         this also takes care of Bollinguer bands
         """
-        df = df.rolling(window=period).mean().dropna()
-        return df
+        self.df[f'ma_{period}'] = self.df["close"].rolling(window=period).mean()
 
-    def macd(self, df):
+    def macd(self):
         """
         Moving Average Convergence Divergence (MACD) indicator
         https://www.alpharithms.com/calculate-macd-python-272222/
         """
 
-        k = df[4].ewm(span=12, adjust=False, min_periods=12).mean()
+        k = self.df["close"].ewm(span=12, min_periods=12).mean()
         # Get the 12-day EMA of the closing price
-        d = df[4].ewm(span=26, adjust=False, min_periods=26).mean()
+        d = self.df["close"].ewm(span=26, min_periods=26).mean()
         # Subtract the 26-day EMA from the 12-Day EMA to get the MACD
         macd = k - d
         # Get the 9-Day EMA of the MACD for the Trigger line
         # Get the 9-Day EMA of the MACD for the Trigger line
-        macd_s = macd.ewm(span=9, adjust=False, min_periods=9).mean()
+        macd_s = macd.ewm(span=9, min_periods=9).mean()
 
-        df["macd"] = macd
-        df["macd_signal"] = macd_s
-        return df
+        self.df["macd"] = macd
+        self.df["macd_signal"] = macd_s
 
-    def rsi(self, df):
+    def rsi(self):
         """
         Relative Strength Index (RSI) indicator
         https://www.qmr.ai/relative-strength-index-rsi-in-python/
         """
 
-        change = df[4].astype(float).diff()
-        change.dropna(inplace=True)
+        change = self.df["close"].astype(float).diff()
         # Create two copies of the Closing price Series
-        change_up = change.copy()
-        change_down = change.copy()
+        # change_up = change.copy()
+        # change_down = change.copy()
 
-        change_up[change_up < 0] = 0
-        change_down[change_down > 0] = 0
+        gain = change.mask(change < 0, 0.0)
+        loss = -change.mask(change > 0, -0.0)
+
 
         # Verify that we did not make any mistakes
-        change.equals(change_up + change_down)
+        change.equals(gain + loss)
 
         # Calculate the rolling average of average up and average down
-        avg_up = change_up.rolling(14).mean()
-        avg_down = change_down.rolling(14).mean().abs()
+        avg_up = gain.rolling(14).mean()
+        avg_down = loss.rolling(14).mean().abs()
 
         rsi = 100 * avg_up / (avg_up + avg_down)
-        df["rsi"] = rsi
-        return df
+        self.df["rsi"] = rsi
 
     def publish(self):
         """
@@ -132,15 +140,24 @@ class TechnicalIndicators:
         Algorithms should consume this data
         """
 
-        length = self.df.count()
-        self.df = self.moving_averages(self.df, 7)
-        self.df = self.moving_averages(self.df, 25)
-        self.df = self.moving_averages(self.df, 100)
-        self.df = self.macd(self.df)
-        self.df = self.rsi(self.df)
+        length = self.df.size
+        if length > 0:
+            # Bolliguer bands
+            # This would be an ideal process to spark.parallelize
+            # not sure what's the best way with pandas-on-spark dataframe
+            self.moving_averages(7)
+            self.moving_averages(25)
+            self.moving_averages(100)
 
-        self.producer.send(
-            KafkaTopics.technical_indicators.value, value=self.df.toJSON().collect()
-        )
+            # Oscillators
+            self.macd()
+            self.rsi()
+
+            # Post-processing
+            self.df.dropna(inplace=True)
+
+            self.producer.send(
+                KafkaTopics.technical_indicators.value, value=self.df.to_json()
+            )
 
         pass

@@ -30,21 +30,21 @@ class KlinesProducer(KafkaDB):
             self.store_klines(data, self.current_partition)
             
         try:
-            message = KlineProduceModel(
-                symbol=data["s"],
-                open_time=str(data["t"]),
-                close_time=str(data["T"]),
-            )
-            # Produce message with asset name
-            # this is faster then MongoDB change streams
-            print(f'{data["s"] }')
-            self.producer.send(
-                topic=self.topic,
-                # partition=self.current_partition,
-                value=message.model_dump_json(),
-                timestamp_ms=int(data["t"]),
-                key=str(data["t"]).encode("utf-8"),
-            ).add_callback(self.on_send_success).add_errback(self.on_send_error)
+            if data["x"]:
+                message = KlineProduceModel(
+                    symbol=data["s"],
+                    open_time=str(data["t"]),
+                    close_time=str(data["T"]),
+                )
+                # Produce message with asset name
+                # this is faster then MongoDB change streams
+                self.producer.send(
+                    topic=self.topic,
+                    # partition=self.current_partition,
+                    value=message.model_dump_json(),
+                    timestamp_ms=int(data["t"]),
+                    key=str(data["t"]).encode("utf-8"),
+                ).add_callback(self.on_send_success).add_errback(self.on_send_error)
         except Exception as e:
             logging.error(f"Error: {e}")
             pass

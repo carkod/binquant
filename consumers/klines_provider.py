@@ -6,8 +6,14 @@ from producers.technical_indicators import TechnicalIndicators
 from database import KafkaDB
 from shared.enums import KafkaTopics
 from pyspark.sql import SparkSession
+import pyspark.pandas as ps
+from pyspark import SparkContext
 
-spark = SparkSession.builder.appName("Klines Statistics analyses").config("spark.eventLog.gcMetrics.youngGenerationGarbageCollectors", "").getOrCreate()
+spark = SparkSession.builder.appName("Klines Statistics analyses")\
+    .config("spark.driver.memory", "2g").getOrCreate()
+
+# allow series and/or dataframes to be attached to different dataframes
+ps.set_option('compute.ops_on_diff_frames', True)
 
 class KlinesProvider(KafkaDB):
     """
@@ -48,11 +54,11 @@ class KlinesProvider(KafkaDB):
             # For easier migration, transform into pandas
             # in the future, conversion for RDD may be needed
             # to support Spark scalability
-            spark_df = spark.createDataFrame(candles)
+            # spark_df = spark.createDataFrame(candles)
 
-            df = spark_df.pandas_api()
-
-            TechnicalIndicators(df).publish()
+            # ps.options.display.max_rows = 10
+            df = ps.DataFrame(candles)
+            TechnicalIndicators(df, symbol).publish()
 
         pass
 
