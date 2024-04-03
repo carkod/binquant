@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import asyncio
 from aiokafka import AIOKafkaConsumer, TopicPartition
 from producers.technical_indicators import TechnicalIndicators
 from database import KafkaDB
@@ -19,29 +20,41 @@ class KlinesProvider(KafkaDB):
     """
     Pools, processes, agregates and provides klines data
     """
-    def __init__(self, consumer: AIOKafkaConsumer):
+    def __init__(self):
         super().__init__()
-        self.consumer = consumer
-        self.topic_partition_ids = []
+        # If we don't instantiate separately, almost no messages are received
+        self.consumer = AIOKafkaConsumer(
+            KafkaTopics.klines_store_topic.value,
+            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+            # group_id="klines",
+            enable_auto_commit=False,
+            value_deserializer=lambda m: json.loads(m),
+        )
         self.topic_partition = None
          # Number of klines to aggregate, 100+ for MAosed
         self.klines_horizon = 3
         self.current_partition = 0
         self.candles = []
 
-    def set_partitions(self, partition):
-        self.consumer = AIOKafkaConsumer(
-            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-            value_deserializer=lambda m: json.loads(m),
-        )
-        self.consumer.assign([TopicPartition(KafkaTopics.klines_store_topic.value, partition)])
+    def set_partitions(self):
+        self.topic_partition = self.get_partitions()
+
+    async def get_future_tasks(self):
+        """
+        Handles consumption as Futures (coroutines)
+        then triggers in main with all the other consumer tasks
+        """
+        tasks = []
+        async for result in self.consumer:
+            tasks.append(asyncio.create_task(self.aggregate_data(result)))
+        
+        return tasks
 
     async def aggregate_data(self, results):
 
         if results.value:
             payload = json.loads(results.value)
             symbol = payload["symbol"]
-            print(f'Consumed: {symbol} @ {payload["close_time"]}')
             candles = self.raw_klines(symbol)
             
             if len(candles) == 0:

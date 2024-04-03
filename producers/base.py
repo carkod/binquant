@@ -2,7 +2,6 @@ import os
 import json
 
 from kafka import KafkaProducer
-from shared.enums import KafkaTopics
 from database import KafkaDB
 from shared.utils import round_numbers_ceiling
 from datetime import datetime
@@ -11,7 +10,7 @@ class BaseProducer(KafkaDB):
     def __init__(self):
         super().__init__()
         
-    def start_producer(self, topic=KafkaTopics.klines_store_topic.value):
+    def start_producer(self):
         self.producer = KafkaProducer(
             bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),

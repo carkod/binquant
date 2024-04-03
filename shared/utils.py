@@ -164,25 +164,6 @@ def define_strategy(self):
 
     return trend
 
-
-def bollinguer_spreads(ma_100, ma_25, ma_7):
-    """
-    Calculates spread based on bollinger bands,
-    for later use in take profit and stop loss
-
-    Returns:
-    - top_band: diff between ma_25 and ma_100
-    - spread: spread in absolute value
-    """
-
-    band_1 = ((ma_100[500] - ma_25[500]) / ma_100[500]) * 100
-    band_2 = ((ma_25[500] - ma_7[500]) / ma_25[500]) * 100
-
-    return {
-        "band_1": abs(float(supress_notation(band_1, 4))),
-        "band_2": abs(float(supress_notation(band_2, 4))),
-    }
-
 def timestamp_to_datetime(timestamp: str | int) -> datetime:
     format = "%Y-%m-%d %H:%M:%S"
     timestamp = int(round_numbers_ceiling(int(timestamp) / 1000, 0))

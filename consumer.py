@@ -3,34 +3,29 @@ import asyncio
 import logging
 
 from aiokafka import AIOKafkaConsumer
-import json
 from shared.enums import KafkaTopics
 from consumers.klines_provider import KlinesProvider
+from py4j.protocol import Py4JNetworkError
 
 async def main():
 
-    # Create a consumer instance
-    klines_consumer = AIOKafkaConsumer(
-        KafkaTopics.klines_store_topic.value,
-        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-        # group_id="klines",
-        enable_auto_commit=False,
-        value_deserializer=lambda m: json.loads(m),
-    )
     # Start consuming
-    await klines_consumer.start()
+    klines_provider = KlinesProvider()
+    await klines_provider.consumer.start()
     while True:
         tasks = []
         try:
         
-            klines_provider = KlinesProvider(klines_consumer)
-            async for result in klines_consumer:
-                tasks.append(asyncio.create_task(klines_provider.aggregate_data(result)))
+            set_1 = await klines_provider.get_future_tasks()
+            tasks.extend(set_1)
+            
+        except Py4JNetworkError:
+            asyncio.run(main())
 
         except Exception as error:
             print(error)
         finally:
-            await klines_consumer.stop()
+            await klines_provider.consumer.stop()
 
         await asyncio.gather(*tasks)
 

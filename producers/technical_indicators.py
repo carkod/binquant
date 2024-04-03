@@ -1,13 +1,10 @@
-import json
 from datetime import datetime
 import logging
 import numpy
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, avg, to_date
-from pyspark.sql.window import Window
-from shared.utils import round_numbers
 from producers.base import BaseProducer
-from shared.enums import KafkaTopics
+from algorithms.ma_candlestick import ma_candlestick_jump
+from algorithms.coinrule import fast_and_slow_macd
 
 spark = (
     SparkSession.builder.appName("Klines Statistics analyses")
@@ -15,6 +12,7 @@ spark = (
     .config("compute.ops_on_diff_frames", "true")
     .getOrCreate()
 )
+spark.sparkContext.setLogLevel("FATAL")
 
 class TechnicalIndicators:
     def __init__(self, df, symbol) -> None:
@@ -43,20 +41,6 @@ class TechnicalIndicators:
     
     def days(self, secs):
         return secs * 86400
-
-    def log_volatility(self, data):
-        """
-        Volatility (standard deviation of returns) using logarithm, this normalizes data
-        so it's easily comparable with other assets
-
-        Returns:
-        - Volatility in percentage
-        """
-        closing_prices = numpy.array(data["trace"][0]["close"]).astype(float)
-        returns = numpy.log(closing_prices[1:] / closing_prices[:-1])
-        volatility = numpy.std(returns)
-        perc_volatility = round_numbers(volatility * 100, 6)
-        return perc_volatility
 
     def calculate_slope(candlesticks):
         """
@@ -115,9 +99,6 @@ class TechnicalIndicators:
         """
 
         change = self.df["close"].astype(float).diff()
-        # Create two copies of the Closing price Series
-        # change_up = change.copy()
-        # change_down = change.copy()
 
         gain = change.mask(change < 0, 0.0)
         loss = -change.mask(change > 0, -0.0)
@@ -132,6 +113,34 @@ class TechnicalIndicators:
 
         rsi = 100 * avg_up / (avg_up + avg_down)
         self.df["rsi"] = rsi
+
+
+    def bollinguer_spreads(self):
+        """
+        Calculates spread based on bollinger bands,
+        for later use in take profit and stop loss
+
+        Returns:
+        - top_band: diff between ma_25 and ma_100
+        - bottom_band: diff between ma_7 and ma_25
+        """
+
+        band_1 = (abs((self.df["ma_100"] - self.df["ma_25"])) / self.df["ma_100"]) * 100
+        band_2 = (abs((self.df["ma_25"] - self.df["ma_7"])) / self.df["ma_25"]) * 100
+
+        self.df["bollinguer_band_1"] = band_1
+        self.df["bollinguer_band_2"] = band_2
+
+    def log_volatility(self, window_size=7):
+        """
+        Volatility (standard deviation of returns) using logarithm, this normalizes data
+        so it's easily comparable with other assets
+
+        Returns:
+        - Volatility in percentage
+        """
+        log_volatility = numpy.log(self.df["close"].pct_change().rolling(window_size).std())
+        self.df["perc_volatility"] = log_volatility
 
     def publish(self):
         """
@@ -153,11 +162,50 @@ class TechnicalIndicators:
             self.macd()
             self.rsi()
 
+            # Bollinguer bands
+            self.bollinguer_spreads()
+
+            self.log_volatility()
+
             # Post-processing
             self.df.dropna(inplace=True)
+            close_price = float(self.df.close[len(self.df.close) - 1])
+            open_price = float(self.df.open[len(self.df.open) - 1])
+            macd = float(self.df.macd[len(self.df.macd) - 1])
+            macd_signal = float(self.df.macd_signal[len(self.df.macd_signal) - 1])
 
-            self.producer.send(
-                KafkaTopics.technical_indicators.value, value=self.df.to_json()
+            ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
+            ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
+            ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
+            ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
+            ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
+            ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
+
+            volatility = float(self.df.perc_volatility[len(self.df.perc_volatility) - 1])
+
+            fast_and_slow_macd(
+                self,
+                close_price,
+                self.symbol,
+                macd,
+                macd_signal,
+                ma_7,
+                ma_25,
+                ma_100
+            )
+
+            ma_candlestick_jump(
+                self,
+                close_price,
+                open_price,
+                self.symbol,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility
             )
 
         pass
