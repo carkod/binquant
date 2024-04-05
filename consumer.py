@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 
-from binquant.consumers.telegram_consumer import TelegramConsumer
+from consumers.telegram_consumer import TelegramConsumer
 from consumers.klines_provider import KlinesProvider
 from py4j.protocol import Py4JNetworkError
 
@@ -13,7 +13,6 @@ async def main():
     telegram_consumer = TelegramConsumer()
     await klines_provider.consumer.start()
     while True:
-        tasks = []
         try:
         
             future_1 = await klines_provider.get_future_tasks()

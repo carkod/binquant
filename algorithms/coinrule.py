@@ -13,6 +13,7 @@ def fast_and_slow_macd(
     ma_7,
     ma_25,
     ma_100,
+    volatility
 ):
     """
     Coinrule top performance rule
@@ -22,7 +23,7 @@ def fast_and_slow_macd(
     algo = "coinrule_fast_and_slow_macd"
     spread = None
 
-    if macd[str(len(macd) - 1)] > macd_signal[str(len(macd_signal) - 1)] and ma_7[len(ma_7) - 1] > ma_25[len(ma_25) - 1]:
+    if macd > macd_signal and ma_7 > ma_25:
 
         # trend = define_strategy(self)
         # if trend is None and trend == "uptrend":
@@ -39,7 +40,7 @@ def fast_and_slow_macd(
         msg = (f"""
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
         - Current price: {close_price}
-        - Log volatility (log SD): {self.volatility}%
+        - Log volatility (log SD): {volatility}%
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
         """)
@@ -52,7 +53,7 @@ def fast_and_slow_macd(
             "current_price": close_price,
         }
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dump(value)).add_callback(self.on_send_success).add_errback(self.on_send_error)
+        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.producer.on_send_success).add_errback(self.on_send_error)
         # self.send_telegram(msg)
         # self.process_autotrade_restrictions()
 

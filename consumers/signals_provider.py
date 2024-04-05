@@ -1,9 +1,7 @@
 import logging
-from datetime import datetime, timedelta
-from time import time
-from typing import Literal
 
 import requests
+from shared.enums import KafkaTopics
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
 from shared.telegram_bot import TelegramBot
@@ -74,10 +72,3 @@ class SignalsProvider(BinbotApi):
         self.test_autotrade_settings = test_autotrade["data"]
 
         pass
-
-    
-
-
-    
-
-    

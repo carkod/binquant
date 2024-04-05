@@ -19,8 +19,8 @@ spark.sparkContext.setLogLevel("FATAL")
 
 class TechnicalIndicators(BinbotApi):
     def __init__(self, df, symbol) -> None:
-        base_producer = BaseProducer()
-        self.producer = base_producer.start_producer()
+        self.base_producer = BaseProducer()
+        self.producer = self.base_producer.start_producer()
         self.df = df
         self.symbol = symbol
         pass
@@ -243,7 +243,8 @@ class TechnicalIndicators(BinbotApi):
                 macd_signal,
                 ma_7,
                 ma_25,
-                ma_100
+                ma_100,
+                volatility
             )
 
             ma_candlestick_jump(

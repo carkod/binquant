@@ -11,7 +11,7 @@ class TelegramConsumer:
     def __init__(self):
         self.telegram_bot = TelegramBot()
         self.consumer = AIOKafkaConsumer(
-            KafkaTopics.klines_store_topic.value,
+            KafkaTopics.signals.value,
             bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
             enable_auto_commit=False,
             value_deserializer=lambda m: json.loads(m),
@@ -24,7 +24,8 @@ class TelegramConsumer:
         """
         tasks = []
         async for result in self.consumer:
-            tasks.append(asyncio.create_task(self.aggregate_data(result)))
+            msg = json.loads(result.value)
+            tasks.append(asyncio.create_task(self.send_telegram(msg)))
         
         return tasks
 
