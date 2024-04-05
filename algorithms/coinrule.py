@@ -1,4 +1,6 @@
+import json
 import os
+from shared.enums import KafkaTopics
 from shared.utils import define_strategy
 
 
@@ -41,8 +43,18 @@ def fast_and_slow_macd(
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
         """)
+
+        value = {
+            "msg": msg,
+            "symbol": symbol,
+            "algo": algo, 
+            "spread": spread,
+            "current_price": close_price,
+        }
+
+        self.producer.send(KafkaTopics.signals.value, value=json.dump(value)).add_callback(self.on_send_success).add_errback(self.on_send_error)
         # self.send_telegram(msg)
-        # self.process_autotrade_restrictions(symbol, algo, False, **{"spread": spread, "current_price": close_price, "trend": trend})
+        # self.process_autotrade_restrictions()
 
         pass
 

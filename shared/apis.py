@@ -6,6 +6,7 @@ from random import randrange
 from urllib.parse import urlencode
 from dotenv import load_dotenv
 from requests import Session, get, post
+import requests
 from shared.utils import handle_binance_errors
 
 load_dotenv()
@@ -221,6 +222,11 @@ class BinbotApi(BinanceApi):
     bb_test_bot_active_list = f"{bb_base_url}/paper-trading/active-list"
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
 
+    def request(self, url, method="GET"):
+        session = Session()
+        res = session.request(method=method, url=url)
+        return handle_binance_errors(res)
+
     def _get_24_ticker(self, market):
         url = f"{self.bb_24_ticker_url}/{market}"
         res = get(url=url)
@@ -251,3 +257,46 @@ class BinbotApi(BinanceApi):
         res = get(url=self.bb_market_domination, params={"size": 7})
         data = handle_binance_errors(res)
         return data
+
+    def blacklist_coin(self, pair, msg):
+        res = requests.post(
+            url=self.bb_blacklist_url, json={"pair": pair, "reason": msg}
+        )
+        result = handle_binance_errors(res)
+        return result
+
+    def ticker_24(self, symbol: str | None = None):
+        """
+        Weight 40 without symbol
+        https://github.com/carkod/binbot/issues/438
+
+        Using cache
+        """
+        data = self.request(method="GET", url=self.ticker24_url, params={"symbol": symbol})
+        return data
+
+    def get_latest_btc_price(self):
+        # Get 24hr last BTCUSDT
+        btc_ticker_24 = self.ticker_24("BTCUSDT")
+        self.btc_change_perc = float(btc_ticker_24["priceChangePercent"])
+        return self.btc_change_perc
+
+    def post_error(self, msg):
+        data = self.request(method="PUT", url=self.bb_autotrade_settings_url, json={"system_logs": msg})
+        return data
+
+    def get_test_autotrade_settings(self):
+        data = self.request(url=self.bb_test_autotrade_url)
+        return data["data"]
+    
+    def get_autotrade_settings(self):
+        data = self.request(url=self.bb_autotrade_settings_url)
+        return data["data"]
+
+    def get_bots_by_status(self, status="active", no_cooldown=True):
+        data = self.request(url=self.bb_bot_url, params={"status": status, "no_cooldown": no_cooldown})
+        return data["data"]
+
+    def get_papertrading_bots_by_status(self, status="active", no_cooldown=True):
+        data = self.request(url=self.bb_test_bot_url, params={"status": status, "no_cooldown": no_cooldown})
+        return data["data"]

@@ -1,7 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import numpy
+from typing import Literal
+
 from pyspark.sql import SparkSession
+from shared.apis import BinbotApi
 from producers.base import BaseProducer
 from algorithms.ma_candlestick import ma_candlestick_jump
 from algorithms.coinrule import fast_and_slow_macd
@@ -14,7 +17,7 @@ spark = (
 )
 spark.sparkContext.setLogLevel("FATAL")
 
-class TechnicalIndicators:
+class TechnicalIndicators(BinbotApi):
     def __init__(self, df, symbol) -> None:
         base_producer = BaseProducer()
         self.producer = base_producer.start_producer()
@@ -141,6 +144,55 @@ class TechnicalIndicators:
         """
         log_volatility = numpy.log(self.df["close"].pct_change().rolling(window_size).std())
         self.df["perc_volatility"] = log_volatility
+    
+    def market_domination(self) -> Literal["gainers", "losers", None]:
+        """
+        Get data from gainers and losers endpoint to analyze market trends
+
+        We want to know when it's more suitable to do long positions
+        when it's more suitable to do short positions
+        For now setting threshold to 70% i.e.
+        if > 70% of assets in a given market (USDT) dominated by gainers
+        if < 70% of assets in a given market dominated by losers
+        Establish the timing
+        """
+        if (
+            datetime.now().minute == 0
+        ):
+            logging.info(
+                f"Performing market domination analyses. Current trend: {self.market_domination_trend}"
+            )
+            data = self.get_market_domination_series()
+            # reverse to make latest series more important
+            data["data"]["gainers_count"].reverse()
+            data["data"]["losers_count"].reverse()
+            gainers_count = data["data"]["gainers_count"]
+            losers_count = data["data"]["losers_count"]
+            self.market_domination_trend = None
+            if gainers_count[-1] > losers_count[-1]:
+                self.market_domination_trend = "gainers"
+
+                # Check reversal
+                if gainers_count[-2] < losers_count[-2]:
+                    # Positive reversal
+                    self.market_domination_reversal = True
+
+            else:
+                self.market_domination_trend = "losers"
+
+                if gainers_count[-2] > losers_count[-2]:
+                    # Negative reversal
+                    self.market_domination_reversal = False
+
+            self.btc_change_perc = self.get_latest_btc_price()
+            reversal_msg = ""
+            if self.market_domination_reversal is not None:
+                reversal_msg = f"{'Positive reversal' if self.market_domination_reversal else 'Negative reversal'}"
+
+            logging.info(f"Current USDT market trend is: {reversal_msg}. BTC 24hr change: {self.btc_change_perc}")
+            self.market_domination_ts = datetime.now() + timedelta(hours=1)
+        pass
+
 
     def publish(self):
         """
