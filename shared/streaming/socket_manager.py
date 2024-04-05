@@ -60,7 +60,7 @@ class BinanceSocketManager(threading.Thread):
         data = ""
         while True:
             try:
-                op_code, frame = self.ws.recv_data_frame(True)
+                op_code, frame = self.ws.recv_data_frame(False)
             except WebSocketException as e:
                 if isinstance(e, WebSocketConnectionClosedException):
                     self.logger.error("Lost websocket connection")

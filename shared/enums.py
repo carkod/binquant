@@ -94,3 +94,11 @@ class CloseConditions(str, Enum):
 
     def __str__(self):
         return str(self.str)
+
+class KafkaTopics(str, Enum):
+    klines_store_topic = "klines_store_topic"
+    processed_klines_topic = "processed_klines_topic"
+    technical_indicators = "technical_indicators"
+
+    def __str__(self):
+        return str(self.str)
