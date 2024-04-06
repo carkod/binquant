@@ -53,9 +53,7 @@ def fast_and_slow_macd(
             "current_price": close_price,
         }
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.producer.on_send_success).add_errback(self.on_send_error)
-        # self.send_telegram(msg)
-        # self.process_autotrade_restrictions()
+        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
         pass
 

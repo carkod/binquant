@@ -8,26 +8,9 @@ from shared.telegram_bot import TelegramBot
 
 
 class TelegramConsumer:
-    def __init__(self):
+    def __init__(self, consumer):
         self.telegram_bot = TelegramBot()
-        self.consumer = AIOKafkaConsumer(
-            KafkaTopics.signals.value,
-            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-            enable_auto_commit=False,
-            value_deserializer=lambda m: json.loads(m),
-        )
-
-    async def get_future_tasks(self):
-        """
-        Handles consumption as Futures (coroutines)
-        then triggers in main with all the other consumer tasks
-        """
-        tasks = []
-        async for result in self.consumer:
-            msg = json.loads(result.value)
-            tasks.append(asyncio.create_task(self.send_telegram(msg)))
-        
-        return tasks
+        self.consumer = consumer
 
     def send_telegram(self, msg):
         """
