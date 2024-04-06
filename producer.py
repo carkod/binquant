@@ -1,7 +1,6 @@
 import logging
 import asyncio
 
-from consumers.signals_provider import SignalsProvider
 from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector
 
@@ -18,8 +17,6 @@ async def main():
     producer = base_producer.start_producer()
     connector = KlinesConnector(producer)
     connector.start_stream()
-    # trade_signals_connector = SignalsProvider(producer)
-    # trade_signals_connector.publish()
 
 if __name__ == "__main__":
     try:

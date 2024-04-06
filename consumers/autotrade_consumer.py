@@ -21,59 +21,48 @@ class AutotradeConsumer(BinbotApi):
             "UP",
             "AUD",
         ]  # on top of blacklist
-        self.active_symbols = []
-        self.active_test_bots = []
+        self.active_bots = self.get_bots_by_status()
+        self.paper_trading_active_bots = self.get_bots_by_status()
+        self.active_symbols = [bot["pair"] for bot in self.active_bots]
+        self.active_test_bots = [
+            item["pair"] for item in self.paper_trading_active_bots
+        ]
         self.test_autotrade_settings = self.get_test_autotrade_settings()
         self.autotrade_settings = self.get_autotrade_settings()
         # Because market domination analysis 40 weight from binance endpoints
-        
+
         self.top_coins_gainers = []
 
         self.btc_change_perc = 0
         self.volatility = 0
         pass
 
-
-    def active_symbols(self):
+    def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
-        if autrotrade enabled and it's not an already active bot
-        this avoids running too many useless bots
-        Temporarily restricting to 1 bot for low funds
-        """
-        
-        active_bots = self.get_bots_by_status()
-        self.active_symbols = [bot["pair"] for bot in active_bots]
-    
-    def active_test_bots(self):
-        """
-        Get active test bots
-        """
-        paper_trading_active_bots = requests.get(
-            url=self.bb_test_bot_url, params={"status": "active", "no_cooldown": True}
-        )
-        self.active_test_bots = [item["pair"] for item in paper_trading_active_bots]
+        Check max `max_active_autotrade_bots` in controller settings
 
-    def load_data(self):
+        Args:
+        - db_collection_name: Database collection name ["paper_trading", "bots"]
+
+        If total active bots > settings.max_active_autotrade_bots
+        do not open more bots. There are two reasons for this:
+        - In the case of test bots, infininately opening bots will open hundreds of bots
+        which will drain memory and downgrade server performance
+        - In the case of real bots, opening too many bots could drain all funds
+        in bots that are actually not useful or not profitable. Some funds
+        need to be left for Safety orders
         """
-        Load controller data
+        if db_collection_name == "paper_trading":
+            active_count = len(self.active_bots["data"])
+            if active_count > self.test_autotrade_settings["max_active_autotrade_bots"]:
+                return True
 
-        - Global settings for autotrade
-        - Updated blacklist
-        """
-        logging.info("Loading controller and blacklist data...")
-        if self.settings and self.test_autotrade_settings:
-            logging.info("Settings and Test autotrade settings already loaded, skipping...")
-            return
+        if db_collection_name == "bots":
+            active_count = len(self.active_test_bots["data"])
+            if active_count > self.settings["max_active_autotrade_bots"]:
+                return True
 
-        # Logic for autotrade
-        research_controller_res = requests.get(url=self.bb_autotrade_settings_url)
-        research_controller = handle_binance_errors(research_controller_res)
-        self.settings = research_controller["data"]
-
-        test_autotrade_settings = requests.get(url=f"{self.bb_test_autotrade_url}")
-        test_autotrade = handle_binance_errors(test_autotrade_settings)
-        self.test_autotrade_settings = test_autotrade["data"]
-
+        return False
 
     def process_autotrade_restrictions(
         self, symbol, algorithm, test_only=False, *args, **kwargs
@@ -115,61 +104,21 @@ class AutotradeConsumer(BinbotApi):
 
         # Check balance to avoid failed autotrades
         balance_check = self.balance_estimate()
-        if balance_check < float(self.settings['base_order_size']):
+        if balance_check < float(self.settings["base_order_size"]):
             print(f"Not enough funds to autotrade [bots].")
             return
 
         """
         Real autotrade starts
         """
-        if (int(self.settings["autotrade"]) == 1
-            and not test_only):
+        if int(self.settings["autotrade"]) == 1 and not test_only:
             if self.reached_max_active_autobots("bots"):
-                logging.info("Reached maximum number of active bots set in controller settings")
+                logging.info(
+                    "Reached maximum number of active bots set in controller settings"
+                )
             else:
 
                 autotrade = Autotrade(symbol, self.settings, algorithm, "bots")
                 autotrade.activate_autotrade(**kwargs)
 
         return
-
-    def reached_max_active_autobots(self, db_collection_name: str) -> bool:
-        """
-        Check max `max_active_autotrade_bots` in controller settings
-
-        Args:
-        - db_collection_name: Database collection name ["paper_trading", "bots"]
-
-        If total active bots > settings.max_active_autotrade_bots
-        do not open more bots. There are two reasons for this:
-        - In the case of test bots, infininately opening bots will open hundreds of bots
-        which will drain memory and downgrade server performance
-        - In the case of real bots, opening too many bots could drain all funds
-        in bots that are actually not useful or not profitable. Some funds
-        need to be left for Safety orders
-        """
-        if db_collection_name == "paper_trading":
-            if not self.test_autotrade_settings:
-                self.load_data()
-
-            active_bots_res = requests.get(
-                url=self.bb_test_bot_url, params={"status": "active"}
-            )
-            active_bots = handle_binance_errors(active_bots_res)
-            active_count = len(active_bots["data"])
-            if active_count > self.test_autotrade_settings["max_active_autotrade_bots"]:
-                return True
-
-        if db_collection_name == "bots":
-            if not self.settings:
-                self.load_data()
-
-            active_bots_res = requests.get(
-                url=self.bb_bot_url, params={"status": "active"}
-            )
-            active_bots = handle_binance_errors(active_bots_res)
-            active_count = len(active_bots["data"])
-            if active_count > self.settings["max_active_autotrade_bots"]:
-                return True
-
-        return False

@@ -2,11 +2,12 @@ import json
 import logging
 
 from kafka import KafkaProducer
+from shared.apis import BinbotApi
+from consumers.signals_provider import SignalsProvider
 from producers.produce_klines import KlinesProducer
-from inbound_data.signals_base import SignalsBase
 from shared.streaming.socket_client import SpotWebsocketStreamClient
 from shared.exceptions import WebSocketError
-class KlinesConnector(SignalsBase):
+class KlinesConnector(BinbotApi):
     def __init__(self, producer: KafkaProducer, interval: str="1m") -> None:
         logging.info("Started Kafka producer SignalsInbound")
         super().__init__()
@@ -21,6 +22,7 @@ class KlinesConnector(SignalsBase):
         self.symbol_partitions = []
         self.partition_count = 0
         self.producer = producer
+        self.blacklist_data = self.get_blacklist()
 
 
     def handle_close(self, message):
@@ -47,7 +49,6 @@ class KlinesConnector(SignalsBase):
 
     def start_stream(self):
         logging.info("Initializing Research signals")
-        self.load_data()
         exchange_info = self._exchange_info()
         raw_symbols = set(
             coin["symbol"]
