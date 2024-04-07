@@ -7,11 +7,15 @@ env:
   FRONTEND_DOMAIN: http://localhost
   MONGO_AUTH_USERNAME: root
   MONGO_AUTH_PASSWORD: rootPassXXX
-  MONGO_APP_DATABASE: binquant
+  MONGO_APP_DATABASE: binbot
   MONGO_AUTH_DATABASE: admin
   MONGO_HOSTNAME: db
+  MONGO_KAFKA_DATABASE: kafka
   MONGO_PORT: 27017
-
+  KAFKA_HOST: "localhost"
+  KAFKA_PORT: 9092
+  PYARROW_IGNORE_TIMEZONE: "1"
+  
 jobs:
   push_to_registry:
     name: Test and deploy Binquant
@@ -36,19 +40,42 @@ jobs:
           docker push carloswufei/binquant
 
   python-tests:
-    name: Python tests
+    name: 🐍 Python tests
     runs-on: ubuntu-latest
-  
+    services:
+      db:
+        image: mongo:latest
+        options: >-
+          --health-cmd mongosh
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          MONGO_INITDB_ROOT_USERNAME: ${{ env.MONGO_AUTH_USERNAME }}
+          MONGO_INITDB_ROOT_PASSWORD: ${{ env.MONGO_AUTH_PASSWORD }}
+          MONGO_INITDB_DATABASE: ${{ env.MONGO_KAFKA_DATABASE }}
+        ports:
+          - 27017:27017
+
     steps:
+      - uses: actions/checkout@v4
       - name: Start Kafka
         uses: 280780363/kafka-action@v1.0
         with:
           kafka version: "latest"
-          kafka port: 9092 # Optional, kafka port
+          kafka port: ${{ env.KAFKA_PORT }}
           auto create topic: "true"
-      
+
       - name: Run tests
+        env:
+          MONGO_HOSTNAME: "localhost"
+          MONGO_PORT: 27017
+          MONGO_AUTH_USERNAME: ${{ env.MONGO_AUTH_USERNAME }}
+          MONGO_AUTH_PASSWORD: ${{ env.MONGO_AUTH_PASSWORD }}
+          MONGO_KAFKA_DATABASE: ${{ env.MONGO_KAFKA_DATABASE }}
+          KAFKA_HOST: "localhost"
+          KAFKA_PORT: 9092
         run: |
+          pip3 install -r requirements.txt
           pip3 install pytest pytest-mock
-          python3 -m pytest tests/
-          
+          python3 -m pytest .

@@ -5,9 +5,7 @@ from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
 from dotenv import load_dotenv
-from fastapi import params
-from requests import Session, get, post
-import requests
+from requests import Session, get
 from shared.utils import handle_binance_errors
 
 load_dotenv()

@@ -24,6 +24,7 @@ class KlinesConnector(BinbotApi):
         self.producer = producer
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings = self.get_autotrade_settings()
+        self.exchange_info = self._exchange_info()
 
 
     def handle_close(self, message):
@@ -50,10 +51,9 @@ class KlinesConnector(BinbotApi):
 
     def start_stream(self):
         logging.info("Initializing Research signals")
-        exchange_info = self._exchange_info()
         raw_symbols = set(
             coin["symbol"]
-            for coin in exchange_info["symbols"]
+            for coin in self.exchange_info["symbols"]
             if coin["status"] == "TRADING"
             and coin["symbol"].endswith(self.autotrade_settings["balance_to_use"])
         )

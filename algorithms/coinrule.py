@@ -93,7 +93,7 @@ def buy_low_sell_high(
         msg = (f"""
 - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol}
 - Current price: {close_price}
-- Standard deviation: {self.sd}, Log volatility (log SD): {self.volatility}%
+- Log volatility (log SD): {self.volatility}%
 - Bollinguer bands spread: {spread['band_1']}, {spread['band_2']}
 - BTC 24hr change: {self.btc_change_perc}
 - Strategy: {trend}

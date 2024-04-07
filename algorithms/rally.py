@@ -54,7 +54,7 @@ def rally_or_pullback(
     msg = (f"""
 - [{os.getenv('ENV')}] <strong>{algo_type} #algorithm</strong> #{symbol}
 - Current price: {close_price}
-- Standard deviation: {self.sd}, Log volatility (log SD): {volatility}
+- Log volatility (log SD): {volatility}
 - P-value: {p_value}
 - Pearson correlation with BTC: {btc_correlation["close_price"]}
 - Trend: {trend}
