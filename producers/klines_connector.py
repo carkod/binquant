@@ -23,6 +23,8 @@ class KlinesConnector(BinbotApi):
         self.partition_count = 0
         self.producer = producer
         self.blacklist_data = self.get_blacklist()
+        self.test_autotrade_settings = self.get_test_autotrade_settings()
+        self.autotrade_settings = self.get_autotrade_settings()
 
 
     def handle_close(self, message):
@@ -54,7 +56,7 @@ class KlinesConnector(BinbotApi):
             coin["symbol"]
             for coin in exchange_info["symbols"]
             if coin["status"] == "TRADING"
-            and coin["symbol"].endswith(self.settings["balance_to_use"])
+            and coin["symbol"].endswith(self.autotrade_settings["balance_to_use"])
         )
 
         black_list = set(x["pair"] for x in self.blacklist_data)

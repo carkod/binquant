@@ -14,7 +14,8 @@ def rally_or_pullback(
     ma_100,
     ma_25,
     slope,
-    btc_correlation
+    btc_correlation,
+    volatility
 ):
     """
     Rally algorithm
@@ -46,17 +47,16 @@ def rally_or_pullback(
     if not algo_type:
         return
 
-    trend = define_strategy(self.btc_change_perc, btc_correlation)
+    trend = self.define_strategy()
     if not trend:
         return
     
     msg = (f"""
 - [{os.getenv('ENV')}] <strong>{algo_type} #algorithm</strong> #{symbol}
 - Current price: {close_price}
-- Standard deviation: {self.sd}, Log volatility (log SD): {self.volatility}
+- Standard deviation: {self.sd}, Log volatility (log SD): {volatility}
 - P-value: {p_value}
 - Pearson correlation with BTC: {btc_correlation["close_price"]}
-- BTC 24hr change: {self.btc_change_perc}
 - Trend: {trend}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>

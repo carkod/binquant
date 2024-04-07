@@ -5,6 +5,7 @@ from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
 from dotenv import load_dotenv
+from fastapi import params
 from requests import Session, get, post
 import requests
 from shared.utils import handle_binance_errors
@@ -218,9 +219,7 @@ class BinbotApi(BinanceApi):
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
 
     def _get_24_ticker(self, market):
-        url = f"{self.bb_24_ticker_url}/{market}"
-        res = get(url=url)
-        data = handle_binance_errors(res)
+        data = self.request(url=f"{self.bb_24_ticker_url}/{market}")
         return data
 
     def _get_candlestick(self, market, interval, stats=None):
@@ -229,39 +228,31 @@ class BinbotApi(BinanceApi):
             "interval": interval,
             "stats": stats
         }
-        res = get(url=self.bb_candlestick_url, params=params)
-        data = handle_binance_errors(res)
+        data = self.request(url=self.bb_candlestick_url, params=params)
         return data
 
     def balance_estimate(self) -> float:
-        r = get(url=self.bb_balance_estimate_url)
-        response = handle_binance_errors(r)
+        response = self.request(url=self.bb_balance_estimate_url)
         for balance in response["data"]["balances"]:
             if balance["asset"] == "USDT":
                 return float(balance["free"])
         return 0
     
     def get_blacklist(self):
-        res = get(url=f'{self.bb_blacklist_url}')
-        data = handle_binance_errors(res)
-        return data
+        response = self.request(url=self.bb_blacklist_url)
+        return response["data"]
 
     def update_subscribed_list(self, data):
-        res = post(url=f'{self.bb_subscribed_list}', json=data)
-        data = handle_binance_errors(res)
-        return data
+        response = self.request(url=self.bb_subscribed_list, method="POST", json=data)
+        return response["data"]
 
     def get_market_domination_series(self):
-        res = get(url=self.bb_market_domination, params={"size": 7})
-        data = handle_binance_errors(res)
-        return data
+        response = self.request(url=self.bb_market_domination, params={"size": 7})
+        return response["data"]
 
     def blacklist_coin(self, pair, msg):
-        res = requests.post(
-            url=self.bb_blacklist_url, json={"pair": pair, "reason": msg}
-        )
-        result = handle_binance_errors(res)
-        return result
+        response = self.request(self.bb_blacklist_url, method="POST", json={"pair": pair, "reason": msg})
+        return response["data"]
 
     def ticker_24(self, symbol: str | None = None):
         """

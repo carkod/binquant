@@ -1,6 +1,4 @@
 import os
-from shared.utils import define_strategy
-
 
 def top_gainers_drop(
     self,
@@ -26,7 +24,7 @@ def top_gainers_drop(
         and symbol in self.top_coins_gainers
     ):
         
-        trend = define_strategy(self)
+        trend = self.define_strategy(self)
         if not trend:
             return
 

@@ -1,7 +1,6 @@
 import json
 import os
 from shared.enums import KafkaTopics
-from shared.utils import define_strategy
 
 
 def fast_and_slow_macd(
@@ -66,6 +65,7 @@ def buy_low_sell_high(
     ma_25,
     ma_7,
     ma_100,
+    volatility
 ):
     """
     Coinrule top performance rule
@@ -76,7 +76,7 @@ def buy_low_sell_high(
 
         spread = None
         algo = "coinrule_buy_low_sell_high"
-        trend = define_strategy(self)
+        trend = self.define_strategy()
 
         if not trend:
             return
@@ -85,7 +85,7 @@ def buy_low_sell_high(
         # when volatility is high we assume that
         # difference between MA_7 and MA_25 is wide
         # if this is not the case it may fail to signal correctly
-        if self.volatility > 0.8:
+        if volatility > 0.8:
 
             # Calculate spread using bolliguer band MAs
             spread = self.bollinguer_spreads(ma_100, ma_25, ma_7)
