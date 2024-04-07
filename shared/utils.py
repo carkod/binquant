@@ -1,21 +1,12 @@
 import math
 import logging
-
+import re
 from decimal import Decimal
 from time import sleep
 from requests import HTTPError, Response
 from datetime import datetime
 
-class BinanceErrors(Exception):
-    pass
-
-
-class BinbotError(Exception):
-    pass
-
-
-class InvalidSymbol(BinanceErrors):
-    pass
+from shared.exceptions import InvalidSymbol
 
 
 def round_numbers(value, decimals=6):
@@ -25,11 +16,6 @@ def round_numbers(value, decimals=6):
     if decimals == 0:
         result = int(result)
     return result
-
-
-import math
-from decimal import Decimal
-import re
 
 
 def supress_trailling(value: str | float | int) -> float:
@@ -144,25 +130,6 @@ def handle_binance_errors(response: Response):
             return content
     except HTTPError:
         raise HTTPError(content["msg"])
-
-
-def define_strategy(self):
-    """
-    If market domination reversal is true, then it's already
-    implied that it's an uptred (long strategy)
-    from the market domination function
-    """
-    trend = None
-    if self.market_domination_reversal is True:
-        trend = "uptrend"
-
-    if self.market_domination_reversal is False:
-        trend = "downtrend"
-
-    if not self.market_domination and self.market_domination_reversal is None:
-        trend = None
-
-    return trend
 
 def timestamp_to_datetime(timestamp: str | int) -> datetime:
     format = "%Y-%m-%d %H:%M:%S"

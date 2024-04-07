@@ -45,6 +45,24 @@ class TechnicalIndicators(BinbotApi):
     def days(self, secs):
         return secs * 86400
 
+    def define_strategy(self):
+        """
+        If market domination reversal is true, then it's already
+        implied that it's an uptred (long strategy)
+        from the market domination function
+        """
+        trend = None
+        if self.market_domination_reversal is True:
+            trend = "uptrend"
+
+        if self.market_domination_reversal is False:
+            trend = "downtrend"
+
+        if not self.market_domination and self.market_domination_reversal is None:
+            trend = None
+
+        return trend
+
     def calculate_slope(candlesticks):
         """
         Slope = 1: positive, the curve is going up
