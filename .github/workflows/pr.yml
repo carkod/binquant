@@ -46,4 +46,9 @@ jobs:
           kafka version: "latest"
           kafka port: 9092 # Optional, kafka port
           auto create topic: "true"
+      
+      - name: Run tests
+        run: |
+          pip3 install pytest pytest-mock
+          python3 -m pytest tests/
           
