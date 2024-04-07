@@ -4,9 +4,9 @@ from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector
 from producer import main
 
-# @pytest.fixture
-# def mock_base_producer(mocker):
-#     return mocker.patch('producer.BaseProducer', autospec=True)
+@pytest.fixture
+def mock_base_producer(mocker):
+    return mocker.patch('producer.BaseProducer', autospec=True)
 
 # @pytest.fixture
 # def mock_klines_connector(mocker):
@@ -19,8 +19,7 @@ connector = KlinesConnector(producer)
 connector.start_stream()
 
 
-@pytest.fixture
-def test_main(mock_base_producer, mock_klines_connector):
+def test_base_producer(mock_base_producer, mock_klines_connector):
     # Arrange
     mock_base_producer_instance = mock_base_producer.return_value
     mock_klines_connector_instance = mock_klines_connector.return_value

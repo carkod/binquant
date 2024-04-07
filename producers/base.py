@@ -6,10 +6,11 @@ from database import KafkaDB
 from shared.utils import round_numbers_ceiling
 from datetime import datetime
 
+
 class BaseProducer(KafkaDB):
     def __init__(self):
         super().__init__()
-        
+
     def start_producer(self):
         self.producer = KafkaProducer(
             bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
