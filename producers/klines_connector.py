@@ -23,7 +23,6 @@ class KlinesConnector(BinbotApi):
         self.partition_count = 0
         self.producer = producer
         self.blacklist_data = self.get_blacklist()
-        self.test_autotrade_settings = self.get_test_autotrade_settings()
         self.autotrade_settings = self.get_autotrade_settings()
 
 
