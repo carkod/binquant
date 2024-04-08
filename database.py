@@ -39,7 +39,8 @@ class KafkaDB:
                         "timeField": "timestamp",
                         "metaField": "metadata",
                         "granularity": "minutes",
-                    }
+                    },
+                    "expireAfterSeconds": 604800 # 7 days, minimize server cost
                 }
             )
 

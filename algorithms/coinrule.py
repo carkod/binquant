@@ -1,5 +1,6 @@
+import json
 import os
-from shared.utils import define_strategy
+from shared.enums import KafkaTopics
 
 
 def fast_and_slow_macd(
@@ -11,6 +12,7 @@ def fast_and_slow_macd(
     ma_7,
     ma_25,
     ma_100,
+    volatility
 ):
     """
     Coinrule top performance rule
@@ -20,7 +22,7 @@ def fast_and_slow_macd(
     algo = "coinrule_fast_and_slow_macd"
     spread = None
 
-    if macd[str(len(macd) - 1)] > macd_signal[str(len(macd_signal) - 1)] and ma_7[len(ma_7) - 1] > ma_25[len(ma_25) - 1]:
+    if macd > macd_signal and ma_7 > ma_25:
 
         # trend = define_strategy(self)
         # if trend is None and trend == "uptrend":
@@ -37,12 +39,20 @@ def fast_and_slow_macd(
         msg = (f"""
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
         - Current price: {close_price}
-        - Log volatility (log SD): {self.volatility}%
+        - Log volatility (log SD): {volatility}%
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
         """)
-        # self.send_telegram(msg)
-        # self.process_autotrade_restrictions(symbol, algo, False, **{"spread": spread, "current_price": close_price, "trend": trend})
+
+        value = {
+            "msg": msg,
+            "symbol": symbol,
+            "algo": algo, 
+            "spread": spread,
+            "current_price": close_price,
+        }
+
+        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
         pass
 
@@ -55,6 +65,7 @@ def buy_low_sell_high(
     ma_25,
     ma_7,
     ma_100,
+    volatility
 ):
     """
     Coinrule top performance rule
@@ -65,7 +76,7 @@ def buy_low_sell_high(
 
         spread = None
         algo = "coinrule_buy_low_sell_high"
-        trend = define_strategy(self)
+        trend = self.define_strategy()
 
         if not trend:
             return
@@ -74,7 +85,7 @@ def buy_low_sell_high(
         # when volatility is high we assume that
         # difference between MA_7 and MA_25 is wide
         # if this is not the case it may fail to signal correctly
-        if self.volatility > 0.8:
+        if volatility > 0.8:
 
             # Calculate spread using bolliguer band MAs
             spread = self.bollinguer_spreads(ma_100, ma_25, ma_7)

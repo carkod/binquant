@@ -34,3 +34,21 @@ jobs:
         run: |
           docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
           docker push carloswufei/binquant
+
+  python-tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+  
+    steps:
+      - name: Start Kafka
+        uses: 280780363/kafka-action@v1.0
+        with:
+          kafka version: "latest"
+          kafka port: 9092 # Optional, kafka port
+          auto create topic: "true"
+      
+      - name: Run tests
+        run: |
+          pip3 install pytest pytest-mock
+          python3 -m pytest tests/
+          

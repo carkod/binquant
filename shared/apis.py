@@ -5,7 +5,9 @@ from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
 from dotenv import load_dotenv
+from fastapi import params
 from requests import Session, get, post
+import requests
 from shared.utils import handle_binance_errors
 
 load_dotenv()
@@ -50,6 +52,12 @@ class BinanceApi:
         "https://launchpad.binance.com/gateway-api/v1/public/launchpool/project/list"
     )
 
+    def request(self, url, method="GET", session=None, **args):
+        if not session:
+            session = Session()
+        res = session.request(method=method, url=url, **args)
+        return handle_binance_errors(res)
+
     def get_server_time(self):
         response = get(url=self.server_time_url)
         data = handle_binance_errors(response)
@@ -79,8 +87,7 @@ class BinanceApi:
             hashlib.sha256,
         ).hexdigest()
         url = f"{url}?{query_string}&signature={signature}"
-        res = session.request(method, url=url)
-        data = handle_binance_errors(res)
+        data = self.request(url, method, session)
         return data
 
     def _exchange_info(self, symbol=None):
@@ -92,37 +99,27 @@ class BinanceApi:
         if symbol:
             params = {"symbol": symbol}
 
-        exchange_info = get(url=self.exchangeinfo_url, params=params).json()
+        exchange_info = self.request(url=self.exchangeinfo_url, params=params)
         return exchange_info
 
     def _get_raw_klines(self, pair, limit=500, interval="15m"):
         params = {"symbol": pair, "interval": interval, "limit": limit}
-        res = get(url=self.candlestick_url, params=params)
-        data = handle_binance_errors(res)
+        data = self.request(url=self.candlestick_url, params=params)
         return data
 
     def ticker_price(self, symbol=None):
         """
         Weight 2 (v3). Ideal for list of symbols
         """
-        params = None
         if symbol:
             params = {"symbol": symbol}
-        r = get(url=self.ticker_price_url, params=params)
-        response = handle_binance_errors(r)
-        return response
-
-    def balance_estimate(self) -> float:
-        r = get(url=self.bb_balance_estimate_url)
-        response = handle_binance_errors(r)
-        for balance in response["data"]["balances"]:
-            if balance["asset"] == "USDT":
-                return float(balance["free"])
-        return 0
+        else:
+            params = None
+        data = self.request(url=self.ticker_price_url, params=params)
+        return data
 
     def launchpool_projects(self):
-        res = get(url=self.launchpool_url, headers={"User-Agent": "Mozilla"})
-        data = handle_binance_errors(res)
+        data = self.request(url=self.launchpool_url, headers={"User-Agent": "Mozilla"})
         return data
 
     def price_precision(self, symbol):
@@ -222,9 +219,7 @@ class BinbotApi(BinanceApi):
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
 
     def _get_24_ticker(self, market):
-        url = f"{self.bb_24_ticker_url}/{market}"
-        res = get(url=url)
-        data = handle_binance_errors(res)
+        data = self.request(url=f"{self.bb_24_ticker_url}/{market}")
         return data
 
     def _get_candlestick(self, market, interval, stats=None):
@@ -233,21 +228,64 @@ class BinbotApi(BinanceApi):
             "interval": interval,
             "stats": stats
         }
-        res = get(url=self.bb_candlestick_url, params=params)
-        data = handle_binance_errors(res)
+        data = self.request(url=self.bb_candlestick_url, params=params)
         return data
+
+    def balance_estimate(self) -> float:
+        response = self.request(url=self.bb_balance_estimate_url)
+        for balance in response["data"]["balances"]:
+            if balance["asset"] == "USDT":
+                return float(balance["free"])
+        return 0
     
     def get_blacklist(self):
-        res = get(url=f'{self.bb_blacklist_url}')
-        data = handle_binance_errors(res)
-        return data
+        response = self.request(url=self.bb_blacklist_url)
+        return response["data"]
 
     def update_subscribed_list(self, data):
-        res = post(url=f'{self.bb_subscribed_list}', json=data)
-        data = handle_binance_errors(res)
-        return data
+        response = self.request(url=self.bb_subscribed_list, method="POST", json=data)
+        return response["data"]
 
     def get_market_domination_series(self):
-        res = get(url=self.bb_market_domination, params={"size": 7})
-        data = handle_binance_errors(res)
+        response = self.request(url=self.bb_market_domination, params={"size": 7})
+        return response["data"]
+
+    def blacklist_coin(self, pair, msg):
+        response = self.request(self.bb_blacklist_url, method="POST", json={"pair": pair, "reason": msg})
+        return response["data"]
+
+    def ticker_24(self, symbol: str | None = None):
+        """
+        Weight 40 without symbol
+        https://github.com/carkod/binbot/issues/438
+
+        Using cache
+        """
+        data = self.request(method="GET", url=self.ticker24_url, params={"symbol": symbol})
         return data
+
+    def get_latest_btc_price(self):
+        # Get 24hr last BTCUSDT
+        btc_ticker_24 = self.ticker_24("BTCUSDT")
+        self.btc_change_perc = float(btc_ticker_24["priceChangePercent"])
+        return self.btc_change_perc
+
+    def post_error(self, msg):
+        data = self.request(method="PUT", url=self.bb_autotrade_settings_url, json={"system_logs": msg})
+        return data
+
+    def get_test_autotrade_settings(self):
+        data = self.request(url=self.bb_test_autotrade_url)
+        return data["data"]
+    
+    def get_autotrade_settings(self):
+        data = self.request(url=self.bb_autotrade_settings_url)
+        return data["data"]
+
+    def get_bots_by_status(self, status="active", no_cooldown=True):
+        data = self.request(url=self.bb_bot_url, params={"status": status, "no_cooldown": no_cooldown})
+        return data["data"]
+
+    def get_papertrading_bots_by_status(self, status="active", no_cooldown=True):
+        data = self.request(url=self.bb_test_bot_url, params={"status": status, "no_cooldown": no_cooldown})
+        return data["data"]

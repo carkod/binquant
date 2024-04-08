@@ -1,5 +1,5 @@
 import os
-from shared.utils import define_strategy, round_numbers
+from shared.utils import round_numbers
 
 # Algorithms based on Bollinguer bands
 
@@ -48,7 +48,7 @@ def ma_candlestick_jump(
         msg = (f"""
 - [{os.getenv('ENV')}] Candlestick <strong>#jump algorithm</strong> #{symbol}
 - Current price: {close_price}
-- %threshold based on volatility: {round_numbers(self.volatility * 100, 6)}%
+- %threshold based on volatility: {round_numbers(volatility * 100, 6)}%
 - Percentage volatility: {(self.sd) / float(close_price)}
 - Percentage volatility x2: {self.sd * 2 / float(close_price)}
 - https://www.binance.com/en/trade/{symbol}
