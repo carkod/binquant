@@ -101,7 +101,7 @@ def ma_candlestick_drop(
         msg = (f"""
 - [{os.getenv('ENV')}] Candlestick <strong>#drop algorithm</strong> #{symbol}
 - Current price: {close_price}
-- Standard deviation: {self.sd}, Log volatility (log SD): {self.volatility}
+- Log volatility (log SD): {self.volatility}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)

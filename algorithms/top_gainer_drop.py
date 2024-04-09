@@ -31,7 +31,7 @@ def top_gainers_drop(
         msg = (f"""
 - [{os.getenv('ENV')}] Top gainers's drop <strong>#top_gainers_drop algorithm</strong> #{symbol}
 - Current price: {close_price}
-- Standard deviation: {self.sd}, Log volatility (log SD): {self.volatility}
+- Log volatility (log SD): {self.volatility}
 - Slope: {slope}
 - Pearson correlation with BTC: {btc_correlation["close_price"]}
 - https://www.binance.com/en/trade/{symbol}

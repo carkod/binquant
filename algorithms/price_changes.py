@@ -36,7 +36,7 @@ def price_rise_15(
     msg = (f"""
 - [{os.getenv('ENV')}] {first_line} #{symbol}
 - Current price: {close_price}
-- Standard deviation: {self.sd}, Log volatility (log SD): {self.volatility}
+- Log volatility (log SD): {self.volatility}
 - P-value: {p_value}
 - Pearson correlation with BTC: {btc_correlation["close_price"]}
 - BTC 24hr change: {self.btc_change_perc}

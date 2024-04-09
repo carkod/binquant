@@ -15,8 +15,7 @@ load_dotenv()
 
 class KafkaDB:
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self):
         client = MongoClient(
             host=os.getenv("MONGO_HOSTNAME"),
             port=int(os.getenv("MONGO_PORT")),
