@@ -4,7 +4,7 @@ import logging
 import requests
 
 from datetime import datetime
-from shared.exceptions import AutotradeError
+from shared.exceptions import AutotradeError, InvalidSymbol
 from shared.enums import Strategy
 from shared.apis import BinbotApi
 from shared.utils import handle_binance_errors, round_numbers, supress_notation

@@ -20,7 +20,8 @@ spark.sparkContext.setLogLevel("FATAL")
 class TechnicalIndicators(BinbotApi):
     def __init__(self, df, symbol) -> None:
         self.base_producer = BaseProducer()
-        self.producer = self.base_producer.start_producer()
+        self.base_producer.start_producer()
+        self.producer = self.base_producer.producer
         self.df = df
         self.symbol = symbol
         pass
@@ -223,8 +224,7 @@ class TechnicalIndicators(BinbotApi):
         Algorithms should consume this data
         """
 
-        length = self.df.size
-        if length > 0:
+        if self.df.close.size > 0:
             # Bolliguer bands
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe

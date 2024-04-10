@@ -3,7 +3,6 @@ import logging
 
 from kafka import KafkaProducer
 from shared.apis import BinbotApi
-from consumers.signals_provider import SignalsProvider
 from producers.produce_klines import KlinesProducer
 from shared.streaming.socket_client import SpotWebsocketStreamClient
 from shared.exceptions import WebSocketError
@@ -25,7 +24,6 @@ class KlinesConnector(BinbotApi):
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings = self.get_autotrade_settings()
         self.exchange_info = self._exchange_info()
-
 
     def handle_close(self, message):
         logging.info(f"Closing research signals: {message}")
@@ -96,13 +94,6 @@ class KlinesConnector(BinbotApi):
             and "k" in result
             and "s" in result["k"]
         ):
-            # Allocate partition for each symbol and dedup
-            # try:
-            #     self.partition_obj[symbol]
-            # except KeyError:
-            #     self.partition_obj[symbol] = self.partition_count
-            #     self.partition_count += 1
-            #     pass
             klines_producer = KlinesProducer(self.producer, symbol)
             klines_producer.store(result["k"])
 

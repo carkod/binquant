@@ -1,9 +1,3 @@
-
-import asyncio
-import json
-import os
-from aiokafka import AIOKafkaConsumer
-from shared.enums import KafkaTopics
 from shared.telegram_bot import TelegramBot
 
 

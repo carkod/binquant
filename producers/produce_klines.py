@@ -15,7 +15,17 @@ class KlinesProducer(KafkaDB):
         self.topic = KafkaTopics.klines_store_topic.value
         self.current_partition = partition
         self.producer = producer
-    
+        self.set_partitions()
+        self.partition_count = 0
+
+    def set_partitions(self):
+        partitions = self.get_partitions()
+        if len(partitions) > 0:
+            self.topic_partition = {x["topic"]: x["partition"] for x in self.topic_partition}
+        else:
+            self.topic_partition = {}
+        pass
+
     def on_send_success(self, record_metadata):
         timestamp = int(round_numbers_ceiling(record_metadata.timestamp / 1000, 0))
         print(
@@ -26,11 +36,19 @@ class KlinesProducer(KafkaDB):
         print(f"Message production failed to send: {excp}")
 
     def store(self, data):
-        if data["x"]:
-            self.store_klines(data, self.current_partition)
-            
+
+        # Allocate partition for each symbol and dedup
         try:
+            self.topic_partition[data["s"]]
+        except KeyError:
+            self.topic_partition[data["s"]] = self.partition_count
+            self.partition_count += 1
+            pass
+
+        try:
+
             if data["x"]:
+                self.store_klines(data, self.topic_partition[data["s"]])
                 message = KlineProduceModel(
                     symbol=data["s"],
                     open_time=str(data["t"]),
@@ -40,11 +58,12 @@ class KlinesProducer(KafkaDB):
                 # this is faster then MongoDB change streams
                 self.producer.send(
                     topic=self.topic,
-                    # partition=self.current_partition,
+                    partition=self.topic_partition[data["s"]],
                     value=message.model_dump_json(),
                     timestamp_ms=int(data["t"]),
                     key=str(data["t"]).encode("utf-8"),
                 ).add_callback(self.on_send_success).add_errback(self.on_send_error)
+
         except Exception as e:
             logging.error(f"Error: {e}")
             pass
