@@ -1,16 +1,11 @@
 import json
 import os
 import asyncio
-import logging
 
 from aiokafka import AIOKafkaConsumer
-import telegram
-
-from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
 from consumers.telegram_consumer import TelegramConsumer
 from consumers.klines_provider import KlinesProvider
-from py4j.protocol import Py4JNetworkError
 
 async def task_1():
     # Start consuming
@@ -59,7 +54,11 @@ async def task_2():
 
 
 async def main():
-    await asyncio.gather(task_1(), task_2())
+    try:
+        await asyncio.gather(task_1(), task_2())
+    except Exception:
+        asyncio.run(main())
+        pass
 
 if __name__ == "__main__":
     asyncio.run(main())

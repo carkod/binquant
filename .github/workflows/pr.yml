@@ -21,7 +21,7 @@ jobs:
     name: Test and deploy producer
     runs-on: ubuntu-latest
     env:
-      IMAGE: binquant_producer:${{ github.sha }}
+      IMAGE: binquant_producer:latest
 
     steps:
       - name: Check out the repo
@@ -45,7 +45,7 @@ jobs:
     name: Test and deploy consumer
     runs-on: ubuntu-latest
     env:
-      IMAGE: binquant_consumer:${{ github.sha }}
+      IMAGE: binquant_consumer:latest
 
     steps:
       - name: Check out the repo

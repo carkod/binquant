@@ -100,6 +100,7 @@ class KafkaTopics(str, Enum):
     processed_klines_topic = "processed_klines_topic"
     technical_indicators = "technical_indicators"
     signals = "signals"
+    restart_streaming = "restart_streaming"
 
     def __str__(self):
         return str(self.str)

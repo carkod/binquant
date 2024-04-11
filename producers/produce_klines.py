@@ -12,7 +12,6 @@ class KlinesProducer(KafkaDB):
     def __init__(self, producer: KafkaProducer, symbol):
         super().__init__()
         self.symbol = symbol
-        self.topic = KafkaTopics.klines_store_topic.value
         self.producer = producer
 
     def on_send_success(self, record_metadata):
@@ -36,7 +35,7 @@ class KlinesProducer(KafkaDB):
             # Produce message with asset name
             # this is faster then MongoDB change streams
             self.producer.send(
-                topic=self.topic,
+                topic=KafkaTopics.klines_store_topic.value,
                 value=message.model_dump_json(),
                 timestamp_ms=int(data["t"]),
                 key=str(data["t"]).encode("utf-8"),

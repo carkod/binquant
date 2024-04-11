@@ -4,4 +4,4 @@ COPY . .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN apt autoremove --purge -y && rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/*.list
 STOPSIGNAL SIGTERM
-EXPOSE 9092 9094
+EXPOSE 8080 80 9092 9093 9094
