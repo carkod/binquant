@@ -4,9 +4,11 @@ import numpy
 from typing import Literal
 
 from pyspark.sql import SparkSession
+from algorithms.top_gainer_drop import top_gainers_drop
+from algorithms.rally import rally_or_pullback
 from shared.apis import BinbotApi
 from producers.base import BaseProducer
-from algorithms.ma_candlestick import ma_candlestick_jump
+from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
 from algorithms.coinrule import fast_and_slow_macd
 
 spark = (
@@ -24,6 +26,8 @@ class TechnicalIndicators(BinbotApi):
         self.producer = self.base_producer.producer
         self.df = df
         self.symbol = symbol
+        self.market_domination_trend = None
+        self.market_domination_reversal = None
         pass
 
     def check_kline_gaps(self, data):
@@ -45,9 +49,6 @@ class TechnicalIndicators(BinbotApi):
     
     def days(self, secs):
         return secs * 86400
-
-    def set_market_domination_reversal(self):
-        pass
 
     def define_strategy(self):
         """
@@ -179,19 +180,17 @@ class TechnicalIndicators(BinbotApi):
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        if (
-            datetime.now().minute == 0
-        ):
+        if datetime.now().minute == 0 or self.market_domination_trend == None:
             logging.info(
                 f"Performing market domination analyses. Current trend: {self.market_domination_trend}"
             )
             data = self.get_market_domination_series()
             # reverse to make latest series more important
-            data["data"]["gainers_count"].reverse()
-            data["data"]["losers_count"].reverse()
-            gainers_count = data["data"]["gainers_count"]
-            losers_count = data["data"]["losers_count"]
-            self.market_domination_trend = None
+            data["gainers_count"].reverse()
+            data["losers_count"].reverse()
+            gainers_count = data["gainers_count"]
+            losers_count = data["losers_count"]
+            self.market_domination_trend = "neutral"
             if gainers_count[-1] > losers_count[-1]:
                 self.market_domination_trend = "gainers"
 
@@ -283,5 +282,47 @@ class TechnicalIndicators(BinbotApi):
                 ma_100_prev,
                 volatility
             )
+
+            ma_candlestick_drop(
+                self,
+                close_price,
+                open_price,
+                self.symbol,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility
+            )
+
+            rally_or_pullback(
+                self,
+                close_price,
+                open_price,
+                self.symbol,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility
+            )
+
+            # top_gainers_drop(
+            #     self,
+            #     close_price,
+            #     open_price,
+            #     self.symbol,
+            #     ma_7,
+            #     ma_25,
+            #     ma_100,
+            #     ma_7_prev,
+            #     ma_25_prev,
+            #     ma_100_prev,
+            #     volatility
+            # )
 
         pass

@@ -1,6 +1,6 @@
 import os
 import requests
-from shared.utils import handle_binance_errors, define_strategy
+from shared.utils import handle_binance_errors
 
 
 def rally_or_pullback(
