@@ -1,20 +1,19 @@
+import json
 import os
-import requests
-from shared.utils import handle_binance_errors
+from shared.enums import KafkaTopics
 
 
 def rally_or_pullback(
     self,
     close_price,
-    symbol,
-    lowest_price,
-    p_value,
     open_price,
+    symbol,
     ma_7,
-    ma_100,
     ma_25,
-    slope,
-    btc_correlation,
+    ma_100,
+    ma_7_prev,
+    ma_25_prev,
+    ma_100_prev,
     volatility
 ):
     """
@@ -22,8 +21,7 @@ def rally_or_pullback(
 
     https://www.binance.com/en/support/faq/understanding-top-movers-statuses-on-binance-spot-trading-18c97e8ab67a4e1b824edd590cae9f16
     """
-    response = requests.get(url=self.ticker24_url, params={"symbol": symbol})
-    data = handle_binance_errors(response)
+    data = self._get_24_ticker(symbol)
 
     # Rally
     day_diff = (float(data["lowPrice"]) - float(data["openPrice"])) / float(data["openPrice"])
@@ -55,8 +53,6 @@ def rally_or_pullback(
 - [{os.getenv('ENV')}] <strong>{algo_type} #algorithm</strong> #{symbol}
 - Current price: {close_price}
 - Log volatility (log SD): {volatility}
-- P-value: {p_value}
-- Pearson correlation with BTC: {btc_correlation["close_price"]}
 - Trend: {trend}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
@@ -66,7 +62,7 @@ def rally_or_pullback(
 
         if (
             float(close_price) > float(open_price)
-            and self.sd > 0.09
+            and volatility > 0.09
             # and close_price < ma_25[len(ma_25) - 1]
             # and close_price < ma_25[len(ma_25) - 2]
             # and close_price < ma_25[len(ma_25) - 3]
@@ -74,6 +70,17 @@ def rally_or_pullback(
             and close_price < ma_100[len(ma_100) - 2]
             and close_price < ma_100[len(ma_100) - 3]
         ):
+            
+            value = {
+                "msg": msg,
+                "symbol": symbol,
+                "algo": algo,
+                "spread": None,
+                "current_price": close_price,
+                "lowest_price": lowest_price,
+            }
+
+            self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
             self.send_telegram(msg)
             # self.process_autotrade_restrictions(symbol, "rally_pullback", False, **{"sd": sd, "current_price": close_price, "lowest_price": lowest_price, "trend": trend})
