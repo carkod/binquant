@@ -1,11 +1,9 @@
 import logging
+import json
 from shared.apis import BinbotApi
 from datetime import datetime
-from shared.enums import KafkaTopics
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
-from shared.telegram_bot import TelegramBot
-from shared.utils import handle_binance_errors
 
 
 class AutotradeConsumer(BinbotApi):
@@ -59,13 +57,13 @@ class AutotradeConsumer(BinbotApi):
 
         if db_collection_name == "bots":
             active_count = len(self.active_test_bots["data"])
-            if active_count > self.settings["max_active_autotrade_bots"]:
+            if active_count > self.autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
         return False
 
     def process_autotrade_restrictions(
-        self, symbol, algorithm, test_only=False, *args, **kwargs
+        self, result: str
     ):
         """
         Refactored autotrade conditions.
@@ -83,6 +81,10 @@ class AutotradeConsumer(BinbotApi):
 
         Wrap in try and except to avoid bugs stopping real bot trades
         """
+        payload = json.loads(result.value)
+        data = payload["data"]
+        symbol = data["symbol"]
+
         try:
             if (
                 symbol not in self.active_test_bots
@@ -104,21 +106,23 @@ class AutotradeConsumer(BinbotApi):
 
         # Check balance to avoid failed autotrades
         balance_check = self.balance_estimate()
-        if balance_check < float(self.settings["base_order_size"]):
+        if balance_check < float(self.autotrade_settings["base_order_size"]):
             print(f"Not enough funds to autotrade [bots].")
             return
 
         """
         Real autotrade starts
         """
-        if int(self.settings["autotrade"]) == 1 and not test_only:
+        if int(self.autotrade_settings["autotrade"]) == 1 and not test_only:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
 
-                autotrade = Autotrade(symbol, self.settings, algorithm, "bots")
+                autotrade = Autotrade(
+                    symbol, self.autotrade_settings, algorithm, "bots"
+                )
                 autotrade.activate_autotrade(**kwargs)
 
         return

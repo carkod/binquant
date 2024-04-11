@@ -242,7 +242,8 @@ class TechnicalIndicators(BinbotApi):
             self.log_volatility()
 
             # Post-processing
-            self.df.dropna(inplace=True)
+            self.df.reset_index(drop=True, inplace=True)
+
             close_price = float(self.df.close[len(self.df.close) - 1])
             open_price = float(self.df.open[len(self.df.open) - 1])
             macd = float(self.df.macd[len(self.df.macd) - 1])

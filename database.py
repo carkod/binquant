@@ -1,13 +1,8 @@
-from collections import OrderedDict
 import os
-import time
 from dotenv import load_dotenv
 from pymongo import MongoClient
-from pymongo.client_session import ClientSession
 from pymongo.collection import Collection
-from bson.codec_options import CodecOptions
-from bson import decode
-from models.klines import KlineMetadata, KlineModel, TimeSeriesKline
+from models.klines import KlineMetadata, TimeSeriesKline
 from datetime import datetime
 
 load_dotenv()
@@ -39,7 +34,7 @@ class KafkaDB:
                         "metaField": "metadata",
                         "granularity": "minutes",
                     },
-                    "expireAfterSeconds": 604800 # 7 days, minimize server cost
+                    "expireAfterSeconds": 604800,  # 7 days, minimize server cost
                 }
             )
 
@@ -48,15 +43,8 @@ class KafkaDB:
     def get_partitions(self):
         query = self.db.kline.aggregate(
             [
-                {"$unwind": "$symbol"},
-                {"$unwind": "$partition"},
-                {
-                    "$group": {
-                        "_id": None,
-                        "symbol": {"$addToSet": "$symbol"},
-                        "partition": {"$addToSet": "$metadata.partition"},
-                    }
-                },
+                {"$unwind": "$metadata.partition"},
+                {"$addFields": {"partition": "$metadata.partition"}},
                 {"$project": {"_id": 0, "symbol": 1, "partition": 1}},
             ]
         )
@@ -66,13 +54,13 @@ class KafkaDB:
             partition_obj[item["symbol"]] = item["partition"]
         return partition_obj
 
-    def store_klines(self, kline, partition: int=1):
+    def store_klines(self, kline):
         """
         Append metadata and store kline data in MongoDB
         """
         timestamp = round((kline["t"] / 1000), 0)
         klines = TimeSeriesKline(
-            metadata=KlineMetadata(partition=partition),
+            metadata=KlineMetadata(partition=0),
             timestamp=datetime.fromtimestamp(timestamp),
             symbol=kline["s"],
             open_time=kline["t"],
@@ -101,7 +89,7 @@ class KafkaDB:
     def raw_klines(self, symbol, limit=200, offset=0):
         query = self.db.kline.find(
             {"symbol": symbol},
-            {"_id": 0, "metadata": 0, "timestamp": 0, "symbol": 0, "candle_closed": 0 },
+            {"_id": 0, "metadata": 0, "timestamp": 0, "symbol": 0, "candle_closed": 0},
             limit=limit,
             skip=offset,
         )

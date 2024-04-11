@@ -19,7 +19,6 @@ class KlinesConnector(BinbotApi):
         )
 
         self.symbol_partitions = []
-        self.partition_count = 0
         self.producer = producer
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings = self.get_autotrade_settings()
@@ -81,7 +80,7 @@ class KlinesConnector(BinbotApi):
 
         # update DB
         self.update_subscribed_list(subscription_list)
-        self.client.klines(markets=params, interval=self.interval)
+        self.client.klines(markets=["bnbbtc"], interval=self.interval)
 
     def process_kline_stream(self, result):
         """
@@ -93,7 +92,9 @@ class KlinesConnector(BinbotApi):
             symbol
             and "k" in result
             and "s" in result["k"]
+            and result["k"]["x"]
         ):
+
             klines_producer = KlinesProducer(self.producer, symbol)
             klines_producer.store(result["k"])
 
