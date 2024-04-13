@@ -2,6 +2,9 @@ import json
 import os
 import logging
 import asyncio
+from re import A
+
+from aiokafka import AIOKafkaConsumer
 from producers.technical_indicators import TechnicalIndicators
 from database import KafkaDB
 from shared.enums import KafkaTopics
@@ -19,12 +22,10 @@ class KlinesProvider(KafkaDB):
     """
     Pools, processes, agregates and provides klines data
     """
-    def __init__(self, consumer):
+    def __init__(self, consumer: AIOKafkaConsumer):
         super().__init__()
         # If we don't instantiate separately, almost no messages are received
         self.consumer = consumer
-         # Number of klines to aggregate, 100+ for MAosed
-        self.klines_horizon = 3
 
     async def aggregate_data(self, results):
 

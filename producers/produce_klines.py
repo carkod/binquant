@@ -39,7 +39,6 @@ class KlinesProducer(KafkaDB):
                 value=message.model_dump_json(),
                 timestamp_ms=int(data["t"]),
                 key=str(data["t"]).encode("utf-8"),
-                partition=0,
             ).add_callback(self.on_send_success).add_errback(self.on_send_error)
 
         except Exception as e:

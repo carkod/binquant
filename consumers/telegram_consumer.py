@@ -1,8 +1,9 @@
+from aiokafka import AIOKafkaConsumer
 from shared.telegram_bot import TelegramBot
 import json
 
 class TelegramConsumer:
-    def __init__(self, consumer):
+    def __init__(self, consumer: AIOKafkaConsumer):
         self.telegram_bot = TelegramBot()
         self.consumer = consumer
 

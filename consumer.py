@@ -3,6 +3,7 @@ import os
 import asyncio
 
 from aiokafka import AIOKafkaConsumer
+from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
 from consumers.telegram_consumer import TelegramConsumer
 from consumers.klines_provider import KlinesProvider
@@ -12,7 +13,7 @@ async def task_1():
     consumer = AIOKafkaConsumer(
         KafkaTopics.klines_store_topic.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-        group_id="klines_group",
+        # group_id="klines",
         # enable_auto_commit=False,
         value_deserializer=lambda m: json.loads(m),
     )
@@ -25,7 +26,7 @@ async def task_1():
     async for result in consumer:
         tasks.append(asyncio.create_task(klines_provider.aggregate_data(result)))
 
-    await consumer.flush()
+    await consumer.stop()
     return tasks
 
 
@@ -35,21 +36,23 @@ async def task_2():
     consumer = AIOKafkaConsumer(
         KafkaTopics.signals.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-        group_id="signals_group",
+        # group_id="signals",
         # enable_auto_commit=False,
-        # auto_offset_reset="latest",
+        auto_offset_reset="latest",
         value_deserializer=lambda m: json.loads(m),
     )
 
     telegram_consumer = TelegramConsumer(consumer)
+    # at_consumer = AutotradeConsumer(consumer)
 
     await consumer.start()
     
     tasks = []
     async for result in consumer:
         tasks.append(asyncio.create_task(telegram_consumer.send_telegram(result)))
+        # tasks.append(asyncio.create_task(at_consumer.process_autotrade_restrictions(result)))
 
-    await consumer.flush()
+    await consumer.stop()
     return tasks
 
 

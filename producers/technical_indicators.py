@@ -325,4 +325,4 @@ class TechnicalIndicators(BinbotApi):
             #     volatility
             # )
 
-        pass
+        return

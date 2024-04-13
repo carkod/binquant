@@ -80,7 +80,7 @@ class KlinesConnector(BinbotApi):
 
         # update DB
         self.update_subscribed_list(subscription_list)
-        self.client.klines(markets=["bnbbtc"], interval=self.interval)
+        self.client.klines(markets=params, interval=self.interval)
 
     def process_kline_stream(self, result):
         """
