@@ -44,14 +44,14 @@ async def task_2():
     )
 
     telegram_consumer = TelegramConsumer(consumer)
-    # at_consumer = AutotradeConsumer(consumer)
+    at_consumer = AutotradeConsumer(consumer)
 
     await consumer.start()
     
     tasks = []
     async for result in consumer:
         tasks.append(asyncio.create_task(telegram_consumer.send_telegram(result)))
-        # tasks.append(asyncio.create_task(at_consumer.process_autotrade_restrictions(result)))
+        tasks.append(asyncio.create_task(at_consumer.process_autotrade_restrictions(result)))
 
     await consumer.stop()
     return tasks

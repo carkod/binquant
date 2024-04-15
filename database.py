@@ -22,9 +22,8 @@ class KafkaDB:
         self.setup()
 
     def setup(self) -> Collection:
-        list_of_collections = (
-            self.db.list_collection_names()
-        )  # Return a list of collections in 'test_db'
+        list_of_collections = self.db.list_collection_names()
+        # Return a list of collections in 'test_db'
         if "kline" not in list_of_collections:
             self.db.create_collection(
                 "kline",

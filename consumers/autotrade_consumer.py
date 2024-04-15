@@ -1,5 +1,6 @@
 import logging
 import json
+from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from datetime import datetime
 from shared.apis import BinbotApi
@@ -62,7 +63,7 @@ class AutotradeConsumer(BinbotApi):
 
         return False
 
-    def process_autotrade_restrictions(
+    async def process_autotrade_restrictions(
         self, result: str
     ):
         """
@@ -82,8 +83,8 @@ class AutotradeConsumer(BinbotApi):
         Wrap in try and except to avoid bugs stopping real bot trades
         """
         payload = json.loads(result.value)
-        data = payload["data"]
-        symbol = data["symbol"]
+        data = SignalsConsumer(**payload)
+        symbol = data.symbol
 
         try:
             if (
@@ -97,9 +98,9 @@ class AutotradeConsumer(BinbotApi):
                 else:
                     # Test autotrade runs independently of autotrade = 1
                     test_autotrade = Autotrade(
-                        symbol, self.test_autotrade_settings, algorithm, "paper_trading"
+                        symbol, self.test_autotrade_settings, data.algo, "paper_trading"
                     )
-                    test_autotrade.activate_autotrade(**kwargs)
+                    await test_autotrade.activate_autotrade(data)
         except Exception as error:
             print(error)
             pass
@@ -113,7 +114,7 @@ class AutotradeConsumer(BinbotApi):
         """
         Real autotrade starts
         """
-        if int(self.autotrade_settings["autotrade"]) == 1 and not test_only:
+        if int(self.autotrade_settings["autotrade"]) == 1:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
@@ -121,8 +122,8 @@ class AutotradeConsumer(BinbotApi):
             else:
 
                 autotrade = Autotrade(
-                    symbol, self.autotrade_settings, algorithm, "bots"
+                    symbol, self.autotrade_settings, data.algo, "bots"
                 )
-                autotrade.activate_autotrade(**kwargs)
+                await autotrade.activate_autotrade(data)
 
         return

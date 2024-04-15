@@ -21,7 +21,7 @@ def rally_or_pullback(
 
     https://www.binance.com/en/support/faq/understanding-top-movers-statuses-on-binance-spot-trading-18c97e8ab67a4e1b824edd590cae9f16
     """
-    data = self._get_24_ticker(symbol)
+    data = self.get_24_ticker(symbol)
 
     # Rally
     day_diff = (float(data["lowPrice"]) - float(data["openPrice"])) / float(data["openPrice"])
