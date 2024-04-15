@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 import logging
-import numpy
+import pandas
 from typing import Literal
 
 from pyspark.sql import SparkSession
@@ -10,14 +10,6 @@ from shared.apis import BinbotApi
 from producers.base import BaseProducer
 from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
 from algorithms.coinrule import fast_and_slow_macd
-
-spark = (
-    SparkSession.builder.appName("Klines Statistics analyses")
-    # .config("spark.sql.execution.arrow.pyspark.enabled", "true")
-    .config("compute.ops_on_diff_frames", "true")
-    .getOrCreate()
-)
-spark.sparkContext.setLogLevel("FATAL")
 
 class TechnicalIndicators(BinbotApi):
     def __init__(self, df, symbol) -> None:
@@ -166,7 +158,8 @@ class TechnicalIndicators(BinbotApi):
         Returns:
         - Volatility in percentage
         """
-        log_volatility = numpy.log(self.df["close"].pct_change().rolling(window_size).std())
+        # log_volatility = numpy.log(self.df["close"].pct_change().rolling(window_size).std())
+        log_volatility = pandas.Series(self.df["close"]).astype(float).pct_change().rolling(window_size).std()
         self.df["perc_volatility"] = log_volatility
     
     def market_domination(self) -> Literal["gainers", "losers", None]:

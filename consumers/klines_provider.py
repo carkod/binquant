@@ -2,7 +2,7 @@ import json
 import os
 import logging
 import asyncio
-from re import A
+import pandas as pd
 
 from aiokafka import AIOKafkaConsumer
 from producers.technical_indicators import TechnicalIndicators
@@ -40,7 +40,7 @@ class KlinesProvider(KafkaDB):
 
             # self.check_kline_gaps(candles)
             # Pre-process
-            df = ps.DataFrame(candles)
+            df = pd.DataFrame(candles)
             TechnicalIndicators(df, symbol).publish()
 
         pass

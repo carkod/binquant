@@ -15,6 +15,7 @@ async def task_1():
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         # group_id="klines",
         # enable_auto_commit=False,
+        # auto_offset_reset="earliest",
         value_deserializer=lambda m: json.loads(m),
     )
 
@@ -38,7 +39,7 @@ async def task_2():
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         # group_id="signals",
         # enable_auto_commit=False,
-        auto_offset_reset="latest",
+        # auto_offset_reset="latest",
         value_deserializer=lambda m: json.loads(m),
     )
 
@@ -57,11 +58,12 @@ async def task_2():
 
 
 async def main():
+    await asyncio.gather(task_1(), task_2())
+
+if __name__ == "__main__":
     try:
-        await asyncio.gather(task_1(), task_2())
+        asyncio.run(main())    
     except Exception:
         asyncio.run(main())
         pass
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    

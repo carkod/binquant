@@ -74,10 +74,10 @@ def rally_or_pullback(
             value = {
                 "msg": msg,
                 "symbol": symbol,
-                "algo": algo,
+                "algo": algo_type,
                 "spread": None,
                 "current_price": close_price,
-                "lowest_price": lowest_price,
+                # "lowest_price": lowest_price,
             }
 
             self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
