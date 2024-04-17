@@ -51,7 +51,7 @@ class BinanceApi:
         "https://launchpad.binance.com/gateway-api/v1/public/launchpool/project/list"
     )
 
-    def request(self, url, method="GET", session=None, **args):
+    def request(self, url, method="GET", session: Session=None, **args):
         if session:
             res = session.request(method=method, url=url, **args)
         else:

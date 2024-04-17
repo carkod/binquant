@@ -12,11 +12,11 @@ from pyspark.sql import SparkSession
 import pyspark.pandas as ps
 from pyspark import SparkContext
 
-spark = SparkSession.builder.appName("Klines Statistics analyses")\
-    .config("compute.ops_on_diff_frames", "true").getOrCreate()
+# spark = SparkSession.builder.appName("Klines Statistics analyses")\
+#     .config("compute.ops_on_diff_frames", "true").getOrCreate()
 
 # allow series and/or dataframes to be attached to different dataframes
-ps.set_option('compute.ops_on_diff_frames', True)
+# ps.set_option('compute.ops_on_diff_frames', True)
 
 class KlinesProvider(KafkaDB):
     """

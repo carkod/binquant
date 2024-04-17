@@ -13,9 +13,6 @@ async def task_1():
     consumer = AIOKafkaConsumer(
         KafkaTopics.klines_store_topic.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-        # group_id="klines",
-        # enable_auto_commit=False,
-        # auto_offset_reset="earliest",
         value_deserializer=lambda m: json.loads(m),
     )
 
@@ -37,9 +34,6 @@ async def task_2():
     consumer = AIOKafkaConsumer(
         KafkaTopics.signals.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-        # group_id="signals",
-        # enable_auto_commit=False,
-        # auto_offset_reset="latest",
         value_deserializer=lambda m: json.loads(m),
     )
 
@@ -49,16 +43,41 @@ async def task_2():
     await consumer.start()
     
     tasks = []
+    # result = await consumer.getmany()
     async for result in consumer:
+        print("Received signal for telegram and autotrade! task_2", result)
         tasks.append(asyncio.create_task(telegram_consumer.send_telegram(result)))
-        tasks.append(asyncio.create_task(at_consumer.process_autotrade_restrictions(result)))
+    # tasks.append(asyncio.create_task(at_consumer.process_autotrade_restrictions(result)))
 
     await consumer.stop()
     return tasks
 
+async def task_3():
+
+    # Start consuming
+    consumer = AIOKafkaConsumer(
+        KafkaTopics.signals.value,
+        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+        value_deserializer=lambda m: json.loads(m),
+    )
+
+    telegram_consumer = TelegramConsumer(consumer)
+    at_consumer = AutotradeConsumer(consumer)
+
+    await consumer.start()
+    
+    tasks = []
+    # result = await consumer.getmany()
+    async for result in consumer:
+        print("Received signal for telegram and autotrade! task_3", result)
+        tasks.append(asyncio.create_task(telegram_consumer.send_telegram(result)))
+    # tasks.append(asyncio.create_task(at_consumer.process_autotrade_restrictions(result)))
+
+    await consumer.stop()
+    return tasks
 
 async def main():
-    await asyncio.gather(task_1(), task_2())
+    await asyncio.gather(task_1(), task_2(), task_3())
 
 if __name__ == "__main__":
     try:

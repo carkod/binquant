@@ -1,5 +1,6 @@
 import json
 import os
+
 from models.signals import SignalsConsumer
 from shared.enums import KafkaTopics
 

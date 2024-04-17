@@ -290,19 +290,21 @@ class TechnicalIndicators(BinbotApi):
                 volatility
             )
 
-            rally_or_pullback(
-                self,
-                close_price,
-                open_price,
-                self.symbol,
-                ma_7,
-                ma_25,
-                ma_100,
-                ma_7_prev,
-                ma_25_prev,
-                ma_100_prev,
-                volatility
-            )
+
+            # This function calls a lot ticker24 revise it before uncommenting
+            # rally_or_pullback(
+            #     self,
+            #     close_price,
+            #     open_price,
+            #     self.symbol,
+            #     ma_7,
+            #     ma_25,
+            #     ma_100,
+            #     ma_7_prev,
+            #     ma_25_prev,
+            #     ma_100_prev,
+            #     volatility
+            # )
 
             # top_gainers_drop(
             #     self,
