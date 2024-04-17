@@ -2,7 +2,9 @@ import json
 import os
 import logging
 import asyncio
-from aiokafka import AIOKafkaConsumer, TopicPartition
+import pandas as pd
+
+from aiokafka import AIOKafkaConsumer
 from producers.technical_indicators import TechnicalIndicators
 from database import KafkaDB
 from shared.enums import KafkaTopics
@@ -20,18 +22,10 @@ class KlinesProvider(KafkaDB):
     """
     Pools, processes, agregates and provides klines data
     """
-    def __init__(self, consumer):
+    def __init__(self, consumer: AIOKafkaConsumer):
         super().__init__()
         # If we don't instantiate separately, almost no messages are received
         self.consumer = consumer
-        self.topic_partition = None
-         # Number of klines to aggregate, 100+ for MAosed
-        self.klines_horizon = 3
-        self.current_partition = 0
-        self.candles = []
-
-    def set_partitions(self):
-        self.topic_partition = self.get_partitions()
 
     async def aggregate_data(self, results):
 
@@ -39,14 +33,14 @@ class KlinesProvider(KafkaDB):
             payload = json.loads(results.value)
             symbol = payload["symbol"]
             candles = self.raw_klines(symbol)
-            
+
             if len(candles) == 0:
                 logging.info(f'{symbol} No data to do analytics')
                 return
 
             # self.check_kline_gaps(candles)
             # Pre-process
-            df = ps.DataFrame(candles)
+            df = pd.DataFrame(candles)
             TechnicalIndicators(df, symbol).publish()
 
         pass

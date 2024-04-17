@@ -15,6 +15,7 @@ class BaseProducer(KafkaDB):
         self.producer = KafkaProducer(
             bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            acks=1
         )
         return self.producer
 

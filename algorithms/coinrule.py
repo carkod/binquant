@@ -1,5 +1,6 @@
 import json
 import os
+from models.signals import SignalsConsumer
 from shared.enums import KafkaTopics
 
 
@@ -21,40 +22,41 @@ def fast_and_slow_macd(
     """
     algo = "coinrule_fast_and_slow_macd"
     spread = None
+    trend = self.define_strategy()
 
-    if macd > macd_signal and ma_7 > ma_25:
+    # if macd > macd_signal and ma_7 > ma_25:
 
-        # trend = define_strategy(self)
-        # if trend is None and trend == "uptrend":
-        #     return
-        
-        # Second stage filtering when volatility is high
-        # when volatility is high we assume that
-        # difference between MA_7 and MA_25 is wide
-        # if this is not the case it may fail to signal correctly
-        # if self.volatility > 0.8:
+    if trend is None and trend == "uptrend":
+        return
 
-        # Calculate spread using bolliguer band MAs
+# Second stage filtering when volatility is high
+# when volatility is high we assume that
+# difference between MA_7 and MA_25 is wide
+# if this is not the case it may fail to signal correctly
+# if self.volatility > 0.8:
 
-        msg = (f"""
-        - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
-        - Current price: {close_price}
-        - Log volatility (log SD): {volatility}%
-        - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
-        - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
-        """)
+# Calculate spread using bolliguer band MAs
 
-        value = {
-            "msg": msg,
-            "symbol": symbol,
-            "algo": algo, 
-            "spread": spread,
-            "current_price": close_price,
-        }
+    msg = (f"""
+    - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
+    - Current price: {close_price}
+    - Log volatility (log SD): {volatility}%
+    - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
+    - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
+    """)
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+    value = SignalsConsumer(
+        spread=spread,
+        current_price=close_price,
+        msg=msg,
+        symbol=symbol,
+        algo=algo,
+        trend=trend
+    )
 
-        pass
+    self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+
+    pass
 
 
 def buy_low_sell_high(
@@ -101,7 +103,16 @@ def buy_low_sell_high(
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
-        self.send_telegram(msg)
-        self.process_autotrade_restrictions(symbol, algo, False, **{"spread": spread, "current_price": close_price, "trend": trend})
+        
+        value = {
+            "msg": msg,
+            "symbol": symbol,
+            "algo": algo, 
+            "spread": spread,
+            "current_price": close_price,
+            "trend": trend
+        }
+
+        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
     pass

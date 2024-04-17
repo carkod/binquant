@@ -5,6 +5,7 @@ from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
 from dotenv import load_dotenv
+from httpx import request
 from requests import Session, get
 from shared.utils import handle_binance_errors
 
@@ -51,9 +52,10 @@ class BinanceApi:
     )
 
     def request(self, url, method="GET", session=None, **args):
-        if not session:
-            session = Session()
-        res = session.request(method=method, url=url, **args)
+        if session:
+            res = session.request(method=method, url=url, **args)
+        else:
+            res = request(method=method, url=url, **args)
         return handle_binance_errors(res)
 
     def get_server_time(self):
@@ -216,7 +218,7 @@ class BinbotApi(BinanceApi):
     bb_test_bot_active_list = f"{bb_base_url}/paper-trading/active-list"
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
 
-    def _get_24_ticker(self, market):
+    def get_24_ticker(self, market):
         data = self.request(url=f"{self.bb_24_ticker_url}/{market}")
         return data
 
@@ -287,3 +289,44 @@ class BinbotApi(BinanceApi):
     def get_papertrading_bots_by_status(self, status="active", no_cooldown=True):
         data = self.request(url=self.bb_test_bot_url, params={"status": status, "no_cooldown": no_cooldown})
         return data["data"]
+
+    def submit_bot_event_logs(self, bot_id, message):
+        data = self.request(url=f"{self.bb_submit_errors}/{bot_id}", method="POST", json=message)
+        return data["data"]
+
+    def add_to_blacklist(self, symbol, reason=None):
+        payload = {"symbol": symbol, "reason": reason}
+        data = self.request(url=self.bb_blacklist_url, method="POST", json=payload)
+        return data
+
+    def clean_margin_short(self, pair):
+        """
+        Liquidate and disable margin_short trades
+        """
+        data = self.request(url=f"{self.bb_liquidation_url}/{pair}", method="DELETE")
+        return data
+
+    def delete_bot(self, bot_id):
+        data = self.request(url=f"{self.bb_bot_url}/{bot_id}", method="DELETE")
+        return data
+
+    def get_balances(self):
+        data = self.request(url=self.bb_balance_url)
+        return data
+
+    def create_bot(self, data):
+        data = self.request(url=self.bb_bot_url, method="POST", json=data)
+        return data
+
+    def activate_bot(self, bot_id):
+        data = self.request(url=f"{self.bb_activate_bot_url}/{bot_id}", method="POST")
+        return data
+
+    def create_paper_bot(self, data):
+        data = self.request(url=self.bb_test_bot_url, method="POST", json=data)
+        return data
+
+    def activate_paper_bot(self, bot_id):
+        data = self.request(url=f"{self.bb_activate_test_bot_url}/{bot_id}", method="POST")
+        return data
+

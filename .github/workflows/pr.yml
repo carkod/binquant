@@ -17,27 +17,53 @@ env:
   PYARROW_IGNORE_TIMEZONE: "1"
   
 jobs:
-  push_to_registry:
-    name: Test and deploy Binquant
+  deploy_producer:
+    name: Test and deploy producer
     runs-on: ubuntu-latest
+    env:
+      IMAGE: binquant_producer:latest
 
     steps:
       - name: Check out the repo
         uses: actions/checkout@v3
       - name: Build image
-        run: docker build --tag binquant .
-      - name: Test Kafka
-        run: docker run --name binquant_producer -d binquant
+        run: docker build --tag $IMAGE .
+      - name: Test producer
+        run: docker run --name producer -d $IMAGE
       - name: Tag images
         if: ${{ github.actor != 'dependabot[bot]' }}
         run: |
-          docker commit binquant_producer carloswufei/binquant &
-          docker tag binquant carloswufei/binquant
+          docker commit $IMAGE carloswufei/$IMAGE &
+          docker tag $IMAGE carloswufei/$IMAGE
       - name: Push to Docker Hub
         if: ${{ github.actor != 'dependabot[bot]' }}
         run: |
           docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
-          docker push carloswufei/binquant
+          docker push carloswufei/$IMAGE
+  
+  deploy_consumer:
+    name: Test and deploy consumer
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: binquant_consumer:latest
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v3
+      - name: Build image
+        run: docker build --tag $IMAGE .
+      - name: Test consumer
+        run: docker run --name consumer -d $IMAGE
+      - name: Tag images
+        if: ${{ github.actor != 'dependabot[bot]' }}
+        run: |
+          docker commit $IMAGE carloswufei/$IMAGE &
+          docker tag $IMAGE carloswufei/$IMAGE
+      - name: Push to Docker Hub
+        if: ${{ github.actor != 'dependabot[bot]' }}
+        run: |
+          docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+          docker push carloswufei/$IMAGE
 
   python-tests:
     name: 🐍 Python tests

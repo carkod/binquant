@@ -65,7 +65,7 @@ class DealSchema(BaseModel):
     @classmethod
     def check_prices(cls, v):
         if float(v) < 0:
-            raise ValueError("Price must be a positive number")
+            raise ValueError("must be a positive number")
         return v
 
 
@@ -120,7 +120,7 @@ class DealSchema(BaseModel):
     @classmethod
     def check_prices(cls, v):
         if float(v) < 0:
-            raise ValueError("Price must be a positive number")
+            raise ValueError("must be a positive number")
         return v
 
 class SafetyOrderSchema(BaseModel):

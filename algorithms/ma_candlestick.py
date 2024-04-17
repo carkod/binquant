@@ -1,4 +1,6 @@
+import json
 import os
+from shared.enums import KafkaTopics
 from shared.utils import round_numbers
 
 # Algorithms based on Bollinguer bands
@@ -44,18 +46,28 @@ def ma_candlestick_jump(
         and open_price > ma_100
     ):
 
-        
+        algo = "ma_candlestick_jump"
+        spread = volatility
+        trend = self.define_strategy()
         msg = (f"""
-- [{os.getenv('ENV')}] Candlestick <strong>#jump algorithm</strong> #{symbol}
+- [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - %threshold based on volatility: {round_numbers(volatility * 100, 6)}%
-- Percentage volatility: {(self.sd) / float(close_price)}
-- Percentage volatility x2: {self.sd * 2 / float(close_price)}
+- Bot strategy: {trend}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
-        # self.send_telegram(msg)
-        # self.process_autotrade_restrictions(symbol, "ma_candlestick_jump", False, **{"sd": self.sd, "current_price": close_price})
+        
+        value = {
+            "msg": msg,
+            "symbol": symbol,
+            "algo": algo, 
+            "spread": spread,
+            "current_price": close_price,
+            "trend": trend
+        }
+
+        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
     return
 
@@ -96,16 +108,23 @@ def ma_candlestick_drop(
         # big candles. too many signals with little profitability
         and (abs(float(close_price) - float(open_price)) / float(close_price)) > 0.02
     ):
-        
+        algo = "ma_candlestick_drop"
 
         msg = (f"""
-- [{os.getenv('ENV')}] Candlestick <strong>#drop algorithm</strong> #{symbol}
+- [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
-- Log volatility (log SD): {self.volatility}
+- Log volatility (log SD): {volatility}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
-        # self.send_telegram(msg)
-        # self.process_autotrade_restrictions(symbol, "ma_candlestick_drop", False, **{"current_price": close_price})
+        value = {
+            "msg": msg,
+            "symbol": symbol,
+            "algo": algo,
+            "spread": None,
+            "current_price": close_price,
+        }
+
+        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
     return

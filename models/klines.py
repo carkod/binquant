@@ -41,7 +41,7 @@ class KlineModel(BaseModel):
 
 
 class KlineMetadata(BaseModel):
-    partition: int
+    partition: int # not using at the moment, because in every initialization it starts from 0, we do need a field in the metadata though
 
 
 class TimeSeriesKline(KlineModel):

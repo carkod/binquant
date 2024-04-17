@@ -1,28 +1,25 @@
 from datetime import datetime, timedelta
 import logging
-import numpy
+import pandas
 from typing import Literal
 
 from pyspark.sql import SparkSession
+from algorithms.top_gainer_drop import top_gainers_drop
+from algorithms.rally import rally_or_pullback
 from shared.apis import BinbotApi
 from producers.base import BaseProducer
-from algorithms.ma_candlestick import ma_candlestick_jump
+from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
 from algorithms.coinrule import fast_and_slow_macd
-
-spark = (
-    SparkSession.builder.appName("Klines Statistics analyses")
-    # .config("spark.sql.execution.arrow.pyspark.enabled", "true")
-    .config("compute.ops_on_diff_frames", "true")
-    .getOrCreate()
-)
-spark.sparkContext.setLogLevel("FATAL")
 
 class TechnicalIndicators(BinbotApi):
     def __init__(self, df, symbol) -> None:
         self.base_producer = BaseProducer()
-        self.producer = self.base_producer.start_producer()
+        self.base_producer.start_producer()
+        self.producer = self.base_producer.producer
         self.df = df
         self.symbol = symbol
+        self.market_domination_trend = None
+        self.market_domination_reversal = None
         pass
 
     def check_kline_gaps(self, data):
@@ -44,9 +41,6 @@ class TechnicalIndicators(BinbotApi):
     
     def days(self, secs):
         return secs * 86400
-
-    def set_market_domination_reversal(self):
-        pass
 
     def define_strategy(self):
         """
@@ -164,7 +158,8 @@ class TechnicalIndicators(BinbotApi):
         Returns:
         - Volatility in percentage
         """
-        log_volatility = numpy.log(self.df["close"].pct_change().rolling(window_size).std())
+        # log_volatility = numpy.log(self.df["close"].pct_change().rolling(window_size).std())
+        log_volatility = pandas.Series(self.df["close"]).astype(float).pct_change().rolling(window_size).std()
         self.df["perc_volatility"] = log_volatility
     
     def market_domination(self) -> Literal["gainers", "losers", None]:
@@ -178,19 +173,17 @@ class TechnicalIndicators(BinbotApi):
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        if (
-            datetime.now().minute == 0
-        ):
+        if datetime.now().minute == 0 or self.market_domination_trend == None:
             logging.info(
                 f"Performing market domination analyses. Current trend: {self.market_domination_trend}"
             )
             data = self.get_market_domination_series()
             # reverse to make latest series more important
-            data["data"]["gainers_count"].reverse()
-            data["data"]["losers_count"].reverse()
-            gainers_count = data["data"]["gainers_count"]
-            losers_count = data["data"]["losers_count"]
-            self.market_domination_trend = None
+            data["gainers_count"].reverse()
+            data["losers_count"].reverse()
+            gainers_count = data["gainers_count"]
+            losers_count = data["losers_count"]
+            self.market_domination_trend = "neutral"
             if gainers_count[-1] > losers_count[-1]:
                 self.market_domination_trend = "gainers"
 
@@ -223,8 +216,7 @@ class TechnicalIndicators(BinbotApi):
         Algorithms should consume this data
         """
 
-        length = self.df.size
-        if length > 0:
+        if self.df.close.size > 0:
             # Bolliguer bands
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe
@@ -242,7 +234,8 @@ class TechnicalIndicators(BinbotApi):
             self.log_volatility()
 
             # Post-processing
-            self.df.dropna(inplace=True)
+            self.df.reset_index(drop=True, inplace=True)
+
             close_price = float(self.df.close[len(self.df.close) - 1])
             open_price = float(self.df.open[len(self.df.open) - 1])
             macd = float(self.df.macd[len(self.df.macd) - 1])
@@ -283,4 +276,46 @@ class TechnicalIndicators(BinbotApi):
                 volatility
             )
 
-        pass
+            ma_candlestick_drop(
+                self,
+                close_price,
+                open_price,
+                self.symbol,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility
+            )
+
+            rally_or_pullback(
+                self,
+                close_price,
+                open_price,
+                self.symbol,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility
+            )
+
+            # top_gainers_drop(
+            #     self,
+            #     close_price,
+            #     open_price,
+            #     self.symbol,
+            #     ma_7,
+            #     ma_25,
+            #     ma_100,
+            #     ma_7_prev,
+            #     ma_25_prev,
+            #     ma_100_prev,
+            #     volatility
+            # )
+
+        return

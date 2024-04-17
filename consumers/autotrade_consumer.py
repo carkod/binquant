@@ -1,11 +1,10 @@
 import logging
+import json
+from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from datetime import datetime
-from shared.enums import KafkaTopics
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
-from shared.telegram_bot import TelegramBot
-from shared.utils import handle_binance_errors
 
 
 class AutotradeConsumer(BinbotApi):
@@ -59,13 +58,13 @@ class AutotradeConsumer(BinbotApi):
 
         if db_collection_name == "bots":
             active_count = len(self.active_test_bots["data"])
-            if active_count > self.settings["max_active_autotrade_bots"]:
+            if active_count > self.autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
         return False
 
-    def process_autotrade_restrictions(
-        self, symbol, algorithm, test_only=False, *args, **kwargs
+    async def process_autotrade_restrictions(
+        self, result: str
     ):
         """
         Refactored autotrade conditions.
@@ -83,6 +82,10 @@ class AutotradeConsumer(BinbotApi):
 
         Wrap in try and except to avoid bugs stopping real bot trades
         """
+        payload = json.loads(result.value)
+        data = SignalsConsumer(**payload)
+        symbol = data.symbol
+
         try:
             if (
                 symbol not in self.active_test_bots
@@ -95,30 +98,32 @@ class AutotradeConsumer(BinbotApi):
                 else:
                     # Test autotrade runs independently of autotrade = 1
                     test_autotrade = Autotrade(
-                        symbol, self.test_autotrade_settings, algorithm, "paper_trading"
+                        symbol, self.test_autotrade_settings, data.algo, "paper_trading"
                     )
-                    test_autotrade.activate_autotrade(**kwargs)
+                    await test_autotrade.activate_autotrade(data)
         except Exception as error:
             print(error)
             pass
 
         # Check balance to avoid failed autotrades
         balance_check = self.balance_estimate()
-        if balance_check < float(self.settings["base_order_size"]):
+        if balance_check < float(self.autotrade_settings["base_order_size"]):
             print(f"Not enough funds to autotrade [bots].")
             return
 
         """
         Real autotrade starts
         """
-        if int(self.settings["autotrade"]) == 1 and not test_only:
+        if int(self.autotrade_settings["autotrade"]) == 1:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
 
-                autotrade = Autotrade(symbol, self.settings, algorithm, "bots")
-                autotrade.activate_autotrade(**kwargs)
+                autotrade = Autotrade(
+                    symbol, self.autotrade_settings, data.algo, "bots"
+                )
+                await autotrade.activate_autotrade(data)
 
         return

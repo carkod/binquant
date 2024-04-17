@@ -1,4 +1,7 @@
+import json
 import os
+
+from shared.enums import KafkaTopics
 
 def top_gainers_drop(
     self,
@@ -10,7 +13,7 @@ def top_gainers_drop(
     symbol,
     lowest_price,
     slope,
-    btc_correlation
+    volatility,
 ):
     """
     From the list of USDT top gainers
@@ -20,24 +23,31 @@ def top_gainers_drop(
     """
     if (
         float(close_price) < float(open_price)
-        and btc_correlation["close_price"] < 0.5
         and symbol in self.top_coins_gainers
     ):
+        algo = "top_gainers_drop"
         
         trend = self.define_strategy(self)
         if not trend:
             return
 
         msg = (f"""
-- [{os.getenv('ENV')}] Top gainers's drop <strong>#top_gainers_drop algorithm</strong> #{symbol}
+- [{os.getenv('ENV')}] Top gainers's drop <strong>#{algo} algorithm</strong> #{symbol}
 - Current price: {close_price}
-- Log volatility (log SD): {self.volatility}
+- Log volatility (log SD): {volatility}
 - Slope: {slope}
-- Pearson correlation with BTC: {btc_correlation["close_price"]}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
-        self.send_telegram(msg)
-        self.process_autotrade_restrictions(symbol, "top_gainers_drop", False, **{"sd": self.sd, "current_price": close_price, "lowest_price": lowest_price, "trend": "downtrend"})
+        value = {
+            "msg": msg,
+            "symbol": symbol,
+            "algo": algo, 
+            "spread": volatility,
+            "current_price": close_price,
+            "trend": trend
+        }
+
+        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
     return
