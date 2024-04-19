@@ -7,7 +7,7 @@ class TelegramConsumer:
         self.telegram_bot = TelegramBot()
         self.consumer = consumer
 
-    async def send_telegram(self, msg):
+    def send_telegram(self, msg):
         """
         Send message with telegram bot
         To avoid Conflict - duplicate Bot error

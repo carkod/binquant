@@ -27,7 +27,7 @@ class KlinesProvider(KafkaDB):
         # If we don't instantiate separately, almost no messages are received
         self.consumer = consumer
 
-    async def aggregate_data(self, results):
+    def aggregate_data(self, results):
 
         if results.value:
             payload = json.loads(results.value)

@@ -63,7 +63,7 @@ class AutotradeConsumer(BinbotApi):
 
         return False
 
-    async def process_autotrade_restrictions(
+    def process_autotrade_restrictions(
         self, result: str
     ):
         """
@@ -100,7 +100,7 @@ class AutotradeConsumer(BinbotApi):
                     test_autotrade = Autotrade(
                         symbol, self.test_autotrade_settings, data.algo, "paper_trading"
                     )
-                    await test_autotrade.activate_autotrade(data)
+                    test_autotrade.activate_autotrade(data)
         except Exception as error:
             print(error)
             pass
@@ -124,6 +124,6 @@ class AutotradeConsumer(BinbotApi):
                 autotrade = Autotrade(
                     symbol, self.autotrade_settings, data.algo, "bots"
                 )
-                await autotrade.activate_autotrade(data)
+                autotrade.activate_autotrade(data)
 
         return
