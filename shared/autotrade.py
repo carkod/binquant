@@ -1,7 +1,10 @@
+import json
 import math
 import logging
 
 from datetime import datetime
+from api.tools.enum_definitions import KafkaTopics
+from producers.base import BaseProducer
 from shared.enums import CloseConditions
 from models.signals import BotPayload, SignalsConsumer, TrendEnum
 from shared.exceptions import AutotradeError
@@ -10,7 +13,7 @@ from shared.apis import BinbotApi
 from shared.utils import round_numbers, supress_notation
 
 
-class Autotrade(BinbotApi):
+class Autotrade(BaseProducer, BinbotApi):
     def __init__(
         self, pair, settings, algorithm_name, db_collection_name="paper_trading"
     ) -> None:
@@ -46,6 +49,9 @@ class Autotrade(BinbotApi):
         )
         self.db_collection_name = db_collection_name
         self.blacklist: list = self.get_blacklist()
+        # restart streams after bot activation
+        super().__init__()
+        self.producer = self.start_producer()
 
     def _set_bollinguer_spreads(self, data: SignalsConsumer, **kwargs):
         if data.bollinguer_spread:
@@ -269,4 +275,12 @@ class Autotrade(BinbotApi):
 
         else:
             message = f"Succesful {self.db_collection_name} autotrade, opened with {self.pair}!"
+            value = {
+                "botId": botId,
+                "message": message
+            }
             self.submit_bot_event_logs(botId, message)
+            # Send message to restart streaming at the end to avoid blocking
+            # Message is sent only after activation is successful,
+            # if bot activation failed, we want to try again with a new bot
+            self.producer.send(KafkaTopics.restart_streaming.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
