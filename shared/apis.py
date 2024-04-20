@@ -5,7 +5,6 @@ from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
 from dotenv import load_dotenv
-from httpx import request
 from requests import Session, get
 from shared.utils import handle_binance_errors
 
@@ -51,12 +50,12 @@ class BinanceApi:
         "https://launchpad.binance.com/gateway-api/v1/public/launchpool/project/list"
     )
 
-    def request(self, url, method="GET", session: Session=None, **args):
-        if session:
-            res = session.request(method=method, url=url, **args)
-        else:
-            res = request(method=method, url=url, **args)
-        return handle_binance_errors(res)
+    def request(self, url, method="GET", session: Session=None, *args,**kwargs):
+        if not session:
+            session = Session()
+        res = session.request(method=method, url=url, *args, **kwargs)
+        data = handle_binance_errors(res)
+        return data
 
     def get_server_time(self):
         response = get(url=self.server_time_url)
@@ -87,7 +86,7 @@ class BinanceApi:
             hashlib.sha256,
         ).hexdigest()
         url = f"{url}?{query_string}&signature={signature}"
-        data = self.request(url, method, session)
+        data = self.request(url, method, session, payload)
         return data
 
     def _exchange_info(self, symbol=None):
@@ -206,6 +205,8 @@ class BinbotApi(BinanceApi):
     bb_balance_url = f"{bb_base_url}/account/balance/raw"
     bb_balance_estimate_url = f"{bb_base_url}/account/balance/estimate"
     bb_balance_series_url = f"{bb_base_url}/account/balance/series"
+    bb_account_fiat = f"{bb_base_url}/account/fiat"
+    bb_available_fiat_url = f"{bb_base_url}/account/fiat/available"
 
     # research
     bb_autotrade_settings_url = f"{bb_base_url}/autotrade-settings/bots"
@@ -237,7 +238,11 @@ class BinbotApi(BinanceApi):
             if balance["asset"] == "USDT":
                 return float(balance["free"])
         return 0
-    
+
+    def get_available_fiat(self):
+        response = self.request(url=self.bb_available_fiat_url)
+        return response["data"]
+
     def get_blacklist(self):
         response = self.request(url=self.bb_blacklist_url)
         return response["data"]
@@ -319,7 +324,7 @@ class BinbotApi(BinanceApi):
         return data
 
     def activate_bot(self, bot_id):
-        data = self.request(url=f"{self.bb_activate_bot_url}/{bot_id}", method="POST")
+        data = self.request(url=f"{self.bb_activate_bot_url}/{bot_id}")
         return data
 
     def create_paper_bot(self, data):

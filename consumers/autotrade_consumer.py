@@ -52,12 +52,12 @@ class AutotradeConsumer(BinbotApi):
         need to be left for Safety orders
         """
         if db_collection_name == "paper_trading":
-            active_count = len(self.active_bots["data"])
+            active_count = len(self.active_bots)
             if active_count > self.test_autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
         if db_collection_name == "bots":
-            active_count = len(self.active_test_bots["data"])
+            active_count = len(self.active_test_bots)
             if active_count > self.autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
@@ -106,7 +106,7 @@ class AutotradeConsumer(BinbotApi):
             pass
 
         # Check balance to avoid failed autotrades
-        balance_check = self.balance_estimate()
+        balance_check = self.get_available_fiat()
         if balance_check < float(self.autotrade_settings["base_order_size"]):
             print(f"Not enough funds to autotrade [bots].")
             return

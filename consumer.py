@@ -25,10 +25,10 @@ def task_1():
 
 def task_2():
     consumer = KafkaConsumer(
-            KafkaTopics.signals.value,
-            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-            value_deserializer=lambda m: json.loads(m),
-        )
+        KafkaTopics.signals.value,
+        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+        value_deserializer=lambda m: json.loads(m),
+    )
 
     telegram_consumer = TelegramConsumer(consumer)
     at_consumer = AutotradeConsumer(consumer)
