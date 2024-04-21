@@ -272,8 +272,8 @@ class Autotrade(BaseProducer, BinbotApi):
             raise AutotradeError(message)
 
         else:
+            value = {"botId": botId, "action": "AUTOTRADE_ACTIVATION"}
             message = f"Succesful {self.db_collection_name} autotrade, opened with {self.pair}!"
-            value = {"botId": botId, "message": message}
             self.submit_bot_event_logs(botId, message)
             # Send message to restart streaming at the end to avoid blocking
             # Message is sent only after activation is successful,

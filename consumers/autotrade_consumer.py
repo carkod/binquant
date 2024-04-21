@@ -9,8 +9,8 @@ from shared.autotrade import Autotrade
 
 class AutotradeConsumer(BinbotApi):
     def __init__(self, producer) -> None:
-        self.blacklist_data = self.get_blacklist()
-        self.autotrade_settings = self.get_autotrade_settings()
+        self.blacklist_data = []
+        self.autotrade_settings = None
         self.market_domination_ts = datetime.now()
         self.market_domination_trend = None
         self.market_domination_reversal = None
@@ -20,6 +20,25 @@ class AutotradeConsumer(BinbotApi):
             "UP",
             "AUD",
         ]  # on top of blacklist
+        self.active_bots = []
+        self.paper_trading_active_bots = []
+        self.active_symbols = []
+        self.active_test_bots = []
+        self.test_autotrade_settings = None
+        self.autotrade_settings = None
+        self.load_data_on_start()
+        # Because market domination analysis 40 weight from binance endpoints
+        self.top_coins_gainers = []
+        self.btc_change_perc = 0
+        self.volatility = 0
+        pass
+
+    def load_data_on_start(self):
+        """
+        Load data on start and on update_required
+        """
+        self.blacklist_data = self.get_blacklist()
+        self.autotrade_settings = self.get_autotrade_settings()
         self.active_bots = self.get_bots_by_status()
         self.paper_trading_active_bots = self.get_bots_by_status()
         self.active_symbols = [bot["pair"] for bot in self.active_bots]
@@ -28,12 +47,6 @@ class AutotradeConsumer(BinbotApi):
         ]
         self.test_autotrade_settings = self.get_test_autotrade_settings()
         self.autotrade_settings = self.get_autotrade_settings()
-        # Because market domination analysis 40 weight from binance endpoints
-
-        self.top_coins_gainers = []
-
-        self.btc_change_perc = 0
-        self.volatility = 0
         pass
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
@@ -82,7 +95,7 @@ class AutotradeConsumer(BinbotApi):
 
         Wrap in try and except to avoid bugs stopping real bot trades
         """
-        payload = json.loads(result.value)
+        payload = json.loads(result)
         data = SignalsConsumer(**payload)
         symbol = data.symbol
 
