@@ -34,7 +34,7 @@ def task_2():
     at_consumer = AutotradeConsumer(consumer)
     for result in consumer:
         print("Received signal for telegram and autotrade! task_2", result.value)
-        telegram_consumer.send_telegram(result)
+        # telegram_consumer.send_telegram(result)
         at_consumer.process_autotrade_restrictions(result)
 
 
