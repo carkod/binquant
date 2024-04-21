@@ -37,29 +37,6 @@ def task_2():
         telegram_consumer.send_telegram(result)
         at_consumer.process_autotrade_restrictions(result)
 
-async def task_3():
-
-    # Start consuming
-    consumer = AIOKafkaConsumer(
-        KafkaTopics.signals.value,
-        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-        value_deserializer=lambda m: json.loads(m),
-    )
-
-    telegram_consumer = TelegramConsumer(consumer)
-    at_consumer = AutotradeConsumer(consumer)
-
-    await consumer.start()
-    
-    tasks = []
-    # result = await consumer.getmany()
-    async for result in consumer:
-        print("Received signal for telegram and autotrade! task_3", result)
-        tasks.append(asyncio.create_task(telegram_consumer.send_telegram(result)))
-        tasks.append(asyncio.create_task(at_consumer.process_autotrade_restrictions(result)))
-
-    await consumer.stop()
-    return tasks
 
 async def main():
     await asyncio.gather(asyncio.to_thread(task_1), asyncio.to_thread(task_2))
@@ -70,4 +47,3 @@ if __name__ == "__main__":
     except Exception:
         asyncio.run(main())
         pass
-    
