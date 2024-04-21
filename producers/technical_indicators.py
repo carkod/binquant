@@ -3,7 +3,6 @@ import logging
 import pandas
 from typing import Literal
 
-from pyspark.sql import SparkSession
 from algorithms.top_gainer_drop import top_gainers_drop
 from algorithms.rally import rally_or_pullback
 from shared.apis import BinbotApi

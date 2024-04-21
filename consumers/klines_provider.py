@@ -1,16 +1,10 @@
 import json
-import os
 import logging
-import asyncio
 import pandas as pd
 
 from aiokafka import AIOKafkaConsumer
 from producers.technical_indicators import TechnicalIndicators
 from database import KafkaDB
-from shared.enums import KafkaTopics
-from pyspark.sql import SparkSession
-import pyspark.pandas as ps
-from pyspark import SparkContext
 
 # spark = SparkSession.builder.appName("Klines Statistics analyses")\
 #     .config("compute.ops_on_diff_frames", "true").getOrCreate()
