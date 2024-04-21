@@ -1,3 +1,4 @@
+from numpy import short
 from pydantic import BaseModel, InstanceOf, ValidationError, field_validator
 from enum import Enum
 
@@ -63,6 +64,8 @@ class BotPayload(BaseModel):
     trailling_profit: float = 0  # Trailling activation (first take profit hit)
     strategy: Strategy
     cooldown: int = 0  # Cooldown in seconds
+    short_buy_price: float = 0  # > 0 base_order does not execute immediately, executes short strategy when this value is hit
+    short_sell_price: float = 0  # autoswitch to short_strategy
 
     @field_validator("pair", "base_order_size")
     @classmethod
