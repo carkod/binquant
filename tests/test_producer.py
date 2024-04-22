@@ -29,7 +29,7 @@ def klines_connector(monkeypatch):
 
     return KlinesConnector
 
-def test_producer(klines_connector):
+def test_producer(klines_connector: KlinesConnector):
     res = {
         "e": "kline",
         "E": 1631598140000,

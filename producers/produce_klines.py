@@ -31,6 +31,11 @@ class KlinesProducer(KafkaDB):
                 symbol=data["s"],
                 open_time=str(data["t"]),
                 close_time=str(data["T"]),
+                open_price=str(data["o"]),
+                high_price=str(data["h"]),
+                low_price=str(data["l"]),
+                close_price=str(data["c"]),
+                volume=str(data["v"]),
             )
             # Produce message with asset name
             # this is faster then MongoDB change streams

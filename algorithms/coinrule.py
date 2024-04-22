@@ -25,37 +25,37 @@ def fast_and_slow_macd(
     spread = None
     trend = self.define_strategy()
 
-    # if macd > macd_signal and ma_7 > ma_25:
+    if macd > macd_signal and ma_7 > ma_25:
 
-    if trend is None and trend == "uptrend":
-        return
+        if trend is None and trend == "uptrend":
+            return
 
-# Second stage filtering when volatility is high
-# when volatility is high we assume that
-# difference between MA_7 and MA_25 is wide
-# if this is not the case it may fail to signal correctly
-# if self.volatility > 0.8:
+    # Second stage filtering when volatility is high
+    # when volatility is high we assume that
+    # difference between MA_7 and MA_25 is wide
+    # if this is not the case it may fail to signal correctly
+    # if self.volatility > 0.8:
 
-# Calculate spread using bolliguer band MAs
+    # Calculate spread using bolliguer band MAs
 
-    msg = (f"""
-    - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
-    - Current price: {close_price}
-    - Log volatility (log SD): {volatility}%
-    - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
-    - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
-    """)
+        msg = (f"""
+        - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
+        - Current price: {close_price}
+        - Log volatility (log SD): {volatility}%
+        - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
+        - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
+        """)
 
-    value = SignalsConsumer(
-        spread=spread,
-        current_price=close_price,
-        msg=msg,
-        symbol=symbol,
-        algo=algo,
-        trend=trend
-    )
+        value = SignalsConsumer(
+            spread=spread,
+            current_price=close_price,
+            msg=msg,
+            symbol=symbol,
+            algo=algo,
+            trend=trend
+        )
 
-    self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
     pass
 
