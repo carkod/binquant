@@ -62,13 +62,13 @@ class KafkaDB:
             metadata=KlineMetadata(partition=0),
             timestamp=datetime.fromtimestamp(timestamp),
             symbol=kline["s"],
-            open_time=kline["t"],
+            open_time=int(kline["t"]),
             open=kline["o"],
             high=kline["h"],
             low=kline["l"],
             close=kline["c"],
             volume=kline["v"],
-            close_time=kline["T"],
+            close_time=int(kline["T"]),
             candle_closed=kline["x"],
             interval=kline["i"],
         )
@@ -91,5 +91,5 @@ class KafkaDB:
             {"_id": 0, "metadata": 0, "timestamp": 0, "symbol": 0, "candle_closed": 0},
             limit=limit,
             skip=offset,
-        )
+        ).sort("close_time", -1)
         return list(query)

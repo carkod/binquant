@@ -148,6 +148,7 @@ class TechnicalIndicators(BinbotApi):
 
         self.df["bollinguer_band_1"] = band_1
         self.df["bollinguer_band_2"] = band_2
+        print(f'band_1: {self.df["bollinguer_band_1"][-1:].value}, band_2: {self.df["bollinguer_band_2"][-1:]}')
 
     def log_volatility(self, window_size=7):
         """

@@ -4,13 +4,13 @@ from datetime import datetime
 
 class KlineModel(BaseModel):
     symbol: str
-    open_time: str
+    open_time: int
     open: str
     high: str
     low: str
     close: str
     volume: float
-    close_time: str
+    close_time: int
     candle_closed: bool
     interval: str
     timestamp: datetime
@@ -28,8 +28,8 @@ class KlineModel(BaseModel):
         We could use datetime objects
         but this would reduce precision (nanosecs)
         """
-        if isinstance(v, int):
-            return str(v)
+        if isinstance(v, str):
+            return int(v)
         return v
 
     @field_validator("open", "high", "low", "close", mode='before')
