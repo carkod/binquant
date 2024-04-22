@@ -1,16 +1,5 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/web"
-    schedule:
-      interval: "monthly"
-    commit-message:
-      # Prefix all commit messages with "npm"
-      prefix: "npm"
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
-
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
