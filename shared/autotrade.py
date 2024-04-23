@@ -52,14 +52,12 @@ class Autotrade(BaseProducer, BinbotApi):
         self.producer = self.start_producer()
 
     def _set_bollinguer_spreads(self, data: SignalsConsumer, **kwargs):
-        if data.bollinguer_spread:
-            band_1 = kwargs["spread"]["band_1"]
-            band_2 = kwargs["spread"]["band_2"]
 
-            self.default_bot.take_profit = band_1 * 100
-            self.default_bot.stop_loss = band_1 + band_2
+        if data["bb_high"] and data["bb_low"] and data["bb_mid"]:
+            self.default_bot.take_profit = (data.bb_high - data.bb_mid) / data.bb_high
+            self.default_bot.stop_loss = (data.bb_high - data.bb_mid) / data.bb_high
             self.default_bot.trailling = True
-            self.default_bot.trailling_deviation = band_1 * 100
+            self.default_bot.trailling_deviation = (data.bb_high - data.bb_mid) / data.bb_high
 
     def handle_error(self, msg):
         """

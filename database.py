@@ -1,8 +1,8 @@
 import os
 from dotenv import load_dotenv
-from pymongo import MongoClient
+from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.collection import Collection
-from models.klines import KlineMetadata, TimeSeriesKline
+from models.klines import KlineMetadata, KlineProduceModel, TimeSeriesKline
 from datetime import datetime
 
 load_dotenv()
@@ -85,11 +85,19 @@ class KafkaDB:
         )
         return list(query)
 
-    def raw_klines(self, symbol, limit=200, offset=0):
+    def raw_klines(self, symbol, limit=200, offset=0) -> list[KlineProduceModel]:
+        """
+        Query specifically for display or analytics,
+        returns klines ordered by close_time, from oldest to newest
+        
+        Returns:
+            list: Klines
+        """
         query = self.db.kline.find(
             {"symbol": symbol},
             {"_id": 0, "metadata": 0, "timestamp": 0, "symbol": 0, "candle_closed": 0},
             limit=limit,
             skip=offset,
-        ).sort("close_time", -1)
+            sort=[("_id", DESCENDING)],
+        )
         return list(query)

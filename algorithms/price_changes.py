@@ -9,6 +9,7 @@ def price_rise_15(
     p_value,
     r_value,
     btc_correlation
+    volatility
 ):
     """
     Price increase/decrease algorithm
@@ -36,10 +37,9 @@ def price_rise_15(
     msg = (f"""
 - [{os.getenv('ENV')}] {first_line} #{symbol}
 - Current price: {close_price}
-- Log volatility (log SD): {self.volatility}
+- Log volatility (log SD): {volatility}
 - P-value: {p_value}
 - Pearson correlation with BTC: {btc_correlation["close_price"]}
-- BTC 24hr change: {self.btc_change_perc}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)

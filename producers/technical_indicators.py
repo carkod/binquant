@@ -2,9 +2,8 @@ from datetime import datetime, timedelta
 import logging
 import pandas
 from typing import Literal
-
-from algorithms.top_gainer_drop import top_gainers_drop
-from algorithms.rally import rally_or_pullback
+from models.signals import TrendEnum
+from shared.enums import Strategy
 from shared.apis import BinbotApi
 from producers.base import BaseProducer
 from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
@@ -41,6 +40,17 @@ class TechnicalIndicators(BinbotApi):
     def days(self, secs):
         return secs * 86400
 
+    def bb_spreads(self, strategy=Strategy.long) -> tuple[float, float]:
+        """
+        Calculate Bollinguer bands spreads for trailling strategies
+        """
+
+        bb_high = float(self.df.bb_upper[len(self.df.bb_upper) - 1])
+        bb_mid = float(self.df.bb_mid[len(self.df.bb_mid) - 1])
+        bb_low = float(self.df.bb_lower[len(self.df.bb_lower) - 1])
+
+        return bb_high, bb_mid, bb_low
+
     def define_strategy(self):
         """
         If market domination reversal is true, then it's already
@@ -50,10 +60,10 @@ class TechnicalIndicators(BinbotApi):
         self.market_domination()
         trend = None
         if self.market_domination_reversal is True:
-            trend = "uptrend"
+            trend = TrendEnum.up_trend
 
         if self.market_domination_reversal is False:
-            trend = "downtrend"
+            trend = TrendEnum.down_trend
 
         if not self.market_domination and self.market_domination_reversal is None:
             trend = None
@@ -133,7 +143,7 @@ class TechnicalIndicators(BinbotApi):
         self.df["rsi"] = rsi
 
 
-    def bollinguer_spreads(self):
+    def ma_spreads(self):
         """
         Calculates spread based on bollinger bands,
         for later use in take profit and stop loss
@@ -146,9 +156,25 @@ class TechnicalIndicators(BinbotApi):
         band_1 = (abs((self.df["ma_100"] - self.df["ma_25"])) / self.df["ma_100"]) * 100
         band_2 = (abs((self.df["ma_25"] - self.df["ma_7"])) / self.df["ma_25"]) * 100
 
-        self.df["bollinguer_band_1"] = band_1
-        self.df["bollinguer_band_2"] = band_2
-        print(f'band_1: {self.df["bollinguer_band_1"][-1:].value}, band_2: {self.df["bollinguer_band_2"][-1:]}')
+        self.df["big_ma_spread"] = band_1
+        self.df["small_ma_spread"] = band_2
+
+    def bollinguer_spreads(self, window=20, num_std=2):
+        """
+        Calculates Bollinguer bands
+
+        https://www.kaggle.com/code/blakemarterella/pandas-bollinger-bands
+        
+        """
+        bb_df = self.df.copy()
+        bb_df["rolling_mean"] = bb_df["close"].rolling(window).mean()
+        bb_df['rolling_std'] = bb_df["close"].rolling(window).std(ddof=0)
+        bb_df['upper_band'] = bb_df['rolling_mean'] + (num_std * bb_df['rolling_std'])
+        bb_df['lower_band'] = bb_df['rolling_mean'] - (num_std * bb_df['rolling_std'])
+
+        self.df["bb_upper"] = bb_df['upper_band']
+        self.df["bb_lower"] = bb_df['lower_band']
+        self.df["bb_mid"] = bb_df['rolling_mean']
 
     def log_volatility(self, window_size=7):
         """
@@ -158,7 +184,6 @@ class TechnicalIndicators(BinbotApi):
         Returns:
         - Volatility in percentage
         """
-        # log_volatility = numpy.log(self.df["close"].pct_change().rolling(window_size).std())
         log_volatility = pandas.Series(self.df["close"]).astype(float).pct_change().rolling(window_size).std()
         self.df["perc_volatility"] = log_volatility
     
@@ -199,12 +224,12 @@ class TechnicalIndicators(BinbotApi):
                     # Negative reversal
                     self.market_domination_reversal = False
 
-            self.btc_change_perc = self.get_latest_btc_price()
+            # self.btc_change_perc = self.get_latest_btc_price()
             reversal_msg = ""
             if self.market_domination_reversal is not None:
                 reversal_msg = f"{'Positive reversal' if self.market_domination_reversal else 'Negative reversal'}"
 
-            logging.info(f"Current USDT market trend is: {reversal_msg}. BTC 24hr change: {self.btc_change_perc}")
+            logging.info(f"Current USDT market trend is: {reversal_msg}.")
             self.market_domination_ts = datetime.now() + timedelta(hours=1)
         pass
 
@@ -229,11 +254,13 @@ class TechnicalIndicators(BinbotApi):
             self.rsi()
 
             # Bollinguer bands
+            self.ma_spreads()
             self.bollinguer_spreads()
 
             self.log_volatility()
 
             # Post-processing
+            self.df.dropna(inplace=True)
             self.df.reset_index(drop=True, inplace=True)
 
             close_price = float(self.df.close[len(self.df.close) - 1])
