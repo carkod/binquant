@@ -2,6 +2,8 @@ import json
 import os
 from shared.enums import KafkaTopics
 from shared.utils import round_numbers
+from models.signals import SignalsConsumer
+from shared.enums import KafkaTopics
 
 # Algorithms based on Bollinguer bands
 
@@ -46,6 +48,8 @@ def ma_candlestick_jump(
         and open_price > ma_100
     ):
 
+        bb_high, bb_mid, bb_low = self.bb_spreads(trend)
+
         algo = "ma_candlestick_jump"
         spread = volatility
         trend = self.define_strategy()
@@ -58,14 +62,18 @@ def ma_candlestick_jump(
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
         
-        value = {
-            "msg": msg,
-            "symbol": symbol,
-            "algo": algo, 
-            "spread": spread,
-            "current_price": close_price,
-            "trend": trend
-        }
+        value = SignalsConsumer(
+            spread=spread,
+            current_price=close_price,
+            msg=msg,
+            symbol=symbol,
+            algo=algo,
+            bb_spreads={
+                "bb_high": bb_high,
+                "bb_mid": bb_mid,
+                "bb_low": bb_low,
+            }
+        )
 
         self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 

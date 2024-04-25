@@ -38,7 +38,7 @@ def task_2():
         print("Received signal for telegram and autotrade! task_2", message.value)
         if message.topic == KafkaTopics.restart_streaming.value:
             at_consumer.load_data_on_start()
-        if message.topic == KafkaTopics.klines_store_topic.value:
+        if message.topic == KafkaTopics.signals.value:
             # telegram_consumer.send_telegram(result)
             at_consumer.process_autotrade_restrictions(message.value)
 

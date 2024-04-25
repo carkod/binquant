@@ -51,13 +51,21 @@ class Autotrade(BaseProducer, BinbotApi):
         super().__init__()
         self.producer = self.start_producer()
 
-    def _set_bollinguer_spreads(self, data: SignalsConsumer, **kwargs):
+    def _set_bollinguer_spreads(self, data: SignalsConsumer):
+        bb_spreads = data.bb_spreads
+        if bb_spreads["bb_high"] and bb_spreads["bb_low"] and bb_spreads["bb_mid"]:
+            if data.trend == TrendEnum.up_trend:
+                self.default_bot.take_profit = ((bb_spreads["bb_high"] - bb_spreads["bb_mid"]) / bb_spreads["bb_high"]) * 100
+                self.default_bot.stop_loss = ((bb_spreads["bb_high"] - bb_spreads["bb_low"]) / bb_spreads["bb_high"]) * 100
+                self.default_bot.trailling = True
+                self.default_bot.trailling_deviation = ((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
 
-        if data["bb_high"] and data["bb_low"] and data["bb_mid"]:
-            self.default_bot.take_profit = (data.bb_high - data.bb_mid) / data.bb_high
-            self.default_bot.stop_loss = (data.bb_high - data.bb_mid) / data.bb_high
-            self.default_bot.trailling = True
-            self.default_bot.trailling_deviation = (data.bb_high - data.bb_mid) / data.bb_high
+            
+            if data.trend == TrendEnum.down_trend:
+                self.default_bot.take_profit = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
+                self.default_bot.trailling_deviation = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
+                self.default_bot.stop_loss = abs((bb_spreads["bb_mid"] - bb_spreads["bb_high"]) / bb_spreads["bb_mid"]) * 100
+                self.default_bot.trailling = True
 
     def handle_error(self, msg):
         """
@@ -79,7 +87,8 @@ class Autotrade(BaseProducer, BinbotApi):
         self.default_bot.cooldown = 1440
         self.default_bot.margin_short_reversal = True
 
-        self._set_bollinguer_spreads(data)
+        if data.bb_spreads:
+            self._set_bollinguer_spreads(data)
 
         # Override for top_gainers_drop
         if self.algorithm_name == "top_gainers_drop":
@@ -93,7 +102,8 @@ class Autotrade(BaseProducer, BinbotApi):
         self.default_bot.cooldown = 360  # Avoid cannibalization of profits
         self.default_bot.margin_short_reversal = True
 
-        self._set_bollinguer_spreads(data)
+        if data.bb_spreads:
+            self._set_bollinguer_spreads(data)
 
     def handle_price_drops(
         self,
@@ -257,7 +267,7 @@ class Autotrade(BaseProducer, BinbotApi):
 
         if "error" in bot and bot["error"] > 0:
             # Failed to activate bot so:
-            # (1) Add to blacklist/exclude from future autotrades
+            # (1) Add  to blacklist/exclude from future autotrades
             # (2) Submit error to event logs
             # (3) Delete inactive bot
             # this prevents cluttering UI with loads of useless bots

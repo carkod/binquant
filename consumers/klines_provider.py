@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 
 from aiokafka import AIOKafkaConsumer
+from shared.enums import BinanceKlineIntervals
 from models.klines import KlineProduceModel
 from producers.technical_indicators import TechnicalIndicators
 from database import KafkaDB
@@ -28,7 +29,7 @@ class KlinesProvider(KafkaDB):
             payload = json.loads(results.value)
             klines = KlineProduceModel.model_validate(payload)
             symbol = klines.symbol
-            candles: list[dict] = self.raw_klines(symbol)
+            candles: list[dict] = self.raw_klines(symbol, interval=BinanceKlineIntervals.one_hour.value)
 
             if len(candles) == 0:
                 logging.info(f'{symbol} No data to do analytics')

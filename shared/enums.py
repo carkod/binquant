@@ -104,3 +104,38 @@ class KafkaTopics(str, Enum):
 
     def __str__(self):
         return str(self.str)
+
+class BinanceKlineIntervals(str, Enum):
+    one_minute = "1m"
+    three_minutes = "3m"
+    five_minutes = "5m"
+    fifteen_minutes = "15m"
+    thirty_minutes = "30m"
+    one_hour = "1h"
+    two_hours = "2h"
+    four_hours = "4h"
+    six_hours = "6h"
+    eight_hours = "8h"
+    twelve_hours = "12h"
+    one_day = "1d"
+    three_days = "3d"
+    one_week = "1w"
+    one_month = "1M"
+
+    def __str__(self):
+        return str(self.str)
+
+    def bin_size(self):
+        return int(self.str[:-1])
+    
+    def unit(interval):
+        if interval[-1:] == "m":
+            return "minute"
+        elif interval[-1:] == "h":
+            return "hour"
+        elif interval[-1:] == "d":
+            return "day"
+        elif interval[-1:] == "w":
+            return "week"
+        elif interval[-1:] == "M":
+            return "month"
