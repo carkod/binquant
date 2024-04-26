@@ -16,9 +16,9 @@ class KlinesProducer(KafkaDB):
 
     def on_send_success(self, record_metadata):
         timestamp = int(round_numbers_ceiling(record_metadata.timestamp / 1000, 0))
-        print(
-            f"{datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')} Produced: {record_metadata.partition}"
-        )
+        # print(
+        #     f"{datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')} Produced: {record_metadata.partition}"
+        # )
 
     def on_send_error(self, excp):
         print(f"Message production failed to send: {excp}")
@@ -26,6 +26,7 @@ class KlinesProducer(KafkaDB):
     def store(self, data):
 
         try:
+            print(data["T"], data["s"])
             self.store_klines(data)
             message = KlineProduceModel(
                 symbol=data["s"],

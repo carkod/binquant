@@ -1,8 +1,6 @@
 import json
 import os
 import asyncio
-
-from aiokafka import AIOKafkaConsumer
 from kafka import KafkaConsumer
 from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
@@ -35,11 +33,10 @@ def task_2():
     at_consumer = AutotradeConsumer(consumer)
 
     for message in consumer:
-        print("Received signal for telegram and autotrade! task_2", message.value)
         if message.topic == KafkaTopics.restart_streaming.value:
             at_consumer.load_data_on_start()
         if message.topic == KafkaTopics.signals.value:
-            # telegram_consumer.send_telegram(result)
+            telegram_consumer.send_telegram(message.value)
             at_consumer.process_autotrade_restrictions(message.value)
 
 

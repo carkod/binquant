@@ -2,8 +2,7 @@ import json
 import logging
 import pandas as pd
 
-from aiokafka import AIOKafkaConsumer
-from shared.enums import BinanceKlineIntervals
+from kafka import KafkaConsumer
 from models.klines import KlineProduceModel
 from producers.technical_indicators import TechnicalIndicators
 from database import KafkaDB
@@ -18,7 +17,7 @@ class KlinesProvider(KafkaDB):
     """
     Pools, processes, agregates and provides klines data
     """
-    def __init__(self, consumer: AIOKafkaConsumer):
+    def __init__(self, consumer: KafkaConsumer):
         super().__init__()
         # If we don't instantiate separately, almost no messages are received
         self.consumer = consumer
@@ -29,7 +28,7 @@ class KlinesProvider(KafkaDB):
             payload = json.loads(results.value)
             klines = KlineProduceModel.model_validate(payload)
             symbol = klines.symbol
-            candles: list[dict] = self.raw_klines(symbol, interval=BinanceKlineIntervals.one_hour.value)
+            candles: list[dict] = self.raw_klines(symbol)
 
             if len(candles) == 0:
                 logging.info(f'{symbol} No data to do analytics')

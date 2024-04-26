@@ -54,14 +54,14 @@ class Autotrade(BaseProducer, BinbotApi):
     def _set_bollinguer_spreads(self, data: SignalsConsumer):
         bb_spreads = data.bb_spreads
         if bb_spreads["bb_high"] and bb_spreads["bb_low"] and bb_spreads["bb_mid"]:
-            if data.trend == TrendEnum.up_trend:
+            if self.default_bot.strategy == Strategy.long:
                 self.default_bot.take_profit = ((bb_spreads["bb_high"] - bb_spreads["bb_mid"]) / bb_spreads["bb_high"]) * 100
                 self.default_bot.stop_loss = ((bb_spreads["bb_high"] - bb_spreads["bb_low"]) / bb_spreads["bb_high"]) * 100
                 self.default_bot.trailling = True
                 self.default_bot.trailling_deviation = ((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
 
             
-            if data.trend == TrendEnum.down_trend:
+            if self.default_bot.strategy == Strategy.margin_short:
                 self.default_bot.take_profit = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
                 self.default_bot.trailling_deviation = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
                 self.default_bot.stop_loss = abs((bb_spreads["bb_mid"] - bb_spreads["bb_high"]) / bb_spreads["bb_mid"]) * 100
@@ -287,7 +287,7 @@ class Autotrade(BaseProducer, BinbotApi):
             # Message is sent only after activation is successful,
             # if bot activation failed, we want to try again with a new bot
             self.producer.send(
-                KafkaTopics.restart_streaming.value, value=json.dumps(value)
+                KafkaTopics.restart_streaming.value, value=json.dumps(value), partition=0
             ).add_callback(self.base_producer.on_send_success).add_errback(
                 self.base_producer.on_send_error
             )

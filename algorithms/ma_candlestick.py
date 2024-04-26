@@ -48,7 +48,7 @@ def ma_candlestick_jump(
         and open_price > ma_100
     ):
 
-        bb_high, bb_mid, bb_low = self.bb_spreads(trend)
+        bb_high, bb_mid, bb_low = self.bb_spreads()
 
         algo = "ma_candlestick_jump"
         spread = volatility

@@ -1,4 +1,5 @@
 import os
+from httpx import get
 import pytz
 from dotenv import load_dotenv
 from pymongo import DESCENDING, MongoClient
@@ -6,6 +7,7 @@ from pymongo.collection import Collection
 from shared.enums import BinanceKlineIntervals
 from models.klines import KlineProduceModel, KlineModel
 from datetime import datetime
+from tzlocal import get_localzone
 
 load_dotenv()
 
@@ -60,14 +62,15 @@ class KafkaDB:
         Append metadata and store kline data in MongoDB
         """
         klines = KlineModel(
+            end_time=int(kline["T"]),
             symbol=kline["s"],
-            open_time=datetime.fromtimestamp(int(kline["t"]) / 1000, tz=pytz.utc),
-            close_time=datetime.fromtimestamp(int(kline["T"]) / 1000, tz=pytz.utc),
-            open=kline["o"],
-            high=kline["h"],
-            low=kline["l"],
-            close=kline["c"],
-            volume=kline["v"],
+            open_time=datetime.fromtimestamp(kline["t"] / 1000),
+            close_time=datetime.fromtimestamp(kline["T"] / 1000),
+            open=float(kline["o"]),
+            high=float(kline["h"]),
+            low=float(kline["l"]),
+            close=float(kline["c"]),
+            volume=float(kline["v"]),
             candle_closed=kline["x"],
             interval=kline["i"],
         )
@@ -84,64 +87,20 @@ class KafkaDB:
         )
         return list(query)
 
-    def raw_klines(self, symbol, limit=200, offset=0, interval=BinanceKlineIntervals.one_minute.value) -> list[KlineProduceModel]:
+    def raw_klines(self, symbol, limit=200, offset=0) -> list[KlineProduceModel]:
         """
         Query specifically for display or analytics,
         returns klines ordered by close_time, from oldest to newest
-        
+
         Returns:
-            list: Klines
+            list: 15m Klines
         """
-        if interval == BinanceKlineIntervals.one_minute:
-            query = self.db.kline.find(
-                {"symbol": symbol},
-                {"_id": 0, "metadata": 0, "timestamp": 0, "symbol": 0, "candle_closed": 0},
-                limit=limit,
-                skip=offset,
-                sort=[("_id", DESCENDING)],
-            )
-        else:
-            bin_size = int(interval[:-1])
-            unit = BinanceKlineIntervals.unit(interval)
-            query = self.db.kline.aggregate([
-                {"$match": { "symbol": symbol }},
-                {"$group": {
-                    "_id": {
-                        "_id": "$_id",
-                        "symbol": "$symbol",
-                        "close_time": {
-                        "$dateTrunc": {
-                            "date": "$close_time",
-                            "unit": unit,
-                            "binSize": bin_size
-                        },
-                    },
-                    "open_time": {
-                        "$dateTrunc": {
-                            "date": "$open_time",
-                            "unit": unit,
-                            "binSize": bin_size
-                        },
-                    },
-                    },
-                    "high": { "$max": "$high" },
-                    "low": { "$min": "$low" },
-                    "open": { "$first": "$open" },
-                    "close": { "$last": "$close" },
-                    "volume": { "$sum": "$volume" },
-                }},
-                {"$unwind": "$_id"},
-                {
-                    "$addFields": {
-                        "symbol": "$_id.symbol",
-                        "close_time": "$_id.close_time",
-                        "open_time": "$_id.open_time",
-                    }
-                },
-                {"$set": {"_id" : "$_id._id"}},
-                {"$limit": limit},
-                {"$skip": offset},
-                {"$sort": {"close_time": -1}},
-                # {"$project": {"_id": 0, "metadata": 0, "timestamp": 0}},
-            ])
-        return list(query)
+        query = self.db.kline.find(
+            {"symbol": symbol},
+            {"_id": 0, "candle_closed": 0},
+            limit=limit,
+            skip=offset,
+            sort=[("_id", DESCENDING)],
+        )
+        data = list(query)
+        return data

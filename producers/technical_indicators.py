@@ -40,7 +40,7 @@ class TechnicalIndicators(BinbotApi):
     def days(self, secs):
         return secs * 86400
 
-    def bb_spreads(self, strategy=Strategy.long) -> tuple[float, float]:
+    def bb_spreads(self) -> tuple[float, float]:
         """
         Calculate Bollinguer bands spreads for trailling strategies
         """
@@ -60,10 +60,10 @@ class TechnicalIndicators(BinbotApi):
         self.market_domination()
         trend = None
         if self.market_domination_reversal is True:
-            trend = TrendEnum.up_trend
+            trend = TrendEnum.up_trend.value
 
         if self.market_domination_reversal is False:
-            trend = TrendEnum.down_trend
+            trend = TrendEnum.down_trend.value
 
         if not self.market_domination and self.market_domination_reversal is None:
             trend = None
@@ -168,7 +168,7 @@ class TechnicalIndicators(BinbotApi):
         """
         bb_df = self.df.copy()
         bb_df["rolling_mean"] = bb_df["close"].rolling(window).mean()
-        bb_df['rolling_std'] = bb_df["close"].rolling(window).std(ddof=0)
+        bb_df['rolling_std'] = bb_df["close"].rolling(window).std()
         bb_df['upper_band'] = bb_df['rolling_mean'] + (num_std * bb_df['rolling_std'])
         bb_df['lower_band'] = bb_df['rolling_mean'] - (num_std * bb_df['rolling_std'])
 
@@ -261,6 +261,10 @@ class TechnicalIndicators(BinbotApi):
 
             # Post-processing
             self.df.dropna(inplace=True)
+            # Dropped NaN values may end up with empty dataframe
+            if self.df.empty or self.df.ma_7.size < 7 or self.df.ma_25.size < 25 or self.df.ma_100.size < 100:
+                return
+
             self.df.reset_index(drop=True, inplace=True)
 
             close_price = float(self.df.close[len(self.df.close) - 1])
