@@ -7,7 +7,7 @@ from shared.enums import Strategy
 from shared.apis import BinbotApi
 from producers.base import BaseProducer
 from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
-from algorithms.coinrule import fast_and_slow_macd
+from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
 
 class TechnicalIndicators(BinbotApi):
     def __init__(self, df, symbol) -> None:
@@ -271,6 +271,7 @@ class TechnicalIndicators(BinbotApi):
             open_price = float(self.df.open[len(self.df.open) - 1])
             macd = float(self.df.macd[len(self.df.macd) - 1])
             macd_signal = float(self.df.macd_signal[len(self.df.macd_signal) - 1])
+            rsi = float(self.df.rsi[len(self.df.rsi) - 1])
 
             ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
             ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
@@ -318,6 +319,18 @@ class TechnicalIndicators(BinbotApi):
                 ma_7_prev,
                 ma_25_prev,
                 ma_100_prev,
+                volatility
+            )
+
+
+            buy_low_sell_high(
+                self,
+                close_price,
+                self.symbol,
+                rsi,
+                ma_25,
+                ma_7,
+                ma_100,
                 volatility
             )
 

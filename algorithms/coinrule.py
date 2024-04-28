@@ -21,7 +21,7 @@ def fast_and_slow_macd(
 
     """
     algo = "coinrule_fast_and_slow_macd"
-    spread = None
+    spread = volatility
     trend = self.define_strategy()
     # trend = "uptrend"
 
@@ -35,6 +35,8 @@ def fast_and_slow_macd(
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
         - Current price: {close_price}
         - Log volatility (log SD): {volatility}%
+        - Strategy: {trend}
+        - Bollinguer bands spread: {bb_high}, {bb_low}
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
         """)
@@ -75,7 +77,6 @@ def buy_low_sell_high(
 
     if rsi < 35 and close_price > ma_25 and volatility > 0.08:
 
-        spread = None
         algo = "coinrule_buy_low_sell_high"
         trend = self.define_strategy()
         # trend = "uptrend"
@@ -93,7 +94,7 @@ def buy_low_sell_high(
     - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol}
     - Current price: {close_price}
     - Log volatility (log SD): {self.volatility}%
-    - Bollinguer bands spread: {spread['band_1']}, {spread['band_2']}
+    - Bollinguer bands spread: {bb_high}, {bb_low}
     - Strategy: {trend}
     - Reversal? {"No reversal" if not self.market_domination_reversal else "Positive" if self.market_domination_reversal else "Negative"}
     - https://www.binance.com/en/trade/{symbol}
@@ -101,7 +102,7 @@ def buy_low_sell_high(
     """)
         
         value = SignalsConsumer(
-            spread=spread,
+            spread=0,
             current_price=close_price,
             msg=msg,
             symbol=symbol,

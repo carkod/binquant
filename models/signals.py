@@ -24,6 +24,7 @@ class SignalsConsumer(BaseModel):
     """
     Pydantic model for the signals consumer.
     """
+    type: str = "signal"
     spread: float | str | None = 0
     current_price: float | str | None = 0
     msg: str

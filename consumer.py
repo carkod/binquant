@@ -25,6 +25,7 @@ def task_1():
 def task_2():
     consumer = KafkaConsumer(
         KafkaTopics.signals.value,
+        KafkaTopics.restart_streaming.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
     )
@@ -33,6 +34,16 @@ def task_2():
     at_consumer = AutotradeConsumer(consumer)
 
     for message in consumer:
+        # Parse messages first
+        # because it can be a restart or a signal
+        # this is the only way because this consumer may be
+        # too busy to process a separate topic, it never consumes
+        result = json.loads(message.value)
+        # if "type" in result and result["type"] == "restart":
+        #     at_consumer.load_data_on_start()
+        # if "type" in result and result["type"] == "signal":
+        #     telegram_consumer.send_telegram(message.value)
+        #     at_consumer.process_autotrade_restrictions(message.value)
         if message.topic == KafkaTopics.restart_streaming.value:
             at_consumer.load_data_on_start()
         if message.topic == KafkaTopics.signals.value:
