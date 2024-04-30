@@ -67,7 +67,6 @@ class Autotrade(BaseProducer, BinbotApi):
                     self.default_bot.trailling = True
                     self.default_bot.trailling_deviation = bottom_spread
 
-                
                 if self.default_bot.strategy == Strategy.margin_short:
                     self.default_bot.take_profit = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
                     self.default_bot.trailling_deviation = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100

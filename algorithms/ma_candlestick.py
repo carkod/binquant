@@ -36,7 +36,7 @@ def ma_candlestick_jump(
     """
     if (
         float(close_price) > float(open_price)
-        and volatility > 0.09
+        # and volatility > 0.09
         and close_price > ma_7
         and open_price > ma_7
         and close_price > ma_25
