@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from producers.base import BaseProducer
 from shared.enums import CloseConditions, KafkaTopics, Strategy
-from models.signals import BotPayload, SignalsConsumer, TrendEnum
+from models.signals import BotPayload, TrendEnum
 from shared.exceptions import AutotradeError
 from shared.apis import BinbotApi
 from shared.utils import round_numbers, supress_notation
@@ -51,7 +51,7 @@ class Autotrade(BaseProducer, BinbotApi):
         super().__init__()
         self.producer = self.start_producer()
 
-    def _set_bollinguer_spreads(self, data: SignalsConsumer):
+    def _set_bollinguer_spreads(self, data):
         bb_spreads = data.bb_spreads
         if bb_spreads["bb_high"] and bb_spreads["bb_low"] and bb_spreads["bb_mid"]:
             top_spread = ((bb_spreads["bb_high"] - bb_spreads["bb_mid"]) / bb_spreads["bb_high"]) * 100
@@ -83,7 +83,7 @@ class Autotrade(BaseProducer, BinbotApi):
             self.default_bot.errors = []
             self.default_bot.errors.append(msg)
 
-    def set_margin_short_values(self, data: SignalsConsumer):
+    def set_margin_short_values(self, data):
         """
         Set up values for margin_short
         this overrides the settings in research_controller autotrade settings
@@ -188,7 +188,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 )
                 pass
 
-    def activate_autotrade(self, data: SignalsConsumer, **kwargs):
+    def activate_autotrade(self, data, **kwargs):
         """
         Run autotrade
         2. Create bot with given parameters from research_controller
@@ -294,6 +294,4 @@ class Autotrade(BaseProducer, BinbotApi):
             # if bot activation failed, we want to try again with a new bot
             self.producer.send(
                 KafkaTopics.restart_streaming.value, value=json.dumps(value), partition=0
-            ).add_callback(self.base_producer.on_send_success).add_errback(
-                self.base_producer.on_send_error
             )

@@ -1,19 +1,12 @@
 import os
 
+from shared.utils import round_numbers
 from models.signals import SignalsConsumer
 from shared.enums import KafkaTopics
 
 
 def fast_and_slow_macd(
-    self,
-    close_price,
-    symbol,
-    macd,
-    macd_signal,
-    ma_7,
-    ma_25,
-    ma_100,
-    volatility
+    self, close_price, symbol, macd, macd_signal, ma_7, ma_25, ma_100, volatility
 ):
     """
     Coinrule top performance rule
@@ -21,25 +14,24 @@ def fast_and_slow_macd(
 
     """
     algo = "coinrule_fast_and_slow_macd"
+    volatility = round_numbers(volatility, 6)
     spread = volatility
     trend = self.define_strategy()
-    # trend = "uptrend"
-
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
-    if macd > macd_signal and ma_7 > ma_25:
+    if macd > macd_signal and ma_7 > ma_25 and volatility > 0.001:
 
         bb_high, bb_mid, bb_low = self.bb_spreads()
 
-        msg = (f"""
+        msg = f"""
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
         - Current price: {close_price}
-        - Log volatility (log SD): {volatility}%
+        - Log volatility (log SD): {volatility}
         - Strategy: {trend}
         - Bollinguer bands spread: {bb_high}, {bb_low}
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
-        """)
+        """
 
         value = SignalsConsumer(
             spread=spread,
@@ -52,33 +44,30 @@ def fast_and_slow_macd(
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
                 "bb_low": bb_low,
-            }
+            },
         )
 
-        self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(self.base_producer.on_send_success).add_errback(
+            self.base_producer.on_send_error
+        )
 
     pass
 
 
-def buy_low_sell_high(
-    self,
-    close_price,
-    symbol,
-    rsi,
-    ma_25,
-    ma_7,
-    ma_100,
-    volatility
-):
+def buy_low_sell_high(self, close_price, symbol, rsi, ma_25, ma_7, ma_100, volatility):
     """
     Coinrule top performance rule
     https://web.coinrule.com/share-rule/Multi-Time-Frame-Buy-Low-Sell-High-Short-term-8f02df
     """
+    volatility = round_numbers(volatility, 6)
 
-    if rsi < 35 and close_price > ma_25:
+    if rsi < 35 and close_price > ma_25 and volatility > 0.001:
 
         algo = "coinrule_buy_low_sell_high"
         trend = self.define_strategy()
+        volatility = round_numbers(volatility, 6)
         # trend = "uptrend"
 
         if not trend:
@@ -90,17 +79,17 @@ def buy_low_sell_high(
         # if this is not the case it may fail to signal correctly
         bb_high, bb_mid, bb_low = self.bb_spreads()
 
-        msg = (f"""
+        msg = f"""
     - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol}
     - Current price: {close_price}
-    - Log volatility (log SD): {self.volatility}%
+    - Log volatility (log SD): {volatility}
     - Bollinguer bands spread: {bb_high}, {bb_low}
     - Strategy: {trend}
     - Reversal? {"No reversal" if not self.market_domination_reversal else "Positive" if self.market_domination_reversal else "Negative"}
     - https://www.binance.com/en/trade/{symbol}
     - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
-    """)
-        
+    """
+
         value = SignalsConsumer(
             spread=0,
             current_price=close_price,
@@ -112,9 +101,13 @@ def buy_low_sell_high(
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
                 "bb_low": bb_low,
-            }
+            },
         )
 
-        self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(self.base_producer.on_send_success).add_errback(
+            self.base_producer.on_send_error
+        )
 
     pass

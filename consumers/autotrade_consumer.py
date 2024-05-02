@@ -121,6 +121,7 @@ class AutotradeConsumer(BinbotApi):
 
         # Check balance to avoid failed autotrades
         balance_check = self.get_available_fiat()
+        print("balance_check: ", balance_check)
         if balance_check < float(self.autotrade_settings["base_order_size"]):
             print(f"Not enough funds to autotrade [bots].")
             return

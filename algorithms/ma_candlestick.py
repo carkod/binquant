@@ -34,9 +34,10 @@ def ma_candlestick_jump(
     SD: standard deviation of 0.006 seems to be a good threshold after monitoring signals,
     whereas it is possible to get around 3% increase to actually make a profit
     """
+    volatility = round_numbers(volatility, 6)
     if (
         float(close_price) > float(open_price)
-        # and volatility > 0.09
+        and volatility > 0.001
         and close_price > ma_7
         and open_price > ma_7
         and close_price > ma_25
@@ -49,14 +50,13 @@ def ma_candlestick_jump(
     ):
 
         bb_high, bb_mid, bb_low = self.bb_spreads()
-
         algo = "ma_candlestick_jump"
         spread = volatility
         trend = self.define_strategy()
         msg = (f"""
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
-- %threshold based on volatility: {round_numbers(volatility * 100, 6)}%
+- %threshold based on volatility: {volatility}
 - Bot strategy: {trend}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
@@ -100,9 +100,10 @@ def ma_candlestick_drop(
 
     Suitable for margin short trading (borrow - margin sell - buy back - repay)
     """
+    volatility = round_numbers(volatility, 6)
     if (
         float(close_price) < float(open_price)
-        and volatility > 0.09
+        and volatility > 0.001
         and close_price < ma_7
         and open_price < ma_7
         and close_price < ma_25
