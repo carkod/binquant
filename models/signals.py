@@ -1,5 +1,5 @@
 from numpy import short
-from pydantic import BaseModel, InstanceOf, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, InstanceOf, ValidationError, field_validator
 from enum import Enum
 
 from shared.enums import Status, Strategy
@@ -24,13 +24,17 @@ class SignalsConsumer(BaseModel):
     """
     Pydantic model for the signals consumer.
     """
+    type: str = "signal"
     spread: float | str | None = 0
     current_price: float | str | None = 0
     msg: str
     symbol: str
     algo: str
     trend: TrendEnum | None = TrendEnum.neutral
-    bollinguer_spread: BollinguerSpread | None = None
+
+    model_config = ConfigDict(
+        extra='allow',
+    )
 
     @field_validator("spread", "current_price")
     @classmethod

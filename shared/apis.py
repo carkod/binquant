@@ -297,7 +297,7 @@ class BinbotApi(BinanceApi):
 
     def submit_bot_event_logs(self, bot_id, message):
         data = self.request(url=f"{self.bb_submit_errors}/{bot_id}", method="POST", json={"errors": message})
-        return data["data"]
+        return data
 
     def add_to_blacklist(self, symbol, reason=None):
         payload = {"symbol": symbol, "reason": reason}

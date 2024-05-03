@@ -1,9 +1,13 @@
 import os
+from httpx import get
+import pytz
 from dotenv import load_dotenv
-from pymongo import MongoClient
+from pymongo import DESCENDING, MongoClient
 from pymongo.collection import Collection
-from models.klines import KlineMetadata, TimeSeriesKline
+from shared.enums import BinanceKlineIntervals
+from models.klines import KlineProduceModel, KlineModel
 from datetime import datetime
+from tzlocal import get_localzone
 
 load_dotenv()
 
@@ -29,8 +33,8 @@ class KafkaDB:
                 "kline",
                 **{
                     "timeseries": {
-                        "timeField": "timestamp",
-                        "metaField": "metadata",
+                        "timeField": "close_time",
+                        "metaField": "symbol",
                         "granularity": "minutes",
                     },
                     "expireAfterSeconds": 604800,  # 7 days, minimize server cost
@@ -57,18 +61,16 @@ class KafkaDB:
         """
         Append metadata and store kline data in MongoDB
         """
-        timestamp = round((kline["t"] / 1000), 0)
-        klines = TimeSeriesKline(
-            metadata=KlineMetadata(partition=0),
-            timestamp=datetime.fromtimestamp(timestamp),
+        klines = KlineModel(
+            end_time=int(kline["T"]),
             symbol=kline["s"],
-            open_time=kline["t"],
-            open=kline["o"],
-            high=kline["h"],
-            low=kline["l"],
-            close=kline["c"],
-            volume=kline["v"],
-            close_time=kline["T"],
+            open_time=datetime.fromtimestamp(kline["t"] / 1000),
+            close_time=datetime.fromtimestamp(kline["T"] / 1000),
+            open=float(kline["o"]),
+            high=float(kline["h"]),
+            low=float(kline["l"]),
+            close=float(kline["c"]),
+            volume=float(kline["v"]),
             candle_closed=kline["x"],
             interval=kline["i"],
         )
@@ -85,11 +87,20 @@ class KafkaDB:
         )
         return list(query)
 
-    def raw_klines(self, symbol, limit=200, offset=0):
+    def raw_klines(self, symbol, limit=200, offset=0) -> list[KlineProduceModel]:
+        """
+        Query specifically for display or analytics,
+        returns klines ordered by close_time, from oldest to newest
+
+        Returns:
+            list: 15m Klines
+        """
         query = self.db.kline.find(
             {"symbol": symbol},
-            {"_id": 0, "metadata": 0, "timestamp": 0, "symbol": 0, "candle_closed": 0},
+            {"_id": 0, "candle_closed": 0},
             limit=limit,
             skip=offset,
+            sort=[("_id", DESCENDING)],
         )
-        return list(query)
+        data = list(query)
+        return data

@@ -1,20 +1,12 @@
-import json
 import os
 
+from shared.utils import round_numbers
 from models.signals import SignalsConsumer
 from shared.enums import KafkaTopics
 
 
 def fast_and_slow_macd(
-    self,
-    close_price,
-    symbol,
-    macd,
-    macd_signal,
-    ma_7,
-    ma_25,
-    ma_100,
-    volatility
+    self, close_price, symbol, macd, macd_signal, ma_7, ma_25, ma_100, volatility
 ):
     """
     Coinrule top performance rule
@@ -22,29 +14,24 @@ def fast_and_slow_macd(
 
     """
     algo = "coinrule_fast_and_slow_macd"
-    spread = None
+    volatility = round_numbers(volatility, 6)
+    spread = volatility
     trend = self.define_strategy()
 
-    if macd > macd_signal and ma_7 > ma_25:
+    # If volatility is too low, dynamic trailling will close too early with bb_spreads
+    if macd > macd_signal and ma_7 > ma_25 and volatility > 0.001:
 
-        if trend is None and trend == "uptrend":
-            return
+        bb_high, bb_mid, bb_low = self.bb_spreads()
 
-    # Second stage filtering when volatility is high
-    # when volatility is high we assume that
-    # difference between MA_7 and MA_25 is wide
-    # if this is not the case it may fail to signal correctly
-    # if self.volatility > 0.8:
-
-    # Calculate spread using bolliguer band MAs
-
-        msg = (f"""
+        msg = f"""
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
         - Current price: {close_price}
-        - Log volatility (log SD): {volatility}%
+        - Log volatility (log SD): {volatility}
+        - Strategy: {trend}
+        - Bollinguer bands spread: {bb_high}, {bb_low}
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
-        """)
+        """
 
         value = SignalsConsumer(
             spread=spread,
@@ -52,34 +39,36 @@ def fast_and_slow_macd(
             msg=msg,
             symbol=symbol,
             algo=algo,
-            trend=trend
+            trend=trend,
+            bb_spreads={
+                "bb_high": bb_high,
+                "bb_mid": bb_mid,
+                "bb_low": bb_low,
+            },
         )
 
-        self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(self.base_producer.on_send_success).add_errback(
+            self.base_producer.on_send_error
+        )
 
     pass
 
 
-def buy_low_sell_high(
-    self,
-    close_price,
-    symbol,
-    rsi,
-    ma_25,
-    ma_7,
-    ma_100,
-    volatility
-):
+def buy_low_sell_high(self, close_price, symbol, rsi, ma_25, ma_7, ma_100, volatility):
     """
     Coinrule top performance rule
     https://web.coinrule.com/share-rule/Multi-Time-Frame-Buy-Low-Sell-High-Short-term-8f02df
     """
+    volatility = round_numbers(volatility, 6)
 
-    if rsi[str(len(rsi) - 1)] < 35 and close_price > ma_25[len(ma_25) - 1]:
+    if rsi < 35 and close_price > ma_25 and volatility > 0.001:
 
-        spread = None
         algo = "coinrule_buy_low_sell_high"
         trend = self.define_strategy()
+        volatility = round_numbers(volatility, 6)
+        # trend = "uptrend"
 
         if not trend:
             return
@@ -88,32 +77,37 @@ def buy_low_sell_high(
         # when volatility is high we assume that
         # difference between MA_7 and MA_25 is wide
         # if this is not the case it may fail to signal correctly
-        if volatility > 0.8:
+        bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            # Calculate spread using bolliguer band MAs
-            spread = self.bollinguer_spreads(ma_100, ma_25, ma_7)
-        
-        msg = (f"""
-- [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol}
-- Current price: {close_price}
-- Log volatility (log SD): {self.volatility}%
-- Bollinguer bands spread: {spread['band_1']}, {spread['band_2']}
-- BTC 24hr change: {self.btc_change_perc}
-- Strategy: {trend}
-- Reversal? {"No reversal" if not self.market_domination_reversal else "Positive" if self.market_domination_reversal else "Negative"}
-- https://www.binance.com/en/trade/{symbol}
-- <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
-""")
-        
-        value = {
-            "msg": msg,
-            "symbol": symbol,
-            "algo": algo, 
-            "spread": spread,
-            "current_price": close_price,
-            "trend": trend
-        }
+        msg = f"""
+    - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol}
+    - Current price: {close_price}
+    - Log volatility (log SD): {volatility}
+    - Bollinguer bands spread: {bb_high}, {bb_low}
+    - Strategy: {trend}
+    - Reversal? {"No reversal" if not self.market_domination_reversal else "Positive" if self.market_domination_reversal else "Negative"}
+    - https://www.binance.com/en/trade/{symbol}
+    - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
+    """
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        value = SignalsConsumer(
+            spread=0,
+            current_price=close_price,
+            msg=msg,
+            symbol=symbol,
+            algo=algo,
+            trend=trend,
+            bb_spreads={
+                "bb_high": bb_high,
+                "bb_mid": bb_mid,
+                "bb_low": bb_low,
+            },
+        )
+
+        self.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(self.base_producer.on_send_success).add_errback(
+            self.base_producer.on_send_error
+        )
 
     pass

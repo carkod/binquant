@@ -37,6 +37,7 @@ class AutotradeConsumer(BinbotApi):
         """
         Load data on start and on update_required
         """
+        logging.info("Loading controller, active bots and blacklist data...")
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings = self.get_autotrade_settings()
         self.active_bots = self.get_bots_by_status()
@@ -120,6 +121,7 @@ class AutotradeConsumer(BinbotApi):
 
         # Check balance to avoid failed autotrades
         balance_check = self.get_available_fiat()
+        print("balance_check: ", balance_check)
         if balance_check < float(self.autotrade_settings["base_order_size"]):
             print(f"Not enough funds to autotrade [bots].")
             return
@@ -127,7 +129,7 @@ class AutotradeConsumer(BinbotApi):
         """
         Real autotrade starts
         """
-        if int(self.autotrade_settings["autotrade"]) == 1:
+        if int(self.autotrade_settings["autotrade"]) == 1 and symbol not in self.active_symbols:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"

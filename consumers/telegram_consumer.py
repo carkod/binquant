@@ -1,9 +1,9 @@
-from aiokafka import AIOKafkaConsumer
+from kafka import KafkaConsumer
 from shared.telegram_bot import TelegramBot
 import json
 
 class TelegramConsumer:
-    def __init__(self, consumer: AIOKafkaConsumer):
+    def __init__(self, consumer: KafkaConsumer):
         self.telegram_bot = TelegramBot()
         self.consumer = consumer
 
@@ -13,7 +13,7 @@ class TelegramConsumer:
         To avoid Conflict - duplicate Bot error
         /t command will still be available in telegram bot
         """
-        message = json.loads(msg.value)
+        message = json.loads(msg)
         if not hasattr(self.telegram_bot, "updater"):
             self.telegram_bot.run_bot()
 
