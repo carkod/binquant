@@ -1,7 +1,6 @@
 import json
 import os
 import asyncio
-from click import group
 from kafka import KafkaConsumer
 from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
