@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_serializer
 from datetime import datetime
+from confluent_kafka.serialization import StringSerializer
 
 # from pyspark.sql.types import StructType, StructField, StringType, LongType, BooleanType, FloatType
 
@@ -50,3 +51,4 @@ class KlineProduceModel(BaseModel):
     high_price: str
     low_price: str
     volume: float
+

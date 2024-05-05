@@ -54,23 +54,47 @@ class Autotrade(BaseProducer, BinbotApi):
     def _set_bollinguer_spreads(self, data):
         bb_spreads = data.bb_spreads
         if bb_spreads["bb_high"] and bb_spreads["bb_low"] and bb_spreads["bb_mid"]:
-            top_spread = ((bb_spreads["bb_high"] - bb_spreads["bb_mid"]) / bb_spreads["bb_high"]) * 100
-            whole_spread = ((bb_spreads["bb_high"] - bb_spreads["bb_low"]) / bb_spreads["bb_high"]) * 100
-            bottom_spread = ((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
+            top_spread = (
+                (bb_spreads["bb_high"] - bb_spreads["bb_mid"]) / bb_spreads["bb_high"]
+            ) * 100
+            whole_spread = (
+                (bb_spreads["bb_high"] - bb_spreads["bb_low"]) / bb_spreads["bb_high"]
+            ) * 100
+            bottom_spread = (
+                (bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]
+            ) * 100
 
             # Otherwise it'll close too soon
             if whole_spread > 0.5:
                 if self.default_bot.strategy == Strategy.long:
-                    
+
                     self.default_bot.take_profit = top_spread
                     self.default_bot.stop_loss = whole_spread
                     self.default_bot.trailling = True
                     self.default_bot.trailling_deviation = bottom_spread
 
                 if self.default_bot.strategy == Strategy.margin_short:
-                    self.default_bot.take_profit = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
-                    self.default_bot.trailling_deviation = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
-                    self.default_bot.stop_loss = abs((bb_spreads["bb_mid"] - bb_spreads["bb_high"]) / bb_spreads["bb_mid"]) * 100
+                    self.default_bot.take_profit = (
+                        abs(
+                            (bb_spreads["bb_mid"] - bb_spreads["bb_low"])
+                            / bb_spreads["bb_mid"]
+                        )
+                        * 100
+                    )
+                    self.default_bot.trailling_deviation = (
+                        abs(
+                            (bb_spreads["bb_mid"] - bb_spreads["bb_low"])
+                            / bb_spreads["bb_mid"]
+                        )
+                        * 100
+                    )
+                    self.default_bot.stop_loss = (
+                        abs(
+                            (bb_spreads["bb_mid"] - bb_spreads["bb_high"])
+                            / bb_spreads["bb_mid"]
+                        )
+                        * 100
+                    )
                     self.default_bot.trailling = True
 
     def handle_error(self, msg):
@@ -292,6 +316,7 @@ class Autotrade(BaseProducer, BinbotApi):
             # Send message to restart streaming at the end to avoid blocking
             # Message is sent only after activation is successful,
             # if bot activation failed, we want to try again with a new bot
-            self.producer.send(
-                KafkaTopics.restart_streaming.value, value=json.dumps(value), partition=0
+            self.producer.produce(
+                KafkaTopics.restart_streaming.value, value=json.dumps(value)
             )
+            self.producer.poll(1)
