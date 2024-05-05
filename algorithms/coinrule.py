@@ -19,7 +19,7 @@ def fast_and_slow_macd(
     trend = self.define_strategy()
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
-    if macd > macd_signal and ma_7 > ma_25 and volatility > 0.001:
+    if macd > macd_signal and ma_7 > ma_25 and volatility > 0.01:
 
         bb_high, bb_mid, bb_low = self.bb_spreads()
 
