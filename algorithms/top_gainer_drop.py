@@ -48,6 +48,6 @@ def top_gainers_drop(
             "trend": trend
         }
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.produce(KafkaTopics.signals.value, value=json.dumps(value))
 
     return

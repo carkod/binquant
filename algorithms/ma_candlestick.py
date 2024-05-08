@@ -75,7 +75,8 @@ def ma_candlestick_jump(
             }
         )
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.produce(KafkaTopics.signals.value, value=value.model_dump_json())
+        self.producer.poll(1)
 
     return
 
@@ -134,6 +135,6 @@ def ma_candlestick_drop(
             "current_price": close_price,
         }
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
-
+        self.producer.produce(KafkaTopics.signals.value, value=json.dumps(value))
+        self.producer.poll(1)
     return

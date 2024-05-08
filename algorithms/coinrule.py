@@ -47,11 +47,8 @@ def fast_and_slow_macd(
             },
         )
 
-        self.producer.send(
-            KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(self.base_producer.on_send_success).add_errback(
-            self.base_producer.on_send_error
-        )
+        self.producer.produce(KafkaTopics.signals.value, value=value.model_dump_json())
+        self.producer.poll(1)
 
     pass
 
@@ -104,10 +101,7 @@ def buy_low_sell_high(self, close_price, symbol, rsi, ma_25, ma_7, ma_100, volat
             },
         )
 
-        self.producer.send(
-            KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(self.base_producer.on_send_success).add_errback(
-            self.base_producer.on_send_error
-        )
+        self.producer.produce(KafkaTopics.signals.value, value=value.model_dump_json())
+        self.producer.poll(1)
 
     pass

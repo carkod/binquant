@@ -10,6 +10,7 @@ from shared.utils import handle_binance_errors
 
 load_dotenv()
 
+
 class BinanceApi:
     """
     Binance Api URLs
@@ -50,7 +51,7 @@ class BinanceApi:
         "https://launchpad.binance.com/gateway-api/v1/public/launchpool/project/list"
     )
 
-    def request(self, url, method="GET", session: Session=None, *args,**kwargs):
+    def request(self, url, method="GET", session: Session = None, *args, **kwargs):
         if not session:
             session = Session()
         res = session.request(method=method, url=url, *args, **kwargs)
@@ -171,7 +172,6 @@ class BinanceApi:
         return quote_asset
 
 
-
 class BinbotApi(BinanceApi):
     """
     API endpoints on this project itself
@@ -224,11 +224,7 @@ class BinbotApi(BinanceApi):
         return data
 
     def _get_candlestick(self, market, interval, stats=None):
-        params = {
-            "symbol": market,
-            "interval": interval,
-            "stats": stats
-        }
+        params = {"symbol": market, "interval": interval, "stats": stats}
         data = self.request(url=self.bb_candlestick_url, params=params)
         return data
 
@@ -256,7 +252,9 @@ class BinbotApi(BinanceApi):
         return response["data"]
 
     def blacklist_coin(self, pair, msg):
-        response = self.request(self.bb_blacklist_url, method="POST", json={"pair": pair, "reason": msg})
+        response = self.request(
+            self.bb_blacklist_url, method="POST", json={"pair": pair, "reason": msg}
+        )
         return response["data"]
 
     def ticker_24(self, symbol: str | None = None):
@@ -266,7 +264,9 @@ class BinbotApi(BinanceApi):
 
         Using cache
         """
-        data = self.request(method="GET", url=self.ticker24_url, params={"symbol": symbol})
+        data = self.request(
+            method="GET", url=self.ticker24_url, params={"symbol": symbol}
+        )
         return data
 
     def get_latest_btc_price(self):
@@ -276,27 +276,38 @@ class BinbotApi(BinanceApi):
         return self.btc_change_perc
 
     def post_error(self, msg):
-        data = self.request(method="PUT", url=self.bb_autotrade_settings_url, json={"system_logs": msg})
+        data = self.request(
+            method="PUT", url=self.bb_autotrade_settings_url, json={"system_logs": msg}
+        )
         return data
 
     def get_test_autotrade_settings(self):
         data = self.request(url=self.bb_test_autotrade_url)
         return data["data"]
-    
+
     def get_autotrade_settings(self):
         data = self.request(url=self.bb_autotrade_settings_url)
         return data["data"]
 
     def get_bots_by_status(self, status="active", no_cooldown=True):
-        data = self.request(url=self.bb_bot_url, params={"status": status, "no_cooldown": no_cooldown})
+        data = self.request(
+            url=self.bb_bot_url, params={"status": status, "no_cooldown": no_cooldown}
+        )
         return data["data"]
 
     def get_papertrading_bots_by_status(self, status="active", no_cooldown=True):
-        data = self.request(url=self.bb_test_bot_url, params={"status": status, "no_cooldown": no_cooldown})
+        data = self.request(
+            url=self.bb_test_bot_url,
+            params={"status": status, "no_cooldown": no_cooldown},
+        )
         return data["data"]
 
     def submit_bot_event_logs(self, bot_id, message):
-        data = self.request(url=f"{self.bb_submit_errors}/{bot_id}", method="POST", json={"errors": message})
+        data = self.request(
+            url=f"{self.bb_submit_errors}/{bot_id}",
+            method="POST",
+            json={"errors": message},
+        )
         return data
 
     def add_to_blacklist(self, symbol, reason=None):
@@ -332,6 +343,7 @@ class BinbotApi(BinanceApi):
         return data
 
     def activate_paper_bot(self, bot_id):
-        data = self.request(url=f"{self.bb_activate_test_bot_url}/{bot_id}", method="POST")
+        data = self.request(
+            url=f"{self.bb_activate_test_bot_url}/{bot_id}", method="POST"
+        )
         return data
-

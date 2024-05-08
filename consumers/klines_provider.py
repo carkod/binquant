@@ -22,10 +22,14 @@ class KlinesProvider(KafkaDB):
         # If we don't instantiate separately, almost no messages are received
         self.consumer = consumer
 
-    def aggregate_data(self, results):
+    def get_all_streaming_pairs_count(self):
+          
+        pass
 
-        if results.value:
-            payload = json.loads(results.value)
+    def aggregate_data(self, data):
+
+        if data:
+            payload = json.loads(data)
             klines = KlineProduceModel.model_validate(payload)
             symbol = klines.symbol
             candles: list[dict] = self.raw_klines(symbol)
