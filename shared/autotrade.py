@@ -58,6 +58,8 @@ class Autotrade(BaseProducer, BinbotApi):
             whole_spread = abs((bb_spreads["bb_high"] - bb_spreads["bb_low"]) / bb_spreads["bb_high"]) * 100
             bottom_spread = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
 
+            trailling_stop_loss_price = self.default_bot
+
             # Otherwise it'll close too soon
             if whole_spread > 1.2:
                 if self.default_bot.strategy == Strategy.long:

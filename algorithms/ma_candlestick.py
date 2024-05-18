@@ -35,9 +35,11 @@ def ma_candlestick_jump(
     whereas it is possible to get around 3% increase to actually make a profit
     """
     volatility = round_numbers(volatility, 6)
+    bb_high, bb_mid, bb_low = self.bb_spreads()
     if (
         float(close_price) > float(open_price)
-        and volatility > 0.001
+        and bb_high < 1
+        and bb_high > 0.01
         and close_price > ma_7
         and open_price > ma_7
         and close_price > ma_25
@@ -49,7 +51,6 @@ def ma_candlestick_jump(
         and open_price > ma_100
     ):
 
-        bb_high, bb_mid, bb_low = self.bb_spreads()
         algo = "ma_candlestick_jump"
         spread = volatility
         trend = self.define_strategy()
