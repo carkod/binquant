@@ -100,30 +100,26 @@ class AutotradeConsumer(BinbotApi):
         data = SignalsConsumer(**payload)
         symbol = data.symbol
 
-        try:
-            if (
-                symbol not in self.active_test_bots
-                and int(self.test_autotrade_settings["autotrade"]) == 1
-            ):
-                if self.reached_max_active_autobots("paper_trading"):
-                    logging.info(
-                        "Reached maximum number of active bots set in controller settings"
-                    )
-                else:
-                    # Test autotrade runs independently of autotrade = 1
-                    test_autotrade = Autotrade(
-                        symbol, self.test_autotrade_settings, data.algo, "paper_trading"
-                    )
-                    test_autotrade.activate_autotrade(data)
-        except Exception as error:
-            print(error)
-            pass
+        if (
+            symbol not in self.active_test_bots
+            and int(self.test_autotrade_settings["autotrade"]) == 1
+        ):
+            if self.reached_max_active_autobots("paper_trading"):
+                logging.info(
+                    "Reached maximum number of active bots set in controller settings"
+                )
+            else:
+                # Test autotrade runs independently of autotrade = 1
+                test_autotrade = Autotrade(
+                    symbol, self.test_autotrade_settings, data.algo, "paper_trading"
+                )
+                test_autotrade.activate_autotrade(data)
 
         # Check balance to avoid failed autotrades
         balance_check = self.get_available_fiat()
-        print("balance_check: ", balance_check)
+        logging.info("balance_check: ", balance_check)
         if balance_check < float(self.autotrade_settings["base_order_size"]):
-            print(f"Not enough funds to autotrade [bots].")
+            logging.info(f"Not enough funds to autotrade [bots].")
             return
 
         """
