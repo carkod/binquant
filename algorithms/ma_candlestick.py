@@ -59,7 +59,7 @@ def ma_candlestick_jump(
 - Current price: {close_price}
 - %threshold based on volatility: {volatility}
 - Strategy: {trend}
-- Bollinguer bands spread: {bb_high}, {bb_low}
+- Bollinguer bands spread: {bb_high}, {bb_mid}, {bb_low}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
@@ -128,7 +128,7 @@ def ma_candlestick_drop(
 - Current price: {close_price}
 - Log volatility (log SD): {volatility}
 - Strategy: {trend}
-- Bollinguer bands spread: {bb_high}, {bb_low}
+- Bollinguer bands spread: {bb_high}, {bb_mid}, {bb_low}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
