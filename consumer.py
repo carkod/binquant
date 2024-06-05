@@ -15,7 +15,6 @@ def task_1():
         KafkaTopics.klines_store_topic.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        group_id="klines_store_topic",
     )
 
     klines_provider = KlinesProvider(consumer)
@@ -35,7 +34,6 @@ def task_2():
         KafkaTopics.restart_streaming.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        group_id="autotrade_group",
     )
 
     telegram_consumer = TelegramConsumer(consumer)
