@@ -80,7 +80,7 @@ def rally_or_pullback(
                 # "lowest_price": lowest_price,
             }
 
-            self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+            self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
             self.send_telegram(msg)
             # self.process_autotrade_restrictions(symbol, "rally_pullback", False, **{"sd": sd, "current_price": close_price, "lowest_price": lowest_price, "trend": trend})

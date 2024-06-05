@@ -1,13 +1,9 @@
 import os
-from httpx import get
-import pytz
 from dotenv import load_dotenv
 from pymongo import DESCENDING, MongoClient
 from pymongo.collection import Collection
-from shared.enums import BinanceKlineIntervals
 from models.klines import KlineProduceModel, KlineModel
 from datetime import datetime
-from tzlocal import get_localzone
 
 load_dotenv()
 

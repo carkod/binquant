@@ -17,11 +17,12 @@ def fast_and_slow_macd(
     volatility = round_numbers(volatility, 6)
     spread = volatility
     trend = self.define_strategy()
+    bb_high, bb_mid, bb_low = self.bb_spreads()
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
-    if macd > macd_signal and ma_7 > ma_25 and volatility > 0.001:
+    if macd > macd_signal and ma_7 > ma_25 and bb_high < 1 and bb_high > 0.001:
 
-        bb_high, bb_mid, bb_low = self.bb_spreads()
+        
 
         msg = f"""
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
@@ -62,8 +63,9 @@ def buy_low_sell_high(self, close_price, symbol, rsi, ma_25, ma_7, ma_100, volat
     https://web.coinrule.com/share-rule/Multi-Time-Frame-Buy-Low-Sell-High-Short-term-8f02df
     """
     volatility = round_numbers(volatility, 6)
+    bb_high, bb_mid, bb_low = self.bb_spreads()
 
-    if rsi < 35 and close_price > ma_25 and volatility > 0.001:
+    if rsi < 35 and close_price > ma_25 and volatility > 0.01:
 
         algo = "coinrule_buy_low_sell_high"
         trend = self.define_strategy()

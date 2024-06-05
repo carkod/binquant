@@ -35,9 +35,11 @@ def ma_candlestick_jump(
     whereas it is possible to get around 3% increase to actually make a profit
     """
     volatility = round_numbers(volatility, 6)
+    bb_high, bb_mid, bb_low = self.bb_spreads()
     if (
         float(close_price) > float(open_price)
-        and volatility > 0.001
+        and bb_high < 1
+        and bb_high > 0.01
         and close_price > ma_7
         and open_price > ma_7
         and close_price > ma_25
@@ -49,7 +51,6 @@ def ma_candlestick_jump(
         and open_price > ma_100
     ):
 
-        bb_high, bb_mid, bb_low = self.bb_spreads()
         algo = "ma_candlestick_jump"
         spread = volatility
         trend = self.define_strategy()
@@ -57,7 +58,8 @@ def ma_candlestick_jump(
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - %threshold based on volatility: {volatility}
-- Bot strategy: {trend}
+- Strategy: {trend}
+- Bollinguer bands spread: {bb_high}, {bb_low}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
@@ -75,7 +77,7 @@ def ma_candlestick_jump(
             }
         )
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
     return
 
@@ -103,7 +105,7 @@ def ma_candlestick_drop(
     volatility = round_numbers(volatility, 6)
     if (
         float(close_price) < float(open_price)
-        and volatility > 0.001
+        and volatility > 0.009
         and close_price < ma_7
         and open_price < ma_7
         and close_price < ma_25
@@ -118,11 +120,15 @@ def ma_candlestick_drop(
         and (abs(float(close_price) - float(open_price)) / float(close_price)) > 0.02
     ):
         algo = "ma_candlestick_drop"
+        bb_high, bb_mid, bb_low = self.bb_spreads()
+        trend = self.define_strategy()
 
         msg = (f"""
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - Log volatility (log SD): {volatility}
+- Strategy: {trend}
+- Bollinguer bands spread: {bb_high}, {bb_low}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """)
@@ -134,6 +140,19 @@ def ma_candlestick_drop(
             "current_price": close_price,
         }
 
-        self.producer.send(KafkaTopics.signals.value, value=json.dumps(value)).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        value = SignalsConsumer(
+            spread=volatility,
+            current_price=close_price,
+            msg=msg,
+            symbol=symbol,
+            algo=algo,
+            bb_spreads={
+                "bb_high": bb_high,
+                "bb_mid": bb_mid,
+                "bb_low": bb_low,
+            }
+        )
+
+        self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
 
     return
