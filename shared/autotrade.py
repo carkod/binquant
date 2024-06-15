@@ -115,11 +115,9 @@ class Autotrade(BaseProducer, BinbotApi):
         balances,
         price,
         per_deviation=1.2,
-        exp_increase=1.2,
         total_num_so=3,
         trend=TrendEnum.up_trend,  # ["upward", "downward"] Upward trend is for candlestick_jumps and similar algorithms. Downward trend is for panic sells in the market
         lowest_price=0,
-        sd=0,
     ):
         """
         Sets the values for safety orders, short sell prices to hedge from drops in price.
