@@ -179,7 +179,6 @@ class BinbotApi(BinanceApi):
     """
 
     bb_base_url = os.getenv("FLASK_DOMAIN")
-    bb_candlestick_url = f"{bb_base_url}/charts/candlestick"
     bb_24_ticker_url = f"{bb_base_url}/account/ticker24"
     bb_symbols_raw = f"{bb_base_url}/account/symbols"
     bb_bot_url = f"{bb_base_url}/bot"
@@ -221,15 +220,6 @@ class BinbotApi(BinanceApi):
 
     def get_24_ticker(self, market):
         data = self.request(url=f"{self.bb_24_ticker_url}/{market}")
-        return data
-
-    def _get_candlestick(self, market, interval, stats=None):
-        params = {
-            "symbol": market,
-            "interval": interval,
-            "stats": stats
-        }
-        data = self.request(url=self.bb_candlestick_url, params=params)
         return data
 
     def balance_estimate(self) -> float:

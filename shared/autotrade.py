@@ -58,22 +58,19 @@ class Autotrade(BaseProducer, BinbotApi):
             whole_spread = abs((bb_spreads["bb_high"] - bb_spreads["bb_low"]) / bb_spreads["bb_high"]) * 100
             bottom_spread = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
 
-            trailling_stop_loss_price = self.default_bot
-
             # Otherwise it'll close too soon
             if whole_spread > 1.2:
+                self.default_bot.trailling = True
                 if self.default_bot.strategy == Strategy.long:
-                    self.default_bot.trailling = True
+                    self.default_bot.stop_loss = whole_spread if whole_spread < 3.6 else self.default_bot.stop_loss
                     self.default_bot.take_profit = top_spread
                     # too much risk, reduce stop loss
-                    self.default_bot.stop_loss = whole_spread if whole_spread < 3.6 else self.default_bot.stop_loss
-                    self.default_bot.trailling_deviation = bottom_spread
+                    self.default_bot.trailling_deviation = self.default_bot.stop_loss if bottom_spread > self.default_bot.stop_loss else bottom_spread
 
                 if self.default_bot.strategy == Strategy.margin_short:
-                    self.default_bot.trailling = True
-                    self.default_bot.take_profit = bottom_spread
-                    self.default_bot.trailling_deviation = top_spread
                     self.default_bot.stop_loss = whole_spread if whole_spread < 3.6 else self.default_bot.stop_loss
+                    self.default_bot.take_profit = bottom_spread
+                    self.default_bot.trailling_deviation = self.default_bot.stop_loss if top_spread > self.default_bot.stop_loss else top_spread
 
     def handle_error(self, msg):
         """

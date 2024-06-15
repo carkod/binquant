@@ -1,6 +1,7 @@
 import json
 import os
 import asyncio
+import time
 from kafka import KafkaConsumer
 from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
@@ -15,7 +16,6 @@ def task_1():
         KafkaTopics.klines_store_topic.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        group_id="klines_store_topic",
     )
 
     klines_provider = KlinesProvider(consumer)
@@ -35,11 +35,14 @@ def task_2():
         KafkaTopics.restart_streaming.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        group_id="autotrade_group",
     )
 
     telegram_consumer = TelegramConsumer(consumer)
     at_consumer = AutotradeConsumer(consumer)
+
+    # Telegram flood control
+    init_secs = time.time()
+    message_count = 0
 
     try:
         for message in consumer:
@@ -50,8 +53,18 @@ def task_2():
             if message.topic == KafkaTopics.restart_streaming.value:
                 at_consumer.load_data_on_start()
             if message.topic == KafkaTopics.signals.value:
+                if time.time() - init_secs > 1:
+                    init_secs = time.time()
+                else:
+                    message_count += 1
+                    if message_count > 20:
+                        print("Telegram flood control")
+                        return
+                # If telegram is returning flood control error
+                # probably this also overwhelms our server, so pause for both
                 telegram_consumer.send_telegram(message.value)
                 at_consumer.process_autotrade_restrictions(message.value)
+
     except Exception as e:
         print("Error: ", e)
         task_2()
