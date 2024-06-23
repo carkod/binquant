@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 import logging
 import pandas
 from typing import Literal
-from models.signals import TrendEnum
-from shared.enums import Strategy
+from models.signals import SignalsConsumer, TrendEnum
+from shared.enums import KafkaTopics
 from shared.apis import BinbotApi
 from producers.base import BaseProducer
 from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
@@ -18,7 +18,32 @@ class TechnicalIndicators(BinbotApi):
         self.symbol = symbol
         self.market_domination_trend = None
         self.market_domination_reversal = None
+        self.active_pairs = self.get_active_pairs()["data"]
         pass
+
+    def update_active_bots_bb_spreads(self, close_price, symbol):
+        """
+        Update active bots with bb_spreads
+        """
+        bb_high, bb_mid, bb_low = self.bb_spreads()
+        value = SignalsConsumer(
+            spread=None,
+            current_price=close_price,
+            msg="Update active bots",
+            symbol=symbol,
+            algo="update_active_bots_bb_spreads",
+            trend=None,
+            bb_spreads={
+                "bb_high": bb_high,
+                "bb_mid": bb_mid,
+                "bb_low": bb_low,
+            },
+        )
+        self.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(self.base_producer.on_send_success).add_errback(
+            self.base_producer.on_send_error
+        )
 
     def check_kline_gaps(self, data):
         """
@@ -281,6 +306,10 @@ class TechnicalIndicators(BinbotApi):
             ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
 
             volatility = float(self.df.perc_volatility[len(self.df.perc_volatility) - 1])
+
+            if self.symbol in self.active_pairs:
+                self.update_active_bots_bb_spreads(close_price=close_price, symbol=self.symbol)
+                return
 
             fast_and_slow_macd(
                 self,

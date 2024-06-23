@@ -25,6 +25,7 @@ class KlinesProducer(KafkaDB):
 
     def store(self, data):
 
+        print(f'Storing {data["s"]}')
         self.store_klines(data)
         message = KlineProduceModel(
             symbol=data["s"],

@@ -212,6 +212,9 @@ class BinbotApi(BinanceApi):
     bb_blacklist_url = f"{bb_base_url}/research/blacklist"
     bb_subscribed_list = f"{bb_base_url}/research/subscribed"
 
+    # bots
+    bb_active_pairs = f"{bb_base_url}/bot/active-pairs"
+
     # paper trading
     bb_test_bot_url = f"{bb_base_url}/paper-trading"
     bb_activate_test_bot_url = f"{bb_base_url}/paper-trading/activate"
@@ -277,12 +280,12 @@ class BinbotApi(BinanceApi):
         data = self.request(url=self.bb_autotrade_settings_url)
         return data["data"]
 
-    def get_bots_by_status(self, status="active", no_cooldown=True):
-        data = self.request(url=self.bb_bot_url, params={"status": status, "no_cooldown": no_cooldown})
-        return data["data"]
+    def get_bots_by_status(self, status="active", no_cooldown=True, collection_name="bots"):
+        url = self.bb_bot_url
+        if collection_name == "paper_trading":
+            url = self.bb_test_bot_url
 
-    def get_papertrading_bots_by_status(self, status="active", no_cooldown=True):
-        data = self.request(url=self.bb_test_bot_url, params={"status": status, "no_cooldown": no_cooldown})
+        data = self.request(url=url, params={"status": status, "no_cooldown": no_cooldown})
         return data["data"]
 
     def submit_bot_event_logs(self, bot_id, message):
@@ -325,3 +328,9 @@ class BinbotApi(BinanceApi):
         data = self.request(url=f"{self.bb_activate_test_bot_url}/{bot_id}", method="POST")
         return data
 
+    def get_active_pairs(self):
+        """
+        Get distinct (non-repeating) bots by status active
+        """
+        data = self.request(url=f"{self.bb_active_pairs}")
+        return data

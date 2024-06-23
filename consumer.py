@@ -16,6 +16,7 @@ def task_1():
         KafkaTopics.klines_store_topic.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
+        api_version=(3, 4, 1)
     )
 
     klines_provider = KlinesProvider(consumer)
