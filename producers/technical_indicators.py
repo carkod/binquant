@@ -65,7 +65,7 @@ class TechnicalIndicators(BinbotApi):
         if self.market_domination_reversal is False:
             trend = TrendEnum.down_trend.value
 
-        if not self.market_domination and self.market_domination_reversal is None:
+        if self.market_domination_trend is None and self.market_domination_reversal is None:
             trend = None
 
         return trend
