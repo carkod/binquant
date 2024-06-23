@@ -41,7 +41,7 @@ class AutotradeConsumer(BinbotApi):
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings = self.get_autotrade_settings()
         self.active_bots = self.get_bots_by_status()
-        self.paper_trading_active_bots = self.get_bots_by_status()
+        self.paper_trading_active_bots = self.get_bots_by_status(collection_name="paper_trading")
         self.active_symbols = [bot["pair"] for bot in self.active_bots]
         self.active_test_bots = [
             item["pair"] for item in self.paper_trading_active_bots

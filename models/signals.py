@@ -1,4 +1,3 @@
-from numpy import short
 from pydantic import BaseModel, ConfigDict, InstanceOf, ValidationError, field_validator
 from enum import Enum
 
