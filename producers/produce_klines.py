@@ -1,6 +1,4 @@
 from datetime import datetime
-import logging
-
 from kafka import KafkaProducer
 from models.klines import KlineProduceModel
 from database import KafkaDB
@@ -24,8 +22,6 @@ class KlinesProducer(KafkaDB):
         print(f"Message production failed to send: {excp}")
 
     def store(self, data):
-
-        print(f'Storing {data["s"]}')
         self.store_klines(data)
         message = KlineProduceModel(
             symbol=data["s"],

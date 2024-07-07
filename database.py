@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from pymongo import DESCENDING, MongoClient
 from pymongo.collection import Collection
+from shared.enums import BinanceKlineIntervals
 from models.klines import KlineProduceModel, KlineModel
 from datetime import datetime
 
@@ -83,7 +84,7 @@ class KafkaDB:
         )
         return list(query)
 
-    def raw_klines(self, symbol, limit=200, offset=0) -> list[KlineProduceModel]:
+    def raw_klines(self, symbol, interval: BinanceKlineIntervals = BinanceKlineIntervals.fifteen_minutes, limit=200, offset=0) -> list[KlineProduceModel]:
         """
         Query specifically for display or analytics,
         returns klines ordered by close_time, from oldest to newest
@@ -91,12 +92,38 @@ class KafkaDB:
         Returns:
             list: 15m Klines
         """
-        query = self.db.kline.find(
-            {"symbol": symbol},
-            {"_id": 0, "candle_closed": 0},
-            limit=limit,
-            skip=offset,
-            sort=[("_id", DESCENDING)],
-        )
+        if interval == BinanceKlineIntervals.five_minutes:
+            query = self.db.kline.find(
+                {"symbol": symbol},
+                {"_id": 0, "candle_closed": 0},
+                limit=limit,
+                skip=offset,
+                sort=[("_id", DESCENDING)],
+            )
+        else:
+            bin_size = interval.bin_size()
+            unit = interval.unit()
+            query = self.db.kline.aggregate([
+                {"$match": {"symbol": "JSTUSDT"}},
+                {"$sort": {"close_time": DESCENDING}},
+                {"$group":{
+                    "_id": {
+                        "time": {
+                            "$dateTrunc": {
+                                "date": "$close_time",
+                                "unit": unit,
+                                "binSize": bin_size
+                            },
+                        },
+                    },
+                    "open": {"$first":"$open"},
+                    "close": {"$last":"$close"},
+                    "high": {"$max":"$high"},
+                    "low": {"$min":"$low"},
+                    "close_time": {"$last": "$close_time"},
+                    "open_time": {"$first": "$open_time"},
+                    "volume": {"$sum": "$volume"}
+                }},
+            ])
         data = list(query)
         return data

@@ -2,7 +2,9 @@ import json
 import logging
 import pandas as pd
 
+from pandas.tseries.offsets import DateOffset, Hour
 from kafka import KafkaConsumer
+from shared.enums import BinanceKlineIntervals
 from models.klines import KlineProduceModel
 from producers.technical_indicators import TechnicalIndicators
 from database import KafkaDB
@@ -28,18 +30,25 @@ class KlinesProvider(KafkaDB):
             payload = json.loads(results.value)
             klines = KlineProduceModel.model_validate(payload)
             symbol = klines.symbol
-            candles: list[dict] = self.raw_klines(symbol)
+            candles: list[dict] = self.raw_klines(symbol, interval=BinanceKlineIntervals.fifteen_minutes)
 
             if len(candles) == 0:
                 logging.info(f'{symbol} No data to do analytics')
                 return
 
-            # self.check_kline_gaps(candles)
             # Pre-process
-            raw_df = pd.DataFrame(candles)
+            self.df = pd.DataFrame(candles)
+            self.df.resample("15Min", on="close_time").agg({
+                "open": "first",
+                "close": "last",
+                "high": "max",
+                "low": "min",
+                "close_time": "last",
+                "open_time": "first"
+            })
             # reverse the order to get the oldest data first, to dropnas and use latest date for technical indicators
-            df = raw_df[::-1].reset_index(drop=True)
-            TechnicalIndicators(df, symbol).publish()
+            self.df = self.df[::-1].reset_index(drop=True)
+            TechnicalIndicators(self.df, symbol).publish()
 
         pass
 
