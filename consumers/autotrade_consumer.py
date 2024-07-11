@@ -75,7 +75,7 @@ class AutotradeConsumer(BinbotApi):
             if active_count > self.autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
-        return False
+        return False        
 
     def process_autotrade_restrictions(
         self, result: str

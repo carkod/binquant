@@ -199,6 +199,7 @@ class BinbotApi(BinanceApi):
     bb_stop_sell_order_url = f"{bb_base_url}/order/sell/stop-limit"
     bb_submit_errors = f"{bb_base_url}/bot/errors"
     bb_liquidation_url = f"{bb_base_url}/account/one-click-liquidation"
+    bb_margin_trading_check_url = f"{bb_base_url}/account/check-margin-trading"
 
     # balances
     bb_balance_url = f"{bb_base_url}/account/balance/raw"
@@ -333,4 +334,8 @@ class BinbotApi(BinanceApi):
         Get distinct (non-repeating) bots by status active
         """
         data = self.request(url=f"{self.bb_active_pairs}")
+        return data
+
+    def margin_trading_check(self, symbol):
+        data = self.request(url=f"{self.bb_margin_trading_check_url}/{symbol}")
         return data

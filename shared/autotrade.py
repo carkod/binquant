@@ -87,7 +87,6 @@ class Autotrade(BaseProducer, BinbotApi):
         Set up values for margin_short
         this overrides the settings in research_controller autotrade settings
         """
-
         # Binances forces isolated pair to go through 24hr deactivation after traded
         self.default_bot.cooldown = 1440
         self.default_bot.margin_short_reversal = True
@@ -192,6 +191,7 @@ class Autotrade(BaseProducer, BinbotApi):
         3. Activate bot
         """
         logging.info(f"{self.db_collection_name} Autotrade running with {self.pair}...")
+
         if self.blacklist:
             for item in self.blacklist:
                 if item["pair"] == self.pair:
@@ -211,6 +211,12 @@ class Autotrade(BaseProducer, BinbotApi):
             activate_func = self.activate_paper_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
+                
+                # Check if margin trading is available
+                if not self.margin_trading_check(self.default_bot.pair):
+                    logging.info(f"Margin trading is not available for {self.default_bot.pair}")
+                    return
+
                 self.set_margin_short_values(data)
                 pass
             else:

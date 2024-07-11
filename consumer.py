@@ -2,6 +2,7 @@ import json
 import os
 import asyncio
 import time
+import logging
 from kafka import KafkaConsumer
 from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
@@ -54,17 +55,17 @@ def task_2():
             if message.topic == KafkaTopics.restart_streaming.value:
                 at_consumer.load_data_on_start()
             if message.topic == KafkaTopics.signals.value:
+                at_consumer.process_autotrade_restrictions(message.value)
                 if time.time() - init_secs > 1:
                     init_secs = time.time()
                 else:
                     message_count += 1
                     if message_count > 20:
-                        print("Telegram flood control")
+                        logging.warn("Telegram flood control")
                         return
                 # If telegram is returning flood control error
                 # probably this also overwhelms our server, so pause for both
                 telegram_consumer.send_telegram(message.value)
-                at_consumer.process_autotrade_restrictions(message.value)
 
     except Exception as e:
         print("Error: ", e)
