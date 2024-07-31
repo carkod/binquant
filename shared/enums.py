@@ -123,19 +123,19 @@ class BinanceKlineIntervals(str, Enum):
     one_month = "1M"
 
     def __str__(self):
-        return str(self.str)
+        return str(self.value)
 
     def bin_size(self):
-        return int(self.str[:-1])
+        return int(self.value[:-1])
     
-    def unit(interval):
-        if interval[-1:] == "m":
+    def unit(self):
+        if self.value[-1:] == "m":
             return "minute"
-        elif interval[-1:] == "h":
+        elif self.value[-1:] == "h":
             return "hour"
-        elif interval[-1:] == "d":
+        elif self.value[-1:] == "d":
             return "day"
-        elif interval[-1:] == "w":
+        elif self.value[-1:] == "w":
             return "week"
-        elif interval[-1:] == "M":
+        elif self.value[-1:] == "M":
             return "month"

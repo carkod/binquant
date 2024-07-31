@@ -70,6 +70,7 @@ def ma_candlestick_jump(
             msg=msg,
             symbol=symbol,
             algo=algo,
+            trend=trend,
             bb_spreads={
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
