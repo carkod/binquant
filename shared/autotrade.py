@@ -234,7 +234,11 @@ class Autotrade(BaseProducer, BinbotApi):
             activate_func = self.activate_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
-                ticker = self.ticker_price(self.default_bot.pair)
+                try:
+                    ticker = self.ticker_price(self.default_bot.pair)
+                except Exception as e:
+                    print(f"Error getting ticker price: {e}")
+                    return
                 initial_price = ticker["price"]
                 estimate_qty = float(self.default_bot.base_order_size) / float(
                     initial_price

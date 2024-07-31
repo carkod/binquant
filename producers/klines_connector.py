@@ -47,7 +47,7 @@ class KlinesConnector(BinbotApi):
             self.process_kline_stream(res)
 
     def start_stream(self):
-        logging.info("Initializing Research signals")
+        logging.info("Initializing USDC signals")
         raw_symbols = set(
             coin["symbol"]
             for coin in self.exchange_info["symbols"]
