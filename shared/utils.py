@@ -99,13 +99,11 @@ def handle_binance_errors(response: Response):
     - Binbot internal errors - bot errors, returns "errored"
 
     """
+    response.raise_for_status()
+
     if 400 <= response.status_code < 500:
-        if response.status_code == 422:
-            raise HTTPError(f"Binbot error: {response.json()}")
         if response.status_code == 418:
             sleep(120)
-
-    response.raise_for_status()
 
     # Calculate request weights and pause half of the way (1200/2=600)
     if (

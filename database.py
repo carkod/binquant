@@ -104,7 +104,7 @@ class KafkaDB:
             bin_size = interval.bin_size()
             unit = interval.unit()
             query = self.db.kline.aggregate([
-                {"$match": {"symbol": "JSTUSDT"}},
+                {"$match": {"symbol": symbol}},
                 {"$sort": {"close_time": DESCENDING}},
                 {"$group":{
                     "_id": {
