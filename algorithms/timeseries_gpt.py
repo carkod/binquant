@@ -8,8 +8,7 @@ from shared.enums import KafkaTopics
 from nixtla import NixtlaClient
 
 nixtla_client = NixtlaClient(
-    # defaults to os.environ.get("NIXTLA_API_KEY")
-    api_key = 'nixtla-tok-OUK3EVEbvvKowOZlSGBOvVkjjOpx3MQ13uDftJFfcBKpQmFqtg2G3VbkUfCHhOCad0ArEZHLWPHejdxM'
+    os.environ.get("NIXTLA_API_KEY")
 )
 
 # Algorithms based on Bollinguer bands

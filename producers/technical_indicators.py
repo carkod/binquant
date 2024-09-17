@@ -84,16 +84,17 @@ class TechnicalIndicators(BinbotApi):
         from the market domination function
         """
         self.market_domination()
-        trend = None
+        trend = True
         print("market_domination_reversal: ", self.market_domination_reversal)
-        if self.market_domination_reversal is True:
-            trend = TrendEnum.up_trend.value
+        # if self.market_domination_reversal is True:
+        #     trend = TrendEnum.up_trend.value
 
-        if self.market_domination_reversal is False:
-            trend = TrendEnum.down_trend.value
+        # if self.market_domination_reversal is False:
+        #     trend = TrendEnum.down_trend.value
 
-        if self.market_domination_trend is None and self.market_domination_reversal is None:
-            trend = None
+        # if self.market_domination_trend is None and self.market_domination_reversal is None:
+        #     trend = None
+
 
         return trend
 
