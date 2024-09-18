@@ -276,7 +276,7 @@ class BinbotApi(BinanceApi):
     def get_test_autotrade_settings(self):
         data = self.request(url=self.bb_test_autotrade_url)
         return data["data"]
-    
+
     def get_autotrade_settings(self):
         data = self.request(url=self.bb_autotrade_settings_url)
         return data["data"]

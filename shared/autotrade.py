@@ -62,15 +62,15 @@ class Autotrade(BaseProducer, BinbotApi):
             if whole_spread > 1.2:
                 self.default_bot.trailling = True
                 if self.default_bot.strategy == Strategy.long:
-                    self.default_bot.stop_loss = whole_spread
-                    self.default_bot.take_profit = top_spread
+                    self.default_bot.stop_loss = round_numbers(whole_spread)
+                    self.default_bot.take_profit = round_numbers(top_spread)
                     # too much risk, reduce stop loss
-                    self.default_bot.trailling_deviation = bottom_spread
+                    self.default_bot.trailling_deviation = round_numbers(bottom_spread)
 
                 if self.default_bot.strategy == Strategy.margin_short:
-                    self.default_bot.stop_loss = whole_spread
-                    self.default_bot.take_profit = bottom_spread
-                    self.default_bot.trailling_deviation = top_spread
+                    self.default_bot.stop_loss = round_numbers(whole_spread)
+                    self.default_bot.take_profit = round_numbers(bottom_spread)
+                    self.default_bot.trailling_deviation = round_numbers(top_spread)
 
     def handle_error(self, msg):
         """
@@ -211,7 +211,7 @@ class Autotrade(BaseProducer, BinbotApi):
             activate_func = self.activate_paper_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
-                
+
                 # Check if margin trading is available
                 if not self.margin_trading_check(self.default_bot.pair):
                     logging.info(f"Margin trading is not available for {self.default_bot.pair}")
@@ -266,10 +266,6 @@ class Autotrade(BaseProducer, BinbotApi):
         create_bot = create_func(payload)
 
         if "error" in create_bot and create_bot["error"] == 1:
-            print(
-                f"Autotrade: {create_bot['message']}",
-                f"Pair: {self.pair}.",
-            )
             self.submit_bot_event_logs(create_bot["botId"], message)
             return
 

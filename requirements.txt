@@ -13,3 +13,4 @@ pydantic==2.7.0
 # pyarrow==15.0.2
 # py4j
 httpx
+nixtla
