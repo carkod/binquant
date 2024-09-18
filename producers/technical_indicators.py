@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import logging
 import pandas
 from typing import Literal
+from algorithms.timeseries_gpt import detect_anomalies
 from models.signals import SignalsConsumer, TrendEnum
 from shared.enums import KafkaTopics
 from shared.apis import BinbotApi
@@ -83,15 +84,17 @@ class TechnicalIndicators(BinbotApi):
         from the market domination function
         """
         self.market_domination()
-        trend = None
-        if self.market_domination_reversal is True:
-            trend = TrendEnum.up_trend.value
+        trend = True
+        print("market_domination_reversal: ", self.market_domination_reversal)
+        # if self.market_domination_reversal is True:
+        #     trend = TrendEnum.up_trend.value
 
-        if self.market_domination_reversal is False:
-            trend = TrendEnum.down_trend.value
+        # if self.market_domination_reversal is False:
+        #     trend = TrendEnum.down_trend.value
 
-        if self.market_domination_trend is None and self.market_domination_reversal is None:
-            trend = None
+        # if self.market_domination_trend is None and self.market_domination_reversal is None:
+        #     trend = None
+
 
         return trend
 
@@ -267,6 +270,10 @@ class TechnicalIndicators(BinbotApi):
         """
 
         if self.df.close.size > 0:
+
+            # detect_anomalies(
+            #     self,
+            # )
             # Bolliguer bands
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe
@@ -310,7 +317,7 @@ class TechnicalIndicators(BinbotApi):
             if self.symbol in self.active_pairs:
                 self.update_active_bots_bb_spreads(close_price=close_price, symbol=self.symbol)
                 return
-
+            
             fast_and_slow_macd(
                 self,
                 close_price,
