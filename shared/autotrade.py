@@ -58,6 +58,11 @@ class Autotrade(BaseProducer, BinbotApi):
             whole_spread = abs((bb_spreads["bb_high"] - bb_spreads["bb_low"]) / bb_spreads["bb_high"]) * 100
             bottom_spread = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
 
+            if whole_spread > 10:
+                whole_spread = whole_spread / 10
+                top_spread = top_spread / 10
+                bottom_spread = bottom_spread / 10
+
             # Otherwise it'll close too soon
             if whole_spread > 1.2:
                 self.default_bot.trailling = True
@@ -266,7 +271,7 @@ class Autotrade(BaseProducer, BinbotApi):
         create_bot = create_func(payload)
 
         if "error" in create_bot and create_bot["error"] == 1:
-            self.submit_bot_event_logs(create_bot["botId"], message)
+            self.submit_bot_event_logs(create_bot["botId"], create_bot["message"])
             return
 
         # Activate bot
