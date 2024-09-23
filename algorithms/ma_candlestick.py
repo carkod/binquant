@@ -7,6 +7,7 @@ from shared.enums import KafkaTopics
 
 # Algorithms based on Bollinguer bands
 
+
 def ma_candlestick_jump(
     self,
     close_price,
@@ -18,7 +19,7 @@ def ma_candlestick_jump(
     ma_7_prev,
     ma_25_prev,
     ma_100_prev,
-    volatility
+    volatility,
 ):
     """
     Candlesticks are in an upward trending motion for several periods
@@ -54,7 +55,7 @@ def ma_candlestick_jump(
         algo = "ma_candlestick_jump"
         spread = volatility
         trend = self.define_strategy()
-        msg = (f"""
+        msg = f"""
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - %threshold based on volatility: {volatility}
@@ -62,8 +63,8 @@ def ma_candlestick_jump(
 - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
-""")
-        
+"""
+
         value = SignalsConsumer(
             spread=spread,
             current_price=close_price,
@@ -75,13 +76,16 @@ def ma_candlestick_jump(
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
                 "bb_low": bb_low,
-            }
+            },
         )
 
-        self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(self.base_producer.on_send_success).add_errback(
+            self.base_producer.on_send_error
+        )
 
     return
-
 
 
 def ma_candlestick_drop(
@@ -95,7 +99,7 @@ def ma_candlestick_drop(
     ma_7_prev,
     ma_25_prev,
     ma_100_prev,
-    volatility
+    volatility,
 ):
     """
     Opposite algorithm of ma_candletick_jump
@@ -124,7 +128,7 @@ def ma_candlestick_drop(
         bb_high, bb_mid, bb_low = self.bb_spreads()
         trend = self.define_strategy()
 
-        msg = (f"""
+        msg = f"""
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - Log volatility (log SD): {volatility}
@@ -132,7 +136,7 @@ def ma_candlestick_drop(
 - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
-""")
+"""
         value = {
             "msg": msg,
             "symbol": symbol,
@@ -151,9 +155,13 @@ def ma_candlestick_drop(
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
                 "bb_low": bb_low,
-            }
+            },
         )
 
-        self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
+        self.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(self.base_producer.on_send_success).add_errback(
+            self.base_producer.on_send_error
+        )
 
     return

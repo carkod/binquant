@@ -37,7 +37,6 @@ def detect_anomalies(
     print(anomalies_df)
     print(fcst)
 
-
 #     if (
 #         float(close_price) > float(open_price)
 #         and close_price > ma_7
@@ -62,7 +61,7 @@ def detect_anomalies(
 # - https://www.binance.com/en/trade/{symbol}
 # - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 # """)
-        
+
 #         value = SignalsConsumer(
 #             spread=spread,
 #             current_price=close_price,

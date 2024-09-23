@@ -20,15 +20,15 @@ class AutotradeConsumer(BinbotApi):
             "UP",
             "AUD",
         ]  # on top of blacklist
-        self.active_bots = []
-        self.paper_trading_active_bots = []
-        self.active_symbols = []
-        self.active_test_bots = []
+        self.active_bots: list = []
+        self.paper_trading_active_bots: list = []
+        self.active_symbols: list = []
+        self.active_test_bots: list = []
         self.test_autotrade_settings = None
         self.autotrade_settings = None
         self.load_data_on_start()
         # Because market domination analysis 40 weight from binance endpoints
-        self.top_coins_gainers = []
+        self.top_coins_gainers: list = []
         self.btc_change_perc = 0
         self.volatility = 0
         pass
@@ -117,7 +117,6 @@ class AutotradeConsumer(BinbotApi):
 
         # Check balance to avoid failed autotrades
         balance_check = self.get_available_fiat()
-        logging.info("balance_check: ", balance_check)
         if balance_check < float(self.autotrade_settings["base_order_size"]):
             logging.info(f"Not enough funds to autotrade [bots].")
             return
