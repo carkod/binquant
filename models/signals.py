@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, InstanceOf, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from enum import Enum
 
 from shared.enums import Status, Strategy
@@ -30,6 +30,7 @@ class SignalsConsumer(BaseModel):
     symbol: str
     algo: str
     trend: TrendEnum | None = TrendEnum.neutral
+    bb_spreads: dict | None = None
 
     model_config = ConfigDict(
         extra='allow',
@@ -55,12 +56,12 @@ class BotPayload(BaseModel):
     base_order_size: str = "15"  # Min Binance 0.0001 BNB
     close_condition: str = ""
     dynamic_trailling: bool = False
-    errors: list[str] = [] # Event logs
+    errors: list[str] = []  # Event logs
     mode: str = "autotrade"  # Manual is triggered by the terminal dashboard, autotrade by research app
     name: str = "Default bot"
     status: Status = Status.inactive
     stop_loss: float = 0
-    margin_short_reversal: bool = False # If stop_loss > 0, allow for reversal
+    margin_short_reversal: bool = False  # If stop_loss > 0, allow for reversal
     take_profit: float = 0
     trailling: bool = True
     trailling_deviation: float = 0
@@ -95,5 +96,5 @@ class BotPayload(BaseModel):
     @classmethod
     def check_errors_format(cls, v: list[str]):
         if not isinstance(v, list):
-            raise ValueError(f'Errors must be a list of strings')
+            raise ValueError('Errors must be a list of strings')
         return v

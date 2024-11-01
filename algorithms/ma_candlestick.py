@@ -1,9 +1,7 @@
-import json
 import os
 from shared.enums import KafkaTopics
 from shared.utils import round_numbers
 from models.signals import SignalsConsumer
-from shared.enums import KafkaTopics
 
 # Algorithms based on Bollinguer bands
 
@@ -59,6 +57,7 @@ def ma_candlestick_jump(
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - %threshold based on volatility: {volatility}
+- Reversal? {"Yes" if self.margin_short_reversal else "No"}
 - Strategy: {trend}
 - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
 - https://www.binance.com/en/trade/{symbol}
@@ -132,25 +131,20 @@ def ma_candlestick_drop(
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - Log volatility (log SD): {volatility}
+- Reversal? {self.margin_short_reversal}
 - Strategy: {trend}
 - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
 """
-        value = {
-            "msg": msg,
-            "symbol": symbol,
-            "algo": algo,
-            "spread": None,
-            "current_price": close_price,
-        }
 
         value = SignalsConsumer(
-            spread=volatility,
+            spread=None,
             current_price=close_price,
             msg=msg,
             symbol=symbol,
             algo=algo,
+            trend=trend,
             bb_spreads={
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
