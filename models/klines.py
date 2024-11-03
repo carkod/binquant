@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 
 # from pyspark.sql.types import StructType, StructField, StringType, LongType, BooleanType, FloatType
