@@ -1,8 +1,7 @@
-from datetime import datetime
+import logging
 from kafka import KafkaProducer
 from models.klines import KlineProduceModel
 from database import KafkaDB
-from shared.utils import round_numbers_ceiling
 from shared.enums import KafkaTopics
 
 
@@ -13,16 +12,20 @@ class KlinesProducer(KafkaDB):
         self.producer = producer
 
     def on_send_success(self, record_metadata):
-        timestamp = int(round_numbers_ceiling(record_metadata.timestamp / 1000, 0))
-        # print(
-        #     f"{datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')} Produced: {record_metadata.partition}"
-        # )
+        logging.warning(
+            f"Message produced to topic {record_metadata.topic} partition {record_metadata.partition} at offset {record_metadata.offset}"
+        )
+        pass
 
     def on_send_error(self, excp):
         print(f"Message production failed to send: {excp}")
 
-    def store(self, data):
-        self.store_klines(data)
+    def store(self, result):
+        data = result["k"]
+        # Store only if candle closed
+        if data["x"]:
+            self.store_klines(data)
+
         message = KlineProduceModel(
             symbol=data["s"],
             open_time=str(data["t"]),

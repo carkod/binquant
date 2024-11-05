@@ -62,8 +62,9 @@ def task_2():
             # because it can be a restart or a signal
             # this is the only way because this consumer may be
             # too busy to process a separate topic, it never consumes
-            if message.topic == KafkaTopics.restart_streaming.value:
+            if message.topic == KafkaTopics.restart_streaming.value and message.offset == consumer.assignment().beginning_offsets([message.partition])[message.partition]:
                 at_consumer.load_data_on_start()
+
             if message.topic == KafkaTopics.signals.value:
                 at_consumer.process_autotrade_restrictions(message.value)
                 if time.time() - init_secs > 1:
@@ -90,7 +91,6 @@ def task_2():
 
 async def main():
     await asyncio.gather(asyncio.to_thread(task_1), asyncio.to_thread(task_2))
-    # await asyncio.gather(asyncio.to_thread(task_2))
 
 
 if __name__ == "__main__":

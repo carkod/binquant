@@ -1,8 +1,6 @@
 import json
 import logging
 import pandas as pd
-
-from pandas.tseries.offsets import DateOffset, Hour
 from kafka import KafkaConsumer
 from shared.enums import BinanceKlineIntervals
 from models.klines import KlineProduceModel
