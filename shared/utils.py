@@ -7,7 +7,7 @@ from time import sleep
 from requests import HTTPError, Response
 from datetime import datetime
 
-from shared.exceptions import InvalidSymbol
+from shared.exceptions import BinanceErrors, InvalidSymbol
 
 
 def round_numbers(value, decimals=6):
@@ -115,21 +115,19 @@ def handle_binance_errors(response: Response):
 
     content = response.json()
 
-    try:
-        if "code" in content:
-            if content["code"] == 200 or content["code"] == "000000":
-                return content
-
-            if content["code"] == -1121:
-                raise InvalidSymbol("Binance error, invalid symbol")
-
-        if "error" in content and content["error"] == 1:
-            logging.error(content["message"])
-
-        else:
+    if "code" in content:
+        if content["code"] == 200 or content["code"] == "000000":
             return content
-    except HTTPError:
-        raise HTTPError(content["msg"])
+
+        if content["code"] == -1121:
+            raise InvalidSymbol("Binance error, invalid symbol")
+
+    if "error" in content and content["error"] == 1:
+        logging.error(content["message"])
+
+    else:
+        return content
+
 
 def timestamp_to_datetime(timestamp: str | int) -> datetime:
     format = "%Y-%m-%d %H:%M:%S"
