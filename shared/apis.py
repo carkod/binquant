@@ -51,8 +51,8 @@ class BinanceApi:
         "https://launchpad.binance.com/gateway-api/v1/public/launchpool/project/list"
     )
 
-    def request(self, session: Session = Session(), *args, **kwargs):
-        res = session.request(*args, **kwargs)
+    def request(self, url, method="GET", session: Session = Session(), **kwargs):
+        res = session.request(url=url, method=method, **kwargs)
         data = handle_binance_errors(res)
         return data
 
@@ -152,7 +152,7 @@ class BinanceApi:
         symbols = self._exchange_info(symbol)
         market = symbols["symbols"][0]
         min_notional_filter = next(
-            (m for m in market["filters"] if m["filterType"] == "NOTIONAL"), None
+            (m for m in market["filters"] if m["filterType"] == "NOTIONAL")
         )
         min_qty = float(qty) > float(min_notional_filter["minNotional"])
         return min_qty
