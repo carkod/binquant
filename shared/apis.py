@@ -22,8 +22,8 @@ class BinanceApi:
     WS_BASE = "wss://stream.binance.com:9443/stream?streams="
 
     recvWindow = 5000
-    secret = os.getenv("BINANCE_SECRET")
-    key = os.getenv("BINANCE_KEY")
+    secret = os.getenv("BINANCE_SECRET", "")
+    key = os.getenv("BINANCE_KEY", "")
     server_time_url = f"{BASE}/api/v3/time"
     account_url = f"{BASE}/api/v3/account"
     exchangeinfo_url = f"{BASE}/api/v3/exchangeInfo"
@@ -51,10 +51,8 @@ class BinanceApi:
         "https://launchpad.binance.com/gateway-api/v1/public/launchpool/project/list"
     )
 
-    def request(self, url, method="GET", session: Session = None, *args, **kwargs):
-        if not session:
-            session = Session()
-        res = session.request(method=method, url=url, *args, **kwargs)
+    def request(self, session: Session = Session(), *args, **kwargs):
+        res = session.request(*args, **kwargs)
         data = handle_binance_errors(res)
         return data
 
@@ -87,7 +85,7 @@ class BinanceApi:
             hashlib.sha256,
         ).hexdigest()
         url = f"{url}?{query_string}&signature={signature}"
-        data = self.request(url, method, session, payload)
+        data = self.request(url=url, payload=payload, method=method, session=session)
         return data
 
     def _exchange_info(self, symbol=None):
@@ -132,7 +130,7 @@ class BinanceApi:
         symbols = self._exchange_info(symbol)
         market = symbols["symbols"][0]
         price_filter = next(
-            (m for m in market["filters"] if m["filterType"] == "PRICE_FILTER"), None
+            (m for m in market["filters"] if m["filterType"] == "PRICE_FILTER")
         )
 
         # Once got the filter data of Binance
@@ -251,7 +249,7 @@ class BinbotApi(BinanceApi):
 
     def blacklist_coin(self, pair, msg):
         response = self.request(
-            self.bb_blacklist_url, method="POST", json={"pair": pair, "reason": msg}
+            url=self.bb_blacklist_url, method="POST", json={"pair": pair, "reason": msg}
         )
         return response["data"]
 

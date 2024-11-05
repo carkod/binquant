@@ -1,13 +1,10 @@
-from curses.ascii import HT
 import math
-import logging
 import re
 from decimal import Decimal
 from time import sleep
-from requests import HTTPError, Response
+from requests import Response
 from datetime import datetime
-
-from shared.exceptions import BinanceErrors, InvalidSymbol
+from shared.exceptions import InvalidSymbol
 
 
 def round_numbers(value, decimals=6):
@@ -33,15 +30,6 @@ def supress_trailling(value: str | float | int) -> float:
     number = float(f"{value:f}")
     number = float("{0:g}".format(number))
     return number
-
-
-def round_numbers(value, decimals=6):
-    decimal_points = 10 ** int(decimals)
-    number = float(value)
-    result = math.floor(number * decimal_points) / decimal_points
-    if decimals == 0:
-        result = int(result)
-    return result
 
 
 def round_numbers_ceiling(value, decimals=6):
@@ -78,7 +66,7 @@ def interval_to_millisecs(interval: str) -> int:
     return 0
 
 
-def supress_notation(num: float, precision: int = 0):
+def supress_notation(num: float, precision: int = 0) -> str:
     """
     Supress scientific notation
     e.g. 8e-5 = "0.00008"
@@ -87,8 +75,8 @@ def supress_notation(num: float, precision: int = 0):
     if precision >= 0:
         decimal_points = precision
     else:
-        decimal_points = Decimal(str(num)).as_tuple().exponent * -1
-    return f"{num:.{decimal_points}f}"
+        decimal_points = Decimal(num).as_tuple().exponent * -1
+    return f"{num:.{str(decimal_points)}f}"
 
 
 def handle_binance_errors(response: Response):
@@ -122,14 +110,11 @@ def handle_binance_errors(response: Response):
         if content["code"] == -1121:
             raise InvalidSymbol("Binance error, invalid symbol")
 
-    if "error" in content and content["error"] == 1:
-        logging.error(content["message"])
-
     else:
         return content
 
 
-def timestamp_to_datetime(timestamp: str | int) -> datetime:
+def timestamp_to_datetime(timestamp: str | int) -> str:
     format = "%Y-%m-%d %H:%M:%S"
     timestamp = int(round_numbers_ceiling(int(timestamp) / 1000, 0))
     return datetime.fromtimestamp(timestamp).strftime(format)
