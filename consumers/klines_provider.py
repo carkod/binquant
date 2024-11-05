@@ -26,8 +26,8 @@ class KlinesProvider(KafkaDB):
 
     def aggregate_data(self, results):
 
-        if results.value:
-            payload = json.loads(results.value)
+        if results:
+            payload = json.loads(results)
             klines = KlineProduceModel.model_validate(payload)
             symbol = klines.symbol
             candles: list[dict] = self.raw_klines(

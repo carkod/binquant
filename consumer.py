@@ -3,6 +3,7 @@ import os
 import asyncio
 import time
 import logging
+from click import group
 from kafka import KafkaConsumer
 from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
@@ -14,25 +15,24 @@ consumer_count = 0
 
 
 def task_1():
-
     # Start consuming
     consumer = KafkaConsumer(
         KafkaTopics.klines_store_topic.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        api_version=(3, 4, 1),
-        consumer_timeout_ms=1000,
-        fetch_max_bytes=1024 * 1024,
-        max_poll_records=100,
+        group_id="klines_consumer",
+        api_version=(3, 4, 1)
     )
 
     klines_provider = KlinesProvider(consumer)
     try:
-        for result in consumer:
-            global consumer_count
-            consumer_count += 1
-            print("Klines consumer count: ", consumer_count)
-            klines_provider.aggregate_data(result)
+        while True:
+            messages = consumer.poll(timeout_ms=1000)  # Poll with a timeout
+            if not messages:
+                continue
+            for topic_partition, message_list in messages.items():
+                for message in message_list:
+                    klines_provider.aggregate_data(message.value)
     except Exception as e:
         print("Error: ", e)
         task_1()
