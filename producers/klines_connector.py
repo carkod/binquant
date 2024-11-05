@@ -6,19 +6,19 @@ from shared.apis import BinbotApi
 from producers.produce_klines import KlinesProducer
 from shared.streaming.socket_client import SpotWebsocketStreamClient
 from shared.exceptions import WebSocketError
+
+
 class KlinesConnector(BinbotApi):
-    def __init__(self, producer: KafkaProducer, interval: str="1m") -> None:
+    def __init__(self, producer: KafkaProducer, interval: str = "1m") -> None:
         logging.info("Started Kafka producer SignalsInbound")
         super().__init__()
         self.interval = interval
-        self.last_processed_kline = {}
         self.client = SpotWebsocketStreamClient(
             on_message=self.on_message,
             on_close=self.handle_close,
             on_error=self.handle_error,
         )
 
-        self.symbol_partitions = []
         self.producer = producer
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings = self.get_autotrade_settings()
@@ -47,7 +47,6 @@ class KlinesConnector(BinbotApi):
             self.process_kline_stream(res)
 
     def start_stream(self):
-        logging.info("Initializing USDC signals")
         raw_symbols = set(
             coin["symbol"]
             for coin in self.exchange_info["symbols"]
@@ -88,12 +87,7 @@ class KlinesConnector(BinbotApi):
         """
 
         symbol = result["k"]["s"]
-        if (
-            symbol
-            and "k" in result
-            and "s" in result["k"]
-            and result["k"]["x"]
-        ):
+        if symbol and "k" in result and "s" in result["k"] and result["k"]["x"]:
 
             klines_producer = KlinesProducer(self.producer, symbol)
             klines_producer.store(result["k"])
