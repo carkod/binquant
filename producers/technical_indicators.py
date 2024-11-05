@@ -10,6 +10,7 @@ from producers.base import BaseProducer
 from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
 from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
 
+
 class TechnicalIndicators(BinbotApi):
     def __init__(self, df, symbol) -> None:
         self.base_producer = BaseProducer()
@@ -62,7 +63,7 @@ class TechnicalIndicators(BinbotApi):
         if self.interval == "15m":
             if time_diff > 15:
                 logging.warn(f'Gap in {data["symbol"]} klines: {time_diff.min} minutes')
-    
+
     def days(self, secs):
         return secs * 86400
 
@@ -84,8 +85,7 @@ class TechnicalIndicators(BinbotApi):
         from the market domination function
         """
         self.market_domination()
-        trend = True
-        print("market_domination_reversal: ", self.market_domination_reversal)
+        trend = None
         # if self.market_domination_reversal is True:
         #     trend = TrendEnum.up_trend.value
 
@@ -95,6 +95,14 @@ class TechnicalIndicators(BinbotApi):
         # if self.market_domination_trend is None and self.market_domination_reversal is None:
         #     trend = None
 
+        if self.market_domination_trend == "gainers":
+            trend = TrendEnum.up_trend.value
+
+        elif self.market_domination_trend == "losers":
+            trend = TrendEnum.down_trend.value
+
+        else:
+            trend = None
 
         return trend
 
@@ -128,7 +136,7 @@ class TechnicalIndicators(BinbotApi):
         Calculate moving averages for 7, 25, 100 days
         this also takes care of Bollinguer bands
         """
-        self.df[f'ma_{period}'] = self.df["close"].rolling(window=period).mean()
+        self.df[f"ma_{period}"] = self.df["close"].rolling(window=period).mean()
 
     def macd(self):
         """
@@ -159,7 +167,6 @@ class TechnicalIndicators(BinbotApi):
         gain = change.mask(change < 0, 0.0)
         loss = -change.mask(change > 0, -0.0)
 
-
         # Verify that we did not make any mistakes
         change.equals(gain + loss)
 
@@ -169,7 +176,6 @@ class TechnicalIndicators(BinbotApi):
 
         rsi = 100 * avg_up / (avg_up + avg_down)
         self.df["rsi"] = rsi
-
 
     def ma_spreads(self):
         """
@@ -192,17 +198,17 @@ class TechnicalIndicators(BinbotApi):
         Calculates Bollinguer bands
 
         https://www.kaggle.com/code/blakemarterella/pandas-bollinger-bands
-        
+
         """
         bb_df = self.df.copy()
         bb_df["rolling_mean"] = bb_df["close"].rolling(window).mean()
-        bb_df['rolling_std'] = bb_df["close"].rolling(window).std()
-        bb_df['upper_band'] = bb_df['rolling_mean'] + (num_std * bb_df['rolling_std'])
-        bb_df['lower_band'] = bb_df['rolling_mean'] - (num_std * bb_df['rolling_std'])
+        bb_df["rolling_std"] = bb_df["close"].rolling(window).std()
+        bb_df["upper_band"] = bb_df["rolling_mean"] + (num_std * bb_df["rolling_std"])
+        bb_df["lower_band"] = bb_df["rolling_mean"] - (num_std * bb_df["rolling_std"])
 
-        self.df["bb_upper"] = bb_df['upper_band']
-        self.df["bb_lower"] = bb_df['lower_band']
-        self.df["bb_mid"] = bb_df['rolling_mean']
+        self.df["bb_upper"] = bb_df["upper_band"]
+        self.df["bb_lower"] = bb_df["lower_band"]
+        self.df["bb_mid"] = bb_df["rolling_mean"]
 
     def log_volatility(self, window_size=7):
         """
@@ -212,9 +218,15 @@ class TechnicalIndicators(BinbotApi):
         Returns:
         - Volatility in percentage
         """
-        log_volatility = pandas.Series(self.df["close"]).astype(float).pct_change().rolling(window_size).std()
+        log_volatility = (
+            pandas.Series(self.df["close"])
+            .astype(float)
+            .pct_change()
+            .rolling(window_size)
+            .std()
+        )
         self.df["perc_volatility"] = log_volatility
-    
+
     def market_domination(self) -> Literal["gainers", "losers", None]:
         """
         Get data from gainers and losers endpoint to analyze market trends
@@ -226,7 +238,7 @@ class TechnicalIndicators(BinbotApi):
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        if datetime.now().minute == 0 or self.market_domination_trend == None:
+        if datetime.now().minute == 0 or self.market_domination_trend is None:
             logging.info(
                 f"Performing market domination analyses. Current trend: {self.market_domination_trend}"
             )
@@ -259,8 +271,7 @@ class TechnicalIndicators(BinbotApi):
 
             logging.info(f"Current USDT market trend is: {reversal_msg}.")
             self.market_domination_ts = datetime.now() + timedelta(hours=1)
-        pass
-
+        return
 
     def publish(self):
         """
@@ -294,7 +305,12 @@ class TechnicalIndicators(BinbotApi):
             # Post-processing
             self.df.dropna(inplace=True)
             # Dropped NaN values may end up with empty dataframe
-            if self.df.empty or self.df.ma_7.size < 7 or self.df.ma_25.size < 25 or self.df.ma_100.size < 100:
+            if (
+                self.df.empty
+                or self.df.ma_7.size < 7
+                or self.df.ma_25.size < 25
+                or self.df.ma_100.size < 100
+            ):
                 return
 
             self.df.reset_index(drop=True, inplace=True)
@@ -312,12 +328,16 @@ class TechnicalIndicators(BinbotApi):
             ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
             ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
 
-            volatility = float(self.df.perc_volatility[len(self.df.perc_volatility) - 1])
+            volatility = float(
+                self.df.perc_volatility[len(self.df.perc_volatility) - 1]
+            )
 
             if self.symbol in self.active_pairs:
-                self.update_active_bots_bb_spreads(close_price=close_price, symbol=self.symbol)
+                self.update_active_bots_bb_spreads(
+                    close_price=close_price, symbol=self.symbol
+                )
                 return
-            
+
             fast_and_slow_macd(
                 self,
                 close_price,
@@ -327,7 +347,7 @@ class TechnicalIndicators(BinbotApi):
                 ma_7,
                 ma_25,
                 ma_100,
-                volatility
+                volatility,
             )
 
             ma_candlestick_jump(
@@ -341,7 +361,7 @@ class TechnicalIndicators(BinbotApi):
                 ma_7_prev,
                 ma_25_prev,
                 ma_100_prev,
-                volatility
+                volatility,
             )
 
             ma_candlestick_drop(
@@ -355,21 +375,12 @@ class TechnicalIndicators(BinbotApi):
                 ma_7_prev,
                 ma_25_prev,
                 ma_100_prev,
-                volatility
+                volatility,
             )
-
 
             buy_low_sell_high(
-                self,
-                close_price,
-                self.symbol,
-                rsi,
-                ma_25,
-                ma_7,
-                ma_100,
-                volatility
+                self, close_price, self.symbol, rsi, ma_25, ma_7, ma_100, volatility
             )
-
 
             # This function calls a lot ticker24 revise it before uncommenting
             # rally_or_pullback(

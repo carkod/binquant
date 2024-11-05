@@ -1,7 +1,7 @@
-import json
 import os
 
 from shared.enums import KafkaTopics
+
 
 def top_gainers_drop(
     self,

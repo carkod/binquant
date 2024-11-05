@@ -26,6 +26,7 @@ def fast_and_slow_macd(
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
         - Current price: {close_price}
         - Log volatility (log SD): {volatility}
+        - Reversal? {"Yes" if self.margin_short_reversal else "No"}
         - Strategy: {trend}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
