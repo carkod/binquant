@@ -1,17 +1,12 @@
 import json
 import os
 import asyncio
-import time
 import logging
-from click import group
 from kafka import KafkaConsumer
 from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
 from consumers.telegram_consumer import TelegramConsumer
 from consumers.klines_provider import KlinesProvider
-
-
-consumer_count = 0
 
 
 def task_1():
@@ -21,18 +16,19 @@ def task_1():
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
         group_id="klines_consumer",
-        api_version=(3, 4, 1)
+        api_version=(3, 4, 1),
     )
 
     klines_provider = KlinesProvider(consumer)
     try:
         while True:
-            messages = consumer.poll(timeout_ms=1000)  # Poll with a timeout
+            messages = consumer.poll(timeout_ms=3000)  # Poll with a timeout
             if not messages:
                 continue
             for topic_partition, message_list in messages.items():
                 for message in message_list:
                     klines_provider.aggregate_data(message.value)
+
     except Exception as e:
         print("Error: ", e)
         task_1()
@@ -47,39 +43,43 @@ def task_2():
         KafkaTopics.restart_streaming.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
+        auto_offset_reset="latest",  # Start reading from the latest offset
     )
 
     telegram_consumer = TelegramConsumer(consumer)
     at_consumer = AutotradeConsumer(consumer)
 
-    # Telegram flood control
-    init_secs = time.time()
-    message_count = 0
-
     try:
-        for message in consumer:
-            # Parse messages first
-            # because it can be a restart or a signal
-            # this is the only way because this consumer may be
-            # too busy to process a separate topic, it never consumes
-            if message.topic == KafkaTopics.restart_streaming.value and message.offset == consumer.assignment().beginning_offsets([message.partition])[message.partition]:
-                at_consumer.load_data_on_start()
+        while True:
+            messages = consumer.poll(timeout_ms=8000)  # Poll with a timeout
+            if not messages:
+                continue
+            for topic_partition, message_list in messages.items():
+                # Manage offsets to avoid repeated streams
+                beginning_offsets = consumer.beginning_offsets([topic_partition])
+                offset = beginning_offsets.get(topic_partition)
 
-            if message.topic == KafkaTopics.signals.value:
-                at_consumer.process_autotrade_restrictions(message.value)
-                if time.time() - init_secs > 1:
-                    init_secs = time.time()
-                else:
-                    message_count += 1
-                    if message_count > 20:
-                        logging.warning("Telegram flood control")
-                        return
-                # If telegram is returning flood control error
-                # probably this also overwhelms our server, so pause for both
-                telegram_consumer.send_telegram(message.value)
-            global consumer_count
-            consumer_count += 1
-            print("Telegram/autotrade consumer count: ", consumer_count)
+                for message in message_list:
+                    # Parse messages first
+                    # because it can be a restart or a signal
+                    # this is the only way because this consumer may be
+                    # too busy to process a separate topic, it never consumes
+                    if message.topic == KafkaTopics.restart_streaming.value:
+                        logging.info("message.offset", message.offset)
+                        logging.info("offset", offset)
+                        # Avoid repeated loading
+                        if message.offset == offset:
+                            telegram_consumer.send_telegram(
+                                f"Loading data on start. Message offset: {message.offset}. Beginning offset: {offset}"
+                            )
+                            at_consumer.load_data_on_start()
+
+                    if message.topic == KafkaTopics.signals.value:
+                        if message.offset == offset:
+                            logging.info(
+                                f"Autotrade signals. Message offset: {message.offset}. Beginning offset: {offset}"
+                            )
+                            at_consumer.process_autotrade_restrictions(message.value)
 
     except Exception as e:
         print("Error: ", e)

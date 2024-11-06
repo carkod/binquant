@@ -1,4 +1,3 @@
-import logging
 from kafka import KafkaProducer
 from models.klines import KlineProduceModel
 from database import KafkaDB
@@ -12,9 +11,6 @@ class KlinesProducer(KafkaDB):
         self.producer = producer
 
     def on_send_success(self, record_metadata):
-        logging.warning(
-            f"Message produced to topic {record_metadata.topic} partition {record_metadata.partition} at offset {record_metadata.offset}"
-        )
         pass
 
     def on_send_error(self, excp):

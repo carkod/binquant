@@ -20,13 +20,13 @@ def fast_and_slow_macd(
     bb_high, bb_mid, bb_low = self.bb_spreads()
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
-    if macd > macd_signal and ma_7 > ma_25 and bb_high < 1 and bb_high > 0.001:
+    if macd > macd_signal and ma_7 > ma_25 and bb_high < 1 and bb_high > 0.001 and trend:
 
         msg = f"""
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
         - Current price: {close_price}
         - Log volatility (log SD): {volatility}
-        - Reversal? {"Yes" if self.margin_short_reversal else "No"}
+        - Reversal? {"Yes" if self.market_domination_reversal else "No"}
         - Strategy: {trend}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
