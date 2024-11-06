@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import logging
 import pandas
 from typing import Literal
-from algorithms.timeseries_gpt import detect_anomalies
+# from algorithms.timeseries_gpt import detect_anomalies
 from models.signals import SignalsConsumer, TrendEnum
 from shared.enums import KafkaTopics
 from shared.apis import BinbotApi
@@ -18,8 +18,8 @@ class TechnicalIndicators(BinbotApi):
         self.producer = self.base_producer.producer
         self.df = df
         self.symbol = symbol
-        self.market_domination_trend = None
-        self.market_domination_reversal = None
+        self.market_domination_trend: Literal["gainers", "losers", "neutral", None] = None
+        self.market_domination_reversal: bool | None = None
         self.active_pairs = self.get_active_pairs()["data"]
         pass
 
@@ -59,15 +59,16 @@ class TechnicalIndicators(BinbotApi):
 
         ot = datetime.fromtimestamp(round(int(data["open_time"]) / 1000))
         ct = datetime.fromtimestamp(round(int(data["close_time"]) / 1000))
-        time_diff = ct - ot
+        time_diff: timedelta = ct - ot
+        min_diff = int(time_diff.total_seconds() / 60)
         if self.interval == "15m":
-            if time_diff > 15:
-                logging.warn(f'Gap in {data["symbol"]} klines: {time_diff.min} minutes')
+            if min_diff > 15:
+                logging.warning(f'Gap in {data["symbol"]} klines: {min_diff} minutes')
 
     def days(self, secs):
         return secs * 86400
 
-    def bb_spreads(self) -> tuple[float, float]:
+    def bb_spreads(self) -> tuple[float, float, float]:
         """
         Calculate Bollinguer bands spreads for trailling strategies
         """
@@ -86,23 +87,23 @@ class TechnicalIndicators(BinbotApi):
         """
         self.market_domination()
         trend = None
-        # if self.market_domination_reversal is True:
-        #     trend = TrendEnum.up_trend.value
-
-        # if self.market_domination_reversal is False:
-        #     trend = TrendEnum.down_trend.value
-
-        # if self.market_domination_trend is None and self.market_domination_reversal is None:
-        #     trend = None
-
-        if self.market_domination_trend == "gainers":
+        if self.market_domination_reversal is True:
             trend = TrendEnum.up_trend.value
 
-        elif self.market_domination_trend == "losers":
+        if self.market_domination_reversal is False:
             trend = TrendEnum.down_trend.value
 
-        else:
+        if self.market_domination_trend is None and self.market_domination_reversal is None:
             trend = None
+
+        # if self.market_domination_trend == "gainers":
+        #     trend = TrendEnum.up_trend.value
+
+        # elif self.market_domination_trend == "losers":
+        #     trend = TrendEnum.down_trend.value
+
+        # else:
+        #     trend = None
 
         return trend
 
@@ -227,7 +228,7 @@ class TechnicalIndicators(BinbotApi):
         )
         self.df["perc_volatility"] = log_volatility
 
-    def market_domination(self) -> Literal["gainers", "losers", None]:
+    def market_domination(self) -> Literal["gainers", "losers", "neutral", None]:
         """
         Get data from gainers and losers endpoint to analyze market trends
 
@@ -271,7 +272,7 @@ class TechnicalIndicators(BinbotApi):
 
             logging.info(f"Current USDT market trend is: {reversal_msg}.")
             self.market_domination_ts = datetime.now() + timedelta(hours=1)
-        return
+        return self.market_domination_trend
 
     def publish(self):
         """
@@ -280,7 +281,7 @@ class TechnicalIndicators(BinbotApi):
         Algorithms should consume this data
         """
 
-        if self.df.close.size > 0:
+        if self.df.empty is False and self.df.close.size > 0:
 
             # detect_anomalies(
             #     self,
@@ -303,17 +304,15 @@ class TechnicalIndicators(BinbotApi):
             self.log_volatility()
 
             # Post-processing
-            self.df.dropna(inplace=True)
+            self.df.reset_index(drop=True, inplace=True)
+
             # Dropped NaN values may end up with empty dataframe
             if (
-                self.df.empty
-                or self.df.ma_7.size < 7
+                self.df.ma_7.size < 7
                 or self.df.ma_25.size < 25
                 or self.df.ma_100.size < 100
             ):
                 return
-
-            self.df.reset_index(drop=True, inplace=True)
 
             close_price = float(self.df.close[len(self.df.close) - 1])
             open_price = float(self.df.open[len(self.df.open) - 1])

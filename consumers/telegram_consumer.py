@@ -2,6 +2,7 @@ from kafka import KafkaConsumer
 from shared.telegram_bot import TelegramBot
 import json
 
+
 class TelegramConsumer:
     def __init__(self, consumer: KafkaConsumer):
         self.telegram_bot = TelegramBot()

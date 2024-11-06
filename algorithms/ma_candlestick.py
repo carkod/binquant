@@ -35,6 +35,7 @@ def ma_candlestick_jump(
     """
     volatility = round_numbers(volatility, 6)
     bb_high, bb_mid, bb_low = self.bb_spreads()
+    trend = self.define_strategy()
     if (
         float(close_price) > float(open_price)
         and bb_high < 1
@@ -52,12 +53,11 @@ def ma_candlestick_jump(
 
         algo = "ma_candlestick_jump"
         spread = volatility
-        trend = self.define_strategy()
         msg = f"""
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - %threshold based on volatility: {volatility}
-- Reversal? {"Yes" if self.margin_short_reversal else "No"}
+- Reversal? {"Yes" if self.market_domination_reversal else "No"}
 - Strategy: {trend}
 - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
 - https://www.binance.com/en/trade/{symbol}
@@ -131,7 +131,7 @@ def ma_candlestick_drop(
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - Log volatility (log SD): {volatility}
-- Reversal? {self.margin_short_reversal}
+- Reversal? {self.market_domination_reversal}
 - Strategy: {trend}
 - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
 - https://www.binance.com/en/trade/{symbol}
