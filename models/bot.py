@@ -1,9 +1,8 @@
 from time import time
 from typing import Literal
-
 from bson.objectid import ObjectId
 from pydantic import BaseModel, Field, field_validator
-
+from binquant.shared.enums import Status, Strategy
 
 
 class OrderSchema(BaseModel):
@@ -14,22 +13,30 @@ class OrderSchema(BaseModel):
     qty: str | None = None
     order_side: str | None = None
     order_id: str | None = None
-    fills: str = None
+    fills: str = ""
     price: float | None = None
     status: str | None = None
-    deal_type: str | None = None  # [base_order, take_profit, so_{x}, short_sell, short_buy, margin_short]
+    deal_type: str | None = (
+        None  # [base_order, take_profit, so_{x}, short_sell, short_buy, margin_short]
+    )
 
 
 class DealSchema(BaseModel):
     buy_price: float = 0  # base currency quantity e.g. 3000 USDT in BTCUSDT
-    base_order_price: float = 0 # To replace buy_price - better naming for both long and short positions
+    base_order_price: float = (
+        0  # To replace buy_price - better naming for both long and short positions
+    )
     buy_timestamp: float = 0
     buy_total_qty: float = 0
     current_price: float = 0
     sd: float = 0
     avg_buy_price: float = 0  # depricated - replaced with buy_price
-    original_buy_price: float = 0  # historical buy_price after so executed. avg_buy_price = buy_price
-    take_profit_price: float = 0  # quote currency quantity e.g. 0.00003 BTC in BTCUSDT (sell price)
+    original_buy_price: float = (
+        0  # historical buy_price after so executed. avg_buy_price = buy_price
+    )
+    take_profit_price: float = (
+        0  # quote currency quantity e.g. 0.00003 BTC in BTCUSDT (sell price)
+    )
     so_prices: float = 0
     sell_timestamp: float = 0
     sell_price: float = 0
@@ -75,59 +82,11 @@ class MarginOrderSchema(OrderSchema):
     is_isolated: bool = False
 
 
-class DealSchema(BaseModel):
-    buy_price: float = 0  # base currency quantity e.g. 3000 USDT in BTCUSDT
-    base_order_price: float = 0 # To replace buy_price - better naming for both long and short positions
-    buy_timestamp: float = 0
-    buy_total_qty: float = 0
-    current_price: float = 0
-    sd: float = 0
-    avg_buy_price: float = 0  # depricated - replaced with buy_price
-    original_buy_price: float = 0  # historical buy_price after so executed. avg_buy_price = buy_price
-    take_profit_price: float = 0  # quote currency quantity e.g. 0.00003 BTC in BTCUSDT (sell price)
-    so_prices: float = 0
-    sell_timestamp: float = 0
-    sell_price: float = 0
-    sell_qty: float = 0
-    post_closure_current_price: float = 0
-    trailling_stop_loss_price: float = 0
-    trailling_profit_price: float = 0
-    short_sell_price: float = 0
-    short_sell_qty: float = 0
-    short_sell_timestamp: float = 0
-    stop_loss_price: float = 0
-    margin_short_base_order: float = 0  # borrowed amount
-    margin_loan_id: str = ""
-    margin_short_loan_interest: float = 0
-    margin_short_loan_principal: float = 0
-    margin_short_loan_timestamp: float = 0
-    margin_short_repay_price: float = 0
-    margin_short_sell_price: float = 0
-    margin_short_sell_timestamp: float = 0
-    margin_short_buy_back_price: float = 0
-    margin_short_buy_back_timestamp: float = 0
-    hourly_interest_rate: float = 0
-
-    @field_validator(
-        "buy_price",
-        "current_price",
-        "avg_buy_price",
-        "original_buy_price",
-        "take_profit_price",
-        "sell_price",
-        "short_sell_price",
-    )
-    @classmethod
-    def check_prices(cls, v):
-        if float(v) < 0:
-            raise ValueError("must be a positive number")
-        return v
-
 class SafetyOrderSchema(BaseModel):
     name: str = "so_1"  # should be so_<index>
-    status: Literal[
-        0, 1, 2
-    ] = 0  # 0 = standby, safety order hasn't triggered, 1 = filled safety order triggered, 2 = error
+    status: Literal[0, 1, 2] = (
+        0  # 0 = standby, safety order hasn't triggered, 1 = filled safety order triggered, 2 = error
+    )
     order_id: str | None = None
     created_at: float = time() * 1000
     updated_at: float = time() * 1000
@@ -150,25 +109,29 @@ class BotSchema(BaseModel):
     base_order_size: str = "15"  # Min Binance 0.0001 BNB
     candlestick_interval: str = "15m"
     close_condition: str = ""
-    cooldown: int = 0  # cooldown period in minutes before opening next bot with same pair
+    # cooldown period in minutes before opening next bot with same pair
+    cooldown: int = 0
     created_at: float = time() * 1000
     deal: DealSchema = Field(default_factory=DealSchema)
     dynamic_trailling: bool = False
-    errors: list[str] = [] # Event logs
+    errors: list[str] = []  # Event logs
     locked_so_funds: float = 0  # funds locked by Safety orders
-    mode: str = "manual"  # Manual is triggered by the terminal dashboard, autotrade by research app
+    # Manual is triggered by the terminal dashboard, autotrade by research app
+    mode: str = "manual"
     name: str = "Default bot"
     orders: list[OrderSchema] = []  # Internal
-    status: str = "inactive"
+    status: str = Status.inactive
     stop_loss: float = 0
-    margin_short_reversal: bool = False # If stop_loss > 0, allow for reversal
+    # If stop_loss > 0, allow for reversal
+    margin_short_reversal: bool = False
     take_profit: float = 0
     trailling: bool = True
     trailling_deviation: float = 0
     trailling_profit: float = 0  # Trailling activation (first take profit hit)
     safety_orders: list[SafetyOrderSchema] = []
-    strategy: str = "long"
-    short_buy_price: float = 0  # > 0 base_order does not execute immediately, executes short strategy when this value is hit
+    strategy: str = Strategy.long
+    # > 0 base_order does not execute immediately, executes short strategy when this value is hit
+    short_buy_price: float = 0
     short_sell_price: float = 0  # autoswitch to short_strategy
     # Deal and orders are internal, should never be updated by outside data
     total_commission: float = 0
@@ -180,7 +143,9 @@ class BotSchema(BaseModel):
         assert v != "", "Empty pair field."
         return v
 
-    @field_validator("stop_loss", "take_profit", "trailling_deviation", "trailling_profit")
+    @field_validator(
+        "stop_loss", "take_profit", "trailling_deviation", "trailling_profit"
+    )
     @classmethod
     def check_percentage(cls, v):
         if 0 <= float(v) < 100:
@@ -199,7 +164,7 @@ class BotSchema(BaseModel):
     @classmethod
     def check_errors_format(cls, v: list[str]):
         if not isinstance(v, list):
-            raise ValueError(f'Errors must be a list of strings')
+            raise ValueError("Errors must be a list of strings")
         return v
 
     class Config:
@@ -233,6 +198,7 @@ class BotSchema(BaseModel):
                 "total_commission": 0,
             },
         }
+
 
 class ErrorsRequestBody(BaseModel):
     errors: str | list[str]

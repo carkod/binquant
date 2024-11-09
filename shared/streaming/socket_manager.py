@@ -1,7 +1,6 @@
 import json
 import logging
 import time
-import logging
 import threading
 from websocket import (
     ABNF,
@@ -35,7 +34,7 @@ class BinanceSocketManager(threading.Thread):
         self.on_pong = on_pong
         self.on_error = on_error
         self.create_ws_connection()
-    
+
     def create_ws_connection(self):
         self.logger.debug(
             "Creating connection with WebSocket Server: %s", self.stream_url
@@ -57,7 +56,7 @@ class BinanceSocketManager(threading.Thread):
         self.ws.ping()
 
     def read_data(self):
-        data = ""
+        data: bytes = b""
         while True:
             try:
                 op_code, frame = self.ws.recv_data_frame(False)
@@ -87,8 +86,8 @@ class BinanceSocketManager(threading.Thread):
             else:
                 data = frame.data
                 if op_code == ABNF.OPCODE_TEXT:
-                    data = data.decode("utf-8")
-                self._callback(self.on_message, data)
+                    frame_data = data.decode("utf-8")
+                self._callback(self.on_message, frame_data)
 
     def close(self):
         if not self.ws.connected:
@@ -105,6 +104,7 @@ class BinanceSocketManager(threading.Thread):
                 self.logger.error("Error from callback {}: {}".format(callback, e))
                 if self.on_error:
                     self.on_error(self, e)
+
 
 class BinanceWebsocketClient:
     ACTION_SUBSCRIBE = "SUBSCRIBE"
@@ -190,9 +190,9 @@ class BinanceWebsocketClient:
         if not self._single_stream(stream):
             raise ValueError("Invalid stream name, expect a string")
 
-        stream = [stream]
+        stream_list = [stream]
         self.socket_manager.send_message(
-            json.dumps({"method": "UNSUBSCRIBE", "params": stream, "id": id})
+            json.dumps({"method": "UNSUBSCRIBE", "params": stream_list, "id": id})
         )
 
     def ping(self):

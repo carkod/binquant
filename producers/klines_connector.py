@@ -87,9 +87,9 @@ class KlinesConnector(BinbotApi):
         """
 
         symbol = result["k"]["s"]
-        if symbol and "k" in result and "s" in result["k"] and result["k"]["x"]:
+        if symbol and "k" in result and result["k"]["x"]:
 
             klines_producer = KlinesProducer(self.producer, symbol)
-            klines_producer.store(result["k"])
+            klines_producer.store(result)
 
         pass
