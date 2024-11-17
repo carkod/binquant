@@ -105,3 +105,25 @@ jobs:
           pip3 install -r requirements.txt
           pip3 install pytest pytest-mock
           python3 -m pytest .
+
+  python-linting:
+    name: Python code linting
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10.8"
+      - name: Install dependencies
+        run: |
+          pip3 install -r requirements.txt
+          pip3 install httpx
+      - name: Run linters
+        run: |
+          pip3 run black --check .
+          pip3 run mypy --check .

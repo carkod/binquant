@@ -13,10 +13,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class TelegramBot:
     def __init__(self):
-        self.token = os.getenv("TELEGRAM_BOT_KEY")
-        self.chat_id = os.getenv("TELEGRAM_USER_ID")
+        self.token = os.getenv("TELEGRAM_BOT_KEY", "")
+        self.chat_id = os.getenv("TELEGRAM_USER_ID", "")
         self.updater = Updater(self.token)
 
     def buy(self, update: Update, context: CallbackContext) -> None:

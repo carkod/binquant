@@ -3,14 +3,12 @@ import json
 from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from datetime import datetime
-from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
 
 
 class AutotradeConsumer(BinbotApi):
     def __init__(self, producer) -> None:
-        self.blacklist_data = []
-        self.autotrade_settings = None
+        self.blacklist_data: list = []
         self.market_domination_ts = datetime.now()
         self.market_domination_trend = None
         self.market_domination_reversal = None
@@ -24,8 +22,6 @@ class AutotradeConsumer(BinbotApi):
         self.paper_trading_active_bots: list = []
         self.active_symbols: list = []
         self.active_test_bots: list = []
-        self.test_autotrade_settings = None
-        self.autotrade_settings = None
         self.load_data_on_start()
         # Because market domination analysis 40 weight from binance endpoints
         self.top_coins_gainers: list = []
@@ -39,15 +35,14 @@ class AutotradeConsumer(BinbotApi):
         """
         logging.info("Loading controller, active bots and blacklist data...")
         self.blacklist_data = self.get_blacklist()
-        self.autotrade_settings = self.get_autotrade_settings()
+        self.autotrade_settings: dict = self.get_autotrade_settings()
         self.active_bots = self.get_bots_by_status()
         self.paper_trading_active_bots = self.get_bots_by_status(collection_name="paper_trading")
         self.active_symbols = [bot["pair"] for bot in self.active_bots]
         self.active_test_bots = [
             item["pair"] for item in self.paper_trading_active_bots
         ]
-        self.test_autotrade_settings = self.get_test_autotrade_settings()
-        self.autotrade_settings = self.get_autotrade_settings()
+        self.test_autotrade_settings: dict = self.get_test_autotrade_settings()
         pass
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
@@ -102,7 +97,7 @@ class AutotradeConsumer(BinbotApi):
 
         if (
             symbol not in self.active_test_bots
-            and int(self.test_autotrade_settings["autotrade"]) == 1
+            and self.test_autotrade_settings["autotrade"]
         ):
             if self.reached_max_active_autobots("paper_trading"):
                 logging.info(
@@ -118,13 +113,13 @@ class AutotradeConsumer(BinbotApi):
         # Check balance to avoid failed autotrades
         balance_check = self.get_available_fiat()
         if balance_check < float(self.autotrade_settings["base_order_size"]):
-            logging.info(f"Not enough funds to autotrade [bots].")
+            logging.info("Not enough funds to autotrade [bots].")
             return
 
         """
         Real autotrade starts
         """
-        if int(self.autotrade_settings["autotrade"]) == 1 and symbol not in self.active_symbols:
+        if self.autotrade_settings["autotrade"] and symbol not in self.active_symbols:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
