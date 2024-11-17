@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from enum import Enum
 
 from shared.enums import Status, Strategy
@@ -23,9 +23,9 @@ class SignalsConsumer(BaseModel):
     """
     Pydantic model for the signals consumer.
     """
-    type: str = "signal"
-    spread: float | str | None = 0
-    current_price: float | str | None = 0
+    type: str = Field(default="signal")
+    spread: float | None = 0
+    current_price: float | None = 0
     msg: str
     symbol: str
     algo: str
@@ -46,7 +46,7 @@ class SignalsConsumer(BaseModel):
         elif isinstance(v, float):
             return v
         else:
-            raise ValueError('must be a float or None')
+            raise ValueError('must be a float or 0')
 
 
 class BotPayload(BaseModel):
