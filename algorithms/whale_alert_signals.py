@@ -36,7 +36,7 @@ import time
 #             from_owner = "#" + transaction["from"]["owner"] if transaction["from"]["owner"] == "unknown" else transaction["to"]["owner"]
 #             to_owner = "#" + transaction["to"]["owner"] if transaction["to"]["owner"] == "unknown" else transaction["to"]["owner"]
 
-#             msg = f'[{os.getenv("ENV")}] <strong>#Whale alert</strong>: {transaction["transaction_type"]} of #{transaction["symbol"]} ({transaction["amount_usd"]} USD) from {from_owner} wallet to {to_owner}\n- https://www.binance.com/en/trade/{transaction["symbol"]}_USDT \n- Dashboard trade http://terminal.binbot.in/admin/bots/new/{transaction["symbol"]}USDT'
+#             msg = f'[{os.getenv("ENV")}] <strong>#Whale alert</strong>: {transaction["transaction_type"]} of #{transaction["symbol"]} ({transaction["amount_usd"]} USD) from {from_owner} wallet to {to_owner}\n- https://www.binance.com/en/trade/{transaction["symbol"]}_USDT \n- Dashboard trade http://terminal.binbot.in/bots/new/{transaction["symbol"]}USDT'
 #             self.telegram_bot.send_msg(msg)
         
 #         pass

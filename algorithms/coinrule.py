@@ -30,7 +30,7 @@ def fast_and_slow_macd(
         - Strategy: {trend}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
-        - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
+        - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
         """
 
         value = SignalsConsumer(
@@ -88,7 +88,7 @@ def buy_low_sell_high(self, close_price, symbol, rsi, ma_25, ma_7, ma_100, volat
     - Strategy: {trend}
     - Reversal? {"No reversal" if not self.market_domination_reversal else "Positive" if self.market_domination_reversal else "Negative"}
     - https://www.binance.com/en/trade/{symbol}
-    - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
+    - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
     """
 
         value = SignalsConsumer(

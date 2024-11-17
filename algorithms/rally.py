@@ -61,7 +61,7 @@ def rally_or_pullback(
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - Reversal? {"Yes" if self.market_domination_reversal else "No"}
         - https://www.binance.com/en/trade/{symbol}
-        - <a href='http://terminal.binbot.in/admin/bots/new/{symbol}'>Dashboard trade</a>
+        - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
     """
 
     if algo_type == "Pullback":
