@@ -2,88 +2,89 @@ import json
 import os
 import asyncio
 import logging
-from kafka import KafkaConsumer
+from aiokafka import AIOKafkaConsumer
 from consumers.autotrade_consumer import AutotradeConsumer
 from shared.enums import KafkaTopics
 from consumers.telegram_consumer import TelegramConsumer
 from consumers.klines_provider import KlinesProvider
+from aiokafka.errors import UnknownMemberIdError, RequestTimedOutError
 
 
-def task_1():
-    while True:
+async def data_process_pipe():
+    try:
+        consumer = AIOKafkaConsumer(
+            KafkaTopics.klines_store_topic.value,
+            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+            value_deserializer=lambda m: json.loads(m),
+            group_id="klines_consumer",
+            session_timeout_ms=60000,  # Add session timeout
+        )
+        await consumer.start()
+        klines_provider = KlinesProvider(consumer)
+
         try:
-            # Start consuming
-            consumer = KafkaConsumer(
-                KafkaTopics.klines_store_topic.value,
-                bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-                value_deserializer=lambda m: json.loads(m),
-                group_id="klines_consumer",
-                api_version=(3, 4, 1),
-            )
-
-            klines_provider = KlinesProvider(consumer)
-
-            while True:
-                messages = consumer.poll()
-                if not messages:
-                    continue
-                for topic_partition, message_list in messages.items():
-                    for message in message_list:
-                        klines_provider.aggregate_data(message.value)
-
-        except Exception as e:
-            logging.error(f"Error in task_1: {e}")
+            async for message in consumer:
+                klines_provider.aggregate_data(message.value)
         finally:
-            consumer.close()
+            await consumer.stop()
+
+    except UnknownMemberIdError:
+        logging.error("UnknownMemberIdError in task_1, restarting consumer")
+        await data_process_pipe()  # Restart the task
+    except RequestTimedOutError:
+        logging.error("RequestTimedOutError in task_1, restarting consumer")
+        await asyncio.sleep(5)  # Add a delay before retrying
+        await data_process_pipe()  # Restart the task
+    except Exception as e:
+        logging.error(f"Error in task_1: {e}")
 
 
-def task_2():
-    while True:
+async def data_analytics_pipe():
+    try:
+        consumer = AIOKafkaConsumer(
+            KafkaTopics.signals.value,
+            KafkaTopics.restart_streaming.value,
+            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+            value_deserializer=lambda m: json.loads(m),
+            session_timeout_ms=60000,  # Add session timeout
+        )
+        await consumer.start()
+        telegram_consumer = TelegramConsumer(consumer)
+        at_consumer = AutotradeConsumer(consumer)
+
         try:
-            consumer = KafkaConsumer(
-                KafkaTopics.signals.value,
-                KafkaTopics.restart_streaming.value,
-                bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-                value_deserializer=lambda m: json.loads(m),
-            )
+            async for message in consumer:
+                if message.topic == KafkaTopics.restart_streaming.value:
+                    beginning_offsets = await consumer.beginning_offsets(
+                        [message.partition]
+                    )
+                    offset = beginning_offsets.get(message.partition)
+                    if message.offset == offset:
+                        at_consumer.load_data_on_start()
 
-            telegram_consumer = TelegramConsumer(consumer)
-            at_consumer = AutotradeConsumer(consumer)
-
-            while True:
-                messages = consumer.poll()
-
-                if not messages:
-                    continue
-
-                for topic_partition, message_list in messages.items():
-                    # Manage offsets to avoid repeated streams
-                    beginning_offsets = consumer.beginning_offsets([topic_partition])
-                    offset = beginning_offsets.get(topic_partition)
-
-                    for message in message_list:
-                        # Parse messages first
-                        # because it can be a restart or a signal
-                        # this is the only way because this consumer may be
-                        # too busy to process a separate topic, it never consumes
-                        if message.topic == KafkaTopics.restart_streaming.value:
-                            # Avoid repeated loading
-                            if message.offset == offset:
-                                at_consumer.load_data_on_start()
-
-                        if message.topic == KafkaTopics.signals.value:
-                            telegram_consumer.send_telegram(message.value)
-                            at_consumer.process_autotrade_restrictions(message.value)
-                            pass
-
-        except Exception as e:
-            logging.error(f"Error in task_2: {e}")
+                if message.topic == KafkaTopics.signals.value:
+                    at_consumer.process_autotrade_restrictions(message.value)
+                    telegram_consumer.send_telegram(message.value)
         finally:
-            consumer.close()
+            await consumer.stop()
+
+    except UnknownMemberIdError:
+        logging.error(
+            "UnknownMemberIdError in data_analytics_pipe, restarting consumer"
+        )
+        await data_analytics_pipe()  # Restart the task
+    except RequestTimedOutError:
+        logging.error(
+            "RequestTimedOutError in data_analytics_pipe, restarting consumer"
+        )
+        await asyncio.sleep(5)  # Add a delay before retrying
+        await data_analytics_pipe()  # Restart the task
+    except Exception as e:
+        logging.error(f"Error in data_analytics_pipe: {e}")
 
 
 async def main():
-    await asyncio.gather(asyncio.to_thread(task_1), asyncio.to_thread(task_2))
+    await asyncio.gather(data_process_pipe(), data_analytics_pipe())
 
 
 if __name__ == "__main__":
