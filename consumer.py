@@ -17,7 +17,6 @@ async def data_process_pipe():
             bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
             value_deserializer=lambda m: json.loads(m),
             group_id="klines_consumer",
-            session_timeout_ms=60000,  # Add session timeout
         )
         await consumer.start()
         klines_provider = KlinesProvider(consumer)

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import logging
 import pandas
 from typing import Literal
+
 # from algorithms.timeseries_gpt import detect_anomalies
 from models.signals import SignalsConsumer, TrendEnum
 from shared.enums import KafkaTopics
@@ -18,7 +19,9 @@ class TechnicalIndicators(BinbotApi):
         self.producer = self.base_producer.producer
         self.df = df
         self.symbol = symbol
-        self.market_domination_trend: Literal["gainers", "losers", "neutral", None] = None
+        self.market_domination_trend: Literal["gainers", "losers", "neutral", None] = (
+            None
+        )
         self.market_domination_reversal: bool | None = None
         self.active_pairs = self.get_active_pairs()["data"]
         pass
@@ -93,7 +96,10 @@ class TechnicalIndicators(BinbotApi):
         if self.market_domination_reversal is False:
             trend = TrendEnum.down_trend.value
 
-        if self.market_domination_trend is None and self.market_domination_reversal is None:
+        if (
+            self.market_domination_trend is None
+            and self.market_domination_reversal is None
+        ):
             trend = None
 
         # if self.market_domination_trend == "gainers":
@@ -250,6 +256,10 @@ class TechnicalIndicators(BinbotApi):
             gainers_count = data["gainers_count"]
             losers_count = data["losers_count"]
             self.market_domination_trend = "neutral"
+            # no data from db
+            if len(gainers_count) == 0 and len(losers_count) == 0:
+                return self.market_domination_trend
+
             if gainers_count[-1] > losers_count[-1]:
                 self.market_domination_trend = "gainers"
 
@@ -282,7 +292,6 @@ class TechnicalIndicators(BinbotApi):
         """
 
         if self.df.empty is False and self.df.close.size > 0:
-
             # detect_anomalies(
             #     self,
             # )
