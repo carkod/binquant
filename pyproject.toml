@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pandas==1.5.2",
+    "pandas==2.2.3",
     "pymongo==4.6.3",
     "python-dotenv==0.20.0",
     "requests-html==0.10.0",
