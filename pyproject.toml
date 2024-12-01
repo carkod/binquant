@@ -11,7 +11,7 @@ dependencies = [
     "requests-html==0.10.0",
     "requests==2.28.1",
     "websocket-client==1.5.0",
-    "python-telegram-bot==13.7",
+    "python-telegram-bot==21.8",
     "requests-cache==0.9.1",
     "kafka-python==2.0.2",
     "pydantic==2.7.0",
