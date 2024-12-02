@@ -37,7 +37,9 @@ class AutotradeConsumer(BinbotApi):
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings: dict = self.get_autotrade_settings()
         self.active_bots = self.get_bots_by_status()
-        self.paper_trading_active_bots = self.get_bots_by_status(collection_name="paper_trading")
+        self.paper_trading_active_bots = self.get_bots_by_status(
+            collection_name="paper_trading"
+        )
         self.active_symbols = [bot["pair"] for bot in self.active_bots]
         self.active_test_bots = [
             item["pair"] for item in self.paper_trading_active_bots
@@ -70,11 +72,9 @@ class AutotradeConsumer(BinbotApi):
             if active_count > self.autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
-        return False        
+        return False
 
-    def process_autotrade_restrictions(
-        self, result: str
-    ):
+    def process_autotrade_restrictions(self, result: str):
         """
         Refactored autotrade conditions.
         Previously part of process_kline_stream
@@ -125,7 +125,6 @@ class AutotradeConsumer(BinbotApi):
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
-
                 autotrade = Autotrade(
                     symbol, self.autotrade_settings, data.algo, "bots"
                 )

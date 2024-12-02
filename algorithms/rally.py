@@ -77,7 +77,6 @@ def rally_or_pullback(
             and close_price < ma_100[len(ma_100) - 2]
             and close_price < ma_100[len(ma_100) - 3]
         ):
-
             value = SignalsConsumer(
                 spread=None,
                 current_price=close_price,

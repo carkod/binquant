@@ -50,7 +50,6 @@ def ma_candlestick_jump(
         and close_price > ma_100
         and open_price > ma_100
     ):
-
         algo = "ma_candlestick_jump"
         spread = volatility
         msg = f"""

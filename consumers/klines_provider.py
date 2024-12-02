@@ -25,7 +25,6 @@ class KlinesProvider(KafkaDB):
         self.consumer = consumer
 
     def aggregate_data(self, results):
-
         if results:
             payload = json.loads(results)
             klines = KlineProduceModel.model_validate(payload)
