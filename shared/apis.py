@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import os
-from decimal import Decimal
+from decimal import Decimal, getcontext
 from random import randrange
 from urllib.parse import urlencode
 from dotenv import load_dotenv
@@ -120,7 +120,7 @@ class BinanceApi:
         data = self.request(url=self.launchpool_url, headers={"User-Agent": "Mozilla"})
         return data
 
-    def price_precision(self, symbol):
+    def price_precision(self, symbol) -> int:
         """
         Modified from price_filter_by_symbol
         from /api/account/account.py
@@ -133,13 +133,13 @@ class BinanceApi:
             (m for m in market["filters"] if m["filterType"] == "PRICE_FILTER")
         )
 
-        # Once got the filter data of Binance
-        # Transform into string and remove leading zeros
-        # This is how the exchange accepts the prices, it will not work with scientific exponential notation e.g. 2.1-10
-        price_precision = Decimal(str(price_filter["tickSize"].rstrip(".0")))
+        # Convert scientific notation to decimal and remove leading zeros
+        tick_size = float(price_filter["tickSize"])
+        tick_size_str = f"{tick_size:.8f}".rstrip('0').rstrip('.')
+        price_precision = Decimal(tick_size_str).as_tuple()
 
-        # Finally return the correct number of decimals required
-        return -(price_precision).as_tuple().exponent
+        # Finally return the correct number of decimals required as positive number
+        return abs(int(price_precision.exponent))
 
     def min_amount_check(self, symbol, qty):
         """

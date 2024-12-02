@@ -75,7 +75,7 @@ def supress_notation(num: float, precision: int = 0) -> str:
     if precision >= 0:
         decimal_points = precision
     else:
-        decimal_points = Decimal(num).as_tuple().exponent * -1
+        decimal_points = int(Decimal(num).as_tuple().exponent * -1)
     return f"{num:.{str(decimal_points)}f}"
 
 
@@ -88,17 +88,15 @@ def handle_binance_errors(response: Response):
 
     """
     response.raise_for_status()
-
-    if 400 <= response.status_code < 500:
-        if response.status_code == 418:
-            sleep(120)
-
     # Calculate request weights and pause half of the way (1200/2=600)
     if (
         "x-mbx-used-weight-1m" in response.headers
         and int(response.headers["x-mbx-used-weight-1m"]) > 600
     ):
         print("Request weight limit prevention pause, waiting 1 min")
+        sleep(120)
+
+    if response.status_code == 418:
         sleep(120)
 
     content = response.json()

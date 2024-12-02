@@ -35,14 +35,13 @@ class Autotrade(BaseProducer, BinbotApi):
         self.default_bot = BotPayload(
             pair=pair,
             name=f"{algorithm_name}_{current_date}",
-            balance_size_to_use=str(settings["balance_size_to_use"]),
             balance_to_use=settings["balance_to_use"],
             base_order_size=settings["base_order_size"],
+            strategy=Strategy.long,
             stop_loss=settings["stop_loss"],
             take_profit=settings["take_profit"],
             trailling=settings["trailling"],
             trailling_deviation=settings["trailling_deviation"],
-            strategy=settings["strategy"],
             close_condition=CloseConditions.dynamic_trailling,
         )
         self.db_collection_name = db_collection_name
@@ -298,7 +297,7 @@ class Autotrade(BaseProducer, BinbotApi):
 
         if "error" in bot and bot["error"] > 0:
             # Failed to activate bot so:
-            # (1) Add  to blacklist/exclude from future autotrades
+            # (1) Add to blacklist/exclude from future autotrades
             # (2) Submit error to event logs
             # (3) Delete inactive bot
             # this prevents cluttering UI with loads of useless bots
