@@ -17,7 +17,6 @@ async def data_process_pipe():
             bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
             value_deserializer=lambda m: json.loads(m),
             group_id="klines_consumer",
-            session_timeout_ms=60000,  # Add session timeout
         )
         await consumer.start()
         klines_provider = KlinesProvider(consumer)
@@ -49,7 +48,7 @@ async def data_analytics_pipe():
             session_timeout_ms=60000,  # Add session timeout
         )
         await consumer.start()
-        telegram_consumer = TelegramConsumer(consumer)
+        telegram_consumer = TelegramConsumer()
         at_consumer = AutotradeConsumer(consumer)
 
         try:
@@ -64,7 +63,7 @@ async def data_analytics_pipe():
 
                 if message.topic == KafkaTopics.signals.value:
                     at_consumer.process_autotrade_restrictions(message.value)
-                    telegram_consumer.send_telegram(message.value)
+                    await telegram_consumer.send_msg(message.value)
         finally:
             await consumer.stop()
 

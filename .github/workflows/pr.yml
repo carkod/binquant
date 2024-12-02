@@ -102,9 +102,10 @@ jobs:
           KAFKA_HOST: "localhost"
           KAFKA_PORT: 9092
         run: |
-          pip3 install -r requirements.txt
-          pip3 install pytest pytest-mock
-          python3 -m pytest .
+          python -m pip install uv --upgrade pip
+          uv venv && source .venv/bin/activate
+          uv sync
+          uv run pytest .
 
   python-linting:
     name: Python code linting
@@ -120,10 +121,8 @@ jobs:
         with:
           python-version: "3.10.8"
       - name: Install dependencies
-        run: |
-          pip3 install -r requirements.txt
-          pip3 install httpx
+        run: uv sync
       - name: Run linters
         run: |
-          pip3 run black --check .
-          pip3 run mypy --check .
+          uv run black --check .
+          uv run mypy --check .
