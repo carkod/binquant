@@ -1,4 +1,6 @@
+import json
 from telegram import Bot
+from telegram.constants import ParseMode
 import os
 
 
@@ -8,6 +10,14 @@ class TelegramConsumer:
         self.chat_id = os.getenv("TELEGRAM_USER_ID", "")
         self.bot = Bot(os.getenv("TELEGRAM_BOT_KEY", ""))
 
-    async def send_msg(self, msg):
+    def parse_signal(self, result):
+        payload = json.loads(result)
+        message = payload.get("msg", "")
+        return message
+
+    async def send_msg(self, result):
         async with self.bot:
-            await self.bot.send_message(self.chat_id, msg)
+            message = self.parse_signal(result)
+            await self.bot.send_message(
+                self.chat_id, text=message, parse_mode=ParseMode.HTML
+            )

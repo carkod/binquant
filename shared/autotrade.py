@@ -54,9 +54,26 @@ class Autotrade(BaseProducer, BinbotApi):
     def _set_bollinguer_spreads(self, data):
         bb_spreads = data.bb_spreads
         if bb_spreads["bb_high"] and bb_spreads["bb_low"] and bb_spreads["bb_mid"]:
-            top_spread = abs((bb_spreads["bb_high"] - bb_spreads["bb_mid"]) / bb_spreads["bb_high"]) * 100
-            whole_spread = abs((bb_spreads["bb_high"] - bb_spreads["bb_low"]) / bb_spreads["bb_high"]) * 100
-            bottom_spread = abs((bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]) * 100
+            top_spread = (
+                abs(
+                    (bb_spreads["bb_high"] - bb_spreads["bb_mid"])
+                    / bb_spreads["bb_high"]
+                )
+                * 100
+            )
+            whole_spread = (
+                abs(
+                    (bb_spreads["bb_high"] - bb_spreads["bb_low"])
+                    / bb_spreads["bb_high"]
+                )
+                * 100
+            )
+            bottom_spread = (
+                abs(
+                    (bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]
+                )
+                * 100
+            )
 
             if whole_spread > 10:
                 whole_spread = whole_spread / 10
@@ -158,7 +175,6 @@ class Autotrade(BaseProducer, BinbotApi):
         return
 
     def set_paper_trading_values(self, balances, qty):
-
         # Get balance that match the pair
         # Check that we have minimum binance required qty to trade
         for b in balances["data"]:
@@ -216,10 +232,11 @@ class Autotrade(BaseProducer, BinbotApi):
             activate_func = self.activate_paper_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
-
                 # Check if margin trading is available
                 if not self.margin_trading_check(self.default_bot.pair):
-                    logging.info(f"Margin trading is not available for {self.default_bot.pair}")
+                    logging.info(
+                        f"Margin trading is not available for {self.default_bot.pair}"
+                    )
                     return
 
                 self.set_margin_short_values(data)
@@ -301,5 +318,7 @@ class Autotrade(BaseProducer, BinbotApi):
             # Message is sent only after activation is successful,
             # if bot activation failed, we want to try again with a new bot
             self.producer.send(
-                KafkaTopics.restart_streaming.value, value=json.dumps(value), partition=0
+                KafkaTopics.restart_streaming.value,
+                value=json.dumps(value),
+                partition=0,
             )

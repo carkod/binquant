@@ -1,5 +1,6 @@
 from shared.streaming.socket_manager import BinanceWebsocketClient
 
+
 class SpotWebsocketStreamClient(BinanceWebsocketClient):
     ACTION_SUBSCRIBE = "SUBSCRIBE"
     ACTION_UNSUBSCRIBE = "UNSUBSCRIBE"
