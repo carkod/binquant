@@ -10,7 +10,6 @@ load_dotenv()
 
 
 class KafkaDB:
-
     def __init__(self):
         client: MongoClient = MongoClient(
             host=os.getenv("MONGO_HOSTNAME"),
@@ -35,7 +34,7 @@ class KafkaDB:
                         "granularity": "minutes",
                     },
                     "expireAfterSeconds": 604800,  # 7 days, minimize server cost
-                }
+                },
             )
 
         return
@@ -84,7 +83,13 @@ class KafkaDB:
         )
         return list(query)
 
-    def raw_klines(self, symbol, interval: BinanceKlineIntervals = BinanceKlineIntervals.fifteen_minutes, limit=200, offset=0) -> list[KlineProduceModel]:
+    def raw_klines(
+        self,
+        symbol,
+        interval: BinanceKlineIntervals = BinanceKlineIntervals.fifteen_minutes,
+        limit=200,
+        offset=0,
+    ) -> list[KlineProduceModel]:
         """
         Query specifically for display or analytics,
         returns klines ordered by close_time, from oldest to newest
@@ -103,27 +108,31 @@ class KafkaDB:
         else:
             bin_size = interval.bin_size()
             unit = interval.unit()
-            query = self.db.kline.aggregate([
-                {"$match": {"symbol": symbol}},
-                {"$sort": {"close_time": DESCENDING}},
-                {"$group":{
-                    "_id": {
-                        "time": {
-                            "$dateTrunc": {
-                                "date": "$close_time",
-                                "unit": unit,
-                                "binSize": bin_size
+            query = self.db.kline.aggregate(
+                [
+                    {"$match": {"symbol": symbol}},
+                    {"$sort": {"close_time": DESCENDING}},
+                    {
+                        "$group": {
+                            "_id": {
+                                "time": {
+                                    "$dateTrunc": {
+                                        "date": "$close_time",
+                                        "unit": unit,
+                                        "binSize": bin_size,
+                                    },
+                                },
                             },
-                        },
+                            "open": {"$first": "$open"},
+                            "close": {"$last": "$close"},
+                            "high": {"$max": "$high"},
+                            "low": {"$min": "$low"},
+                            "close_time": {"$last": "$close_time"},
+                            "open_time": {"$first": "$open_time"},
+                            "volume": {"$sum": "$volume"},
+                        }
                     },
-                    "open": {"$first":"$open"},
-                    "close": {"$last":"$close"},
-                    "high": {"$max":"$high"},
-                    "low": {"$min":"$low"},
-                    "close_time": {"$last": "$close_time"},
-                    "open_time": {"$first": "$open_time"},
-                    "volume": {"$sum": "$volume"}
-                }},
-            ])
+                ]
+            )
         data = list(query)
         return data

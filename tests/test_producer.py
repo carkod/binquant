@@ -3,11 +3,13 @@ import pytest
 from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector
 
+
 @pytest.fixture
 def klines_connector(monkeypatch):
     """
     Patch the KlinesConnector for testing
     """
+
     class Client:
         def klines(self, markets, interval):
             return None
@@ -24,10 +26,11 @@ def klines_connector(monkeypatch):
         self.autotrade_settings = {"balance_to_use": "USDT"}
         self.exchange_info = {"symbols": []}
 
-    monkeypatch.setattr(KlinesConnector, '__init__', new_init)
-    monkeypatch.setattr(KlinesConnector, 'update_subscribed_list', lambda a,b: {})
+    monkeypatch.setattr(KlinesConnector, "__init__", new_init)
+    monkeypatch.setattr(KlinesConnector, "update_subscribed_list", lambda a, b: {})
 
     return KlinesConnector
+
 
 def test_producer(klines_connector: KlinesConnector):
     res = {

@@ -15,6 +15,7 @@ class BollinguerSpread(BaseModel):
     Pydantic model for the Bollinguer spread.
     (optional)
     """
+
     band_1: float
     band_2: float
 
@@ -23,6 +24,7 @@ class SignalsConsumer(BaseModel):
     """
     Pydantic model for the signals consumer.
     """
+
     type: str = Field(default="signal")
     spread: float | None = 0
     current_price: float | None = 0
@@ -33,7 +35,7 @@ class SignalsConsumer(BaseModel):
     bb_spreads: dict | None = None
 
     model_config = ConfigDict(
-        extra='allow',
+        extra="allow",
     )
 
     @field_validator("spread", "current_price")
@@ -46,7 +48,7 @@ class SignalsConsumer(BaseModel):
         elif isinstance(v, float):
             return v
         else:
-            raise ValueError('must be a float or 0')
+            raise ValueError("must be a float or 0")
 
 
 class BotPayload(BaseModel):
@@ -77,7 +79,9 @@ class BotPayload(BaseModel):
         assert v != "", "Empty pair field."
         return v
 
-    @field_validator("stop_loss", "take_profit", "trailling_deviation", "trailling_profit")
+    @field_validator(
+        "stop_loss", "take_profit", "trailling_deviation", "trailling_profit"
+    )
     @classmethod
     def check_percentage(cls, v):
         if 0 <= float(v) < 100:
@@ -96,5 +100,5 @@ class BotPayload(BaseModel):
     @classmethod
     def check_errors_format(cls, v: list[str]):
         if not isinstance(v, list):
-            raise ValueError('Errors must be a list of strings')
+            raise ValueError("Errors must be a list of strings")
         return v

@@ -16,7 +16,7 @@ import time
 #         self.telegram_bot = TelegramBot()
 #         self.transaction_count_limit = 2
 #         self.exclude_list = ["GUSD","USDC", "USDT", "BUSD", "BTC", "ETH"]
-    
+
 #     def get_last_transaction(self):
 #         start_time = int(time.time() - 600)
 #         success, transactions, status = self.whale_alert.get_transactions(start_time, api_key=self.api_key, limit=self.transaction_count_limit)
@@ -38,5 +38,5 @@ import time
 
 #             msg = f'[{os.getenv("ENV")}] <strong>#Whale alert</strong>: {transaction["transaction_type"]} of #{transaction["symbol"]} ({transaction["amount_usd"]} USD) from {from_owner} wallet to {to_owner}\n- https://www.binance.com/en/trade/{transaction["symbol"]}_USDT \n- Dashboard trade http://terminal.binbot.in/bots/new/{transaction["symbol"]}USDT'
 #             self.telegram_bot.send_msg(msg)
-        
+
 #         pass
