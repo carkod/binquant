@@ -48,7 +48,7 @@ async def data_analytics_pipe():
             session_timeout_ms=60000,  # Add session timeout
         )
         await consumer.start()
-        telegram_consumer = TelegramConsumer(consumer)
+        telegram_consumer = TelegramConsumer()
         at_consumer = AutotradeConsumer(consumer)
 
         try:
@@ -63,7 +63,7 @@ async def data_analytics_pipe():
 
                 if message.topic == KafkaTopics.signals.value:
                     at_consumer.process_autotrade_restrictions(message.value)
-                    telegram_consumer.send_telegram(message.value)
+                    await telegram_consumer.send_msg(message.value)
         finally:
             await consumer.stop()
 
