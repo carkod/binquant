@@ -8,11 +8,11 @@ def top_gainers_drop(
     close_price,
     open_price,
     ma_7,
-    ma_100,
     ma_25,
-    symbol,
-    lowest_price,
-    slope,
+    ma_100,
+    ma_7_prev,
+    ma_25_prev,
+    ma_100_prev,
     volatility,
 ):
     """
@@ -21,7 +21,7 @@ def top_gainers_drop(
     so create margin_short bot
 
     """
-    if float(close_price) < float(open_price) and symbol in self.top_coins_gainers:
+    if float(close_price) < float(open_price) and self.symbol in self.top_coins_gainers:
         algo = "top_gainers_drop"
 
         trend = self.define_strategy(self)
@@ -29,16 +29,15 @@ def top_gainers_drop(
             return
 
         msg = f"""
-- [{os.getenv('ENV')}] Top gainers's drop <strong>#{algo} algorithm</strong> #{symbol}
+- [{os.getenv('ENV')}] Top gainers's drop <strong>#{algo} algorithm</strong> #{self.symbol}
 - Current price: {close_price}
 - Log volatility (log SD): {volatility}
-- Slope: {slope}
-- https://www.binance.com/en/trade/{symbol}
-- <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
+- https://www.binance.com/en/trade/{self.symbol}
+- <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
 """
         value = {
             "msg": msg,
-            "symbol": symbol,
+            "self.symbol": self.symbol,
             "algo": algo,
             "spread": volatility,
             "current_price": close_price,

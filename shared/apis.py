@@ -1,11 +1,13 @@
 import hashlib
 import hmac
 import os
-from decimal import Decimal, getcontext
+from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
+
 from dotenv import load_dotenv
 from requests import Session, get
+
 from shared.utils import handle_binance_errors
 
 load_dotenv()
@@ -130,7 +132,7 @@ class BinanceApi:
         symbols = self._exchange_info(symbol)
         market = symbols["symbols"][0]
         price_filter = next(
-            (m for m in market["filters"] if m["filterType"] == "PRICE_FILTER")
+            m for m in market["filters"] if m["filterType"] == "PRICE_FILTER"
         )
 
         # Convert scientific notation to decimal and remove leading zeros
@@ -152,7 +154,7 @@ class BinanceApi:
         symbols = self._exchange_info(symbol)
         market = symbols["symbols"][0]
         min_notional_filter = next(
-            (m for m in market["filters"] if m["filterType"] == "NOTIONAL")
+            m for m in market["filters"] if m["filterType"] == "NOTIONAL"
         )
         min_qty = float(qty) > float(min_notional_filter["minNotional"])
         return min_qty

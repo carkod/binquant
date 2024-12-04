@@ -1,6 +1,7 @@
 import os
-from api.streaming.models import SignalsConsumer
+
 from shared.enums import KafkaTopics
+from models.signals import SignalsConsumer
 
 
 def rally_or_pullback(
@@ -19,6 +20,8 @@ def rally_or_pullback(
     """
     Rally algorithm
 
+    Key difference with other algorithms is the trend is determined not by market
+    but day or minute percentage change
     https://www.binance.com/en/support/faq/understanding-top-movers-statuses-on-binance-spot-trading-18c97e8ab67a4e1b824edd590cae9f16
     """
     data = self.get_24_ticker(symbol)
@@ -39,17 +42,13 @@ def rally_or_pullback(
 
     if day_diff <= 0.08 and minute_diff >= 0.05:
         algo_type = "Rally"
-        # trend = "uptrend"
+        trend = "uptrend"
 
     if day_diff_pb >= 0.08 and minute_diff_pb <= 0.05:
         algo_type = "Pullback"
-        # trend = "downtrend"
+        trend = "downtrend"
 
     if not algo_type:
-        return
-
-    trend = self.define_strategy()
-    if not trend:
         return
 
     bb_high, bb_mid, bb_low = self.bb_spreads()
@@ -70,9 +69,9 @@ def rally_or_pullback(
         if (
             float(close_price) > float(open_price)
             and volatility > 0.09
-            # and close_price < ma_25[len(ma_25) - 1]
-            # and close_price < ma_25[len(ma_25) - 2]
-            # and close_price < ma_25[len(ma_25) - 3]
+            and close_price < ma_25[len(ma_25) - 1]
+            and close_price < ma_25[len(ma_25) - 2]
+            and close_price < ma_25[len(ma_25) - 3]
             and close_price < ma_100[len(ma_100) - 1]
             and close_price < ma_100[len(ma_100) - 2]
             and close_price < ma_100[len(ma_100) - 3]

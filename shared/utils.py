@@ -1,9 +1,11 @@
 import math
 import re
+from datetime import datetime
 from decimal import Decimal
 from time import sleep
+
 from requests import Response
-from datetime import datetime
+
 from shared.exceptions import InvalidSymbol
 
 
@@ -28,7 +30,7 @@ def supress_trailling(value: str | float | int) -> float:
     value = float(value)
     # supress scientific notation
     number = float(f"{value:f}")
-    number = float("{0:g}".format(number))
+    number = float(f"{number:g}")
     return number
 
 

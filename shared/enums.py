@@ -88,12 +88,18 @@ class OrderSide(str, Enum):
     sell = "SELL"
 
 
+class TrendEnum(str, Enum):
+    up_trend = "uptrend"
+    down_trend = "downtrend"
+    neutral = None
+
+
 class CloseConditions(str, Enum):
     dynamic_trailling = "dynamic_trailling"
-    timestamp = "timestamp"  # No trailling, standard stop loss
-    market_reversal = (
-        "market_reversal"  # binbot-research param (self.market_trend_reversal)
-    )
+    # No trailling, standard stop loss
+    timestamp = "timestamp"
+    # binbot-research param (self.market_trend_reversal)
+    market_reversal = "market_reversal"
 
 
 class KafkaTopics(str, Enum):

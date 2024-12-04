@@ -1,15 +1,19 @@
-from datetime import datetime, timedelta
 import logging
-import pandas
+from datetime import datetime, timedelta
 from typing import Literal
 
-# from algorithms.timeseries_gpt import detect_anomalies
-from models.signals import SignalsConsumer, TrendEnum
-from shared.enums import KafkaTopics
-from shared.apis import BinbotApi
-from producers.base import BaseProducer
-from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
+import pandas
+
 from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
+from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
+
+# from algorithms.timeseries_gpt import detect_anomalies
+from algorithms.rally import rally_or_pullback
+from algorithms.top_gainer_drop import top_gainers_drop
+from models.signals import SignalsConsumer, TrendEnum
+from producers.base import BaseProducer
+from shared.apis import BinbotApi
+from shared.enums import KafkaTopics
 
 
 class TechnicalIndicators(BinbotApi):
@@ -102,15 +106,6 @@ class TechnicalIndicators(BinbotApi):
         ):
             trend = None
 
-        # if self.market_domination_trend == "gainers":
-        #     trend = TrendEnum.up_trend.value
-
-        # elif self.market_domination_trend == "losers":
-        #     trend = TrendEnum.down_trend.value
-
-        # else:
-        #     trend = None
-
         return trend
 
     def calculate_slope(candlesticks):
@@ -194,8 +189,8 @@ class TechnicalIndicators(BinbotApi):
         - bottom_band: diff between ma_7 and ma_25
         """
 
-        band_1 = (abs((self.df["ma_100"] - self.df["ma_25"])) / self.df["ma_100"]) * 100
-        band_2 = (abs((self.df["ma_25"] - self.df["ma_7"])) / self.df["ma_25"]) * 100
+        band_1 = (abs(self.df["ma_100"] - self.df["ma_25"]) / self.df["ma_100"]) * 100
+        band_2 = (abs(self.df["ma_25"] - self.df["ma_7"]) / self.df["ma_25"]) * 100
 
         self.df["big_ma_spread"] = band_1
         self.df["small_ma_spread"] = band_2
@@ -391,32 +386,31 @@ class TechnicalIndicators(BinbotApi):
             )
 
             # This function calls a lot ticker24 revise it before uncommenting
-            # rally_or_pullback(
-            #     self,
-            #     close_price,
-            #     open_price,
-            #     self.symbol,
-            #     ma_7,
-            #     ma_25,
-            #     ma_100,
-            #     ma_7_prev,
-            #     ma_25_prev,
-            #     ma_100_prev,
-            #     volatility
-            # )
+            rally_or_pullback(
+                self,
+                close_price,
+                open_price,
+                self.symbol,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility,
+            )
 
             # top_gainers_drop(
             #     self,
             #     close_price,
             #     open_price,
-            #     self.symbol,
             #     ma_7,
             #     ma_25,
             #     ma_100,
             #     ma_7_prev,
             #     ma_25_prev,
             #     ma_100_prev,
-            #     volatility
+            #     volatility,
             # )
 
         return

@@ -1,25 +1,19 @@
 from time import time
-from typing import Optional
+
 from bson import ObjectId
-from pydantic import BaseModel, ConfigDict, Field, InstanceOf, field_validator
-from enum import Enum
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shared.enums import (
     BinanceKlineIntervals,
+    BinanceOrderModel,
     BinbotEnums,
     CloseConditions,
     DealModel,
     EnumDefinitions,
     Status,
     Strategy,
-    BinanceOrderModel,
+    TrendEnum,
 )
-
-
-class TrendEnum(str, Enum):
-    up_trend = "uptrend"
-    down_trend = "downtrend"
-    neutral = None
 
 
 class BollinguerSpread(BaseModel):
@@ -71,7 +65,9 @@ class BotPayload(BaseModel):
     fiat: str = "USDC"
     balance_to_use: str = "USDC"
     base_order_size: float | int | str = 15  # Min Binance 0.0001 BNB
-    candlestick_interval: BinanceKlineIntervals = Field(default=BinanceKlineIntervals.fifteen_minutes)
+    candlestick_interval: BinanceKlineIntervals = Field(
+        default=BinanceKlineIntervals.fifteen_minutes
+    )
     close_condition: CloseConditions = Field(default=CloseConditions.dynamic_trailling)
     # cooldown period in minutes before opening next bot with same pair
     cooldown: int = 0
@@ -79,7 +75,7 @@ class BotPayload(BaseModel):
     dynamic_trailling: bool = False
     errors: list[str] = []  # Event logs
     # to deprecate in new db
-    locked_so_funds: Optional[float] = 0  # funds locked by Safety orders
+    locked_so_funds: float | None = 0  # funds locked by Safety orders
     mode: str = "manual"
     name: str = "Default bot"
     orders: list[BinanceOrderModel] = []  # Internal
@@ -145,7 +141,9 @@ class BotPayload(BaseModel):
             raise ValueError(f"{v} must be a valid candlestick interval")
         return v
 
-    @field_validator("balance_size_to_use", "base_order_size", "base_order_size", mode="before")
+    @field_validator(
+        "balance_size_to_use", "base_order_size", "base_order_size", mode="before"
+    )
     @classmethod
     def countables(cls, v):
         if isinstance(v, str):
@@ -158,7 +156,11 @@ class BotPayload(BaseModel):
             raise ValueError(f"{v} must be a number (float, int or string)")
 
     @field_validator(
-        "stop_loss", "take_profit", "trailling_deviation", "trailling_profit", mode="before"
+        "stop_loss",
+        "take_profit",
+        "trailling_deviation",
+        "trailling_profit",
+        mode="before",
     )
     @classmethod
     def check_percentage(cls, v):

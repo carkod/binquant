@@ -1,5 +1,6 @@
-from kafka import KafkaProducer
 import pytest
+from kafka import KafkaProducer
+
 from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector
 
@@ -80,5 +81,5 @@ def test_producer_error(klines_connector):
         connector.start_stream()
         connector.process_kline_stream(res)
         assert False
-    except KeyError as e:
+    except KeyError:
         assert True

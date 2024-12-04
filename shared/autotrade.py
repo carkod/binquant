@@ -1,13 +1,13 @@
 import json
-import math
 import logging
-
+import math
 from datetime import datetime
-from producers.base import BaseProducer
-from shared.enums import CloseConditions, KafkaTopics, Strategy
+
 from models.signals import BotPayload, TrendEnum
-from shared.exceptions import AutotradeError
+from producers.base import BaseProducer
 from shared.apis import BinbotApi
+from shared.enums import CloseConditions, KafkaTopics, Strategy
+from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, supress_notation
 
 
