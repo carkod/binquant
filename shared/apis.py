@@ -185,6 +185,7 @@ class BinbotApi(BinanceApi):
     bb_activate_bot_url = f"{bb_base_url}/bot/activate"
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
+    bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -354,4 +355,11 @@ class BinbotApi(BinanceApi):
 
     def margin_trading_check(self, symbol):
         data = self.request(url=f"{self.bb_margin_trading_check_url}/{symbol}")
+        return data
+
+    def get_top_gainers(self):
+        """
+        Top crypto/token/coin gainers of the day
+        """
+        data = self.request(url=self.bb_top_gainers)
         return data

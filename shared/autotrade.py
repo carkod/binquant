@@ -193,7 +193,8 @@ class Autotrade(BaseProducer, BinbotApi):
                     self.default_bot.base_order_size = qty
                     break
 
-                rate = rate["price"]
+                ticker = self.get_24_ticker(symbol=self.pair)
+                rate = ticker["price"]
                 qty = supress_notation(b["free"], self.decimals)
                 # Round down to 6 numbers to avoid not enough funds
                 base_order_size = (
