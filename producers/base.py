@@ -24,4 +24,4 @@ class BaseProducer(KafkaDB):
         logging.info(f"Produced: {record_metadata.topic}, {record_metadata.offset}")
 
     def on_send_error(self, excp):
-        print(f"Message production failed to send: {excp}")
+        logging.error(f"Message production failed to send: {excp}")
