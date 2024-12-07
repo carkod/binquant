@@ -28,6 +28,7 @@ class TechnicalIndicators(BinbotApi):
         )
         self.market_domination_reversal: bool | None = None
         self.active_pairs = self.get_active_pairs()["data"]
+        self.top_coins_gainers: list[str] = []
         pass
 
     def update_active_bots_bb_spreads(self, close_price, symbol):
@@ -245,6 +246,8 @@ class TechnicalIndicators(BinbotApi):
                 f"Performing market domination analyses. Current trend: {self.market_domination_trend}"
             )
             data = self.get_market_domination_series()
+            top_gainers_day = self.get_top_gainers()["data"]
+            self.top_coins_gainers = [item['symbol'] for item in top_gainers_day]
             # reverse to make latest series more important
             data["gainers_count"].reverse()
             data["losers_count"].reverse()
@@ -400,17 +403,17 @@ class TechnicalIndicators(BinbotApi):
                 volatility,
             )
 
-            # top_gainers_drop(
-            #     self,
-            #     close_price,
-            #     open_price,
-            #     ma_7,
-            #     ma_25,
-            #     ma_100,
-            #     ma_7_prev,
-            #     ma_25_prev,
-            #     ma_100_prev,
-            #     volatility,
-            # )
+            top_gainers_drop(
+                self,
+                close_price,
+                open_price,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility,
+            )
 
         return

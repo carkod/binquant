@@ -25,7 +25,6 @@ class AutotradeConsumer(BinbotApi):
         self.active_test_bots: list = []
         self.load_data_on_start()
         # Because market domination analysis 40 weight from binance endpoints
-        self.top_coins_gainers: list = []
         self.btc_change_perc = 0
         self.volatility = 0
         pass
@@ -80,7 +79,7 @@ class AutotradeConsumer(BinbotApi):
         Check if margin trading is allowed for a symbol
         """
         info = self._exchange_info(symbol)
-        return bool(info["isMarginTradingAllowed"])
+        return bool(info["symbols"][0]["isMarginTradingAllowed"])
 
     def process_autotrade_restrictions(self, result: str):
         """

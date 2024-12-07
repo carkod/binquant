@@ -82,7 +82,7 @@ def rally_or_pullback(
                 msg=msg,
                 symbol=symbol,
                 algo=algo,
-                trend=trend,
+                trend=volatility,
                 bb_spreads={
                     "bb_high": bb_high,
                     "bb_mid": bb_mid,
