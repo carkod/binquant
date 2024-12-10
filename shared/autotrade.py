@@ -1,13 +1,13 @@
 import json
-import math
 import logging
-
+import math
 from datetime import datetime
-from producers.base import BaseProducer
-from shared.enums import CloseConditions, KafkaTopics, Strategy
+
 from models.signals import BotPayload, TrendEnum
-from shared.exceptions import AutotradeError
+from producers.base import BaseProducer
 from shared.apis import BinbotApi
+from shared.enums import CloseConditions, KafkaTopics, Strategy
+from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, supress_notation
 
 
@@ -35,14 +35,13 @@ class Autotrade(BaseProducer, BinbotApi):
         self.default_bot = BotPayload(
             pair=pair,
             name=f"{algorithm_name}_{current_date}",
-            balance_size_to_use=str(settings["balance_size_to_use"]),
             balance_to_use=settings["balance_to_use"],
             base_order_size=settings["base_order_size"],
+            strategy=Strategy.long,
             stop_loss=settings["stop_loss"],
             take_profit=settings["take_profit"],
             trailling=settings["trailling"],
             trailling_deviation=settings["trailling_deviation"],
-            strategy=settings["strategy"],
             close_condition=CloseConditions.dynamic_trailling,
         )
         self.db_collection_name = db_collection_name
@@ -194,7 +193,8 @@ class Autotrade(BaseProducer, BinbotApi):
                     self.default_bot.base_order_size = qty
                     break
 
-                rate = rate["price"]
+                ticker = self.get_24_ticker(symbol=self.pair)
+                rate = ticker["price"]
                 qty = supress_notation(b["free"], self.decimals)
                 # Round down to 6 numbers to avoid not enough funds
                 base_order_size = (
@@ -298,7 +298,7 @@ class Autotrade(BaseProducer, BinbotApi):
 
         if "error" in bot and bot["error"] > 0:
             # Failed to activate bot so:
-            # (1) Add  to blacklist/exclude from future autotrades
+            # (1) Add to blacklist/exclude from future autotrades
             # (2) Submit error to event logs
             # (3) Delete inactive bot
             # this prevents cluttering UI with loads of useless bots

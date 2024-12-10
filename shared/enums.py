@@ -1,4 +1,7 @@
 from enum import Enum
+from time import time
+
+from pydantic import BaseModel, field_validator
 
 
 class EnumDefinitions:
@@ -73,36 +76,30 @@ class OrderType(str, Enum):
     take_profit_limit = "TAKE_PROFIT_LIMIT"
     limit_maker = "LIMIT_MAKER"
 
-    def __str__(self):
-        return str(self.str)
-
 
 class TimeInForce(str, Enum):
     gtc = "GTC"
     ioc = "IOC"
     fok = "FOK"
 
-    def __str__(self):
-        return str(self.str)
-
 
 class OrderSide(str, Enum):
     buy = "BUY"
     sell = "SELL"
 
-    def __str__(self):
-        return str(self.str)
+
+class TrendEnum(str, Enum):
+    up_trend = "uptrend"
+    down_trend = "downtrend"
+    neutral = None
 
 
 class CloseConditions(str, Enum):
     dynamic_trailling = "dynamic_trailling"
-    timestamp = "timestamp"  # No trailling, standard stop loss
-    market_reversal = (
-        "market_reversal"  # binbot-research param (self.market_trend_reversal)
-    )
-
-    def __str__(self):
-        return str(self.str)
+    # No trailling, standard stop loss
+    timestamp = "timestamp"
+    # binbot-research param (self.market_trend_reversal)
+    market_reversal = "market_reversal"
 
 
 class KafkaTopics(str, Enum):
@@ -111,9 +108,6 @@ class KafkaTopics(str, Enum):
     technical_indicators = "technical_indicators"
     signals = "signals"
     restart_streaming = "restart_streaming"
-
-    def __str__(self):
-        return str(self.str)
 
 
 class BinanceKlineIntervals(str, Enum):
@@ -133,9 +127,6 @@ class BinanceKlineIntervals(str, Enum):
     one_week = "1w"
     one_month = "1M"
 
-    def __str__(self):
-        return str(self.value)
-
     def bin_size(self):
         return int(self.value[:-1])
 
@@ -150,3 +141,112 @@ class BinanceKlineIntervals(str, Enum):
             return "week"
         elif self.value[-1:] == "M":
             return "month"
+
+
+class DealType(str, Enum):
+    base_order = "base_order"
+    take_profit = "take_profit"
+    stop_loss = "stop_loss"
+    short_sell = "short_sell"
+    short_buy = "short_buy"
+    margin_short = "margin_short"
+    panic_close = "panic_close"
+
+
+class BinanceOrderModel(BaseModel):
+    """
+    Data model given by Binance,
+    therefore it should be strings
+    """
+
+    order_type: str
+    time_in_force: str
+    timestamp: int
+    order_id: int
+    order_side: str
+    pair: str
+    qty: float
+    status: str
+    price: float
+    deal_type: DealType
+
+    @field_validator("timestamp", "order_id", "price", "qty", "order_id")
+    @classmethod
+    def validate_str_numbers(cls, v):
+        if isinstance(v, float):
+            return v
+        elif isinstance(v, int):
+            return v
+        elif isinstance(v, str):
+            return float(v)
+        else:
+            raise ValueError(f"{v} must be a number")
+
+
+class DealModel(BaseModel):
+    """
+    Data model that is used for operations,
+    so it should all be numbers (int or float)
+    """
+
+    buy_price: float = 0
+    buy_total_qty: float = 0
+    buy_timestamp: float = time() * 1000
+    current_price: float = 0
+    sd: float = 0
+    avg_buy_price: float = 0
+    take_profit_price: float = 0
+    sell_timestamp: float = 0
+    sell_price: float = 0
+    sell_qty: float = 0
+    trailling_stop_loss_price: float = 0
+    # take_profit but for trailling, to avoid confusion, trailling_profit_price always be > trailling_stop_loss_price
+    trailling_profit_price: float = 0
+    stop_loss_price: float = 0
+    trailling_profit: float = 0
+    so_prices: float = 0
+    post_closure_current_price: float = 0
+    original_buy_price: float = 0  # historical buy_price after so trigger
+    short_sell_price: float = 0
+    short_sell_qty: float = 0
+    short_sell_timestamp: float = time() * 1000
+
+    # fields for margin trading
+    margin_short_loan_principal: float = 0
+    margin_loan_id: float = 0
+    hourly_interest_rate: float = 0
+    margin_short_sell_price: float = 0
+    margin_short_loan_interest: float = 0
+    margin_short_buy_back_price: float = 0
+    margin_short_sell_qty: float = 0
+    margin_short_buy_back_timestamp: int = 0
+    margin_short_base_order: float = 0
+    margin_short_sell_timestamp: int = 0
+    margin_short_loan_timestamp: int = 0
+
+    @field_validator(
+        "buy_price",
+        "current_price",
+        "avg_buy_price",
+        "original_buy_price",
+        "take_profit_price",
+        "sell_price",
+        "short_sell_price",
+        "trailling_stop_loss_price",
+        "trailling_profit_price",
+        "stop_loss_price",
+        "trailling_profit",
+        "margin_short_loan_principal",
+        "margin_short_sell_price",
+        "margin_short_loan_interest",
+        "margin_short_buy_back_price",
+        "margin_short_base_order",
+        "margin_short_sell_qty",
+    )
+    @classmethod
+    def check_prices(cls, v):
+        if float(v) < 0:
+            raise ValueError("Price must be a positive number")
+        elif isinstance(v, str):
+            return float(v)
+        return v
