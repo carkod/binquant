@@ -1,7 +1,8 @@
 import os
+
+from models.signals import SignalsConsumer
 from shared.enums import KafkaTopics
 from shared.utils import round_numbers
-from models.signals import SignalsConsumer
 
 # Algorithms based on Bollinguer bands
 
