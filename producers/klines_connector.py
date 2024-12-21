@@ -2,10 +2,11 @@ import json
 import logging
 
 from kafka import KafkaProducer
-from shared.apis import BinbotApi
+
 from producers.produce_klines import KlinesProducer
-from shared.streaming.socket_client import SpotWebsocketStreamClient
+from shared.apis import BinbotApi
 from shared.exceptions import WebSocketError
+from shared.streaming.socket_client import SpotWebsocketStreamClient
 
 
 class KlinesConnector(BinbotApi):

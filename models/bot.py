@@ -1,8 +1,9 @@
 from time import time
 from typing import Literal
+
+from binquant.shared.enums import Status, Strategy
 from bson.objectid import ObjectId
 from pydantic import BaseModel, Field, field_validator
-from binquant.shared.enums import Status, Strategy
 
 
 class OrderSchema(BaseModel):

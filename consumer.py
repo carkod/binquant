@@ -1,13 +1,15 @@
-import json
-import os
 import asyncio
+import json
 import logging
+import os
+
 from aiokafka import AIOKafkaConsumer
+from aiokafka.errors import RequestTimedOutError, UnknownMemberIdError
+
 from consumers.autotrade_consumer import AutotradeConsumer
-from shared.enums import KafkaTopics
-from consumers.telegram_consumer import TelegramConsumer
 from consumers.klines_provider import KlinesProvider
-from aiokafka.errors import UnknownMemberIdError, RequestTimedOutError
+from consumers.telegram_consumer import TelegramConsumer
+from shared.enums import KafkaTopics
 
 
 async def data_process_pipe():
