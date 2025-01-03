@@ -60,10 +60,7 @@ class SignalsConsumer(BaseModel):
 class BotPayload(BaseModel):
     id: str | None = None
     pair: str
-    balance_size_to_use: str | float = Field(default=1)
-    # New table field fiat replaces balance_to_use
     fiat: str = "USDC"
-    balance_to_use: str = "USDC"
     base_order_size: float | int | str = 15  # Min Binance 0.0001 BNB
     candlestick_interval: BinanceKlineIntervals = Field(
         default=BinanceKlineIntervals.fifteen_minutes
@@ -86,7 +83,7 @@ class BotPayload(BaseModel):
     trailling: bool = True
     trailling_deviation: float = 0
     trailling_profit: float = 0  # Trailling activation (first take profit hit)
-    strategy: str = Field(default=Strategy.long)
+    strategy: Strategy = Field(default=Strategy.long)
     short_buy_price: float = 0
     short_sell_price: float = 0  # autoswitch to short_strategy
     # Deal and orders are internal, should never be updated by outside data
@@ -103,7 +100,6 @@ class BotPayload(BaseModel):
             "examples": [
                 {
                     "pair": "BNBUSDT",
-                    "balance_size_to_use": 1,
                     "fiat": "USDC",
                     "base_order_size": 15,
                     "candlestick_interval": "15m",
@@ -141,9 +137,7 @@ class BotPayload(BaseModel):
             raise ValueError(f"{v} must be a valid candlestick interval")
         return v
 
-    @field_validator(
-        "balance_size_to_use", "base_order_size", "base_order_size", mode="before"
-    )
+    @field_validator("base_order_size", "base_order_size", mode="before")
     @classmethod
     def countables(cls, v):
         if isinstance(v, str):

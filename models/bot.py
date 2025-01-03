@@ -1,7 +1,7 @@
 from time import time
 from typing import Literal
 
-from binquant.shared.enums import Status, Strategy
+from shared.enums import Status, Strategy
 from bson.objectid import ObjectId
 from pydantic import BaseModel, Field, field_validator
 
@@ -105,8 +105,7 @@ class SafetyOrderSchema(BaseModel):
 class BotSchema(BaseModel):
     id: str = ""
     pair: str
-    balance_size_to_use: float = 0
-    balance_to_use: str = "1"
+    fiat: str = "USDC"
     base_order_size: str = "15"  # Min Binance 0.0001 BNB
     candlestick_interval: str = "15m"
     close_condition: str = ""
@@ -176,8 +175,7 @@ class BotSchema(BaseModel):
             "description": "Most fields are optional. Deal field is generated internally, orders are filled up by Binance",
             "example": {
                 "pair": "BNBUSDT",
-                "balance_size_to_use": 0,
-                "balance_to_use": 0,
+                "fiat": "USDC",
                 "base_order_size": 15,
                 "candlestick_interval": "15m",
                 "cooldown": 0,
