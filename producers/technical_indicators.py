@@ -325,100 +325,102 @@ class TechnicalIndicators(BinbotApi):
                 or self.df.ma_100.size < 100
             ):
                 return
+            try:
+                close_price = float(self.df.close[len(self.df.close) - 1])
+                open_price = float(self.df.open[len(self.df.open) - 1])
+                macd = float(self.df.macd[len(self.df.macd) - 1])
+                macd_signal = float(self.df.macd_signal[len(self.df.macd_signal) - 1])
+                rsi = float(self.df.rsi[len(self.df.rsi) - 1])
 
-            close_price = float(self.df.close[len(self.df.close) - 1])
-            open_price = float(self.df.open[len(self.df.open) - 1])
-            macd = float(self.df.macd[len(self.df.macd) - 1])
-            macd_signal = float(self.df.macd_signal[len(self.df.macd_signal) - 1])
-            rsi = float(self.df.rsi[len(self.df.rsi) - 1])
+                ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
+                ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
+                ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
+                ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
+                ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
+                ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
 
-            ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
-            ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
-            ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
-            ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
-            ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
-            ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
-
-            volatility = float(
-                self.df.perc_volatility[len(self.df.perc_volatility) - 1]
-            )
-
-            if self.symbol in self.active_pairs:
-                self.update_active_bots_bb_spreads(
-                    close_price=close_price, symbol=self.symbol
+                volatility = float(
+                    self.df.perc_volatility[len(self.df.perc_volatility) - 1]
                 )
-                return
 
-            fast_and_slow_macd(
-                self,
-                close_price,
-                self.symbol,
-                macd,
-                macd_signal,
-                ma_7,
-                ma_25,
-                ma_100,
-                volatility,
-            )
+                if self.symbol in self.active_pairs:
+                    self.update_active_bots_bb_spreads(
+                        close_price=close_price, symbol=self.symbol
+                    )
+                    return
 
-            ma_candlestick_jump(
-                self,
-                close_price,
-                open_price,
-                self.symbol,
-                ma_7,
-                ma_25,
-                ma_100,
-                ma_7_prev,
-                ma_25_prev,
-                ma_100_prev,
-                volatility,
-            )
+                fast_and_slow_macd(
+                    self,
+                    close_price,
+                    self.symbol,
+                    macd,
+                    macd_signal,
+                    ma_7,
+                    ma_25,
+                    ma_100,
+                    volatility,
+                )
 
-            ma_candlestick_drop(
-                self,
-                close_price,
-                open_price,
-                self.symbol,
-                ma_7,
-                ma_25,
-                ma_100,
-                ma_7_prev,
-                ma_25_prev,
-                ma_100_prev,
-                volatility,
-            )
+                ma_candlestick_jump(
+                    self,
+                    close_price,
+                    open_price,
+                    self.symbol,
+                    ma_7,
+                    ma_25,
+                    ma_100,
+                    ma_7_prev,
+                    ma_25_prev,
+                    ma_100_prev,
+                    volatility,
+                )
 
-            buy_low_sell_high(
-                self, close_price, self.symbol, rsi, ma_25, ma_7, ma_100, volatility
-            )
+                ma_candlestick_drop(
+                    self,
+                    close_price,
+                    open_price,
+                    self.symbol,
+                    ma_7,
+                    ma_25,
+                    ma_100,
+                    ma_7_prev,
+                    ma_25_prev,
+                    ma_100_prev,
+                    volatility,
+                )
 
-            # This function calls a lot ticker24 revise it before uncommenting
-            rally_or_pullback(
-                self,
-                close_price,
-                open_price,
-                self.symbol,
-                ma_7,
-                ma_25,
-                ma_100,
-                ma_7_prev,
-                ma_25_prev,
-                ma_100_prev,
-                volatility,
-            )
+                buy_low_sell_high(
+                    self, close_price, self.symbol, rsi, ma_25, ma_7, ma_100, volatility
+                )
 
-            top_gainers_drop(
-                self,
-                close_price,
-                open_price,
-                ma_7,
-                ma_25,
-                ma_100,
-                ma_7_prev,
-                ma_25_prev,
-                ma_100_prev,
-                volatility,
-            )
+                # This function calls a lot ticker24 revise it before uncommenting
+                rally_or_pullback(
+                    self,
+                    close_price,
+                    open_price,
+                    self.symbol,
+                    ma_7,
+                    ma_25,
+                    ma_100,
+                    ma_7_prev,
+                    ma_25_prev,
+                    ma_100_prev,
+                    volatility,
+                )
+
+                top_gainers_drop(
+                    self,
+                    close_price,
+                    open_price,
+                    ma_7,
+                    ma_25,
+                    ma_100,
+                    ma_7_prev,
+                    ma_25_prev,
+                    ma_100_prev,
+                    volatility,
+                )
+            except Exception as e:
+                logging.error(f"Error processing data: {e}")
 
         return

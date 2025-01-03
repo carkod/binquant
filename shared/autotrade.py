@@ -3,12 +3,14 @@ import logging
 import math
 from datetime import datetime
 
-from models.signals import BotPayload, TrendEnum
+from models.signals import TrendEnum
 from producers.base import BaseProducer
 from shared.apis import BinbotApi
 from shared.enums import CloseConditions, KafkaTopics, Strategy
 from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, supress_notation
+from models.bot import BotModel
+from models.signals import SignalsConsumer
 
 
 class Autotrade(BaseProducer, BinbotApi):
@@ -32,7 +34,7 @@ class Autotrade(BaseProducer, BinbotApi):
         self.decimals = self.price_precision(pair)
         current_date = datetime.now().strftime("%Y-%m-%dT%H:%M")
         self.algorithm_name = algorithm_name
-        self.default_bot = BotPayload(
+        self.default_bot = BotModel(
             pair=pair,
             name=f"{algorithm_name}_{current_date}",
             fiat=settings["balance_to_use"],
@@ -50,8 +52,9 @@ class Autotrade(BaseProducer, BinbotApi):
         super().__init__()
         self.producer = self.start_producer()
 
-    def _set_bollinguer_spreads(self, data):
+    def _set_bollinguer_spreads(self, data: SignalsConsumer):
         bb_spreads = data.bb_spreads
+
         if bb_spreads["bb_high"] and bb_spreads["bb_low"] and bb_spreads["bb_mid"]:
             top_spread = (
                 abs(
@@ -98,12 +101,12 @@ class Autotrade(BaseProducer, BinbotApi):
         Submit errors to event logs of the bot
         """
         try:
-            self.default_bot.errors.append(msg)
+            self.default_bot.logs.append(msg)
         except AttributeError:
-            self.default_bot.errors = []
-            self.default_bot.errors.append(msg)
+            self.default_bot.logs = []
+            self.default_bot.logs.append(msg)
 
-    def set_margin_short_values(self, data):
+    def set_margin_short_values(self, data: SignalsConsumer):
         """
         Set up values for margin_short
         this overrides the settings in research_controller autotrade settings
@@ -120,7 +123,7 @@ class Autotrade(BaseProducer, BinbotApi):
             self.default_bot.stop_loss = 5
             self.default_bot.trailling_deviation = 3.2
 
-    def set_bot_values(self, data):
+    def set_bot_values(self, data: SignalsConsumer):
         """
         Set values for default_bot
         """
@@ -195,7 +198,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 )
                 pass
 
-    def activate_autotrade(self, data, **kwargs):
+    def activate_autotrade(self, data: SignalsConsumer, **kwargs):
         """
         Run autotrade
         2. Create bot with given parameters from research_controller
@@ -273,7 +276,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 pass
 
         # Create bot
-        payload = self.default_bot.model_dump()
+        payload = self.default_bot.model_dump_json()
         # create paper or real bot
         create_bot = create_func(payload)
 

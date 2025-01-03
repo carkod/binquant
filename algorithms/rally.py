@@ -50,12 +50,11 @@ def rally_or_pullback(
         return
 
     if (
-        close_price < ma_25[len(ma_25) - 1]
+        close_price < ma_25
         and close_price < ma_25[len(ma_25) - 2]
-        and close_price < ma_25[len(ma_25) - 3]
-        and close_price < ma_100[len(ma_100) - 1]
-        and close_price < ma_100[len(ma_100) - 2]
-        and close_price < ma_100[len(ma_100) - 3]
+        and close_price < ma_25_prev
+        and close_price < ma_100
+        and close_price < ma_100_prev[len(ma_100) - 2]
     ):
         bb_high, bb_mid, bb_low = self.bb_spreads()
 

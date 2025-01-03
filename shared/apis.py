@@ -329,7 +329,7 @@ class BinbotApi(BinanceApi):
         return data
 
     def create_bot(self, data):
-        data = self.request(url=self.bb_bot_url, method="POST", json=data)
+        data = self.request(url=self.bb_bot_url, method="POST", data=data)
         return data
 
     def activate_bot(self, bot_id):
