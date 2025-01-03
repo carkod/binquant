@@ -1,8 +1,8 @@
 import os
 
-from shared.utils import round_numbers
 from models.signals import SignalsConsumer
 from shared.enums import KafkaTopics
+from shared.utils import round_numbers
 
 
 def fast_and_slow_macd(
@@ -20,13 +20,7 @@ def fast_and_slow_macd(
     bb_high, bb_mid, bb_low = self.bb_spreads()
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
-    if (
-        macd > macd_signal
-        and ma_7 > ma_25
-        and bb_high < 1
-        and bb_high > 0.001
-        and trend
-    ):
+    if macd > macd_signal and ma_7 > ma_25 and bb_high < 1 and bb_high > 0.001:
         msg = f"""
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{symbol} 
         - Current price: {close_price}

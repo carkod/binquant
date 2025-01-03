@@ -1,11 +1,13 @@
 import json
 import logging
+
 import pandas as pd
 from kafka import KafkaConsumer
-from shared.enums import BinanceKlineIntervals
+
+from database import KafkaDB
 from models.klines import KlineProduceModel
 from producers.technical_indicators import TechnicalIndicators
-from database import KafkaDB
+from shared.enums import BinanceKlineIntervals
 
 # spark = SparkSession.builder.appName("Klines Statistics analyses")\
 #     .config("compute.ops_on_diff_frames", "true").getOrCreate()

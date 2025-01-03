@@ -4,8 +4,10 @@ import os
 from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
+
 from dotenv import load_dotenv
 from requests import Session, get
+
 from shared.utils import handle_binance_errors
 
 load_dotenv()
@@ -120,7 +122,7 @@ class BinanceApi:
         data = self.request(url=self.launchpool_url, headers={"User-Agent": "Mozilla"})
         return data
 
-    def price_precision(self, symbol):
+    def price_precision(self, symbol) -> int:
         """
         Modified from price_filter_by_symbol
         from /api/account/account.py
@@ -130,16 +132,16 @@ class BinanceApi:
         symbols = self._exchange_info(symbol)
         market = symbols["symbols"][0]
         price_filter = next(
-            (m for m in market["filters"] if m["filterType"] == "PRICE_FILTER")
+            m for m in market["filters"] if m["filterType"] == "PRICE_FILTER"
         )
 
-        # Once got the filter data of Binance
-        # Transform into string and remove leading zeros
-        # This is how the exchange accepts the prices, it will not work with scientific exponential notation e.g. 2.1-10
-        price_precision = Decimal(str(price_filter["tickSize"].rstrip(".0")))
+        # Convert scientific notation to decimal and remove leading zeros
+        tick_size = float(price_filter["tickSize"])
+        tick_size_str = f"{tick_size:.8f}".rstrip("0").rstrip(".")
+        price_precision = Decimal(tick_size_str).as_tuple()
 
-        # Finally return the correct number of decimals required
-        return -(price_precision).as_tuple().exponent
+        # Finally return the correct number of decimals required as positive number
+        return abs(int(price_precision.exponent))
 
     def min_amount_check(self, symbol, qty):
         """
@@ -152,7 +154,7 @@ class BinanceApi:
         symbols = self._exchange_info(symbol)
         market = symbols["symbols"][0]
         min_notional_filter = next(
-            (m for m in market["filters"] if m["filterType"] == "NOTIONAL")
+            m for m in market["filters"] if m["filterType"] == "NOTIONAL"
         )
         min_qty = float(qty) > float(min_notional_filter["minNotional"])
         return min_qty
@@ -183,6 +185,7 @@ class BinbotApi(BinanceApi):
     bb_activate_bot_url = f"{bb_base_url}/bot/activate"
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
+    bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -352,4 +355,11 @@ class BinbotApi(BinanceApi):
 
     def margin_trading_check(self, symbol):
         data = self.request(url=f"{self.bb_margin_trading_check_url}/{symbol}")
+        return data
+
+    def get_top_gainers(self):
+        """
+        Top crypto/token/coin gainers of the day
+        """
+        data = self.request(url=self.bb_top_gainers)
         return data

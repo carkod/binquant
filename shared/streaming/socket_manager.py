@@ -1,12 +1,13 @@
 import json
 import logging
-import time
 import threading
+import time
+
 from websocket import (
     ABNF,
-    create_connection,
-    WebSocketException,
     WebSocketConnectionClosedException,
+    WebSocketException,
+    create_connection,
 )
 
 
@@ -64,10 +65,10 @@ class BinanceSocketManager(threading.Thread):
                 if isinstance(e, WebSocketConnectionClosedException):
                     self.logger.error("Lost websocket connection")
                 else:
-                    self.logger.error("Websocket exception: {}".format(e))
+                    self.logger.error(f"Websocket exception: {e}")
                 raise e
             except Exception as e:
-                self.logger.error("Exception in read_data: {}".format(e))
+                self.logger.error(f"Exception in read_data: {e}")
                 raise e
 
             if op_code == ABNF.OPCODE_CLOSE:
@@ -101,7 +102,7 @@ class BinanceSocketManager(threading.Thread):
             try:
                 callback(self, *args)
             except Exception as e:
-                self.logger.error("Error from callback {}: {}".format(callback, e))
+                self.logger.error(f"Error from callback {callback}: {e}")
                 if self.on_error:
                     self.on_error(self, e)
 

@@ -1,18 +1,18 @@
 import os
-
-from shared.enums import KafkaTopics
+from models.signals import SignalsConsumer
+from shared.enums import KafkaTopics, TrendEnum
 
 
 def top_gainers_drop(
-    self,
+    cls,
     close_price,
     open_price,
     ma_7,
-    ma_100,
     ma_25,
-    symbol,
-    lowest_price,
-    slope,
+    ma_100,
+    ma_7_prev,
+    ma_25_prev,
+    ma_100_prev,
     volatility,
 ):
     """
@@ -21,34 +21,39 @@ def top_gainers_drop(
     so create margin_short bot
 
     """
-    if float(close_price) < float(open_price) and symbol in self.top_coins_gainers:
+    if float(close_price) < float(open_price) and cls.symbol in cls.top_coins_gainers:
         algo = "top_gainers_drop"
 
-        trend = self.define_strategy(self)
+        trend = cls.define_strategy()
         if not trend:
-            return
+            trend = TrendEnum.down_trend
+
+        bb_high, bb_mid, bb_low = cls.bb_spreads()
 
         msg = f"""
-- [{os.getenv('ENV')}] Top gainers's drop <strong>#{algo} algorithm</strong> #{symbol}
-- Current price: {close_price}
-- Log volatility (log SD): {volatility}
-- Slope: {slope}
-- https://www.binance.com/en/trade/{symbol}
-- <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
-"""
-        value = {
-            "msg": msg,
-            "symbol": symbol,
-            "algo": algo,
-            "spread": volatility,
-            "current_price": close_price,
-            "trend": trend,
-        }
+        - [{os.getenv('ENV')}] Top gainers's drop <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - Current price: {close_price}
+        - Log volatility (log SD): {volatility}
+        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
+        - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
+        - https://www.binance.com/en/trade/{cls.symbol}
+        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+        """
 
-        self.producer.send(
+        value = SignalsConsumer(
+            spread=volatility,
+            current_price=close_price,
+            msg=msg,
+            symbol=cls.symbol,
+            algo=algo,
+            trend=trend,
+            bb_spreads=None,
+        )
+
+        cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(self.base_producer.on_send_success).add_errback(
-            self.base_producer.on_send_error
+        ).add_callback(cls.base_producer.on_send_success).add_errback(
+            cls.base_producer.on_send_error
         )
 
     return

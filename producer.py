@@ -1,5 +1,5 @@
-import logging
 import asyncio
+import logging
 
 from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector

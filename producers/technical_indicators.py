@@ -1,15 +1,20 @@
-from datetime import datetime, timedelta
 import logging
-import pandas
+from datetime import datetime, timedelta
 from typing import Literal
 
-# from algorithms.timeseries_gpt import detect_anomalies
-from models.signals import SignalsConsumer, TrendEnum
-from shared.enums import KafkaTopics
-from shared.apis import BinbotApi
-from producers.base import BaseProducer
-from algorithms.ma_candlestick import ma_candlestick_jump, ma_candlestick_drop
+import pandas
+
 from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
+from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
+
+# from algorithms.timeseries_gpt import detect_anomalies
+from algorithms.rally import rally_or_pullback
+from algorithms.top_gainer_drop import top_gainers_drop
+from models.signals import SignalsConsumer, TrendEnum
+from producers.base import BaseProducer
+from shared.apis import BinbotApi
+from shared.enums import KafkaTopics
+from shared.utils import round_numbers
 
 
 class TechnicalIndicators(BinbotApi):
@@ -24,6 +29,7 @@ class TechnicalIndicators(BinbotApi):
         )
         self.market_domination_reversal: bool | None = None
         self.active_pairs = self.get_active_pairs()["data"]
+        self.top_coins_gainers: list[str] = []
         pass
 
     def update_active_bots_bb_spreads(self, close_price, symbol):
@@ -80,7 +86,11 @@ class TechnicalIndicators(BinbotApi):
         bb_mid = float(self.df.bb_mid[len(self.df.bb_mid) - 1])
         bb_low = float(self.df.bb_lower[len(self.df.bb_lower) - 1])
 
-        return bb_high, bb_mid, bb_low
+        return (
+            round_numbers(bb_high, 6),
+            round_numbers(bb_mid, 6),
+            round_numbers(bb_low, 6),
+        )
 
     def define_strategy(self):
         """
@@ -101,15 +111,6 @@ class TechnicalIndicators(BinbotApi):
             and self.market_domination_reversal is None
         ):
             trend = None
-
-        # if self.market_domination_trend == "gainers":
-        #     trend = TrendEnum.up_trend.value
-
-        # elif self.market_domination_trend == "losers":
-        #     trend = TrendEnum.down_trend.value
-
-        # else:
-        #     trend = None
 
         return trend
 
@@ -194,8 +195,8 @@ class TechnicalIndicators(BinbotApi):
         - bottom_band: diff between ma_7 and ma_25
         """
 
-        band_1 = (abs((self.df["ma_100"] - self.df["ma_25"])) / self.df["ma_100"]) * 100
-        band_2 = (abs((self.df["ma_25"] - self.df["ma_7"])) / self.df["ma_25"]) * 100
+        band_1 = (abs(self.df["ma_100"] - self.df["ma_25"]) / self.df["ma_100"]) * 100
+        band_2 = (abs(self.df["ma_25"] - self.df["ma_7"]) / self.df["ma_25"]) * 100
 
         self.df["big_ma_spread"] = band_1
         self.df["small_ma_spread"] = band_2
@@ -250,6 +251,8 @@ class TechnicalIndicators(BinbotApi):
                 f"Performing market domination analyses. Current trend: {self.market_domination_trend}"
             )
             data = self.get_market_domination_series()
+            top_gainers_day = self.get_top_gainers()["data"]
+            self.top_coins_gainers = [item["symbol"] for item in top_gainers_day]
             # reverse to make latest series more important
             data["gainers_count"].reverse()
             data["losers_count"].reverse()
@@ -391,32 +394,31 @@ class TechnicalIndicators(BinbotApi):
             )
 
             # This function calls a lot ticker24 revise it before uncommenting
-            # rally_or_pullback(
-            #     self,
-            #     close_price,
-            #     open_price,
-            #     self.symbol,
-            #     ma_7,
-            #     ma_25,
-            #     ma_100,
-            #     ma_7_prev,
-            #     ma_25_prev,
-            #     ma_100_prev,
-            #     volatility
-            # )
+            rally_or_pullback(
+                self,
+                close_price,
+                open_price,
+                self.symbol,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility,
+            )
 
-            # top_gainers_drop(
-            #     self,
-            #     close_price,
-            #     open_price,
-            #     self.symbol,
-            #     ma_7,
-            #     ma_25,
-            #     ma_100,
-            #     ma_7_prev,
-            #     ma_25_prev,
-            #     ma_100_prev,
-            #     volatility
-            # )
+            top_gainers_drop(
+                self,
+                close_price,
+                open_price,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                ma_25_prev,
+                ma_100_prev,
+                volatility,
+            )
 
         return

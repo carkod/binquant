@@ -1,13 +1,22 @@
-import json
-import os
 import asyncio
+import json
 import logging
+import os
+
 from aiokafka import AIOKafkaConsumer
+from aiokafka.errors import RequestTimedOutError, UnknownMemberIdError
+
 from consumers.autotrade_consumer import AutotradeConsumer
-from shared.enums import KafkaTopics
-from consumers.telegram_consumer import TelegramConsumer
 from consumers.klines_provider import KlinesProvider
-from aiokafka.errors import UnknownMemberIdError, RequestTimedOutError
+from consumers.telegram_consumer import TelegramConsumer
+from shared.enums import KafkaTopics
+
+logging.basicConfig(
+    level=logging.INFO,
+    filename=None,
+    format="%(asctime)s.%(msecs)03d UTC %(levelname)s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 async def data_process_pipe():
@@ -62,8 +71,8 @@ async def data_analytics_pipe():
                         at_consumer.load_data_on_start()
 
                 if message.topic == KafkaTopics.signals.value:
-                    at_consumer.process_autotrade_restrictions(message.value)
                     await telegram_consumer.send_msg(message.value)
+                    at_consumer.process_autotrade_restrictions(message.value)
         finally:
             await consumer.stop()
 

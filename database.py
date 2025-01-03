@@ -1,10 +1,12 @@
 import os
+from datetime import datetime
+
 from dotenv import load_dotenv
 from pymongo import DESCENDING, MongoClient
 from pymongo.collection import Collection
+
+from models.klines import KlineModel, KlineProduceModel
 from shared.enums import BinanceKlineIntervals
-from models.klines import KlineProduceModel, KlineModel
-from datetime import datetime
 
 load_dotenv()
 

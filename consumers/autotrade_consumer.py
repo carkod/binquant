@@ -1,8 +1,9 @@
-import logging
 import json
+import logging
+from datetime import datetime
+
 from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
-from datetime import datetime
 from shared.autotrade import Autotrade
 
 
@@ -24,7 +25,6 @@ class AutotradeConsumer(BinbotApi):
         self.active_test_bots: list = []
         self.load_data_on_start()
         # Because market domination analysis 40 weight from binance endpoints
-        self.top_coins_gainers: list = []
         self.btc_change_perc = 0
         self.volatility = 0
         pass
@@ -73,6 +73,13 @@ class AutotradeConsumer(BinbotApi):
                 return True
 
         return False
+
+    def is_margin_available(self, symbol: str) -> bool:
+        """
+        Check if margin trading is allowed for a symbol
+        """
+        info = self._exchange_info(symbol)
+        return bool(info["symbols"][0]["isMarginTradingAllowed"])
 
     def process_autotrade_restrictions(self, result: str):
         """
@@ -125,9 +132,10 @@ class AutotradeConsumer(BinbotApi):
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
-                autotrade = Autotrade(
-                    symbol, self.autotrade_settings, data.algo, "bots"
-                )
-                autotrade.activate_autotrade(data)
+                if self.is_margin_available(symbol):
+                    autotrade = Autotrade(
+                        symbol, self.autotrade_settings, data.algo, "bots"
+                    )
+                    autotrade.activate_autotrade(data)
 
         return
