@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import concurrent.futures  # Add this import
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.errors import RequestTimedOutError, UnknownMemberIdError
@@ -54,7 +55,6 @@ async def data_analytics_pipe():
             KafkaTopics.restart_streaming.value,
             bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
             value_deserializer=lambda m: json.loads(m),
-            session_timeout_ms=60000,  # Add session timeout
         )
         await consumer.start()
         telegram_consumer = TelegramConsumer()
@@ -92,8 +92,12 @@ async def data_analytics_pipe():
 
 
 async def main():
-    await asyncio.gather(data_process_pipe(), data_analytics_pipe())
-
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        await asyncio.gather(
+            loop.run_in_executor(pool, asyncio.run, data_process_pipe()),
+            loop.run_in_executor(pool, asyncio.run, data_analytics_pipe())
+        )
 
 if __name__ == "__main__":
     try:
