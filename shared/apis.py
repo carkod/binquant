@@ -289,14 +289,14 @@ class BinbotApi(BinanceApi):
         return data["data"]
 
     def get_bots_by_status(
-        self, status="active", no_cooldown=True, collection_name="bots"
+        self, start_date, end_date, include_cooldown=True, collection_name="bots"
     ):
         url = self.bb_bot_url
         if collection_name == "paper_trading":
             url = self.bb_test_bot_url
 
         data = self.request(
-            url=url, params={"status": status, "no_cooldown": no_cooldown}
+            url=url, params={"start_date": start_date, "end_date": end_date, "include_cooldown": include_cooldown}
         )
         return data["data"]
 

@@ -4,6 +4,7 @@ from datetime import datetime
 from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
+from time import time
 
 
 class AutotradeConsumer(BinbotApi):
@@ -28,6 +29,21 @@ class AutotradeConsumer(BinbotApi):
         self.volatility = 0
         pass
 
+    def exclude_from_autotrade(self) -> list:
+        """
+        Symbols from bots to exclude from autotrade
+
+        Temporarily try those that have a cooldown
+        and today's bot. This is because in the same day
+        there's a lot of repetition in the signals
+        """
+        end_date = time() * 1000
+        start_date = end_date - 24 * 60 * 60 * 1000
+        symbols = self.get_bots_by_status(
+            start_date=start_date, end_date=end_date, include_cooldown=True
+        )
+        return symbols
+
     def load_data_on_start(self):
         """
         Load data on start and on update_required
@@ -35,7 +51,7 @@ class AutotradeConsumer(BinbotApi):
         logging.info("Loading controller, active bots and blacklist data...")
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings: dict = self.get_autotrade_settings()
-        self.active_bots = self.get_bots_by_status()
+        self.active_bots = self.exclude_from_autotrade()
         self.paper_trading_active_bots = self.get_bots_by_status(
             collection_name="paper_trading"
         )

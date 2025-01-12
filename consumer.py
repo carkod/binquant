@@ -63,12 +63,7 @@ async def data_analytics_pipe():
         try:
             async for message in consumer:
                 if message.topic == KafkaTopics.restart_streaming.value:
-                    beginning_offsets = await consumer.beginning_offsets(
-                        [message.partition]
-                    )
-                    offset = beginning_offsets.get(message.partition)
-                    if message.offset == offset:
-                        at_consumer.load_data_on_start()
+                    at_consumer.load_data_on_start()
 
                 if message.topic == KafkaTopics.signals.value:
                     await telegram_consumer.send_msg(message.value)
