@@ -285,9 +285,9 @@ class Autotrade(BaseProducer, BinbotApi):
             return
 
         # Activate bot
-        botId = create_bot["botId"]
+        bot_id = create_bot["data"]["id"]
         # paper or real bot activation
-        bot = activate_func(botId)
+        bot = activate_func(bot_id)
 
         if "error" in bot and bot["error"] > 0:
             # Failed to activate bot so:
@@ -296,17 +296,17 @@ class Autotrade(BaseProducer, BinbotApi):
             # (3) Delete inactive bot
             # this prevents cluttering UI with loads of useless bots
             message = bot["message"]
-            self.submit_bot_event_logs(botId, message)
+            self.submit_bot_event_logs(bot_id, message)
             self.blacklist.append(self.default_bot.pair)
             if self.default_bot.strategy == Strategy.margin_short:
                 self.clean_margin_short(self.default_bot.pair)
-            self.delete_bot(botId)
+            self.delete_bot(bot_id)
             raise AutotradeError(message)
 
         else:
-            value = {"botId": botId, "action": "AUTOTRADE_ACTIVATION"}
+            value = {"botId": bot_id, "action": "AUTOTRADE_ACTIVATION"}
             message = f"Succesful {self.db_collection_name} autotrade, opened with {self.pair}!"
-            self.submit_bot_event_logs(botId, message)
+            self.submit_bot_event_logs(bot_id, message)
             # Send message to restart streaming at the end to avoid blocking
             # Message is sent only after activation is successful,
             # if bot activation failed, we want to try again with a new bot

@@ -29,7 +29,7 @@ class AutotradeConsumer(BinbotApi):
         self.volatility = 0
         pass
 
-    def exclude_from_autotrade(self) -> list:
+    def exclude_from_autotrade(self, collection_name="bots") -> list:
         """
         Symbols from bots to exclude from autotrade
 
@@ -40,6 +40,7 @@ class AutotradeConsumer(BinbotApi):
         end_date = time() * 1000
         start_date = end_date - 24 * 60 * 60 * 1000
         symbols = self.get_bots_by_status(
+            collection_name=collection_name,
             start_date=start_date, end_date=end_date, include_cooldown=True
         )
         return symbols
@@ -52,7 +53,7 @@ class AutotradeConsumer(BinbotApi):
         self.blacklist_data = self.get_blacklist()
         self.autotrade_settings: dict = self.get_autotrade_settings()
         self.active_bots = self.exclude_from_autotrade()
-        self.paper_trading_active_bots = self.get_bots_by_status(
+        self.paper_trading_active_bots = self.exclude_from_autotrade(
             collection_name="paper_trading"
         )
         self.active_symbols = [bot["pair"] for bot in self.active_bots]
@@ -78,12 +79,12 @@ class AutotradeConsumer(BinbotApi):
         need to be left for Safety orders
         """
         if db_collection_name == "paper_trading":
-            active_count = len(self.active_bots)
+            active_count = len(self.active_test_bots)
             if active_count > self.test_autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
         if db_collection_name == "bots":
-            active_count = len(self.active_test_bots)
+            active_count = len(self.active_bots)
             if active_count > self.autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
