@@ -269,8 +269,8 @@ class BinbotApi(BinanceApi):
         return data
 
     def get_latest_btc_price(self):
-        # Get 24hr last BTCUSDT
-        btc_ticker_24 = self.ticker_24("BTCUSDT")
+        # Get 24hr last BTCUSDC
+        btc_ticker_24 = self.ticker_24("BTCUSDC")
         self.btc_change_perc = float(btc_ticker_24["priceChangePercent"])
         return self.btc_change_perc
 

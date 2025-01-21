@@ -45,6 +45,7 @@ class Autotrade(BaseProducer, BinbotApi):
             trailling=settings["trailling"],
             trailling_deviation=settings["trailling_deviation"],
             close_condition=CloseConditions.dynamic_trailling,
+            dynamic_trailling=True, # not added to settings yet
         )
         self.db_collection_name = db_collection_name
         self.blacklist: list = self.get_blacklist()
