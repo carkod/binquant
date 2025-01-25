@@ -1,9 +1,18 @@
 from time import time
 
-from shared.enums import Status, Strategy, DealType, OrderSide, OrderType, CloseConditions, BinanceKlineIntervals
+from shared.enums import (
+    Status,
+    Strategy,
+    DealType,
+    OrderSide,
+    OrderType,
+    CloseConditions,
+    BinanceKlineIntervals,
+)
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from uuid import uuid4, UUID
+
 
 def timestamp():
     return time() * 1000
@@ -111,6 +120,7 @@ class BotModel(BaseModel):
     if we combine (with inheritance) both Pydantic models
     and SQLModels. they are not compatible. Thus the duplication
     """
+
     pair: str
     fiat: str = Field(default="USDC")
     base_order_size: float = Field(

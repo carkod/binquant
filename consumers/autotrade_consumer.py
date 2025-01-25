@@ -41,7 +41,9 @@ class AutotradeConsumer(BinbotApi):
         start_date = end_date - 24 * 60 * 60 * 1000
         symbols = self.get_bots_by_status(
             collection_name=collection_name,
-            start_date=start_date, end_date=end_date, include_cooldown=True
+            start_date=start_date,
+            end_date=end_date,
+            include_cooldown=True,
         )
         return symbols
 

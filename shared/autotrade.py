@@ -44,8 +44,9 @@ class Autotrade(BaseProducer, BinbotApi):
             take_profit=settings["take_profit"],
             trailling=settings["trailling"],
             trailling_deviation=settings["trailling_deviation"],
+            trailling_profit=settings["trailling_profit"],
             close_condition=CloseConditions.dynamic_trailling,
-            dynamic_trailling=True, # not added to settings yet
+            dynamic_trailling=True,  # not added to settings yet
         )
         self.db_collection_name = db_collection_name
         self.blacklist: list = self.get_blacklist()
@@ -56,7 +57,12 @@ class Autotrade(BaseProducer, BinbotApi):
     def _set_bollinguer_spreads(self, data: SignalsConsumer):
         bb_spreads = data.bb_spreads
 
-        if bb_spreads["bb_high"] and bb_spreads["bb_low"] and bb_spreads["bb_mid"]:
+        if (
+            bb_spreads
+            and bb_spreads["bb_high"]
+            and bb_spreads["bb_low"]
+            and bb_spreads["bb_mid"]
+        ):
             top_spread = (
                 abs(
                     (bb_spreads["bb_high"] - bb_spreads["bb_mid"])
@@ -84,7 +90,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 bottom_spread = bottom_spread / 10
 
             # Otherwise it'll close too soon
-            if whole_spread > 1.2:
+            if whole_spread > 1.5:
                 self.default_bot.trailling = True
                 if self.default_bot.strategy == Strategy.long:
                     self.default_bot.stop_loss = round_numbers(whole_spread)
@@ -134,55 +140,12 @@ class Autotrade(BaseProducer, BinbotApi):
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)
 
-    def handle_price_drops(
-        self,
-        balances,
-        price,
-        per_deviation=1.2,
-        total_num_so=3,
-        trend=TrendEnum.up_trend,  # ["upward", "downward"] Upward trend is for candlestick_jumps and similar algorithms. Downward trend is for panic sells in the market
-        lowest_price=0,
-    ):
-        """
-        Sets the values for safety orders, short sell prices to hedge from drops in price.
-
-        Safety orders here are designed to use qfl for price bounces: prices drop a bit but then overall the trend is bullish
-        However short sell uses the short strategy: it sells the asset completely, to buy again after a dip.
-        """
-        available_balance = next(
-            (
-                b["free"]
-                for b in balances["data"]
-                if b["asset"] == self.default_bot.fiat
-            ),
-            None,
-        )
-
-        if not available_balance:
-            logging.info(f"Not enough {self.default_bot.fiat} for safety orders")
-            return
-
-        if trend == "downtrend":
-            down_short_buy_spread = total_num_so * (per_deviation / 100)
-            down_short_sell_price = round_numbers(price - (price * 0.05))
-            down_short_buy_price = round_numbers(
-                down_short_sell_price - (down_short_sell_price * down_short_buy_spread)
-            )
-            self.default_bot.short_sell_price = down_short_sell_price
-
-            if lowest_price > 0 and lowest_price <= down_short_buy_price:
-                self.default_bot.short_buy_price = lowest_price
-            else:
-                self.default_bot.short_buy_price = down_short_buy_price
-
-        return
-
     def set_paper_trading_values(self, balances, qty):
         # Get balance that match the pair
         # Check that we have minimum binance required qty to trade
         for b in balances["data"]:
             if self.pair.endswith(b["asset"]):
-                qty = supress_notation(b["free"], self.decimals)
+                qty = round_numbers(b["free"], self.decimals)
                 if self.min_amount_check(self.pair, qty):
                     self.default_bot.base_order_size = qty
                     break
@@ -194,7 +157,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 base_order_size = (
                     math.floor((float(qty) / float(rate)) * 10000000) / 10000000
                 )
-                self.default_bot.base_order_size = supress_notation(
+                self.default_bot.base_order_size = round_numbers(
                     base_order_size, self.decimals
                 )
                 pass

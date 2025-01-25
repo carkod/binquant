@@ -91,8 +91,9 @@ async def main():
     with concurrent.futures.ThreadPoolExecutor() as pool:
         await asyncio.gather(
             loop.run_in_executor(pool, asyncio.run, data_process_pipe()),
-            loop.run_in_executor(pool, asyncio.run, data_analytics_pipe())
+            loop.run_in_executor(pool, asyncio.run, data_analytics_pipe()),
         )
+
 
 if __name__ == "__main__":
     try:

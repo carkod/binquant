@@ -296,7 +296,12 @@ class BinbotApi(BinanceApi):
             url = self.bb_test_bot_url
 
         data = self.request(
-            url=url, params={"start_date": start_date, "end_date": end_date, "include_cooldown": include_cooldown}
+            url=url,
+            params={
+                "start_date": start_date,
+                "end_date": end_date,
+                "include_cooldown": include_cooldown,
+            },
         )
         return data["data"]
 
