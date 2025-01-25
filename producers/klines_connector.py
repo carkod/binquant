@@ -21,7 +21,6 @@ class KlinesConnector(BinbotApi):
         )
 
         self.producer = producer
-        self.blacklist_data = self.get_blacklist()
         self.autotrade_settings = self.get_autotrade_settings()
         self.exchange_info = self._exchange_info()
 
@@ -48,41 +47,8 @@ class KlinesConnector(BinbotApi):
             self.process_kline_stream(res)
 
     def start_stream(self):
-        raw_symbols = set(
-            coin["symbol"]
-            for coin in self.exchange_info["symbols"]
-            if coin["status"] == "TRADING"
-            and coin["symbol"].endswith(self.autotrade_settings["balance_to_use"])
-        )
-
-        black_list = set(x["pair"] for x in self.blacklist_data)
-        market = raw_symbols - black_list
-        # needed to calculate correlation
-        market.update("BTCUSDC")
-        params = []
-        subscription_list = []
-        for m in market:
-            params.append(f"{m.lower()}")
-            if m in black_list:
-                subscription_list.append(
-                    {
-                        "_id": m,
-                        "pair": m,
-                        "blacklisted": True,
-                    }
-                )
-            else:
-                subscription_list.append(
-                    {
-                        "_id": m,
-                        "pair": m,
-                        "blacklisted": False,
-                    }
-                )
-
-        # update DB
-        self.update_subscribed_list(subscription_list)
-        self.client.klines(markets=params, interval=self.interval)
+        markets = self.get_symbols()
+        self.client.klines(markets=markets, interval=self.interval)
 
     def process_kline_stream(self, result):
         """

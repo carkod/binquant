@@ -31,7 +31,9 @@ class SpotWebsocketStreamClient(BinanceWebsocketClient):
         )
 
     def klines(self, markets: list, interval: str, id=None, action=None):
-        """Kline/Candlestick Streams
+        """
+        Kline/Candlestick Streams
+
         The Kline/Candlestick Stream push updates to the current klines/candlestick every second.
         Stream Name: <symbol>@kline_<interval>
         interval:
@@ -56,7 +58,7 @@ class SpotWebsocketStreamClient(BinanceWebsocketClient):
         params = []
         if len(markets) == 0:
             # Listen to dummy stream to always trigger streaming
-            markets.append("BNBBTC")
+            markets.append("BNBUSDC")
         for market in markets:
             params.append(f"{market.lower()}@kline_{interval}")
 

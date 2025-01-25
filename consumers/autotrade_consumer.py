@@ -9,7 +9,6 @@ from time import time
 
 class AutotradeConsumer(BinbotApi):
     def __init__(self, producer) -> None:
-        self.blacklist_data: list = []
         self.market_domination_ts = datetime.now()
         self.market_domination_trend = None
         self.market_domination_reversal = None
@@ -52,7 +51,6 @@ class AutotradeConsumer(BinbotApi):
         Load data on start and on update_required
         """
         logging.info("Loading controller, active bots and blacklist data...")
-        self.blacklist_data = self.get_blacklist()
         self.autotrade_settings: dict = self.get_autotrade_settings()
         self.active_bots = self.exclude_from_autotrade()
         self.paper_trading_active_bots = self.exclude_from_autotrade(
@@ -92,7 +90,7 @@ class AutotradeConsumer(BinbotApi):
 
         return False
 
-    def is_margin_available(self, symbol: str) -> bool:
+    def is_margin_available(self, symbol: str, asset: str) -> bool:
         """
         Check if margin trading is allowed for a symbol
         """
@@ -150,7 +148,8 @@ class AutotradeConsumer(BinbotApi):
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
-                if self.is_margin_available(symbol):
+                asset = symbol.split(self.autotrade_settings["balance_to_use"])[0]
+                if self.is_margin_available(asset=asset, symbol=symbol):
                     autotrade = Autotrade(
                         symbol, self.autotrade_settings, data.algo, "bots"
                     )

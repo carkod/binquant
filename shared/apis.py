@@ -52,6 +52,7 @@ class BinanceApi:
     launchpool_url = (
         "https://launchpad.binance.com/gateway-api/v1/public/launchpool/project/list"
     )
+    max_borrow_url = f"{BASE}/sapi/v1/margin/maxBorrowable"
 
     def request(self, url, method="GET", session: Session = Session(), **kwargs):
         res = session.request(url=url, method=method, **kwargs)
@@ -171,6 +172,12 @@ class BinanceApi:
             quote_asset = quote_asset["quoteAsset"]
         return quote_asset
 
+    def get_max_borrow(self, asset, symbol: str | None = None):
+        return self.signed_request(
+            self.max_borrow_url,
+            payload={"asset": asset, "isolatedSymbol": symbol},
+        )
+
 
 class BinbotApi(BinanceApi):
     """
@@ -179,13 +186,13 @@ class BinbotApi(BinanceApi):
     """
 
     bb_base_url = os.getenv("FLASK_DOMAIN")
-    bb_24_ticker_url = f"{bb_base_url}/account/ticker24"
     bb_symbols_raw = f"{bb_base_url}/account/symbols"
     bb_bot_url = f"{bb_base_url}/bot"
     bb_activate_bot_url = f"{bb_base_url}/bot/activate"
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
+    bb_24_ticker_url = f"{bb_base_url}/account/ticker/24hr"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -212,7 +219,7 @@ class BinbotApi(BinanceApi):
     # research
     bb_autotrade_settings_url = f"{bb_base_url}/autotrade-settings/bots"
     bb_blacklist_url = f"{bb_base_url}/research/blacklist"
-    bb_subscribed_list = f"{bb_base_url}/research/subscribed"
+    bb_symbols = f"{bb_base_url}/symbol"
 
     # bots
     bb_active_pairs = f"{bb_base_url}/bot/active-pairs"
@@ -238,22 +245,12 @@ class BinbotApi(BinanceApi):
         response = self.request(url=self.bb_available_fiat_url)
         return response["data"]
 
-    def get_blacklist(self):
-        response = self.request(url=self.bb_blacklist_url)
-        return response["data"]
-
-    def update_subscribed_list(self, data):
-        response = self.request(url=self.bb_subscribed_list, method="POST", json=data)
+    def get_symbols(self):
+        response = self.request(url=self.bb_symbols)
         return response["data"]
 
     def get_market_domination_series(self):
         response = self.request(url=self.bb_market_domination, params={"size": 7})
-        return response["data"]
-
-    def blacklist_coin(self, pair, msg):
-        response = self.request(
-            url=self.bb_blacklist_url, method="POST", json={"pair": pair, "reason": msg}
-        )
         return response["data"]
 
     def ticker_24(self, symbol: str | None = None):

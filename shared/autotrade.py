@@ -49,7 +49,6 @@ class Autotrade(BaseProducer, BinbotApi):
             dynamic_trailling=True,  # not added to settings yet
         )
         self.db_collection_name = db_collection_name
-        self.blacklist: list = self.get_blacklist()
         # restart streams after bot activation
         super().__init__()
         self.producer = self.start_producer()
