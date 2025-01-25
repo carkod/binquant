@@ -9,12 +9,12 @@ from requests import Response
 from shared.exceptions import InvalidSymbol
 
 
-def round_numbers(value, decimals=6):
+def round_numbers(value, decimals: int = 6) -> float:
     decimal_points = 10 ** int(decimals)
     number = float(value)
     result = math.floor(number * decimal_points) / decimal_points
     if decimals == 0:
-        result = int(result)
+        result = float(result)
     return result
 
 
@@ -34,13 +34,13 @@ def supress_trailling(value: str | float | int) -> float:
     return number
 
 
-def round_numbers_ceiling(value, decimals=6):
+def round_numbers_ceiling(value, decimals: int = 6) -> float:
     decimal_points = 10 ** int(decimals)
     number = float(value)
     result = math.ceil(number * decimal_points) / decimal_points
     if decimals == 0:
-        result = int(result)
-    return float(result)
+        result = float(result)
+    return result
 
 
 def interval_to_millisecs(interval: str) -> int:

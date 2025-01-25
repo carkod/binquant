@@ -269,8 +269,8 @@ class BinbotApi(BinanceApi):
         return data
 
     def get_latest_btc_price(self):
-        # Get 24hr last BTCUSDT
-        btc_ticker_24 = self.ticker_24("BTCUSDT")
+        # Get 24hr last BTCUSDC
+        btc_ticker_24 = self.ticker_24("BTCUSDC")
         self.btc_change_perc = float(btc_ticker_24["priceChangePercent"])
         return self.btc_change_perc
 
@@ -289,14 +289,14 @@ class BinbotApi(BinanceApi):
         return data["data"]
 
     def get_bots_by_status(
-        self, status="active", no_cooldown=True, collection_name="bots"
+        self, start_date, end_date, include_cooldown=True, collection_name="bots"
     ):
         url = self.bb_bot_url
         if collection_name == "paper_trading":
             url = self.bb_test_bot_url
 
         data = self.request(
-            url=url, params={"status": status, "no_cooldown": no_cooldown}
+            url=url, params={"start_date": start_date, "end_date": end_date, "include_cooldown": include_cooldown}
         )
         return data["data"]
 
@@ -329,7 +329,7 @@ class BinbotApi(BinanceApi):
         return data
 
     def create_bot(self, data):
-        data = self.request(url=self.bb_bot_url, method="POST", json=data)
+        data = self.request(url=self.bb_bot_url, method="POST", data=data)
         return data
 
     def activate_bot(self, bot_id):

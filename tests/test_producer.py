@@ -37,11 +37,11 @@ def test_producer(klines_connector: KlinesConnector):
     res = {
         "e": "kline",
         "E": 1631598140000,
-        "s": "BTCUSDT",
+        "s": "BTCUSDC",
         "k": {
             "t": 1631598120000,
             "T": 1631598179999,
-            "s": "BTCUSDT",
+            "s": "BTCUSDC",
             "i": "1m",
             "f": 1,
             "L": 1,
@@ -70,7 +70,7 @@ def test_producer_error(klines_connector):
     res = {
         "e": "kline",
         "E": 1631598140000,
-        "s": "BTCUSDT",
+        "s": "BTCUSDC",
     }
     # Arrange
     base_producer = BaseProducer()

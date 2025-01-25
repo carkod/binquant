@@ -3,12 +3,14 @@ import logging
 import math
 from datetime import datetime
 
-from models.signals import BotPayload, TrendEnum
+from models.signals import TrendEnum
 from producers.base import BaseProducer
 from shared.apis import BinbotApi
 from shared.enums import CloseConditions, KafkaTopics, Strategy
 from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, supress_notation
+from models.bot import BotModel
+from models.signals import SignalsConsumer
 
 
 class Autotrade(BaseProducer, BinbotApi):
@@ -32,7 +34,7 @@ class Autotrade(BaseProducer, BinbotApi):
         self.decimals = self.price_precision(pair)
         current_date = datetime.now().strftime("%Y-%m-%dT%H:%M")
         self.algorithm_name = algorithm_name
-        self.default_bot = BotPayload(
+        self.default_bot = BotModel(
             pair=pair,
             name=f"{algorithm_name}_{current_date}",
             fiat=settings["balance_to_use"],
@@ -43,6 +45,7 @@ class Autotrade(BaseProducer, BinbotApi):
             trailling=settings["trailling"],
             trailling_deviation=settings["trailling_deviation"],
             close_condition=CloseConditions.dynamic_trailling,
+            dynamic_trailling=True, # not added to settings yet
         )
         self.db_collection_name = db_collection_name
         self.blacklist: list = self.get_blacklist()
@@ -50,8 +53,9 @@ class Autotrade(BaseProducer, BinbotApi):
         super().__init__()
         self.producer = self.start_producer()
 
-    def _set_bollinguer_spreads(self, data):
+    def _set_bollinguer_spreads(self, data: SignalsConsumer):
         bb_spreads = data.bb_spreads
+
         if bb_spreads["bb_high"] and bb_spreads["bb_low"] and bb_spreads["bb_mid"]:
             top_spread = (
                 abs(
@@ -98,12 +102,12 @@ class Autotrade(BaseProducer, BinbotApi):
         Submit errors to event logs of the bot
         """
         try:
-            self.default_bot.errors.append(msg)
+            self.default_bot.logs.append(msg)
         except AttributeError:
-            self.default_bot.errors = []
-            self.default_bot.errors.append(msg)
+            self.default_bot.logs = []
+            self.default_bot.logs.append(msg)
 
-    def set_margin_short_values(self, data):
+    def set_margin_short_values(self, data: SignalsConsumer):
         """
         Set up values for margin_short
         this overrides the settings in research_controller autotrade settings
@@ -120,7 +124,7 @@ class Autotrade(BaseProducer, BinbotApi):
             self.default_bot.stop_loss = 5
             self.default_bot.trailling_deviation = 3.2
 
-    def set_bot_values(self, data):
+    def set_bot_values(self, data: SignalsConsumer):
         """
         Set values for default_bot
         """
@@ -195,7 +199,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 )
                 pass
 
-    def activate_autotrade(self, data, **kwargs):
+    def activate_autotrade(self, data: SignalsConsumer, **kwargs):
         """
         Run autotrade
         2. Create bot with given parameters from research_controller
@@ -273,7 +277,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 pass
 
         # Create bot
-        payload = self.default_bot.model_dump()
+        payload = self.default_bot.model_dump_json()
         # create paper or real bot
         create_bot = create_func(payload)
 
@@ -282,9 +286,9 @@ class Autotrade(BaseProducer, BinbotApi):
             return
 
         # Activate bot
-        botId = create_bot["botId"]
+        bot_id = create_bot["data"]["id"]
         # paper or real bot activation
-        bot = activate_func(botId)
+        bot = activate_func(bot_id)
 
         if "error" in bot and bot["error"] > 0:
             # Failed to activate bot so:
@@ -293,17 +297,17 @@ class Autotrade(BaseProducer, BinbotApi):
             # (3) Delete inactive bot
             # this prevents cluttering UI with loads of useless bots
             message = bot["message"]
-            self.submit_bot_event_logs(botId, message)
+            self.submit_bot_event_logs(bot_id, message)
             self.blacklist.append(self.default_bot.pair)
             if self.default_bot.strategy == Strategy.margin_short:
                 self.clean_margin_short(self.default_bot.pair)
-            self.delete_bot(botId)
+            self.delete_bot(bot_id)
             raise AutotradeError(message)
 
         else:
-            value = {"botId": botId, "action": "AUTOTRADE_ACTIVATION"}
+            value = {"botId": bot_id, "action": "AUTOTRADE_ACTIVATION"}
             message = f"Succesful {self.db_collection_name} autotrade, opened with {self.pair}!"
-            self.submit_bot_event_logs(botId, message)
+            self.submit_bot_event_logs(bot_id, message)
             # Send message to restart streaming at the end to avoid blocking
             # Message is sent only after activation is successful,
             # if bot activation failed, we want to try again with a new bot

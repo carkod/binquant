@@ -57,6 +57,8 @@ class KlinesConnector(BinbotApi):
 
         black_list = set(x["pair"] for x in self.blacklist_data)
         market = raw_symbols - black_list
+        # needed to calculate correlation
+        market.update("BTCUSDC")
         params = []
         subscription_list = []
         for m in market:
