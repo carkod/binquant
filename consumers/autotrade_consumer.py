@@ -1,10 +1,11 @@
 import json
 import logging
 from datetime import datetime
+from time import time
+
 from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
-from time import time
 
 
 class AutotradeConsumer(BinbotApi):

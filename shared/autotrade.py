@@ -3,14 +3,13 @@ import logging
 import math
 from datetime import datetime
 
-from models.signals import TrendEnum
+from models.bot import BotModel
+from models.signals import SignalsConsumer, TrendEnum
 from producers.base import BaseProducer
 from shared.apis import BinbotApi
 from shared.enums import CloseConditions, KafkaTopics, Strategy
 from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, supress_notation
-from models.bot import BotModel
-from models.signals import SignalsConsumer
 
 
 class Autotrade(BaseProducer, BinbotApi):
@@ -168,12 +167,6 @@ class Autotrade(BaseProducer, BinbotApi):
         3. Activate bot
         """
         logging.info(f"{self.db_collection_name} Autotrade running with {self.pair}...")
-
-        if self.blacklist:
-            for item in self.blacklist:
-                if item["pair"] == self.pair:
-                    logging.info(f"Pair {self.pair} is blacklisted")
-                    return
 
         if data.trend == TrendEnum.down_trend:
             self.default_bot.strategy = Strategy.margin_short

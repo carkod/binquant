@@ -283,7 +283,7 @@ class TechnicalIndicators(BinbotApi):
             if self.market_domination_reversal is not None:
                 reversal_msg = f"{'Positive reversal' if self.market_domination_reversal else 'Negative reversal'}"
 
-            logging.info(f"Current USDT market trend is: {reversal_msg}.")
+            logging.info(f"Current USDC market trend is: {reversal_msg}.")
             self.market_domination_ts = datetime.now() + timedelta(hours=1)
         return self.market_domination_trend
 

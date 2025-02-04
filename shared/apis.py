@@ -192,7 +192,6 @@ class BinbotApi(BinanceApi):
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
-    bb_24_ticker_url = f"{bb_base_url}/account/ticker/24hr"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -229,10 +228,6 @@ class BinbotApi(BinanceApi):
     bb_activate_test_bot_url = f"{bb_base_url}/paper-trading/activate"
     bb_test_bot_active_list = f"{bb_base_url}/paper-trading/active-list"
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
-
-    def get_24_ticker(self, market):
-        data = self.request(url=f"{self.bb_24_ticker_url}/{market}")
-        return data
 
     def balance_estimate(self) -> float:
         response = self.request(url=self.bb_balance_estimate_url)

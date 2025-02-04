@@ -1,8 +1,8 @@
 import asyncio
+import concurrent.futures  # Add this import
 import json
 import logging
 import os
-import concurrent.futures  # Add this import
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.errors import RequestTimedOutError, UnknownMemberIdError

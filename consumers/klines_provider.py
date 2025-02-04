@@ -3,6 +3,7 @@ import logging
 
 import pandas as pd
 from kafka import KafkaConsumer
+
 from database import KafkaDB
 from models.klines import KlineProduceModel
 from producers.technical_indicators import TechnicalIndicators

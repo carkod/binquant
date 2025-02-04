@@ -1,17 +1,18 @@
 from time import time
+from typing import Annotated, Any
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 from shared.enums import (
-    Status,
-    Strategy,
+    BinanceKlineIntervals,
+    CloseConditions,
     DealType,
     OrderSide,
     OrderType,
-    CloseConditions,
-    BinanceKlineIntervals,
+    Status,
+    Strategy,
 )
-from pydantic import BaseModel, Field, field_validator, BeforeValidator
-from typing import Optional, Annotated, Any
-from uuid import uuid4, UUID
 
 
 def timestamp():
@@ -41,7 +42,7 @@ class OrderModel(BaseModel):
     order_id: int
     price: float | None = None
     status: str | None = None
-    deal_type: Optional[DealType] = DealType.base_order
+    deal_type: DealType | None = DealType.base_order
 
     model_config = {
         "use_enum_values": True,
@@ -169,7 +170,7 @@ class BotModel(BaseModel):
     )
 
     # Relationships
-    id: Optional[UUID] = Field(default_factory=uuid4)
+    id: UUID | None = Field(default_factory=uuid4)
     deal: DealModel = Field(default_factory=DealModel)
     orders: list[OrderModel] = Field(default=[])
 
