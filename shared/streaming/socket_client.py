@@ -30,7 +30,7 @@ class SpotWebsocketStreamClient(BinanceWebsocketClient):
             on_pong=on_pong,
         )
 
-    def klines(self, markets: list, interval: str, id=None, action=None):
+    def klines(self, markets: list, id=None, action=None):
         """
         Kline/Candlestick Streams
 
@@ -55,11 +55,5 @@ class SpotWebsocketStreamClient(BinanceWebsocketClient):
         - 1M
         Update Speed: 2000ms
         """
-        params = []
-        if len(markets) == 0:
-            # Listen to dummy stream to always trigger streaming
-            markets.append("BNBUSDC")
-        for market in markets:
-            params.append(f"{market.lower()}@kline_{interval}")
-
+        params = markets
         self.send_message_to_server(params, action=action, id=id)

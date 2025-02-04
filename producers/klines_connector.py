@@ -47,8 +47,9 @@ class KlinesConnector(BinbotApi):
             self.process_kline_stream(res)
 
     def start_stream(self):
-        markets = self.get_symbols()
-        self.client.klines(markets=markets, interval=self.interval)
+        symbols = self.get_symbols()
+        markets = [f'{symbol["id"].lower()}@kline_{self.interval}' for symbol in symbols]
+        self.client.klines(markets=markets)
 
     def process_kline_stream(self, result):
         """
