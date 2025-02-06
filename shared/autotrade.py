@@ -82,13 +82,8 @@ class Autotrade(BaseProducer, BinbotApi):
                 * 100
             )
 
-            if whole_spread > 10:
-                whole_spread = whole_spread / 10
-                top_spread = top_spread / 10
-                bottom_spread = bottom_spread / 10
-
             # Otherwise it'll close too soon
-            if whole_spread > 1.5:
+            if whole_spread > 2:
                 self.default_bot.trailling = True
                 if self.default_bot.strategy == Strategy.long:
                     self.default_bot.stop_loss = round_numbers(whole_spread)
@@ -122,11 +117,6 @@ class Autotrade(BaseProducer, BinbotApi):
 
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)
-
-        # Override for top_gainers_drop
-        if self.algorithm_name == "top_gainers_drop":
-            self.default_bot.stop_loss = 5
-            self.default_bot.trailling_deviation = 3.2
 
     def set_bot_values(self, data: SignalsConsumer):
         """
