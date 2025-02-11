@@ -29,32 +29,14 @@ class AutotradeConsumer(BinbotApi):
         self.volatility = 0
         pass
 
-    def exclude_from_autotrade(self, collection_name="bots") -> list:
-        """
-        Symbols from bots to exclude from autotrade
-
-        Temporarily try those that have a cooldown
-        and today's bot. This is because in the same day
-        there's a lot of repetition in the signals
-        """
-        end_date = time() * 1000
-        start_date = end_date - 24 * 60 * 60 * 1000
-        symbols = self.get_bots_by_status(
-            collection_name=collection_name,
-            start_date=start_date,
-            end_date=end_date,
-            include_cooldown=True,
-        )
-        return symbols
-
     def load_data_on_start(self):
         """
         Load data on start and on update_required
         """
         logging.info("Loading controller, active bots and blacklist data...")
         self.autotrade_settings: dict = self.get_autotrade_settings()
-        self.active_bots = self.exclude_from_autotrade()
-        self.paper_trading_active_bots = self.exclude_from_autotrade(
+        self.active_bots = self.get_active_pairs()
+        self.paper_trading_active_bots = self.get_active_pairs(
             collection_name="paper_trading"
         )
         self.active_symbols = [bot["pair"] for bot in self.active_bots]
@@ -95,7 +77,7 @@ class AutotradeConsumer(BinbotApi):
         """
         Check if margin trading is allowed for a symbol
         """
-        info = self._exchange_info(symbol)
+        info = self.exchange_info(symbol)
         return bool(info["symbols"][0]["isMarginTradingAllowed"])
 
     def process_autotrade_restrictions(self, result: str):

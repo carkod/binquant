@@ -28,7 +28,7 @@ class TechnicalIndicators(BinbotApi):
             None
         )
         self.market_domination_reversal: bool | None = None
-        self.active_pairs = self.get_active_pairs()["data"]
+        self.active_pairs = self.get_active_pairs()
         self.top_coins_gainers: list[str] = []
         pass
 
@@ -246,7 +246,7 @@ class TechnicalIndicators(BinbotApi):
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        if datetime.now().minute == 0 or self.market_domination_trend is None:
+        if datetime.now().minute == 0:
             logging.info(
                 f"Performing market domination analyses. Current trend: {self.market_domination_trend}"
             )

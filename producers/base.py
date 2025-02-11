@@ -3,7 +3,6 @@ import logging
 import os
 
 from kafka import KafkaProducer
-
 from database import KafkaDB
 
 
@@ -16,7 +15,7 @@ class BaseProducer(KafkaDB):
             bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             acks=1,
-            api_version=(3, 4, 1),
+            api_version=(2, 5, 0),
         )
         return self.producer
 
