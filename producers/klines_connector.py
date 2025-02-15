@@ -55,7 +55,6 @@ class KlinesConnector(BinbotApi):
         Check BinanceKlineIntervals Enum for possible values
         Update Speed: 2000ms
         """
-        logging.info("Starting klines stream")
         symbols = self.get_symbols()
         markets = [
             f'{symbol["id"].lower()}@kline_{self.interval.value}' for symbol in symbols

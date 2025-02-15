@@ -242,8 +242,8 @@ class BinbotApi(BinanceApi):
         response = self.request(url=self.bb_available_fiat_url)
         return response["data"]
 
-    def get_symbols(self):
-        response = self.request(url=self.bb_symbols)
+    def get_symbols(self, status="active") -> list[dict]:
+        response = self.request(url=self.bb_symbols, params={"status": status})
         return response["data"]
 
     def get_market_domination_series(self):

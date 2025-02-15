@@ -1,12 +1,9 @@
 import json
 import logging
 from datetime import datetime
-from time import time
-
 from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
-
 
 class AutotradeConsumer(BinbotApi):
     def __init__(self, producer) -> None:
@@ -21,8 +18,9 @@ class AutotradeConsumer(BinbotApi):
         ]  # on top of blacklist
         self.active_bots: list = []
         self.paper_trading_active_bots: list = []
-        self.active_symbols: list = []
+        self.active_bot_pairs: list = []
         self.active_test_bots: list = []
+        self.all_symbols: list[dict] = []
         self.load_data_on_start()
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
@@ -35,11 +33,13 @@ class AutotradeConsumer(BinbotApi):
         """
         logging.info("Loading controller, active bots and blacklist data...")
         self.autotrade_settings: dict = self.get_autotrade_settings()
-        self.active_bots = self.get_active_pairs()
+        self.active_bot_pairs = self.get_active_pairs()
         self.paper_trading_active_bots = self.get_active_pairs(
             collection_name="paper_trading"
         )
-        self.active_symbols = [bot["pair"] for bot in self.active_bots]
+        self.all_symbols = self.get_symbols()
+        # Active bot symbols substracting exchange active symbols (not blacklisted)
+        self.active_symbols = set(s["id"] for s in self.all_symbols) - set(self.active_bot_pairs)
         self.active_test_bots = [
             item["pair"] for item in self.paper_trading_active_bots
         ]
@@ -73,12 +73,19 @@ class AutotradeConsumer(BinbotApi):
 
         return False
 
-    def is_margin_available(self, symbol: str, asset: str) -> bool:
+    def is_margin_available(self, symbol: str) -> bool:
         """
         Check if margin trading is allowed for a symbol
         """
-        info = self.exchange_info(symbol)
-        return bool(info["symbols"][0]["isMarginTradingAllowed"])
+        is_margin_allowed = next(
+            (
+                item["is_margin_trading_allowed"]
+                for item in self.all_symbols
+                if item["id"] == symbol
+            ),
+            False,
+        )
+        return is_margin_allowed
 
     def process_autotrade_restrictions(self, result: str):
         """
@@ -131,8 +138,7 @@ class AutotradeConsumer(BinbotApi):
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
-                asset = symbol.split(self.autotrade_settings["balance_to_use"])[0]
-                if self.is_margin_available(asset=asset, symbol=symbol):
+                if self.is_margin_available(symbol=symbol):
                     autotrade = Autotrade(
                         symbol, self.autotrade_settings, data.algo, "bots"
                     )
