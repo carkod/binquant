@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from requests import Session, get
 
 from shared.utils import handle_binance_errors
+from shared.enums import Status
 
 load_dotenv()
 
@@ -52,6 +53,7 @@ class BinanceApi:
     launchpool_url = (
         "https://launchpad.binance.com/gateway-api/v1/public/launchpool/project/list"
     )
+    max_borrow_url = f"{BASE}/sapi/v1/margin/maxBorrowable"
 
     def request(self, url, method="GET", session: Session = Session(), **kwargs):
         res = session.request(url=url, method=method, **kwargs)
@@ -171,6 +173,12 @@ class BinanceApi:
             quote_asset = quote_asset["quoteAsset"]
         return quote_asset
 
+    def get_max_borrow(self, asset, symbol: str | None = None):
+        return self.signed_request(
+            self.max_borrow_url,
+            payload={"asset": asset, "isolatedSymbol": symbol},
+        )
+
 
 class BinbotApi(BinanceApi):
     """
@@ -179,7 +187,6 @@ class BinbotApi(BinanceApi):
     """
 
     bb_base_url = os.getenv("FLASK_DOMAIN")
-    bb_24_ticker_url = f"{bb_base_url}/account/ticker24"
     bb_symbols_raw = f"{bb_base_url}/account/symbols"
     bb_bot_url = f"{bb_base_url}/bot"
     bb_activate_bot_url = f"{bb_base_url}/bot/activate"
@@ -212,7 +219,7 @@ class BinbotApi(BinanceApi):
     # research
     bb_autotrade_settings_url = f"{bb_base_url}/autotrade-settings/bots"
     bb_blacklist_url = f"{bb_base_url}/research/blacklist"
-    bb_subscribed_list = f"{bb_base_url}/research/subscribed"
+    bb_symbols = f"{bb_base_url}/symbol"
 
     # bots
     bb_active_pairs = f"{bb_base_url}/bot/active-pairs"
@@ -222,10 +229,7 @@ class BinbotApi(BinanceApi):
     bb_activate_test_bot_url = f"{bb_base_url}/paper-trading/activate"
     bb_test_bot_active_list = f"{bb_base_url}/paper-trading/active-list"
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
-
-    def get_24_ticker(self, market):
-        data = self.request(url=f"{self.bb_24_ticker_url}/{market}")
-        return data
+    bb_test_active_pairs = f"{bb_base_url}/paper/active-pairs"
 
     def balance_estimate(self) -> float:
         response = self.request(url=self.bb_balance_estimate_url)
@@ -238,22 +242,12 @@ class BinbotApi(BinanceApi):
         response = self.request(url=self.bb_available_fiat_url)
         return response["data"]
 
-    def get_blacklist(self):
-        response = self.request(url=self.bb_blacklist_url)
-        return response["data"]
-
-    def update_subscribed_list(self, data):
-        response = self.request(url=self.bb_subscribed_list, method="POST", json=data)
+    def get_symbols(self, status="active") -> list[dict]:
+        response = self.request(url=self.bb_symbols, params={"status": status})
         return response["data"]
 
     def get_market_domination_series(self):
         response = self.request(url=self.bb_market_domination, params={"size": 7})
-        return response["data"]
-
-    def blacklist_coin(self, pair, msg):
-        response = self.request(
-            url=self.bb_blacklist_url, method="POST", json={"pair": pair, "reason": msg}
-        )
         return response["data"]
 
     def ticker_24(self, symbol: str | None = None):
@@ -289,14 +283,23 @@ class BinbotApi(BinanceApi):
         return data["data"]
 
     def get_bots_by_status(
-        self, start_date, end_date, include_cooldown=True, collection_name="bots"
+        self,
+        start_date,
+        end_date,
+        collection_name="bots",
+        status=Status.active,
     ):
         url = self.bb_bot_url
         if collection_name == "paper_trading":
             url = self.bb_test_bot_url
 
         data = self.request(
-            url=url, params={"start_date": start_date, "end_date": end_date, "include_cooldown": include_cooldown}
+            url=url,
+            params={
+                "status": status.value,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
         )
         return data["data"]
 
@@ -346,12 +349,18 @@ class BinbotApi(BinanceApi):
         )
         return data
 
-    def get_active_pairs(self):
+    def get_active_pairs(self, collection_name="bots"):
         """
         Get distinct (non-repeating) bots by status active
         """
-        data = self.request(url=f"{self.bb_active_pairs}")
-        return data
+        url = self.bb_active_pairs
+        if collection_name == "paper_trading":
+            url = self.bb_test_bot_url
+
+        res = self.request(
+            url=url,
+        )
+        return res["data"]
 
     def margin_trading_check(self, symbol):
         data = self.request(url=f"{self.bb_margin_trading_check_url}/{symbol}")

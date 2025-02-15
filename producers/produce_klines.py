@@ -1,4 +1,5 @@
 from kafka import KafkaProducer
+
 from database import KafkaDB
 from models.klines import KlineProduceModel
 from shared.enums import KafkaTopics

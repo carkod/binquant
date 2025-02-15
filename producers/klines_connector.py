@@ -2,87 +2,64 @@ import json
 import logging
 
 from kafka import KafkaProducer
-
 from producers.produce_klines import KlinesProducer
 from shared.apis import BinbotApi
 from shared.exceptions import WebSocketError
 from shared.streaming.socket_client import SpotWebsocketStreamClient
+from shared.enums import BinanceKlineIntervals
 
 
 class KlinesConnector(BinbotApi):
-    def __init__(self, producer: KafkaProducer, interval: str = "1m") -> None:
+    def __init__(
+        self, producer: KafkaProducer, interval: BinanceKlineIntervals = BinanceKlineIntervals.one_minute
+    ) -> None:
         logging.info("Started Kafka producer SignalsInbound")
         super().__init__()
         self.interval = interval
-        self.client = SpotWebsocketStreamClient(
-            on_message=self.on_message,
-            on_close=self.handle_close,
-            on_error=self.handle_error,
-        )
+        self.client: SpotWebsocketStreamClient = self.connect_client()
 
         self.producer = producer
-        self.blacklist_data = self.get_blacklist()
         self.autotrade_settings = self.get_autotrade_settings()
         self.exchange_info = self._exchange_info()
 
-    def handle_close(self, message):
-        logging.info(f"Closing research signals: {message}")
-        self.client = SpotWebsocketStreamClient(
+    def connect_client(self):
+        client = SpotWebsocketStreamClient(
             on_message=self.on_message,
             on_close=self.handle_close,
             on_error=self.handle_error,
         )
+        return client
+
+
+    def handle_close(self, message):
+        logging.info(f"Closing research signals: {message}")
+        self.client = self.connect_client()
         self.start_stream()
 
     def handle_error(self, socket, message):
-        # logging.error(f"Error research signals: {message}")
+        logging.error(f"Error research signals: {message}")
         raise WebSocketError(message)
 
     def on_message(self, ws, message):
         res = json.loads(message)
 
-        if "result" in res:
-            print(f'Subscriptions: {res["result"]}')
-
         if "e" in res and res["e"] == "kline":
             self.process_kline_stream(res)
 
     def start_stream(self):
-        raw_symbols = set(
-            coin["symbol"]
-            for coin in self.exchange_info["symbols"]
-            if coin["status"] == "TRADING"
-            and coin["symbol"].endswith(self.autotrade_settings["balance_to_use"])
-        )
+        """
+        Kline/Candlestick Streams
 
-        black_list = set(x["pair"] for x in self.blacklist_data)
-        market = raw_symbols - black_list
-        # needed to calculate correlation
-        market.update("BTCUSDC")
-        params = []
-        subscription_list = []
-        for m in market:
-            params.append(f"{m.lower()}")
-            if m in black_list:
-                subscription_list.append(
-                    {
-                        "_id": m,
-                        "pair": m,
-                        "blacklisted": True,
-                    }
-                )
-            else:
-                subscription_list.append(
-                    {
-                        "_id": m,
-                        "pair": m,
-                        "blacklisted": False,
-                    }
-                )
-
-        # update DB
-        self.update_subscribed_list(subscription_list)
-        self.client.klines(markets=params, interval=self.interval)
+        The Kline/Candlestick Stream push updates to the current klines/candlestick every second.
+        Stream Name: <symbol>@kline_<interval>
+        Check BinanceKlineIntervals Enum for possible values
+        Update Speed: 2000ms
+        """
+        symbols = self.get_symbols()
+        markets = [
+            f'{symbol["id"].lower()}@kline_{self.interval.value}' for symbol in symbols
+        ]
+        self.client.send_message_to_server(markets, action=self.client.ACTION_SUBSCRIBE, id=1)
 
     def process_kline_stream(self, result):
         """

@@ -4,12 +4,9 @@ from datetime import datetime
 from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
-from time import time
-
 
 class AutotradeConsumer(BinbotApi):
     def __init__(self, producer) -> None:
-        self.blacklist_data: list = []
         self.market_domination_ts = datetime.now()
         self.market_domination_trend = None
         self.market_domination_reversal = None
@@ -21,42 +18,28 @@ class AutotradeConsumer(BinbotApi):
         ]  # on top of blacklist
         self.active_bots: list = []
         self.paper_trading_active_bots: list = []
-        self.active_symbols: list = []
+        self.active_bot_pairs: list = []
         self.active_test_bots: list = []
+        self.all_symbols: list[dict] = []
         self.load_data_on_start()
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
         self.volatility = 0
         pass
 
-    def exclude_from_autotrade(self, collection_name="bots") -> list:
-        """
-        Symbols from bots to exclude from autotrade
-
-        Temporarily try those that have a cooldown
-        and today's bot. This is because in the same day
-        there's a lot of repetition in the signals
-        """
-        end_date = time() * 1000
-        start_date = end_date - 24 * 60 * 60 * 1000
-        symbols = self.get_bots_by_status(
-            collection_name=collection_name,
-            start_date=start_date, end_date=end_date, include_cooldown=True
-        )
-        return symbols
-
     def load_data_on_start(self):
         """
         Load data on start and on update_required
         """
         logging.info("Loading controller, active bots and blacklist data...")
-        self.blacklist_data = self.get_blacklist()
         self.autotrade_settings: dict = self.get_autotrade_settings()
-        self.active_bots = self.exclude_from_autotrade()
-        self.paper_trading_active_bots = self.exclude_from_autotrade(
+        self.active_bot_pairs = self.get_active_pairs()
+        self.paper_trading_active_bots = self.get_active_pairs(
             collection_name="paper_trading"
         )
-        self.active_symbols = [bot["pair"] for bot in self.active_bots]
+        self.all_symbols = self.get_symbols()
+        # Active bot symbols substracting exchange active symbols (not blacklisted)
+        self.active_symbols = set(s["id"] for s in self.all_symbols) - set(self.active_bot_pairs)
         self.active_test_bots = [
             item["pair"] for item in self.paper_trading_active_bots
         ]
@@ -94,8 +77,15 @@ class AutotradeConsumer(BinbotApi):
         """
         Check if margin trading is allowed for a symbol
         """
-        info = self._exchange_info(symbol)
-        return bool(info["symbols"][0]["isMarginTradingAllowed"])
+        is_margin_allowed = next(
+            (
+                item["is_margin_trading_allowed"]
+                for item in self.all_symbols
+                if item["id"] == symbol
+            ),
+            False,
+        )
+        return is_margin_allowed
 
     def process_autotrade_restrictions(self, result: str):
         """
@@ -148,7 +138,7 @@ class AutotradeConsumer(BinbotApi):
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
-                if self.is_margin_available(symbol):
+                if self.is_margin_available(symbol=symbol):
                     autotrade = Autotrade(
                         symbol, self.autotrade_settings, data.algo, "bots"
                     )

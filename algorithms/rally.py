@@ -1,7 +1,7 @@
 import os
 
-from shared.enums import KafkaTopics
 from models.signals import SignalsConsumer
+from shared.enums import KafkaTopics
 
 
 def rally_or_pullback(
@@ -24,7 +24,7 @@ def rally_or_pullback(
     but day or minute percentage change
     https://www.binance.com/en/support/faq/understanding-top-movers-statuses-on-binance-spot-trading-18c97e8ab67a4e1b824edd590cae9f16
     """
-    data = self.get_24_ticker(symbol)
+    data = self.ticker_24(symbol=symbol)
 
     # Rally
     day_diff = (float(data["lowPrice"]) - float(data["openPrice"])) / float(
@@ -57,6 +57,7 @@ def rally_or_pullback(
         and close_price < ma_100_prev
     ):
         bb_high, bb_mid, bb_low = self.bb_spreads()
+        trend = self.define_strategy()
 
         msg = f"""
             - [{os.getenv('ENV')}] <strong>{algo_type} #algorithm</strong> #{symbol}
@@ -74,7 +75,7 @@ def rally_or_pullback(
             msg=msg,
             symbol=symbol,
             algo=algo_type,
-            trend=volatility,
+            trend=trend,
             bb_spreads={
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,

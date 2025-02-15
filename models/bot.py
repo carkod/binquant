@@ -1,12 +1,35 @@
 from time import time
+from typing import Annotated, Any
+from uuid import UUID, uuid4
 
-from shared.enums import Status, Strategy, DealType, OrderSide, OrderType, CloseConditions, BinanceKlineIntervals
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional
-from uuid import uuid4, UUID
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
+
+from shared.enums import (
+    BinanceKlineIntervals,
+    CloseConditions,
+    DealType,
+    OrderSide,
+    OrderType,
+    Status,
+    Strategy,
+)
+
 
 def timestamp():
     return time() * 1000
+
+
+def ensure_float(value: Any) -> float:
+    if isinstance(value, str) or isinstance(value, int):
+        return float(value)
+
+    return value
+
+
+Amount = Annotated[
+    float,
+    BeforeValidator(ensure_float),
+]
 
 
 class OrderModel(BaseModel):
@@ -19,7 +42,7 @@ class OrderModel(BaseModel):
     order_id: int
     price: float | None = None
     status: str | None = None
-    deal_type: Optional[DealType] = DealType.base_order
+    deal_type: DealType | None = DealType.base_order
 
     model_config = {
         "use_enum_values": True,
@@ -32,71 +55,65 @@ class DealModel(BaseModel):
     so it should all be numbers (int or float)
     """
 
-    id: UUID = Field(default_factory=uuid4)
-    buy_price: float = Field(default=0)
-    buy_total_qty: float = Field(default=0)
-    buy_timestamp: float = Field(default=0)
-    current_price: float = Field(default=0)
-    sd: float = Field(default=0)
-    avg_buy_price: float = Field(default=0)
-    take_profit_price: float = Field(default=0)
-    sell_timestamp: float = Field(default=0)
-    sell_price: float = Field(default=0)
-    sell_qty: float = Field(default=0)
-    trailling_stop_loss_price: float = Field(
+    current_price: Amount = Field(default=0)
+    take_profit_price: Amount = Field(default=0)
+    trailling_stop_loss_price: Amount = Field(
         default=0,
         description="take_profit but for trailling, to avoid confusion, trailling_profit_price always be > trailling_stop_loss_price",
     )
-    trailling_profit_price: float = Field(default=0)
-    stop_loss_price: float = Field(default=0)
-    trailling_profit: float = Field(default=0)
-    so_prices: float = Field(default=0)
-    original_buy_price: float = Field(
-        default=0, description="historical buy_price after so trigger"
-    )
-    short_sell_price: float = Field(default=0)
-    short_sell_qty: float = Field(default=0)
-    short_sell_timestamp: float = Field(default=0)
+    trailling_profit_price: Amount = Field(default=0)
+    stop_loss_price: Amount = Field(default=0)
 
     # fields for margin trading
-    margin_short_loan_principal: float = Field(default=0)
-    margin_loan_id: float = Field(default=0)
-    hourly_interest_rate: float = Field(default=0)
-    margin_short_sell_price: float = Field(default=0)
-    margin_short_loan_interest: float = Field(default=0)
-    margin_short_buy_back_price: float = Field(default=0)
-    margin_short_sell_qty: float = Field(default=0)
-    margin_short_buy_back_timestamp: int = 0
-    margin_short_base_order: float = Field(default=0)
-    margin_short_sell_timestamp: int = Field(default=0)
-    margin_short_loan_timestamp: int = Field(default=0)
-
-    @field_validator(
-        "buy_price",
-        "current_price",
-        "avg_buy_price",
-        "original_buy_price",
-        "take_profit_price",
-        "sell_price",
-        "short_sell_price",
-        "trailling_stop_loss_price",
-        "trailling_profit_price",
-        "stop_loss_price",
-        "trailling_profit",
-        "margin_short_loan_principal",
-        "margin_short_sell_price",
-        "margin_short_loan_interest",
-        "margin_short_buy_back_price",
-        "margin_short_base_order",
-        "margin_short_sell_qty",
+    total_interests: float = Field(default=0, gt=-1)
+    total_commissions: float = Field(default=0, gt=-1)
+    margin_loan_id: int = Field(
+        default=0,
+        ge=0,
+        description="Txid from Binance. This is used to check if there is a loan, 0 means no loan",
     )
+    margin_repay_id: int = Field(
+        default=0, ge=0, description="= 0, it has not been repaid"
+    )
+
+    # Refactored deal prices that combine both margin and spot
+    opening_price: Amount = Field(
+        default=0,
+        description="replaces previous buy_price or short_sell_price/margin_short_sell_price",
+    )
+    opening_qty: Amount = Field(
+        default=0,
+        description="replaces previous buy_total_qty or short_sell_qty/margin_short_sell_qty",
+    )
+    opening_timestamp: Amount = Field(default=0)
+    closing_price: Amount = Field(
+        default=0,
+        description="replaces previous sell_price or short_sell_price/margin_short_sell_price",
+    )
+    closing_qty: Amount = Field(
+        default=0,
+        description="replaces previous sell_qty or short_sell_qty/margin_short_sell_qty",
+    )
+    closing_timestamp: Amount = Field(
+        default=0,
+        description="replaces previous buy_timestamp or margin/short_sell timestamps",
+    )
+
+    @field_validator("margin_loan_id", mode="before")
     @classmethod
-    def check_prices(cls, v):
-        if float(v) < 0:
-            raise ValueError("Price must be a positive number")
-        elif isinstance(v, str):
-            return float(v)
-        return v
+    def validate_margin_loan_id(cls, value):
+        if isinstance(value, float):
+            return int(value)
+        else:
+            return value
+
+    @field_validator("margin_loan_id", mode="after")
+    @classmethod
+    def cast_float(cls, value):
+        if isinstance(value, float):
+            return int(value)
+        else:
+            return value
 
 
 class MarginOrderSchema(OrderModel):
@@ -111,6 +128,7 @@ class BotModel(BaseModel):
     if we combine (with inheritance) both Pydantic models
     and SQLModels. they are not compatible. Thus the duplication
     """
+
     pair: str
     fiat: str = Field(default="USDC")
     base_order_size: float = Field(
@@ -152,7 +170,7 @@ class BotModel(BaseModel):
     )
 
     # Relationships
-    id: Optional[UUID] = Field(default_factory=uuid4)
+    id: UUID | None = Field(default_factory=uuid4)
     deal: DealModel = Field(default_factory=DealModel)
     orders: list[OrderModel] = Field(default=[])
 
