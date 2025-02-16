@@ -1,7 +1,7 @@
 import os
 
 from models.signals import SignalsConsumer
-from shared.enums import KafkaTopics, TrendEnum
+from shared.enums import KafkaTopics
 
 
 def top_gainers_drop(
@@ -24,11 +24,6 @@ def top_gainers_drop(
     """
     if float(close_price) < float(open_price) and cls.symbol in cls.top_coins_gainers:
         algo = "top_gainers_drop"
-
-        trend = cls.define_strategy()
-        if not trend:
-            trend = TrendEnum.down_trend
-
         bb_high, bb_mid, bb_low = cls.bb_spreads()
 
         msg = f"""
@@ -37,6 +32,7 @@ def top_gainers_drop(
         - Log volatility (log SD): {volatility}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
+        - Market domination trend: {cls.market_domination_trend}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -47,7 +43,7 @@ def top_gainers_drop(
             msg=msg,
             symbol=cls.symbol,
             algo=algo,
-            trend=trend,
+            trend=cls.market_domination_trend,
             bb_spreads=None,
         )
 

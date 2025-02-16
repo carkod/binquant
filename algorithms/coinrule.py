@@ -16,7 +16,6 @@ def fast_and_slow_macd(
     algo = "coinrule_fast_and_slow_macd"
     volatility = round_numbers(volatility, 6)
     spread = volatility
-    trend = self.define_strategy()
     bb_high, bb_mid, bb_low = self.bb_spreads()
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
@@ -26,8 +25,9 @@ def fast_and_slow_macd(
         - Current price: {close_price}
         - Log volatility (log SD): {volatility}
         - Reversal? {"Yes" if self.market_domination_reversal else "No"}
-        - Strategy: {trend}
+        - Strategy: {self.market_domination_trend}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
+        - TimesGPT forecast: {self.forecast}
         - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
         """
@@ -38,7 +38,7 @@ def fast_and_slow_macd(
             msg=msg,
             symbol=symbol,
             algo=algo,
-            trend=trend,
+            trend=self.market_domination_trend,
             bb_spreads={
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
@@ -65,11 +65,9 @@ def buy_low_sell_high(self, close_price, symbol, rsi, ma_25, ma_7, ma_100, volat
 
     if rsi < 35 and close_price > ma_25 and volatility > 0.01:
         algo = "coinrule_buy_low_sell_high"
-        trend = self.define_strategy()
         volatility = round_numbers(volatility, 6)
-        # trend = "uptrend"
 
-        if not trend:
+        if not self.market_domination_trend:
             return
 
         # Second stage filtering when volatility is high
@@ -83,8 +81,9 @@ def buy_low_sell_high(self, close_price, symbol, rsi, ma_25, ma_7, ma_100, volat
     - Current price: {close_price}
     - Log volatility (log SD): {volatility}
     - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
-    - Strategy: {trend}
+    - Strategy: {self.market_domination_trend}
     - Reversal? {"No reversal" if not self.market_domination_reversal else "Positive" if self.market_domination_reversal else "Negative"}
+    - TimesGPT forecast: {self.forecast}
     - https://www.binance.com/en/trade/{symbol}
     - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
     """
@@ -95,7 +94,7 @@ def buy_low_sell_high(self, close_price, symbol, rsi, ma_25, ma_7, ma_100, volat
             msg=msg,
             symbol=symbol,
             algo=algo,
-            trend=trend,
+            trend=self.market_domination_trend,
             bb_spreads={
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
