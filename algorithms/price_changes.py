@@ -21,7 +21,6 @@ def price_rise_15(
     algo = "price_rise_15_rally_pullback"
     price_diff = (float(close_price) - float(prev_price)) / close_price
     bb_high, bb_mid, bb_low = self.bb_spreads()
-    trend = self.define_strategy()
 
     if 0.07 <= price_diff < 0.11:
         first_line = "<strong>Price increase</strong> over 7%"
@@ -37,6 +36,8 @@ def price_rise_15(
 - Current price: {close_price}
 - P-value: {p_value}
 - Pearson correlation with BTC: {btc_correlation["close_price"]}
+- Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+- Trend {self.market_domination_trend}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
 """
@@ -46,7 +47,7 @@ def price_rise_15(
         msg=msg,
         symbol=symbol,
         algo=algo,
-        trend=trend,
+        trend=self.market_domination_trend,
         bb_spreads={
             "bb_high": bb_high,
             "bb_mid": bb_mid,

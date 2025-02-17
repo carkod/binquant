@@ -65,6 +65,7 @@ def rally_or_pullback(
             - Log volatility (log SD): {volatility}
             - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
             - Reversal? {"Yes" if self.market_domination_reversal else "No"}
+            - TimesGPT forecast: {self.forecast}
             - https://www.binance.com/en/trade/{symbol}
             - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
         """

@@ -1,68 +1,15 @@
 import os
-
 from nixtla import NixtlaClient
 
-nixtla_client = NixtlaClient(os.environ.get("NIXTLA_API_KEY"))
+class TimeseriesGPT:
+    def __init__(self, df):
+        self.nixtla_client = NixtlaClient(api_key=os.environ["NIXTLA_API_KEY"])
 
-# Algorithms based on Bollinguer bands
+    def multiple_series_forecast(self, df, period_hr=24):
+        """
+        Multiple series forecast
+        """
+        confidence_levels = [80.0, 90.0]
+        timegpt_fcst_multiseries_df = self.nixtla_client.forecast(df=df, h=24, level=confidence_levels, freq="H", time_col="dates", target_col="gainers_count", hist_exog_list=df["losers_count"])
 
-
-def detect_anomalies(
-    self,
-):
-    """
-    Test times GPT
-    """
-    # Remove _id object
-    df = self.df.copy()
-    df = df.drop(columns=["_id"])
-    # volatility = round_numbers(volatility, 6)
-    # Detect anomalies
-    anomalies_df = nixtla_client.detect_anomalies(
-        df, time_col="close_time", target_col="close", freq="min"
-    )
-
-    level = [50, 80, 90]  # confidence levels
-    fcst = nixtla_client.forecast(df, h=7, level=level)
-
-    print(anomalies_df)
-    print(fcst)
-
-    #     if (
-    #         float(close_price) > float(open_price)
-    #         and close_price > ma_7
-    #         and open_price > ma_7
-    #         and close_price > ma_25
-    #         and open_price > ma_25
-    #         and ma_7 > ma_7_prev
-    #         and close_price > ma_7_prev
-    #         and open_price > ma_7_prev
-    #         and close_price > ma_100
-    #         and open_price > ma_100
-    #     ):
-
-    #         algo = "detect_anomalies"
-    #         spread = volatility
-    #         trend = self.define_strategy()
-    #         msg = (f"""
-    # - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
-    # - Current price: {close_price}
-    # - %threshold based on volatility: {volatility}
-    # - Strategy: {trend}
-    # - https://www.binance.com/en/trade/{symbol}
-    # - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
-    # """)
-
-    #         value = SignalsConsumer(
-    #             spread=spread,
-    #             current_price=close_price,
-    #             msg=msg,
-    #             symbol=symbol,
-    #             algo=algo,
-    #             trend=trend,
-    #             bb_spreads={}
-    #         )
-
-    #         self.producer.send(KafkaTopics.signals.value, value=value.model_dump_json()).add_callback(self.base_producer.on_send_success).add_errback(self.base_producer.on_send_error)
-
-    return
+        return timegpt_fcst_multiseries_df
