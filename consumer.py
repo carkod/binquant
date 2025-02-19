@@ -13,7 +13,7 @@ from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=os.environ["LOG_LEVEL"],
     filename=None,
     format="%(asctime)s.%(msecs)03d UTC %(levelname)s %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
