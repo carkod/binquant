@@ -31,7 +31,7 @@ class AutotradeConsumer(BinbotApi):
         """
         Load data on start and on update_required
         """
-        logging.info("Loading controller, active bots and blacklist data...")
+        logging.info("Loading controller, active bots and available symbols (not blacklisted)...")
         self.autotrade_settings: dict = self.get_autotrade_settings()
         self.active_bot_pairs = self.get_active_pairs()
         self.paper_trading_active_bots = self.get_active_pairs(
@@ -132,7 +132,7 @@ class AutotradeConsumer(BinbotApi):
         """
         Real autotrade starts
         """
-        if self.autotrade_settings["autotrade"] and symbol not in self.active_symbols:
+        if self.autotrade_settings["autotrade"] and symbol in self.active_symbols:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"

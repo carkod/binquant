@@ -274,11 +274,11 @@ class TechnicalIndicators(BinbotApi):
             if len(gainers_count) == 0 and len(losers_count) == 0:
                 return self.market_domination_trend
 
-            # try:
-            #     self.forecast = self.time_gpt_forecast(data)
-            # except Exception as e:
-            #     logging.error(f"Error forecasting data: {e}")
-            #     pass
+            try:
+                self.forecast = self.time_gpt_forecast(data)
+            except Exception as e:
+                logging.error(f"Error forecasting data: {e}")
+                pass
 
             # Proportion indicates whether trend is significant or not
             # to be replaced by TimesGPT if that works better
