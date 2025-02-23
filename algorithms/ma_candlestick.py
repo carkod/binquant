@@ -36,7 +36,7 @@ def ma_candlestick_jump(
     """
     volatility = round_numbers(volatility, 6)
     bb_high, bb_mid, bb_low = self.bb_spreads()
-    trend = self.define_strategy()
+
     if (
         float(close_price) > float(open_price)
         and bb_high < 1
@@ -58,8 +58,9 @@ def ma_candlestick_jump(
 - Current price: {close_price}
 - %threshold based on volatility: {volatility}
 - Reversal? {"Yes" if self.market_domination_reversal else "No"}
-- Strategy: {trend}
+- Strategy: {self.market_domination_trend}
 - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+- TimesGPT forecast: {self.forecast}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
 """
@@ -70,7 +71,7 @@ def ma_candlestick_jump(
             msg=msg,
             symbol=symbol,
             algo=algo,
-            trend=trend,
+            trend=self.market_domination_trend,
             bb_spreads={
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,
@@ -125,15 +126,15 @@ def ma_candlestick_drop(
     ):
         algo = "ma_candlestick_drop"
         bb_high, bb_mid, bb_low = self.bb_spreads()
-        trend = self.define_strategy()
 
         msg = f"""
 - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
 - Current price: {close_price}
 - Log volatility (log SD): {volatility}
 - Reversal? {self.market_domination_reversal}
-- Strategy: {trend}
+- Strategy: {self.market_domination_trend}
 - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+- TimesGPT forecast: {self.forecast}
 - https://www.binance.com/en/trade/{symbol}
 - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
 """
@@ -144,7 +145,7 @@ def ma_candlestick_drop(
             msg=msg,
             symbol=symbol,
             algo=algo,
-            trend=trend,
+            trend=self.market_domination_trend,
             bb_spreads={
                 "bb_high": bb_high,
                 "bb_mid": bb_mid,

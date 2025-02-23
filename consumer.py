@@ -13,7 +13,7 @@ from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=os.environ["LOG_LEVEL"],
     filename=None,
     format="%(asctime)s.%(msecs)03d UTC %(levelname)s %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -37,15 +37,9 @@ async def data_process_pipe():
         finally:
             await consumer.stop()
 
-    except UnknownMemberIdError:
-        logging.error("UnknownMemberIdError in task_1, restarting consumer")
-        await data_process_pipe()  # Restart the task
-    except RequestTimedOutError:
-        logging.error("RequestTimedOutError in task_1, restarting consumer")
-        await asyncio.sleep(5)  # Add a delay before retrying
-        await data_process_pipe()  # Restart the task
     except Exception as e:
         logging.error(f"Error in task_1: {e}")
+        await data_process_pipe()
 
 
 async def data_analytics_pipe():
@@ -71,19 +65,9 @@ async def data_analytics_pipe():
         finally:
             await consumer.stop()
 
-    except UnknownMemberIdError:
-        logging.error(
-            "UnknownMemberIdError in data_analytics_pipe, restarting consumer"
-        )
-        await data_analytics_pipe()  # Restart the task
-    except RequestTimedOutError:
-        logging.error(
-            "RequestTimedOutError in data_analytics_pipe, restarting consumer"
-        )
-        await asyncio.sleep(5)  # Add a delay before retrying
-        await data_analytics_pipe()  # Restart the task
     except Exception as e:
-        logging.error(f"Error in data_analytics_pipe: {e}")
+        logging.error(f"Error in task_2: {e}")
+        await data_analytics_pipe()
 
 
 async def main():

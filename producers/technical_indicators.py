@@ -7,7 +7,7 @@ import pandas
 from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 
-# from algorithms.timeseries_gpt import detect_anomalies
+from algorithms.timeseries_gpt import TimeseriesGPT
 from algorithms.rally import rally_or_pullback
 from algorithms.top_gainer_drop import top_gainers_drop
 from models.signals import SignalsConsumer, TrendEnum
@@ -30,6 +30,7 @@ class TechnicalIndicators(BinbotApi):
         self.market_domination_reversal: bool | None = None
         self.active_pairs = self.get_active_pairs()
         self.top_coins_gainers: list[str] = []
+        self.forecast = ""
         pass
 
     def update_active_bots_bb_spreads(self, close_price, symbol):
@@ -235,7 +236,17 @@ class TechnicalIndicators(BinbotApi):
         )
         self.df["perc_volatility"] = log_volatility
 
-    def market_domination(self) -> Literal["gainers", "losers", "neutral", None]:
+    def time_gpt_forecast(self, data):
+        """
+        Forecasting using GPT-3
+        """
+        df = pandas.DataFrame(data)
+        times_gpt = TimeseriesGPT(df)
+        # df.rename(columns={'dates': 'ds', 'gainers_count': 'y'}, inplace=True)
+        msf = times_gpt.multiple_series_forecast(df)
+        return msf
+
+    def market_domination(self) -> TrendEnum:
         """
         Get data from gainers and losers endpoint to analyze market trends
 
@@ -263,20 +274,38 @@ class TechnicalIndicators(BinbotApi):
             if len(gainers_count) == 0 and len(losers_count) == 0:
                 return self.market_domination_trend
 
-            if gainers_count[-1] > losers_count[-1]:
-                self.market_domination_trend = "gainers"
+            try:
+                self.forecast = self.time_gpt_forecast(data)
+            except Exception as e:
+                logging.error(f"Error forecasting data: {e}")
+                pass
 
-                # Check reversal
-                if gainers_count[-2] < losers_count[-2]:
-                    # Positive reversal
-                    self.market_domination_reversal = True
+            # Proportion indicates whether trend is significant or not
+            # to be replaced by TimesGPT if that works better
+            proportion = max(gainers_count[-1], losers_count[-1]) / (
+                gainers_count[-1] + losers_count[-1]
+            )
+            
+            # Check reversal
+            if (
+                gainers_count[-1] > losers_count[-1]
+                and (gainers_count[-2] < losers_count[-2])
+                and (gainers_count[-3] < losers_count[-3])
+                and proportion < 0.6
+            ):
+                # Positive reversal
+                self.market_domination_reversal = True
+                self.market_domination_trend = TrendEnum.down_trend.value
 
-            else:
-                self.market_domination_trend = "losers"
-
-                if gainers_count[-2] > losers_count[-2]:
-                    # Negative reversal
-                    self.market_domination_reversal = False
+            if (
+                gainers_count[-1] > losers_count[-1]
+                and gainers_count[-2] > losers_count[-2]
+                and (gainers_count[-3] < losers_count[-3])
+                and proportion < 0.6
+            ):
+                # Negative reversal
+                self.market_domination_reversal = False
+                self.market_domination_trend = TrendEnum.up_trend.value
 
             # self.btc_change_perc = self.get_latest_btc_price()
             reversal_msg = ""
@@ -285,6 +314,7 @@ class TechnicalIndicators(BinbotApi):
 
             logging.info(f"Current USDC market trend is: {reversal_msg}.")
             self.market_domination_ts = datetime.now() + timedelta(hours=1)
+
         return self.market_domination_trend
 
     def publish(self):
@@ -295,9 +325,6 @@ class TechnicalIndicators(BinbotApi):
         """
 
         if self.df.empty is False and self.df.close.size > 0:
-            # detect_anomalies(
-            #     self,
-            # )
             # Bolliguer bands
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe
