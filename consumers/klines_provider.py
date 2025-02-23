@@ -31,7 +31,7 @@ class KlinesProvider(KafkaDB):
             payload = json.loads(results)
             klines = KlineProduceModel.model_validate(payload)
             symbol = klines.symbol
-            candles: list[dict] = self.raw_klines(
+            candles: list[KlineProduceModel] = self.raw_klines(
                 symbol, interval=BinanceKlineIntervals.fifteen_minutes
             )
 

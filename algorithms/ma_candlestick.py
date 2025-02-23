@@ -1,23 +1,24 @@
 import os
+from typing import TYPE_CHECKING
 
-from models.signals import SignalsConsumer
+from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics
 from shared.utils import round_numbers
+
+if TYPE_CHECKING:
+    from producers.technical_indicators import TechnicalIndicators
 
 # Algorithms based on Bollinguer bands
 
 
 def ma_candlestick_jump(
-    self,
+    cls: "TechnicalIndicators",
     close_price,
     open_price,
-    symbol,
     ma_7,
     ma_25,
     ma_100,
     ma_7_prev,
-    ma_25_prev,
-    ma_100_prev,
     volatility,
 ):
     """
@@ -34,8 +35,7 @@ def ma_candlestick_jump(
     SD: standard deviation of 0.006 seems to be a good threshold after monitoring signals,
     whereas it is possible to get around 3% increase to actually make a profit
     """
-    volatility = round_numbers(volatility, 6)
-    bb_high, bb_mid, bb_low = self.bb_spreads()
+    bb_high, bb_mid, bb_low = cls.bb_spreads()
 
     if (
         float(close_price) > float(open_price)
@@ -51,54 +51,52 @@ def ma_candlestick_jump(
         and close_price > ma_100
         and open_price > ma_100
     ):
+        volatility = round_numbers(volatility, 6)
         algo = "ma_candlestick_jump"
         spread = volatility
         msg = f"""
-- [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
-- Current price: {close_price}
-- %threshold based on volatility: {volatility}
-- Reversal? {"Yes" if self.market_domination_reversal else "No"}
-- Strategy: {self.market_domination_trend}
-- Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-- TimesGPT forecast: {self.forecast}
-- https://www.binance.com/en/trade/{symbol}
-- <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
-"""
+        - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
+        - Current price: {close_price}
+        - %threshold based on volatility: {volatility}
+        - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
+        - Strategy: {cls.bot_strategy}
+        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+        - TimesGPT forecast: {cls.forecast}
+        - https://www.binance.com/en/trade/{cls.symbol}
+        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+        """
 
         value = SignalsConsumer(
             spread=spread,
             current_price=close_price,
             msg=msg,
-            symbol=symbol,
+            symbol=cls.symbol,
             algo=algo,
-            trend=self.market_domination_trend,
-            bb_spreads={
-                "bb_high": bb_high,
-                "bb_mid": bb_mid,
-                "bb_low": bb_low,
-            },
+            bot_strategy=cls.bot_strategy,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
         )
 
-        self.producer.send(
+        cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(self.base_producer.on_send_success).add_errback(
-            self.base_producer.on_send_error
+        ).add_callback(cls.base_producer.on_send_success).add_errback(
+            cls.base_producer.on_send_error
         )
 
     return
 
 
 def ma_candlestick_drop(
-    self,
+    cls: "TechnicalIndicators",
     close_price,
     open_price,
-    symbol,
     ma_7,
     ma_100,
     ma_25,
-    ma_7_prev,
     ma_25_prev,
-    ma_100_prev,
     volatility,
 ):
     """
@@ -125,38 +123,38 @@ def ma_candlestick_drop(
         and (abs(float(close_price) - float(open_price)) / float(close_price)) > 0.02
     ):
         algo = "ma_candlestick_drop"
-        bb_high, bb_mid, bb_low = self.bb_spreads()
+        bb_high, bb_mid, bb_low = cls.bb_spreads()
 
         msg = f"""
-- [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{symbol}
-- Current price: {close_price}
-- Log volatility (log SD): {volatility}
-- Reversal? {self.market_domination_reversal}
-- Strategy: {self.market_domination_trend}
-- Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-- TimesGPT forecast: {self.forecast}
-- https://www.binance.com/en/trade/{symbol}
-- <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
-"""
+        - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
+        - Current price: {close_price}
+        - Log volatility (log SD): {volatility}
+        - Reversal? {cls.market_domination_reversal}
+        - Strategy: {cls.bot_strategy}
+        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+        - TimesGPT forecast: {cls.forecast}
+        - https://www.binance.com/en/trade/{cls.symbol}
+        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+        """
 
         value = SignalsConsumer(
             spread=None,
             current_price=close_price,
             msg=msg,
-            symbol=symbol,
+            symbol=cls.symbol,
             algo=algo,
-            trend=self.market_domination_trend,
-            bb_spreads={
-                "bb_high": bb_high,
-                "bb_mid": bb_mid,
-                "bb_low": bb_low,
-            },
+            bot_strategy=cls.bot_strategy,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
         )
 
-        self.producer.send(
+        cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(self.base_producer.on_send_success).add_errback(
-            self.base_producer.on_send_error
+        ).add_callback(cls.base_producer.on_send_success).add_errback(
+            cls.base_producer.on_send_error
         )
 
     return

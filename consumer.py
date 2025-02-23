@@ -1,10 +1,11 @@
 import asyncio
-import concurrent.futures  # Add this import
+import concurrent.futures
 import json
 import logging
 import os
 
 from aiokafka import AIOKafkaConsumer
+
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
 from consumers.telegram_consumer import TelegramConsumer
@@ -18,7 +19,7 @@ logging.basicConfig(
 )
 
 
-async def data_process_pipe():
+async def data_process_pipe() -> None:
     try:
         consumer = AIOKafkaConsumer(
             KafkaTopics.klines_store_topic.value,
@@ -40,7 +41,7 @@ async def data_process_pipe():
         await data_process_pipe()
 
 
-async def data_analytics_pipe():
+async def data_analytics_pipe() -> None:
     try:
         consumer = AIOKafkaConsumer(
             KafkaTopics.signals.value,
@@ -54,6 +55,7 @@ async def data_analytics_pipe():
 
         try:
             async for message in consumer:
+                print("Received message in analytics pipe", message.value)
                 if message.topic == KafkaTopics.restart_streaming.value:
                     at_consumer.load_data_on_start()
 
@@ -68,7 +70,7 @@ async def data_analytics_pipe():
         await data_analytics_pipe()
 
 
-async def main():
+async def main() -> None:
     loop = asyncio.get_running_loop()
     with concurrent.futures.ThreadPoolExecutor() as pool:
         await asyncio.gather(

@@ -4,7 +4,7 @@ import math
 from datetime import datetime
 
 from models.bot import BotModel
-from models.signals import SignalsConsumer, TrendEnum
+from models.signals import SignalsConsumer
 from producers.base import BaseProducer
 from shared.apis import BinbotApi
 from shared.enums import CloseConditions, KafkaTopics, Strategy
@@ -29,14 +29,14 @@ class Autotrade(BaseProducer, BinbotApi):
         algorithm_name: usually the filename
         db_collection_name: Mongodb collection name ["paper_trading", "bots"]
         """
-        self.pair = pair
+        self.pair: str = pair
         self.decimals = self.price_precision(pair)
         current_date = datetime.now().strftime("%Y-%m-%dT%H:%M")
         self.algorithm_name = algorithm_name
         self.default_bot = BotModel(
             pair=pair,
             name=f"{algorithm_name}_{current_date}",
-            fiat=settings["balance_to_use"],
+            fiat=settings["fiat"],
             base_order_size=settings["base_order_size"],
             strategy=Strategy.long,
             stop_loss=settings["stop_loss"],
@@ -57,29 +57,18 @@ class Autotrade(BaseProducer, BinbotApi):
 
         if (
             bb_spreads
-            and bb_spreads["bb_high"]
-            and bb_spreads["bb_low"]
-            and bb_spreads["bb_mid"]
+            and bb_spreads.bb_high
+            and bb_spreads.bb_low
+            and bb_spreads.bb_mid
         ):
             top_spread = (
-                abs(
-                    (bb_spreads["bb_high"] - bb_spreads["bb_mid"])
-                    / bb_spreads["bb_high"]
-                )
-                * 100
+                abs((bb_spreads.bb_high - bb_spreads.bb_mid) / bb_spreads.bb_high) * 100
             )
             whole_spread = (
-                abs(
-                    (bb_spreads["bb_high"] - bb_spreads["bb_low"])
-                    / bb_spreads["bb_high"]
-                )
-                * 100
+                abs((bb_spreads.bb_high - bb_spreads.bb_low) / bb_spreads.bb_high) * 100
             )
             bottom_spread = (
-                abs(
-                    (bb_spreads["bb_mid"] - bb_spreads["bb_low"]) / bb_spreads["bb_mid"]
-                )
-                * 100
+                abs((bb_spreads.bb_mid - bb_spreads.bb_low) / bb_spreads.bb_mid) * 100
             )
 
             # Otherwise it'll close too soon
@@ -138,7 +127,7 @@ class Autotrade(BaseProducer, BinbotApi):
                     self.default_bot.base_order_size = qty
                     break
 
-                ticker = self.get_24_ticker(symbol=self.pair)
+                ticker = self.ticker_24_price(symbol=self.pair)
                 rate = ticker["price"]
                 qty = supress_notation(b["free"], self.decimals)
                 # Round down to 6 numbers to avoid not enough funds
@@ -150,7 +139,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 )
                 pass
 
-    def activate_autotrade(self, data: SignalsConsumer, **kwargs):
+    def activate_autotrade(self, data: SignalsConsumer):
         """
         Run autotrade
         2. Create bot with given parameters from research_controller
@@ -158,13 +147,7 @@ class Autotrade(BaseProducer, BinbotApi):
         """
         logging.info(f"{self.db_collection_name} Autotrade running with {self.pair}...")
 
-        if data.trend == TrendEnum.down_trend:
-            self.default_bot.strategy = Strategy.margin_short
-            # self.default_bot["close_condition"] = CloseConditions.market_reversal
-
-        if data.trend == TrendEnum.up_trend:
-            self.default_bot.strategy = Strategy.long
-
+        self.default_bot.strategy = data.bot_strategy
         if self.db_collection_name == "paper_trading":
             # Dynamic switch to real bot URLs
             create_func = self.create_paper_bot
@@ -196,7 +179,7 @@ class Autotrade(BaseProducer, BinbotApi):
 
             if self.default_bot.strategy == Strategy.margin_short:
                 try:
-                    ticker = self.ticker_price(self.default_bot.pair)
+                    ticker = self.ticker_24_price(self.default_bot.pair)
                 except Exception as e:
                     print(f"Error getting ticker price: {e}")
                     return
@@ -236,14 +219,8 @@ class Autotrade(BaseProducer, BinbotApi):
         bot = activate_func(bot_id)
 
         if "error" in bot and bot["error"] > 0:
-            # Failed to activate bot so:
-            # (1) Add to blacklist/exclude from future autotrades
-            # (2) Submit error to event logs
-            # (3) Delete inactive bot
-            # this prevents cluttering UI with loads of useless bots
             message = bot["message"]
             self.submit_bot_event_logs(bot_id, message)
-            self.blacklist.append(self.default_bot.pair)
             if self.default_bot.strategy == Strategy.margin_short:
                 self.clean_margin_short(self.default_bot.pair)
             self.delete_bot(bot_id)
