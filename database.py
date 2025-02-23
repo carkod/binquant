@@ -3,7 +3,8 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 from pymongo import DESCENDING, MongoClient
-from pymongo.collection import Collection
+from pymongo.command_cursor import CommandCursor
+from pymongo.cursor import Cursor
 
 from models.klines import KlineModel, KlineProduceModel
 from shared.enums import BinanceKlineIntervals
@@ -15,28 +16,26 @@ class KafkaDB:
     def __init__(self):
         client: MongoClient = MongoClient(
             host=os.getenv("MONGO_HOSTNAME"),
-            port=int(os.getenv("MONGO_PORT")),
+            port=int(os.environ["MONGO_PORT"]),
             authSource="admin",
             username=os.getenv("MONGO_AUTH_USERNAME"),
             password=os.getenv("MONGO_AUTH_PASSWORD"),
         )
-        self.db = client[os.getenv("MONGO_KAFKA_DATABASE")]
+        self.db = client[os.environ["MONGO_KAFKA_DATABASE"]]
         self.setup()
 
-    def setup(self) -> Collection:
+    def setup(self) -> None:
         list_of_collections = self.db.list_collection_names()
         # Return a list of collections in 'test_db'
         if "kline" not in list_of_collections:
             self.db.create_collection(
                 "kline",
-                **{
-                    "timeseries": {
-                        "timeField": "close_time",
-                        "metaField": "symbol",
-                        "granularity": "minutes",
-                    },
-                    "expireAfterSeconds": 604800,  # 7 days, minimize server cost
+                timeseries={
+                    "timeField": "close_time",
+                    "metaField": "symbol",
+                    "granularity": "minutes",
                 },
+                expireAfterSeconds=604800,  # 7 days, minimize server cost
             )
 
         return
@@ -99,6 +98,7 @@ class KafkaDB:
         Returns:
             list: 15m Klines
         """
+        query: CommandCursor | Cursor
         if interval == BinanceKlineIntervals.five_minutes:
             query = self.db.kline.find(
                 {"symbol": symbol},
@@ -110,31 +110,30 @@ class KafkaDB:
         else:
             bin_size = interval.bin_size()
             unit = interval.unit()
-            query = self.db.kline.aggregate(
-                [
-                    {"$match": {"symbol": symbol}},
-                    {"$sort": {"close_time": DESCENDING}},
-                    {
-                        "$group": {
-                            "_id": {
-                                "time": {
-                                    "$dateTrunc": {
-                                        "date": "$close_time",
-                                        "unit": unit,
-                                        "binSize": bin_size,
-                                    },
+            pipeline = [
+                {"$match": {"symbol": symbol}},
+                {"$sort": {"close_time": DESCENDING}},
+                {
+                    "$group": {
+                        "_id": {
+                            "time": {
+                                "$dateTrunc": {
+                                    "date": "$close_time",
+                                    "unit": unit,
+                                    "binSize": bin_size,
                                 },
                             },
-                            "open": {"$first": "$open"},
-                            "close": {"$last": "$close"},
-                            "high": {"$max": "$high"},
-                            "low": {"$min": "$low"},
-                            "close_time": {"$last": "$close_time"},
-                            "open_time": {"$first": "$open_time"},
-                            "volume": {"$sum": "$volume"},
-                        }
-                    },
-                ]
-            )
+                        },
+                        "open": {"$first": "$open"},
+                        "close": {"$last": "$close"},
+                        "high": {"$max": "$high"},
+                        "low": {"$min": "$low"},
+                        "close_time": {"$last": "$close_time"},
+                        "open_time": {"$first": "$open_time"},
+                        "volume": {"$sum": "$volume"},
+                    }
+                },
+            ]
+            query = self.db.kline.aggregate(pipeline)
         data = list(query)
         return data

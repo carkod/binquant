@@ -1,19 +1,17 @@
 import os
+from typing import TYPE_CHECKING
 
-from models.signals import SignalsConsumer
+from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics
+
+if TYPE_CHECKING:
+    from producers.technical_indicators import TechnicalIndicators
 
 
 def top_gainers_drop(
-    cls,
+    cls: "TechnicalIndicators",
     close_price,
     open_price,
-    ma_7,
-    ma_25,
-    ma_100,
-    ma_7_prev,
-    ma_25_prev,
-    ma_100_prev,
     volatility,
 ):
     """
@@ -32,7 +30,8 @@ def top_gainers_drop(
         - Log volatility (log SD): {volatility}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
-        - Market domination trend: {cls.market_domination_trend}
+        - Market domination trend: {cls.current_market_dominance}
+        - Strategy: {cls.bot_strategy}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -43,8 +42,12 @@ def top_gainers_drop(
             msg=msg,
             symbol=cls.symbol,
             algo=algo,
-            trend=cls.market_domination_trend,
-            bb_spreads=None,
+            bot_strategy=cls.bot_strategy,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
         )
 
         cls.producer.send(

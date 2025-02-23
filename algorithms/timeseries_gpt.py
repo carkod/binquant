@@ -1,4 +1,5 @@
 import os
+
 from nixtla import NixtlaClient
 
 

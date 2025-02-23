@@ -88,10 +88,10 @@ class OrderSide(str, Enum):
     sell = "SELL"
 
 
-class TrendEnum(str, Enum):
-    up_trend = "uptrend"
-    down_trend = "downtrend"
-    neutral = None
+class MarketDominance(str, Enum):
+    NEUTRAL = "neutral"
+    GAINERS = "gainers"
+    LOSERS = "losers"
 
 
 class CloseConditions(str, Enum):
