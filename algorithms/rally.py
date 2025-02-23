@@ -1,18 +1,18 @@
 import os
+from typing import TYPE_CHECKING
 
-from models.signals import SignalsConsumer
+from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics
+
+if TYPE_CHECKING:
+    from producers.technical_indicators import TechnicalIndicators
 
 
 def rally_or_pullback(
-    self,
+    cls: "TechnicalIndicators",
     close_price,
-    open_price,
-    symbol,
-    ma_7,
     ma_25,
     ma_100,
-    ma_7_prev,
     ma_25_prev,
     ma_100_prev,
     volatility,
@@ -24,7 +24,7 @@ def rally_or_pullback(
     but day or minute percentage change
     https://www.binance.com/en/support/faq/understanding-top-movers-statuses-on-binance-spot-trading-18c97e8ab67a4e1b824edd590cae9f16
     """
-    data = self.ticker_24(symbol=symbol)
+    data = cls.ticker_24(symbol=cls.symbol)
 
     # Rally
     day_diff = (float(data["lowPrice"]) - float(data["openPrice"])) / float(
@@ -56,38 +56,37 @@ def rally_or_pullback(
         and close_price < ma_100
         and close_price < ma_100_prev
     ):
-        bb_high, bb_mid, bb_low = self.bb_spreads()
-        trend = self.define_strategy()
+        bb_high, bb_mid, bb_low = cls.bb_spreads()
 
         msg = f"""
-            - [{os.getenv('ENV')}] <strong>{algo_type} #algorithm</strong> #{symbol}
+            - [{os.getenv('ENV')}] <strong>{algo_type} #algorithm</strong> #{cls.symbol}
             - Current price: {close_price}
             - Log volatility (log SD): {volatility}
             - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
-            - Reversal? {"Yes" if self.market_domination_reversal else "No"}
-            - TimesGPT forecast: {self.forecast}
-            - https://www.binance.com/en/trade/{symbol}
-            - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
+            - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
+            - TimesGPT forecast: {cls.forecast}
+            - https://www.binance.com/en/trade/{cls.symbol}
+            - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
 
         value = SignalsConsumer(
             spread=None,
             current_price=close_price,
             msg=msg,
-            symbol=symbol,
+            symbol=cls.symbol,
             algo=algo_type,
-            trend=trend,
-            bb_spreads={
-                "bb_high": bb_high,
-                "bb_mid": bb_mid,
-                "bb_low": bb_low,
-            },
+            bot_strategy=cls.bot_strategy,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
         )
 
-        self.producer.send(
+        cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(self.base_producer.on_send_success).add_errback(
-            self.base_producer.on_send_error
+        ).add_callback(cls.base_producer.on_send_success).add_errback(
+            cls.base_producer.on_send_error
         )
 
     return
