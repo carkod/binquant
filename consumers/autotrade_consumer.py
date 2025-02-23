@@ -5,6 +5,7 @@ from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
 
+
 class AutotradeConsumer(BinbotApi):
     def __init__(self, producer) -> None:
         self.market_domination_ts = datetime.now()
@@ -31,7 +32,9 @@ class AutotradeConsumer(BinbotApi):
         """
         Load data on start and on update_required
         """
-        logging.info("Loading controller, active bots and available symbols (not blacklisted)...")
+        logging.info(
+            "Loading controller, active bots and available symbols (not blacklisted)..."
+        )
         self.autotrade_settings: dict = self.get_autotrade_settings()
         self.active_bot_pairs = self.get_active_pairs()
         self.paper_trading_active_bots = self.get_active_pairs(
@@ -39,7 +42,9 @@ class AutotradeConsumer(BinbotApi):
         )
         self.all_symbols = self.get_symbols()
         # Active bot symbols substracting exchange active symbols (not blacklisted)
-        self.active_symbols = set(s["id"] for s in self.all_symbols) - set(self.active_bot_pairs)
+        self.active_symbols = set(s["id"] for s in self.all_symbols) - set(
+            self.active_bot_pairs
+        )
         self.active_test_bots = [
             item["pair"] for item in self.paper_trading_active_bots
         ]

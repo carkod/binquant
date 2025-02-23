@@ -11,7 +11,9 @@ from shared.enums import BinanceKlineIntervals
 
 class KlinesConnector(BinbotApi):
     def __init__(
-        self, producer: KafkaProducer, interval: BinanceKlineIntervals = BinanceKlineIntervals.one_minute
+        self,
+        producer: KafkaProducer,
+        interval: BinanceKlineIntervals = BinanceKlineIntervals.one_minute,
     ) -> None:
         logging.info("Started Kafka producer SignalsInbound")
         super().__init__()
@@ -29,7 +31,6 @@ class KlinesConnector(BinbotApi):
             on_error=self.handle_error,
         )
         return client
-
 
     def handle_close(self, message):
         logging.info(f"Closing research signals: {message}")
@@ -59,7 +60,9 @@ class KlinesConnector(BinbotApi):
         markets = [
             f'{symbol["id"].lower()}@kline_{self.interval.value}' for symbol in symbols
         ]
-        self.client.send_message_to_server(markets, action=self.client.ACTION_SUBSCRIBE, id=1)
+        self.client.send_message_to_server(
+            markets, action=self.client.ACTION_SUBSCRIBE, id=1
+        )
 
     def process_kline_stream(self, result):
         """

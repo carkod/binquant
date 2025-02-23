@@ -285,7 +285,7 @@ class TechnicalIndicators(BinbotApi):
             proportion = max(gainers_count[-1], losers_count[-1]) / (
                 gainers_count[-1] + losers_count[-1]
             )
-            
+
             # Check reversal
             if (
                 gainers_count[-1] > losers_count[-1]

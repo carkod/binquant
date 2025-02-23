@@ -5,8 +5,6 @@ import logging
 import os
 
 from aiokafka import AIOKafkaConsumer
-from aiokafka.errors import RequestTimedOutError, UnknownMemberIdError
-
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
 from consumers.telegram_consumer import TelegramConsumer
