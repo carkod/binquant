@@ -2,10 +2,8 @@ import logging
 from datetime import datetime, timedelta
 
 import pandas
-
 from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
-from algorithms.rally import rally_or_pullback
 from algorithms.timeseries_gpt import TimeseriesGPT
 from algorithms.top_gainer_drop import top_gainers_drop
 from models.signals import BollinguerSpread, SignalsConsumer
@@ -310,7 +308,7 @@ class TechnicalIndicators(BinbotApi):
                 ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
                 ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
                 ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
-                ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
+                # ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
 
                 volatility = float(
                     self.df.perc_volatility[len(self.df.perc_volatility) - 1]
@@ -357,15 +355,15 @@ class TechnicalIndicators(BinbotApi):
                 buy_low_sell_high(self, close_price, rsi, ma_25, volatility)
 
                 # This function calls a lot ticker24 revise it before uncommenting
-                rally_or_pullback(
-                    self,
-                    close_price=close_price,
-                    ma_25=ma_25,
-                    ma_100=ma_100,
-                    ma_25_prev=ma_25_prev,
-                    ma_100_prev=ma_100_prev,
-                    volatility=volatility,
-                )
+                # rally_or_pullback(
+                #     self,
+                #     close_price=close_price,
+                #     ma_25=ma_25,
+                #     ma_100=ma_100,
+                #     ma_25_prev=ma_25_prev,
+                #     ma_100_prev=ma_100_prev,
+                #     volatility=volatility,
+                # )
 
                 top_gainers_drop(
                     self,

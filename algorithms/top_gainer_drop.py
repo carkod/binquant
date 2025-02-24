@@ -2,7 +2,7 @@ import os
 from typing import TYPE_CHECKING
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import KafkaTopics
+from shared.enums import KafkaTopics, MarketDominance, Strategy
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -24,6 +24,18 @@ def top_gainers_drop(
         algo = "top_gainers_drop"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
 
+        if (
+            cls.market_domination_reversal
+            and cls.current_market_dominance == MarketDominance.GAINERS
+            or cls.current_market_dominance == MarketDominance.NEUTRAL
+        ):
+            # market is bullish, most prices increasing,
+            # but looks like it's dropping and going bearish (reversal)
+            # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
+            bot_strategy = Strategy.margin_short
+        else:
+            return
+
         msg = f"""
         - [{os.getenv('ENV')}] Top gainers's drop <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
@@ -31,7 +43,7 @@ def top_gainers_drop(
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
         - Market domination trend: {cls.current_market_dominance}
-        - Strategy: {cls.bot_strategy}
+        - Strategy: {bot_strategy}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -42,7 +54,7 @@ def top_gainers_drop(
             msg=msg,
             symbol=cls.symbol,
             algo=algo,
-            bot_strategy=cls.bot_strategy,
+            bot_strategy=bot_strategy,
             bb_spreads=BollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,

@@ -2,7 +2,7 @@ import os
 from typing import TYPE_CHECKING
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import KafkaTopics
+from shared.enums import KafkaTopics, MarketDominance, Strategy
 from shared.utils import round_numbers
 
 if TYPE_CHECKING:
@@ -54,12 +54,28 @@ def ma_candlestick_jump(
         volatility = round_numbers(volatility, 6)
         algo = "ma_candlestick_jump"
         spread = volatility
+        bot_strategy = cls.bot_strategy
+
+        if cls.market_domination_reversal:
+            if (
+                cls.current_market_dominance == MarketDominance.GAINERS
+                or cls.current_market_dominance == MarketDominance.NEUTRAL
+            ):
+                # market is bullish, most prices increasing,
+                # but looks like it's dropping and going bearish (reversal)
+                # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
+                bot_strategy = Strategy.margin_short
+            else:
+                bot_strategy = Strategy.long
+        else:
+            return
+
         msg = f"""
         - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
         - Current price: {close_price}
         - %threshold based on volatility: {volatility}
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
-        - Strategy: {cls.bot_strategy}
+        - Strategy: {bot_strategy.value}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
         - TimesGPT forecast: {cls.forecast}
         - https://www.binance.com/en/trade/{cls.symbol}
@@ -72,7 +88,7 @@ def ma_candlestick_jump(
             msg=msg,
             symbol=cls.symbol,
             algo=algo,
-            bot_strategy=cls.bot_strategy,
+            bot_strategy=bot_strategy,
             bb_spreads=BollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
@@ -124,13 +140,28 @@ def ma_candlestick_drop(
     ):
         algo = "ma_candlestick_drop"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
+        bot_strategy = cls.bot_strategy
+
+        if cls.market_domination_reversal:
+            if cls.current_market_dominance == MarketDominance.GAINERS:
+                # market is bullish, most prices increasing,
+                # but looks like it's dropping and going bearish (reversal)
+                # candlesticks of this specific crypto are seeing a huge drop (candlstick drop algo)
+                bot_strategy = Strategy.margin_short
+            else:
+                # market is bearish, most prices decreasing, (LOSERS)
+                # but looks like it's picking up and going bullish (reversal)
+                # candlesticks of this specific crypto are seeing a huge drop (candlstick drop algo)
+                bot_strategy = Strategy.long
+        else:
+            return
 
         msg = f"""
         - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
         - Current price: {close_price}
         - Log volatility (log SD): {volatility}
         - Reversal? {cls.market_domination_reversal}
-        - Strategy: {cls.bot_strategy}
+        - Strategy: {bot_strategy.value}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
         - TimesGPT forecast: {cls.forecast}
         - https://www.binance.com/en/trade/{cls.symbol}
@@ -143,7 +174,7 @@ def ma_candlestick_drop(
             msg=msg,
             symbol=cls.symbol,
             algo=algo,
-            bot_strategy=cls.bot_strategy,
+            bot_strategy=bot_strategy,
             bb_spreads=BollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
