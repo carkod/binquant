@@ -258,8 +258,11 @@ class TechnicalIndicators(BinbotApi):
                     self.market_domination_reversal = True
                     self.bot_strategy = Strategy.margin_short
 
-            # self.btc_change_perc = self.get_latest_btc_price()
         return self.current_market_dominance
+
+    def get_btc_correlation(self):
+        data = self.get_btc_correlation()
+        return data
 
     def publish(self):
         """
@@ -296,6 +299,7 @@ class TechnicalIndicators(BinbotApi):
                 or self.df.ma_100.size < 100
             ):
                 return
+            
             try:
                 close_price = float(self.df.close[len(self.df.close) - 1])
                 open_price = float(self.df.open[len(self.df.open) - 1])

@@ -198,6 +198,7 @@ class BinbotApi(BinanceApi):
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
     bb_ticker24 = f"{bb_base_url}/charts/ticker-24"
+    bb_btc_correlation_url = f"{bb_base_url}/charts/btc-correlation"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -376,4 +377,11 @@ class BinbotApi(BinanceApi):
         Top crypto/token/coin gainers of the day
         """
         data = self.request(url=self.bb_top_gainers)
+        return data
+
+    def get_btc_correlation(self):
+        """
+        Get BTC correlation
+        """
+        data = self.request(url=self.bb_btc_correlation_url)
         return data

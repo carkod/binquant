@@ -68,7 +68,12 @@ def ma_candlestick_jump(
             else:
                 bot_strategy = Strategy.long
         else:
-            return
+
+            btc_correlation = cls.get_btc_correlation()
+            if btc_correlation > 0 and cls.current_market_dominance > MarketDominance.LOSERS:
+                bot_strategy = Strategy.long
+            else:
+                return
 
         msg = f"""
         - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
