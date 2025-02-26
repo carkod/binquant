@@ -92,7 +92,9 @@ def handle_binance_errors(response: Response):
     """
     response.raise_for_status()
     if "x-mbx-used-weight-1m" in response.headers:
-        logging.info(f"Request to {response.url} weight: {response.headers.get('x-mbx-used-weight-1m')}")
+        logging.info(
+            f"Request to {response.url} weight: {response.headers.get('x-mbx-used-weight-1m')}"
+        )
     # Calculate request weights and pause half of the way (1200/2=600)
     if (
         "x-mbx-used-weight-1m" in response.headers

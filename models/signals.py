@@ -1,8 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from shared.enums import (
-    TrendEnum,
-)
+from shared.enums import Strategy
 
 
 class BollinguerSpread(BaseModel):
@@ -11,8 +9,9 @@ class BollinguerSpread(BaseModel):
     (optional)
     """
 
-    band_1: float
-    band_2: float
+    bb_high: float
+    bb_mid: float
+    bb_low: float
 
 
 class SignalsConsumer(BaseModel):
@@ -21,16 +20,18 @@ class SignalsConsumer(BaseModel):
     """
 
     type: str = Field(default="signal")
-    spread: float | None = 0
-    current_price: float | None = 0
+    spread: float | None = Field(default=0)
+    current_price: float | None = Field(default=0)
     msg: str
     symbol: str
     algo: str
-    trend: TrendEnum | None = TrendEnum.neutral
-    bb_spreads: dict | None = None
+    bot_strategy: Strategy = Field(default=Strategy.long)
+    bb_spreads: BollinguerSpread | None
+    active: bool = Field(default=True, description="If it is in testing mode, False")
 
     model_config = ConfigDict(
         extra="allow",
+        use_enum_values=True,
     )
 
     @field_validator("spread", "current_price")
