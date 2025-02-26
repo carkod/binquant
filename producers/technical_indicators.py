@@ -260,10 +260,6 @@ class TechnicalIndicators(BinbotApi):
 
         return self.current_market_dominance
 
-    def get_btc_correlation(self):
-        data = self.get_btc_correlation()
-        return data
-
     def publish(self):
         """
         Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
@@ -299,7 +295,7 @@ class TechnicalIndicators(BinbotApi):
                 or self.df.ma_100.size < 100
             ):
                 return
-            
+
             try:
                 close_price = float(self.df.close[len(self.df.close) - 1])
                 open_price = float(self.df.open[len(self.df.open) - 1])

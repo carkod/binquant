@@ -1,6 +1,6 @@
 import os
 from typing import TYPE_CHECKING
-from models.signals import SignalsConsumer
+from models.signals import SignalsConsumer, BollinguerSpread
 from shared.enums import KafkaTopics, MarketDominance, Strategy
 
 if TYPE_CHECKING:
@@ -34,8 +34,11 @@ def price_rise_15(
         bot_strategy = Strategy.long
 
     else:
-        btc_correlation = cls.get_btc_correlation()
-        if cls.current_market_dominance == MarketDominance.LOSERS and btc_correlation > 0:
+        btc_correlation = cls.get_btc_correlation(symbol=cls.symbol)
+        if (
+            cls.current_market_dominance == MarketDominance.LOSERS
+            and btc_correlation > 0
+        ):
             bot_strategy = Strategy.long
         else:
             return
@@ -52,14 +55,14 @@ def price_rise_15(
         return
 
     msg = f"""
-- [{os.getenv('ENV')}] {first_line} #{symbol}
-- Current price: {close_price}
-- P-value: {p_value}
-- Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-- Bot strategy {bot_strategy.value}
-- https://www.binance.com/en/trade/{symbol}
-- <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
-"""
+    - [{os.getenv('ENV')}] {first_line} #{symbol}
+    - Current price: {close_price}
+    - P-value: {p_value}
+    - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+    - Bot strategy {bot_strategy.value}
+    - https://www.binance.com/en/trade/{symbol}
+    - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
+    """
 
     value = SignalsConsumer(
         current_price=close_price,
@@ -67,11 +70,7 @@ def price_rise_15(
         symbol=symbol,
         algo=algo,
         bot_strategy=bot_strategy,
-        bb_spreads={
-            "bb_high": bb_high,
-            "bb_mid": bb_mid,
-            "bb_low": bb_low,
-        },
+        bb_spreads=BollinguerSpread(high=bb_high, mid=bb_mid, low=bb_low),
     )
 
     cls.producer.send(

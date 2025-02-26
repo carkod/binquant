@@ -55,7 +55,6 @@ async def data_analytics_pipe() -> None:
 
         try:
             async for message in consumer:
-                print("Received message in analytics pipe", message.value)
                 if message.topic == KafkaTopics.restart_streaming.value:
                     at_consumer.load_data_on_start()
 

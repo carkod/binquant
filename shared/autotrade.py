@@ -72,7 +72,7 @@ class Autotrade(BaseProducer, BinbotApi):
             )
 
             # Otherwise it'll close too soon
-            if whole_spread > 2:
+            if whole_spread > 2 and whole_spread < 20:
                 self.default_bot.trailling = True
                 if self.default_bot.strategy == Strategy.long:
                     self.default_bot.stop_loss = round_numbers(whole_spread)

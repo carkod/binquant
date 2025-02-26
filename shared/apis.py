@@ -379,9 +379,10 @@ class BinbotApi(BinanceApi):
         data = self.request(url=self.bb_top_gainers)
         return data
 
-    def get_btc_correlation(self):
+    def get_btc_correlation(self, symbol) -> float:
         """
         Get BTC correlation
         """
-        data = self.request(url=self.bb_btc_correlation_url)
+        response = self.request(url=self.bb_btc_correlation_url, params={"symbol": symbol})
+        data = float(response["data"])
         return data

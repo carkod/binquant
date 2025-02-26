@@ -56,22 +56,24 @@ def ma_candlestick_jump(
         spread = volatility
         bot_strategy = cls.bot_strategy
 
-        if cls.market_domination_reversal:
-            if (
-                cls.current_market_dominance == MarketDominance.GAINERS
-                or cls.current_market_dominance == MarketDominance.NEUTRAL
-            ):
-                # market is bullish, most prices increasing,
-                # but looks like it's dropping and going bearish (reversal)
-                # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
-                bot_strategy = Strategy.margin_short
-            else:
-                bot_strategy = Strategy.long
+        if cls.current_market_dominance == MarketDominance.GAINERS:
+            # market is bullish, most prices increasing,
+            # but looks like it's dropping and going bearish (reversal)
+            # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
+            bot_strategy = Strategy.long
         else:
-
-            btc_correlation = cls.get_btc_correlation()
-            if btc_correlation > 0 and cls.current_market_dominance > MarketDominance.LOSERS:
+            btc_correlation = cls.get_btc_correlation(symbol=cls.symbol)
+            # Negative correlation with BTC and when market is downtrend
+            # means this crypto is good for hedging against BTC going down
+            if (
+                btc_correlation < 0
+                and cls.current_market_dominance == MarketDominance.LOSERS
+            ):
                 bot_strategy = Strategy.long
+            
+            elif btc_correlation > 0 and cls.current_market_dominance == MarketDominance.LOSERS:
+                bot_strategy = Strategy.margin_short
+
             else:
                 return
 
