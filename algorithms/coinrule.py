@@ -32,17 +32,21 @@ def fast_and_slow_macd(
     if macd > macd_signal and ma_7 > ma_25 and bb_high < 1 and bb_high > 0.001:
 
         bot_strategy = cls.bot_strategy
+        btc_correlation = cls.get_btc_correlation(symbol=cls.symbol)
         if cls.current_market_dominance == MarketDominance.NEUTRAL:
             return
 
         if cls.market_domination_reversal:
             if (
                 cls.current_market_dominance == MarketDominance.GAINERS
+                and btc_correlation > 0
             ):
                 # market is bullish, most prices increasing,
                 # but looks like it's dropping and going bearish (reversal)
                 # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
                 bot_strategy = Strategy.margin_short
+            elif cls.current_market_dominance == MarketDominance.GAINERS and btc_correlation < 0:
+                bot_strategy = Strategy.long
             else:
                 bot_strategy = Strategy.long
         else:
@@ -63,6 +67,7 @@ def fast_and_slow_macd(
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
         - Strategy: {bot_strategy.value}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
+        - BTC correlation: {btc_correlation}
         - TimesGPT forecast: {cls.forecast}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>

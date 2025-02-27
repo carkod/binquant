@@ -68,6 +68,7 @@ def ma_candlestick_jump(
             if (
                 btc_correlation < 0
                 and cls.current_market_dominance == MarketDominance.LOSERS
+                and not cls.market_domination_reversal
             ):
                 bot_strategy = Strategy.long
             
@@ -85,6 +86,7 @@ def ma_candlestick_jump(
         - Strategy: {bot_strategy.value}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
         - TimesGPT forecast: {cls.forecast}
+        - BTC correlation: {btc_correlation}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
