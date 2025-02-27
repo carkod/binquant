@@ -36,7 +36,7 @@ class KlinesProvider(KafkaDB):
             )
 
             if len(candles) == 0:
-                logging.info(f"{symbol} No data to do analytics")
+                logging.warning(f"{symbol} No data to do analytics")
                 return
 
             # Pre-process
