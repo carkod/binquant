@@ -320,6 +320,8 @@ class TechnicalIndicators(BinbotApi):
                     )
                     return
 
+                self.market_domination()
+
                 fast_and_slow_macd(
                     self,
                     close_price,
