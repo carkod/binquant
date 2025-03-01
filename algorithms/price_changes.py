@@ -1,16 +1,19 @@
 import os
+from typing import TYPE_CHECKING
 
-from models.signals import SignalsConsumer
-from shared.enums import KafkaTopics
+from models.signals import BollinguerSpread, SignalsConsumer
+from shared.enums import KafkaTopics, MarketDominance, Strategy
+
+if TYPE_CHECKING:
+    from producers.technical_indicators import TechnicalIndicators
 
 
 def price_rise_15(
-    self,
+    cls: "TechnicalIndicators",
     close_price,
     symbol,
     prev_price,
     p_value,
-    btc_correlation,
 ):
     """
     Price increase/decrease algorithm
@@ -20,7 +23,28 @@ def price_rise_15(
 
     algo = "price_rise_15_rally_pullback"
     price_diff = (float(close_price) - float(prev_price)) / close_price
-    bb_high, bb_mid, bb_low = self.bb_spreads()
+
+    if (
+        cls.market_domination_reversal
+        and cls.current_market_dominance == MarketDominance.LOSERS
+        or cls.current_market_dominance == MarketDominance.NEUTRAL
+    ):
+        # market is bullish, most prices increasing,
+        # but looks like it's dropping and going bearish (reversal)
+        # candlesticks of this specific crypto are seeing 15% rise
+        bot_strategy = Strategy.long
+
+    else:
+        btc_correlation = cls.get_btc_correlation(symbol=cls.symbol)
+        if (
+            cls.current_market_dominance == MarketDominance.LOSERS
+            and btc_correlation > 0
+        ):
+            bot_strategy = Strategy.long
+        else:
+            return
+
+    bb_high, bb_mid, bb_low = cls.bb_spreads()
 
     if 0.07 <= price_diff < 0.11:
         first_line = "<strong>Price increase</strong> over 7%"
@@ -32,33 +56,32 @@ def price_rise_15(
         return
 
     msg = f"""
-- [{os.getenv('ENV')}] {first_line} #{symbol}
-- Current price: {close_price}
-- P-value: {p_value}
-- Pearson correlation with BTC: {btc_correlation["close_price"]}
-- Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-- Trend {self.market_domination_trend}
-- https://www.binance.com/en/trade/{symbol}
-- <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
-"""
+    - [{os.getenv('ENV')}] {first_line} #{symbol}
+    - Current price: {close_price}
+    - P-value: {p_value}
+    - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+    - Bot strategy {bot_strategy.value}
+    - https://www.binance.com/en/trade/{symbol}
+    - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
+    """
 
     value = SignalsConsumer(
         current_price=close_price,
         msg=msg,
         symbol=symbol,
         algo=algo,
-        trend=self.market_domination_trend,
-        bb_spreads={
-            "bb_high": bb_high,
-            "bb_mid": bb_mid,
-            "bb_low": bb_low,
-        },
+        bot_strategy=bot_strategy,
+        bb_spreads=BollinguerSpread(
+            bb_high=bb_high,
+            bb_mid=bb_mid,
+            bb_low=bb_low,
+        ),
     )
 
-    self.producer.send(
+    cls.producer.send(
         KafkaTopics.signals.value, value=value.model_dump_json()
-    ).add_callback(self.base_producer.on_send_success).add_errback(
-        self.base_producer.on_send_error
+    ).add_callback(cls.base_producer.on_send_success).add_errback(
+        cls.base_producer.on_send_error
     )
 
     return

@@ -1,6 +1,6 @@
 [project]
 name = "binquant"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,7 +25,11 @@ dependencies = [
 dev = [
     "black>=24.10.0",
     "pytest>=8.3.3",
-    "ruff>=0.7.4",
+    "httpx",
+    "mypy",
+    "coverage",
+    "ruff",
+    "types-requests"
 ]
 
 [tool.ruff.lint]

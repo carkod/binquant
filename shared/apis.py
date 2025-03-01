@@ -8,8 +8,8 @@ from urllib.parse import urlencode
 from dotenv import load_dotenv
 from requests import Session, get
 
-from shared.utils import handle_binance_errors
 from shared.enums import Status
+from shared.utils import handle_binance_errors
 
 load_dotenv()
 
@@ -65,7 +65,7 @@ class BinanceApi:
         data = handle_binance_errors(response)
         return data["serverTime"]
 
-    def signed_request(self, url, method="GET", payload={}):
+    def signed_request(self, url, method="GET", payload=None):
         """
         USER_DATA, TRADE signed requests
         """
@@ -118,6 +118,10 @@ class BinanceApi:
         else:
             params = None
         data = self.request(url=self.ticker_price_url, params=params)
+        return data
+
+    def ticker_24_price(self, symbol: str):
+        data = self.request(url=self.ticker_price_url, params={"symbol": symbol})
         return data
 
     def launchpool_projects(self):
@@ -194,6 +198,7 @@ class BinbotApi(BinanceApi):
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
     bb_ticker24 = f"{bb_base_url}/charts/ticker-24"
+    bb_btc_correlation_url = f"{bb_base_url}/charts/btc-correlation"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -248,7 +253,7 @@ class BinbotApi(BinanceApi):
         return response["data"]
 
     def get_market_domination_series(self):
-        response = self.request(url=self.bb_market_domination, params={"size": 7})
+        response = self.request(url=self.bb_market_domination, params={"size": 145})
         return response["data"]
 
     def ticker_24(self, symbol: str | None = None):
@@ -372,4 +377,14 @@ class BinbotApi(BinanceApi):
         Top crypto/token/coin gainers of the day
         """
         data = self.request(url=self.bb_top_gainers)
+        return data
+
+    def get_btc_correlation(self, symbol) -> float:
+        """
+        Get BTC correlation
+        """
+        response = self.request(
+            url=self.bb_btc_correlation_url, params={"symbol": symbol}
+        )
+        data = float(response["data"])
         return data
