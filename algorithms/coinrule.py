@@ -30,7 +30,6 @@ def fast_and_slow_macd(
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
     if macd > macd_signal and ma_7 > ma_25 and bb_high < 1 and bb_high > 0.001:
-
         bot_strategy = cls.bot_strategy
         btc_correlation = cls.get_btc_correlation(symbol=cls.symbol)
         if cls.current_market_dominance == MarketDominance.NEUTRAL:
@@ -38,20 +37,33 @@ def fast_and_slow_macd(
 
         if cls.market_domination_reversal:
             if (
-                cls.current_market_dominance == MarketDominance.GAINERS
-                and btc_correlation > 0
-            ):
                 # market is bullish, most prices increasing,
                 # but looks like it's dropping and going bearish (reversal)
                 # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
+                # and correlation with BTC is positive
+                (
+                    cls.current_market_dominance == MarketDominance.GAINERS
+                    and btc_correlation > 0
+                )
+                # market is bearish (most prices decreasing),
+                # but looks like it's picking up (reversal)
+                # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
+                # but correlation with BTC is negative
+                or (
+                    cls.current_market_dominance == MarketDominance.LOSERS
+                    and btc_correlation < 0
+                )
+            ):
                 bot_strategy = Strategy.margin_short
-            elif cls.current_market_dominance == MarketDominance.GAINERS and btc_correlation < 0:
-                bot_strategy = Strategy.long
             else:
                 bot_strategy = Strategy.long
         else:
             if (
                 cls.current_market_dominance == MarketDominance.GAINERS
+                and btc_correlation > 0
+            ) or (
+                cls.current_market_dominance == MarketDominance.LOSERS
+                and btc_correlation < 0
             ):
                 # market is bullish, most prices increasing,
                 # but looks like it's dropping and going bearish (reversal)

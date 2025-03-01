@@ -5,15 +5,16 @@ import logging
 import os
 
 from aiokafka import AIOKafkaConsumer
+
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
 from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
 
-
 # Set kafka logger level to WARNING
 kafka_logger = logging.getLogger("kafka")
 kafka_logger.setLevel(os.environ["LOG_LEVEL"])
+
 
 async def data_process_pipe() -> None:
     try:

@@ -1,6 +1,7 @@
 import os
 from typing import TYPE_CHECKING
-from models.signals import SignalsConsumer, BollinguerSpread
+
+from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
 
 if TYPE_CHECKING:
@@ -70,7 +71,11 @@ def price_rise_15(
         symbol=symbol,
         algo=algo,
         bot_strategy=bot_strategy,
-        bb_spreads=BollinguerSpread(high=bb_high, mid=bb_mid, low=bb_low),
+        bb_spreads=BollinguerSpread(
+            bb_high=bb_high,
+            bb_mid=bb_mid,
+            bb_low=bb_low,
+        ),
     )
 
     cls.producer.send(

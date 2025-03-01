@@ -71,8 +71,11 @@ def ma_candlestick_jump(
                 and not cls.market_domination_reversal
             ):
                 bot_strategy = Strategy.long
-            
-            elif btc_correlation > 0 and cls.current_market_dominance == MarketDominance.LOSERS:
+
+            elif (
+                btc_correlation > 0
+                and cls.current_market_dominance == MarketDominance.LOSERS
+            ):
                 bot_strategy = Strategy.margin_short
 
             else:

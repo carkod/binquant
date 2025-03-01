@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta
 
 import pandas
+
 from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.timeseries_gpt import TimeseriesGPT
