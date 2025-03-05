@@ -2,8 +2,13 @@ import logging
 from datetime import datetime, timedelta
 
 import pandas
+import pandas_ta as ta
 
-from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
+from algorithms.coinrule import (
+    buy_low_sell_high,
+    fast_and_slow_macd,
+    supertrend_swing_reversal,
+)
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.timeseries_gpt import TimeseriesGPT
 from algorithms.top_gainer_drop import top_gainers_drop
@@ -184,6 +189,14 @@ class TechnicalIndicators(BinbotApi):
         )
         self.df["perc_volatility"] = log_volatility
 
+    def set_supertrend(self) -> None:
+        """
+        Supertrend indicator
+        """
+        st = ta.supertrend(self.df["high"], self.df["low"], self.df["close"], 10, 3)
+        self.df["supertrend"] = st["SUPERT_10_3.0"]
+        return
+
     def time_gpt_forecast(self, data):
         """
         Forecasting using GPT-3
@@ -285,6 +298,7 @@ class TechnicalIndicators(BinbotApi):
             self.bollinguer_spreads()
 
             self.log_volatility()
+            self.set_supertrend()
 
             # Post-processing
             self.df.reset_index(drop=True, inplace=True)
@@ -374,6 +388,9 @@ class TechnicalIndicators(BinbotApi):
                     open_price=open_price,
                     volatility=volatility,
                 )
+
+                supertrend_swing_reversal(self, close_price)
+
             except Exception as e:
                 logging.error(f"Error processing data: {e}")
 

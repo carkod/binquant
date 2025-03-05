@@ -9,6 +9,57 @@ if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
 
+def supertrend_swing_reversal(
+    cls: "TechnicalIndicators", close_price
+):
+    """
+    Coinrule top performance rule
+    https://web.coinrule.com/share-rule/SuperTrend-Swing-Reversal-7e6b7f
+    """
+
+    last_supertrend = cls.df["supertrend"].iloc[-1]
+    last_rsi = cls.df["rsi"].iloc[-1]
+
+    if last_supertrend > close_price and last_rsi < 30:
+        algo = "coinrule_supertrend_swing_reversal"
+        bb_high, bb_mid, bb_low = cls.bb_spreads()
+        bot_strategy = Strategy.long
+
+        msg = f"""
+        - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - Current price: {close_price}
+        - Strategy: {bot_strategy.value}
+        - RSI (< 30): {cls.df['rsi'][-1]}
+        - Supertrend (> current price): {round_numbers(last_supertrend)}
+        - TimesGPT forecast: {cls.forecast}
+        - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
+        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+        """
+
+        value = SignalsConsumer(
+            spread=None,
+            current_price=close_price,
+            msg=msg,
+            symbol=cls.symbol,
+            algo=algo,
+            bot_strategy=bot_strategy,
+            autotrade=False,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+
+        cls.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(cls.base_producer.on_send_success).add_errback(
+            cls.base_producer.on_send_error
+        )
+
+    pass
+
+
 def fast_and_slow_macd(
     cls: "TechnicalIndicators",
     close_price,
