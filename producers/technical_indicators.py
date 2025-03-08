@@ -241,36 +241,40 @@ class TechnicalIndicators(BinbotApi):
                     logging.error(f"Error forecasting data: {e}")
                     pass
 
-            # Proportion indicates whether trend is significant or not
-            # to be replaced by TimesGPT if that works better
-            proportion = max(gainers_count[-1], losers_count[-1]) / (
-                gainers_count[-1] + losers_count[-1]
-            )
+            try:
+                # Proportion indicates whether trend is significant or not
+                # to be replaced by TimesGPT if that works better
+                proportion = max(gainers_count[-1], losers_count[-1]) / (
+                    gainers_count[-1] + losers_count[-1]
+                )
 
-            # Check reversal
-            if gainers_count[-1] > losers_count[-1]:
-                # Update current market dominance
-                self.current_market_dominance = MarketDominance.GAINERS
+                # Check reversal
+                if gainers_count[-1] > losers_count[-1]:
+                    # Update current market dominance
+                    self.current_market_dominance = MarketDominance.GAINERS
 
-                if (
-                    gainers_count[-2] > losers_count[-2]
-                    and gainers_count[-3] > losers_count[-3]
-                    and proportion < 0.6
-                ):
-                    self.market_domination_reversal = True
-                    self.bot_strategy = Strategy.long
+                    if (
+                        gainers_count[-2] > losers_count[-2]
+                        and gainers_count[-3] > losers_count[-3]
+                        and proportion < 0.6
+                    ):
+                        self.market_domination_reversal = True
+                        self.bot_strategy = Strategy.long
 
-            if gainers_count[-1] < losers_count[-1]:
-                self.current_market_dominance = MarketDominance.LOSERS
+                if gainers_count[-1] < losers_count[-1]:
+                    self.current_market_dominance = MarketDominance.LOSERS
 
-                if (
-                    gainers_count[-2] < losers_count[-2]
-                    and (gainers_count[-3] < losers_count[-3])
-                    and proportion < 0.6
-                ):
-                    # Negative reversal
-                    self.market_domination_reversal = True
-                    self.bot_strategy = Strategy.margin_short
+                    if (
+                        gainers_count[-2] < losers_count[-2]
+                        and (gainers_count[-3] < losers_count[-3])
+                        and proportion < 0.6
+                    ):
+                        # Negative reversal
+                        self.market_domination_reversal = True
+                        self.bot_strategy = Strategy.margin_short
+            except Exception as e:
+                logging.error(f"Error processing market domination data: {e}")
+                pass
 
         return self.current_market_dominance
 
