@@ -73,7 +73,6 @@ class Autotrade(BaseProducer, BinbotApi):
 
             # Otherwise it'll close too soon
             if whole_spread > 2 and whole_spread < 20:
-                self.default_bot.trailling = True
                 if self.default_bot.strategy == Strategy.long:
                     self.default_bot.stop_loss = round_numbers(whole_spread)
                     self.default_bot.take_profit = round_numbers(top_spread)
@@ -181,7 +180,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 try:
                     ticker = self.ticker_24_price(self.default_bot.pair)
                 except Exception as e:
-                    print(f"Error getting ticker price: {e}")
+                    logging.error(f"Error getting ticker price: {e}")
                     return
                 initial_price = ticker["price"]
                 estimate_qty = float(self.default_bot.base_order_size) / float(

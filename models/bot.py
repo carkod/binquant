@@ -156,7 +156,7 @@ class BotModel(BaseModel):
     )
     margin_short_reversal: bool = Field(default=False)
     take_profit: float = Field(default=0)
-    trailling: bool = Field(default=False)
+    trailling: bool = Field(default=True)
     trailling_deviation: float = Field(
         default=0,
         ge=-1,

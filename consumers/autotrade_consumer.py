@@ -5,7 +5,6 @@ from models.signals import SignalsConsumer
 from shared.apis import BinbotApi
 from shared.autotrade import Autotrade
 
-
 class AutotradeConsumer(BinbotApi):
     def __init__(self, producer) -> None:
         self.market_domination_reversal = False
@@ -105,6 +104,10 @@ class AutotradeConsumer(BinbotApi):
         payload = json.loads(result)
         data = SignalsConsumer(**payload)
         symbol = data.symbol
+
+        # Skip testing algorithms
+        if not data.autotrade:
+            return
 
         if (
             symbol not in self.active_test_bots
