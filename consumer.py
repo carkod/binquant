@@ -11,10 +11,6 @@ from consumers.klines_provider import KlinesProvider
 from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
 
-# Set kafka logger level to WARNING
-kafka_logger = logging.getLogger("kafka")
-kafka_logger.setLevel(os.environ["LOG_LEVEL"])
-
 
 async def data_process_pipe() -> None:
     try:
@@ -76,6 +72,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    logging.getLogger().setLevel(os.environ["LOG_LEVEL"])
+    logger = logging.getLogger('aiokafka')
+
     try:
         asyncio.run(main())
     except Exception as e:

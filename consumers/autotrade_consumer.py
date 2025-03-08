@@ -106,6 +106,7 @@ class AutotradeConsumer(BinbotApi):
         data = SignalsConsumer(**payload)
         symbol = data.symbol
 
+        logging.warning(f"Processing autotrade restrictions for {symbol}")
         # Skip testing algorithms
         if not data.autotrade:
             return
