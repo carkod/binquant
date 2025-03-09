@@ -217,7 +217,6 @@ class BinbotApi(BinanceApi):
 
     # balances
     bb_balance_url = f"{bb_base_url}/account/balance/raw"
-    bb_balance_estimate_url = f"{bb_base_url}/account/balance/estimate"
     bb_balance_series_url = f"{bb_base_url}/account/balance/series"
     bb_account_fiat = f"{bb_base_url}/account/fiat"
     bb_available_fiat_url = f"{bb_base_url}/account/fiat/available"
@@ -236,13 +235,6 @@ class BinbotApi(BinanceApi):
     bb_test_bot_active_list = f"{bb_base_url}/paper-trading/active-list"
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
     bb_test_active_pairs = f"{bb_base_url}/paper/active-pairs"
-
-    def balance_estimate(self) -> float:
-        response = self.request(url=self.bb_balance_estimate_url)
-        for balance in response["data"]["balances"]:
-            if balance["asset"] == "USDT":
-                return float(balance["free"])
-        return 0
 
     def get_available_fiat(self):
         response = self.request(url=self.bb_available_fiat_url)

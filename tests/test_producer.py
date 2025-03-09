@@ -28,9 +28,9 @@ def klines_connector(monkeypatch):
         self.exchange_info = {"symbols": []}
 
     monkeypatch.setattr(KlinesConnector, "__init__", new_init)
-    monkeypatch.setattr(KlinesConnector, "update_subscribed_list", lambda a, b: {})
-    monkeypatch.setattr(KlinesConnector, "start_stream", lambda a: None)
+    monkeypatch.setattr(KlinesConnector, "start_stream", lambda: None)
     monkeypatch.setattr(KlinesConnector, "process_kline_stream", lambda a: None)
+
 
     return KlinesConnector
 
@@ -67,7 +67,7 @@ def test_producer(klines_connector: KlinesConnector):
     klines_connector.process_kline_stream(res)
 
 
-def test_producer_error(klines_connector):
+def test_producer_error(klines_connector: KlinesConnector):
     res = {
         "e": "kline",
         "E": 1631598140000,
@@ -75,12 +75,11 @@ def test_producer_error(klines_connector):
     }
     # Arrange
     base_producer = BaseProducer()
-    producer = base_producer.start_producer()
+    base_producer.start_producer()
 
-    connector = klines_connector(producer)
     try:
-        connector.start_stream()
-        connector.process_kline_stream(res)
+        klines_connector.start_stream()
+        klines_connector.process_kline_stream(res)
         assert AssertionError()
     except KeyError:
         assert True

@@ -14,11 +14,13 @@ def supertrend_swing_reversal(
 ):
     """
     Coinrule top performance rule
-    https://web.coinrule.com/share-rule/SuperTrend-Swing-Reversal-7e6b7f
+    https://web.coinrule.com/rule/67c8bf4bdb949c69ab4200b3/draft
     """
 
+    cls.set_supertrend()
+
     last_supertrend = cls.df["supertrend"].iloc[-1]
-    last_rsi = cls.df["rsi"].iloc[-1]
+    last_rsi = round_numbers(cls.df["rsi"].iloc[-1])
 
     if last_supertrend > close_price and last_rsi < 30:
         algo = "coinrule_supertrend_swing_reversal"
@@ -29,7 +31,7 @@ def supertrend_swing_reversal(
         - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {bot_strategy.value}
-        - RSI (< 30): {cls.df['rsi'][-1]}
+        - RSI (< 30): {last_rsi}
         - Supertrend (> current price): {round_numbers(last_supertrend)}
         - TimesGPT forecast: {cls.forecast}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>

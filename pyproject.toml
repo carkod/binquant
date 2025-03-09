@@ -51,3 +51,8 @@ ignore = [
     "W191",  # indentation contains tabs
     "B904",  # Allow raising exceptions without from e, for HTTPException
 ]
+
+[tool.uv]
+test = "pytest"
+path = "./tests"
+script = "uv test"
