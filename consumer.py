@@ -13,53 +13,38 @@ from shared.enums import KafkaTopics
 
 
 async def data_process_pipe() -> None:
-    try:
-        consumer = AIOKafkaConsumer(
-            KafkaTopics.klines_store_topic.value,
-            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-            value_deserializer=lambda m: json.loads(m),
-            group_id="klines_consumer",
-        )
-        await consumer.start()
-        klines_provider = KlinesProvider(consumer)
+    consumer = AIOKafkaConsumer(
+        KafkaTopics.klines_store_topic.value,
+        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+        value_deserializer=lambda m: json.loads(m),
+        group_id="klines_consumer",
+    )
 
-        try:
-            async for message in consumer:
-                klines_provider.aggregate_data(message.value)
-        finally:
-            await consumer.stop()
+    await consumer.start()
+    klines_provider = KlinesProvider(consumer)
 
-    except Exception as e:
-        logging.error(f"Error in task_1: {e}")
-        await data_process_pipe()
+    async for message in consumer:
+        klines_provider.aggregate_data(message.value)
 
 
 async def data_analytics_pipe() -> None:
-    try:
-        consumer = AIOKafkaConsumer(
-            KafkaTopics.signals.value,
-            KafkaTopics.restart_streaming.value,
-            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
-            value_deserializer=lambda m: json.loads(m),
-        )
-        await consumer.start()
-        telegram_consumer = TelegramConsumer()
-        at_consumer = AutotradeConsumer(consumer)
+    consumer = AIOKafkaConsumer(
+        KafkaTopics.signals.value,
+        KafkaTopics.restart_streaming.value,
+        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+        value_deserializer=lambda m: json.loads(m),
+    )
+    await consumer.start()
+    telegram_consumer = TelegramConsumer()
+    at_consumer = AutotradeConsumer(consumer)
 
-        try:
-            async for message in consumer:
-                if message.topic == KafkaTopics.restart_streaming.value:
-                    at_consumer.load_data_on_start()
+    async for message in consumer:
+        if message.topic == KafkaTopics.restart_streaming.value:
+            at_consumer.load_data_on_start()
 
-                if message.topic == KafkaTopics.signals.value:
-                    await telegram_consumer.send_msg(message.value)
-                    at_consumer.process_autotrade_restrictions(message.value)
-        finally:
-            await consumer.stop()
-
-    except Exception as e:
-        logging.error(f"Error in task_2: {e}")
-        await data_analytics_pipe()
+        if message.topic == KafkaTopics.signals.value:
+            await telegram_consumer.send_msg(message.value)
+            at_consumer.process_autotrade_restrictions(message.value)
 
 
 async def main() -> None:
@@ -73,7 +58,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(os.environ["LOG_LEVEL"])
-    logger = logging.getLogger('aiokafka')
+    logger = logging.getLogger("aiokafka")
 
     try:
         asyncio.run(main())

@@ -12,10 +12,9 @@ from algorithms.coinrule import (
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.timeseries_gpt import TimeseriesGPT
 from algorithms.top_gainer_drop import top_gainers_drop
-from models.signals import BollinguerSpread, SignalsConsumer
 from producers.base import BaseProducer
 from shared.apis import BinbotApi
-from shared.enums import BinanceKlineIntervals, KafkaTopics, MarketDominance, Strategy
+from shared.enums import BinanceKlineIntervals,  MarketDominance, Strategy
 from shared.utils import round_numbers
 
 
@@ -211,7 +210,7 @@ class TechnicalIndicators(BinbotApi):
             gainers_count = data["gainers_count"]
             losers_count = data["losers_count"]
             # no data from db
-            if len(gainers_count) == 0 and len(losers_count) == 0:
+            if len(gainers_count) < 2 and len(losers_count) < 2:
                 return self.current_market_dominance
 
             # if len(data["dates"]) > 144:
