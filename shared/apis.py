@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import os
-from decimal import Decimal
 from random import randrange
 from urllib.parse import urlencode
 
@@ -92,18 +91,6 @@ class BinanceApi:
         data = self.request(url=url, payload=payload, method=method, session=session)
         return data
 
-    def _exchange_info(self, symbol=None):
-        """
-        Copied from /api/account/account.py
-        To be refactored in the future
-        """
-        params = None
-        if symbol:
-            params = {"symbol": symbol}
-
-        exchange_info = self.request(url=self.exchangeinfo_url, params=params)
-        return exchange_info
-
     def _get_raw_klines(self, pair, limit=500, interval="15m"):
         params = {"symbol": pair, "interval": interval, "limit": limit}
         data = self.request(url=self.candlestick_url, params=params)
@@ -127,55 +114,6 @@ class BinanceApi:
     def launchpool_projects(self):
         data = self.request(url=self.launchpool_url, headers={"User-Agent": "Mozilla"})
         return data
-
-    def price_precision(self, symbol) -> int:
-        """
-        Modified from price_filter_by_symbol
-        from /api/account/account.py
-
-        This function always will use the tickSize decimals
-        """
-        symbols = self._exchange_info(symbol)
-        market = symbols["symbols"][0]
-        price_filter = next(
-            m for m in market["filters"] if m["filterType"] == "PRICE_FILTER"
-        )
-
-        # Convert scientific notation to decimal and remove leading zeros
-        tick_size = float(price_filter["tickSize"])
-        tick_size_str = f"{tick_size:.8f}".rstrip("0").rstrip(".")
-        price_precision = Decimal(tick_size_str).as_tuple()
-
-        # Finally return the correct number of decimals required as positive number
-        return abs(int(price_precision.exponent))
-
-    def min_amount_check(self, symbol, qty):
-        """
-        Min amout check
-        Uses MIN notional restriction (price x quantity) from /exchangeinfo
-        @params:
-            - symbol: string - pair/market e.g. BNBBTC
-            - Use current ticker price for price
-        """
-        symbols = self._exchange_info(symbol)
-        market = symbols["symbols"][0]
-        min_notional_filter = next(
-            m for m in market["filters"] if m["filterType"] == "NOTIONAL"
-        )
-        min_qty = float(qty) > float(min_notional_filter["minNotional"])
-        return min_qty
-
-    def find_baseAsset(self, symbol):
-        symbols = self._exchange_info(symbol)
-        base_asset = symbols["symbols"][0]["baseAsset"]
-        return base_asset
-
-    def find_quoteAsset(self, symbol):
-        symbols = self._exchange_info(symbol)
-        quote_asset = symbols["symbols"][0]
-        if quote_asset:
-            quote_asset = quote_asset["quoteAsset"]
-        return quote_asset
 
     def get_max_borrow(self, asset, symbol: str | None = None):
         return self.signed_request(
@@ -380,3 +318,30 @@ class BinbotApi(BinanceApi):
         )
         data = float(response["data"])
         return data
+
+    def price_precision(self, symbol) -> int:
+        """
+        Get price decimals from API db
+        """
+        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
+        return symbol_info["data"]["price_precision"]
+
+    def qty_precision(self, symbol) -> int:
+        """
+        Get qty decimals from API db
+        """
+        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
+        return symbol_info["data"]["qty_precision"]
+
+    def find_base_asset(self, symbol):
+        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
+        return symbol_info["data"]["base_asset"]
+
+    def find_quote_asset(self, symbol):
+        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
+        return symbol_info["data"]["quote_asset"]
+
+    def min_amount_check(self, symbol, amount):
+        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
+        min_notional = symbol_info["data"]["min_notional"]
+        return amount > min_notional

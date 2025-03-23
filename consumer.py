@@ -20,11 +20,17 @@ async def data_process_pipe() -> None:
         group_id="klines_consumer",
     )
 
-    await consumer.start()
-    klines_provider = KlinesProvider(consumer)
+    try:
+        await consumer.start()
+        klines_provider = KlinesProvider(consumer)
 
-    async for message in consumer:
-        klines_provider.aggregate_data(message.value)
+        async for message in consumer:
+            klines_provider.aggregate_data(message.value)
+    except Exception as e:
+        logging.error(f"Error in data_process_pipe: {e}")
+        await data_process_pipe()
+    finally:
+        await consumer.stop()
 
 
 async def data_analytics_pipe() -> None:

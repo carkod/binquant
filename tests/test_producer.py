@@ -31,7 +31,6 @@ def klines_connector(monkeypatch):
     monkeypatch.setattr(KlinesConnector, "start_stream", lambda: None)
     monkeypatch.setattr(KlinesConnector, "process_kline_stream", lambda a: None)
 
-
     return KlinesConnector
 
 

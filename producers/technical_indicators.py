@@ -14,7 +14,7 @@ from algorithms.timeseries_gpt import TimeseriesGPT
 from algorithms.top_gainer_drop import top_gainers_drop
 from producers.base import BaseProducer
 from shared.apis import BinbotApi
-from shared.enums import BinanceKlineIntervals,  MarketDominance, Strategy
+from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.utils import round_numbers
 
 

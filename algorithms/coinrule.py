@@ -9,9 +9,7 @@ if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
 
-def supertrend_swing_reversal(
-    cls: "TechnicalIndicators", close_price
-):
+def supertrend_swing_reversal(cls: "TechnicalIndicators", close_price):
     """
     Coinrule top performance rule
     https://web.coinrule.com/rule/67c8bf4bdb949c69ab4200b3/draft
@@ -80,6 +78,7 @@ def fast_and_slow_macd(
     volatility = round_numbers(volatility, 6)
     spread = volatility
     bb_high, bb_mid, bb_low = cls.bb_spreads()
+    btc_correlation = 0
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
     if macd > macd_signal and ma_7 > ma_25 and bb_high < 1 and bb_high > 0.001:

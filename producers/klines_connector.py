@@ -23,7 +23,6 @@ class KlinesConnector(BinbotApi):
 
         self.producer = producer
         self.autotrade_settings = self.get_autotrade_settings()
-        self.exchange_info = self._exchange_info()
 
     def connect_client(self):
         client = SpotWebsocketStreamClient(
