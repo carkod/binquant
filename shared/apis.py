@@ -162,7 +162,8 @@ class BinbotApi(BinanceApi):
     # research
     bb_autotrade_settings_url = f"{bb_base_url}/autotrade-settings/bots"
     bb_blacklist_url = f"{bb_base_url}/research/blacklist"
-    bb_symbols = f"{bb_base_url}/symbol"
+    bb_symbols = f"{bb_base_url}/symbols"
+    bb_one_symbol_url = f"{bb_base_url}/symbol"
 
     # bots
     bb_active_pairs = f"{bb_base_url}/bot/active-pairs"
@@ -180,6 +181,10 @@ class BinbotApi(BinanceApi):
 
     def get_symbols(self, status="active") -> list[dict]:
         response = self.request(url=self.bb_symbols, params={"status": status})
+        return response["data"]
+
+    def get_single_symbol(self, symbol: str) -> dict:
+        response = self.request(url=f"{self.bb_one_symbol_url}/{symbol}")
         return response["data"]
 
     def get_market_domination_series(self):
@@ -323,25 +328,25 @@ class BinbotApi(BinanceApi):
         """
         Get price decimals from API db
         """
-        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
-        return symbol_info["data"]["price_precision"]
+        symbol_info = self.get_single_symbol(symbol)
+        return symbol_info["price_precision"]
 
     def qty_precision(self, symbol) -> int:
         """
         Get qty decimals from API db
         """
-        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
-        return symbol_info["data"]["qty_precision"]
+        symbol_info = self.get_single_symbol(symbol)
+        return symbol_info["qty_precision"]
 
     def find_base_asset(self, symbol):
-        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
-        return symbol_info["data"]["base_asset"]
+        symbol_info = self.get_single_symbol(symbol)
+        return symbol_info["base_asset"]
 
     def find_quote_asset(self, symbol):
-        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
-        return symbol_info["data"]["quote_asset"]
+        symbol_info = self.get_single_symbol(symbol)
+        return symbol_info["quote_asset"]
 
     def min_amount_check(self, symbol, amount):
-        symbol_info = self.request(url=self.bb_symbols, params={"symbol": symbol})
-        min_notional = symbol_info["data"]["min_notional"]
+        symbol_info = self.get_single_symbol(symbol)
+        min_notional = symbol_info["min_notional"]
         return amount > min_notional
