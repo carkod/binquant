@@ -106,6 +106,10 @@ class AutotradeConsumer(BinbotApi):
         data = SignalsConsumer(**payload)
         symbol = data.symbol
 
+        # Skip testing algorithms
+        if not data.autotrade:
+            return
+
         if (
             symbol not in self.active_test_bots
             and self.test_autotrade_settings["autotrade"]

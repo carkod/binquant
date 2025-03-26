@@ -2,15 +2,19 @@ import logging
 from datetime import datetime, timedelta
 
 import pandas
+import pandas_ta as ta
 
-from algorithms.coinrule import buy_low_sell_high, fast_and_slow_macd
+from algorithms.coinrule import (
+    buy_low_sell_high,
+    fast_and_slow_macd,
+    supertrend_swing_reversal,
+)
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.timeseries_gpt import TimeseriesGPT
 from algorithms.top_gainer_drop import top_gainers_drop
-from models.signals import BollinguerSpread, SignalsConsumer
 from producers.base import BaseProducer
 from shared.apis import BinbotApi
-from shared.enums import BinanceKlineIntervals, KafkaTopics, MarketDominance, Strategy
+from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.utils import round_numbers
 
 
@@ -31,26 +35,6 @@ class TechnicalIndicators(BinbotApi):
         self.top_coins_gainers: list[str] = []
         self.forecast = ""
         pass
-
-    def update_active_bots_bb_spreads(self, close_price, symbol):
-        """
-        Update active bots with bb_spreads
-        """
-        bb_high, bb_mid, bb_low = self.bb_spreads()
-        value = SignalsConsumer(
-            spread=None,
-            current_price=close_price,
-            msg="Update active bots",
-            symbol=symbol,
-            algo="update_active_bots_bb_spreads",
-            trend=None,
-            bb_spreads=BollinguerSpread(bb_high=bb_high, bb_mid=bb_mid, bb_low=bb_low),
-        )
-        self.producer.send(
-            KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(self.base_producer.on_send_success).add_errback(
-            self.base_producer.on_send_error
-        )
 
     def check_kline_gaps(self, data):
         """
@@ -184,6 +168,14 @@ class TechnicalIndicators(BinbotApi):
         )
         self.df["perc_volatility"] = log_volatility
 
+    def set_supertrend(self) -> None:
+        """
+        Supertrend indicator
+        """
+        st = ta.supertrend(self.df["high"], self.df["low"], self.df["close"], 10, 3)
+        self.df["supertrend"] = st["SUPERT_10_3.0"]
+        return
+
     def time_gpt_forecast(self, data):
         """
         Forecasting using GPT-3
@@ -218,46 +210,50 @@ class TechnicalIndicators(BinbotApi):
             gainers_count = data["gainers_count"]
             losers_count = data["losers_count"]
             # no data from db
-            if len(gainers_count) == 0 and len(losers_count) == 0:
+            if len(gainers_count) < 2 and len(losers_count) < 2:
                 return self.current_market_dominance
 
-            if len(data["dates"]) > 144:
-                try:
-                    self.forecast = self.time_gpt_forecast(data)
-                except Exception as e:
-                    logging.error(f"Error forecasting data: {e}")
-                    pass
+            # if len(data["dates"]) > 144:
+            #     try:
+            #         self.forecast = self.time_gpt_forecast(data)
+            #     except Exception as e:
+            #         logging.error(f"Error forecasting data: {e}")
+            #         pass
 
-            # Proportion indicates whether trend is significant or not
-            # to be replaced by TimesGPT if that works better
-            proportion = max(gainers_count[-1], losers_count[-1]) / (
-                gainers_count[-1] + losers_count[-1]
-            )
+            try:
+                # Proportion indicates whether trend is significant or not
+                # to be replaced by TimesGPT if that works better
+                proportion = max(gainers_count[-1], losers_count[-1]) / (
+                    gainers_count[-1] + losers_count[-1]
+                )
 
-            # Check reversal
-            if gainers_count[-1] > losers_count[-1]:
-                # Update current market dominance
-                self.current_market_dominance = MarketDominance.GAINERS
+                # Check reversal
+                if gainers_count[-1] > losers_count[-1]:
+                    # Update current market dominance
+                    self.current_market_dominance = MarketDominance.GAINERS
 
-                if (
-                    gainers_count[-2] > losers_count[-2]
-                    and gainers_count[-3] > losers_count[-3]
-                    and proportion < 0.6
-                ):
-                    self.market_domination_reversal = True
-                    self.bot_strategy = Strategy.long
+                    if (
+                        gainers_count[-2] > losers_count[-2]
+                        and gainers_count[-3] > losers_count[-3]
+                        and proportion < 0.6
+                    ):
+                        self.market_domination_reversal = True
+                        self.bot_strategy = Strategy.long
 
-            if gainers_count[-1] < losers_count[-1]:
-                self.current_market_dominance = MarketDominance.LOSERS
+                if gainers_count[-1] < losers_count[-1]:
+                    self.current_market_dominance = MarketDominance.LOSERS
 
-                if (
-                    gainers_count[-2] < losers_count[-2]
-                    and (gainers_count[-3] < losers_count[-3])
-                    and proportion < 0.6
-                ):
-                    # Negative reversal
-                    self.market_domination_reversal = True
-                    self.bot_strategy = Strategy.margin_short
+                    if (
+                        gainers_count[-2] < losers_count[-2]
+                        and (gainers_count[-3] < losers_count[-3])
+                        and proportion < 0.6
+                    ):
+                        # Negative reversal
+                        self.market_domination_reversal = True
+                        self.bot_strategy = Strategy.margin_short
+            except Exception as e:
+                logging.error(f"Error processing market domination data: {e}")
+                pass
 
         return self.current_market_dominance
 
@@ -297,84 +293,77 @@ class TechnicalIndicators(BinbotApi):
             ):
                 return
 
-            try:
-                close_price = float(self.df.close[len(self.df.close) - 1])
-                open_price = float(self.df.open[len(self.df.open) - 1])
-                macd = float(self.df.macd[len(self.df.macd) - 1])
-                macd_signal = float(self.df.macd_signal[len(self.df.macd_signal) - 1])
-                rsi = float(self.df.rsi[len(self.df.rsi) - 1])
+            close_price = float(self.df.close[len(self.df.close) - 1])
+            open_price = float(self.df.open[len(self.df.open) - 1])
+            macd = float(self.df.macd[len(self.df.macd) - 1])
+            macd_signal = float(self.df.macd_signal[len(self.df.macd_signal) - 1])
+            rsi = float(self.df.rsi[len(self.df.rsi) - 1])
 
-                ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
-                ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
-                ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
-                ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
-                ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
-                # ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
+            ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
+            ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
+            ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
+            ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
+            ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
+            # ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
 
-                volatility = float(
-                    self.df.perc_volatility[len(self.df.perc_volatility) - 1]
-                )
+            volatility = float(
+                self.df.perc_volatility[len(self.df.perc_volatility) - 1]
+            )
 
-                if self.symbol in self.active_pairs:
-                    self.update_active_bots_bb_spreads(
-                        close_price=close_price, symbol=self.symbol
-                    )
-                    return
+            self.market_domination()
 
-                self.market_domination()
+            fast_and_slow_macd(
+                self,
+                close_price,
+                macd,
+                macd_signal,
+                ma_7,
+                ma_25,
+                volatility,
+            )
 
-                fast_and_slow_macd(
-                    self,
-                    close_price,
-                    macd,
-                    macd_signal,
-                    ma_7,
-                    ma_25,
-                    volatility,
-                )
+            ma_candlestick_jump(
+                self,
+                close_price,
+                open_price,
+                ma_7,
+                ma_25,
+                ma_100,
+                ma_7_prev,
+                volatility,
+            )
 
-                ma_candlestick_jump(
-                    self,
-                    close_price,
-                    open_price,
-                    ma_7,
-                    ma_25,
-                    ma_100,
-                    ma_7_prev,
-                    volatility,
-                )
+            ma_candlestick_drop(
+                self,
+                close_price=close_price,
+                open_price=open_price,
+                ma_7=ma_7,
+                ma_100=ma_100,
+                ma_25=ma_25,
+                ma_25_prev=ma_25_prev,
+                volatility=volatility,
+            )
 
-                ma_candlestick_drop(
-                    self,
-                    close_price=close_price,
-                    open_price=open_price,
-                    ma_7=ma_7,
-                    ma_100=ma_100,
-                    ma_25=ma_25,
-                    ma_25_prev=ma_25_prev,
-                    volatility=volatility,
-                )
+            buy_low_sell_high(self, close_price, rsi, ma_25, volatility)
 
-                buy_low_sell_high(self, close_price, rsi, ma_25, volatility)
+            # This function calls a lot ticker24 revise it before uncommenting
+            # rally_or_pullback(
+            #     self,
+            #     close_price=close_price,
+            #     ma_25=ma_25,
+            #     ma_100=ma_100,
+            #     ma_25_prev=ma_25_prev,
+            #     ma_100_prev=ma_100_prev,
+            #     volatility=volatility,
+            # )
 
-                # This function calls a lot ticker24 revise it before uncommenting
-                # rally_or_pullback(
-                #     self,
-                #     close_price=close_price,
-                #     ma_25=ma_25,
-                #     ma_100=ma_100,
-                #     ma_25_prev=ma_25_prev,
-                #     ma_100_prev=ma_100_prev,
-                #     volatility=volatility,
-                # )
+            top_gainers_drop(
+                self,
+                close_price=close_price,
+                open_price=open_price,
+                volatility=volatility,
+            )
 
-                top_gainers_drop(
-                    self,
-                    close_price=close_price,
-                    open_price=open_price,
-                    volatility=volatility,
-                )
-            except Exception as e:
-                logging.error(f"Error processing data: {e}")
+            supertrend_swing_reversal(self, close_price)
 
         return

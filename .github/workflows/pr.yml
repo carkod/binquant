@@ -4,7 +4,8 @@ env:
   ACTIONS_RUNNER_DEBUG: true
   SECRET_KEY: test
   ENV: ci
-  FRONTEND_DOMAIN: http://localhost
+  FLASK_DOMAIN: https://api.terminal.binbot.in/
+  FRONTEND_DOMAIN: https://terminal.binbot.in/
   MONGO_AUTH_USERNAME: root
   MONGO_AUTH_PASSWORD: rootPassXXX
   MONGO_APP_DATABASE: binbot
