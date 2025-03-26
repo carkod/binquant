@@ -3,11 +3,11 @@ from datetime import datetime, timedelta
 
 import pandas
 import pandas_ta as ta
-
 from algorithms.coinrule import (
     buy_low_sell_high,
     fast_and_slow_macd,
     supertrend_swing_reversal,
+    twap_momentum_sniper,
 )
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.timeseries_gpt import TimeseriesGPT
@@ -176,6 +176,25 @@ class TechnicalIndicators(BinbotApi):
         self.df["supertrend"] = st["SUPERT_10_3.0"]
         return
 
+    def set_twap(self, periods: int = 1, interval=4) -> None:
+        """
+        Time-weighted average price
+        https://stackoverflow.com/a/69517577/2454059
+        """
+        pre_df = self.df.copy()
+        pre_df["Event Time"] = pandas.to_datetime(pre_df["Event Time"])
+        pre_df["Time Diff"] = (
+            pre_df["Event Time"].diff(periods=periods).dt.total_seconds() / 3600
+        )
+        pre_df["Weighted Value"] = pre_df["Value"] * pre_df["Time Diff"]
+        pre_df["Weighted Average"] = (
+            pre_df["Weighted Value"].rolling(2).sum() / interval
+        )
+        # Fixed window of given interval
+        self.df["twap"] = pre_df["Weighted Average"]
+
+        return
+
     def time_gpt_forecast(self, data):
         """
         Forecasting using GPT-3
@@ -281,6 +300,8 @@ class TechnicalIndicators(BinbotApi):
             self.bollinguer_spreads()
 
             self.log_volatility()
+            self.set_supertrend()
+            self.set_twap()
 
             # Post-processing
             self.df.reset_index(drop=True, inplace=True)
@@ -311,6 +332,7 @@ class TechnicalIndicators(BinbotApi):
             )
 
             self.market_domination()
+            bb_high, bb_mid, bb_low = self.bb_spreads()
 
             fast_and_slow_macd(
                 self,
@@ -364,6 +386,20 @@ class TechnicalIndicators(BinbotApi):
                 volatility=volatility,
             )
 
-            supertrend_swing_reversal(self, close_price)
+            supertrend_swing_reversal(
+                self,
+                close_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
+
+            twap_momentum_sniper(
+                self,
+                close_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
 
         return

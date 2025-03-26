@@ -9,19 +9,76 @@ if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
 
+def twap_momentum_sniper(
+    cls: "TechnicalIndicators", close_price, bb_high, bb_low, bb_mid
+):
+    """
+    Coinrule top performance rule
+    https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
+    """
+
+    last_twas = cls.df["twas"].iloc[-1]
+    prev_last_twas = cls.df["twas"].iloc[-2]
+    prev_prev_last_twas = cls.df["twas"].iloc[-3]
+
+    if (
+        last_twas > close_price
+        or prev_last_twas > close_price
+        or prev_prev_last_twas > close_price
+    ):
+        algo = "coinrule_twap_momentum_sniper"
+
+        msg = f"""
+        - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - Current price: {close_price}
+        - Strategy: {cls.bot_strategy.value}
+        - TWAS (> current price): {round_numbers(last_twas)}
+        - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
+        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+        """
+
+        value = SignalsConsumer(
+            current_price=close_price,
+            msg=msg,
+            symbol=cls.symbol,
+            algo=algo,
+            bot_strategy=cls.bot_strategy,
+            autotrade=False,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+
+        cls.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(cls.base_producer.on_send_success).add_errback(
+            cls.base_producer.on_send_error
+        )
+
+    pass
+
+
 def supertrend_swing_reversal(cls: "TechnicalIndicators", close_price):
     """
     Coinrule top performance rule
     https://web.coinrule.com/rule/67c8bf4bdb949c69ab4200b3/draft
     """
 
-    cls.set_supertrend()
-
     last_supertrend = cls.df["supertrend"].iloc[-1]
+    prev_last_supertrend = cls.df["supertrend"].iloc[-2]
+    prev_prev_last_supertrend = cls.df["supertrend"].iloc[-3]
     last_rsi = round_numbers(cls.df["rsi"].iloc[-1])
+    prev_last_rsi = round_numbers(cls.df["rsi"].iloc[-2])
+    prev_prev_last_rsi = round_numbers(cls.df["rsi"].iloc[-3])
 
-    if last_supertrend > close_price and last_rsi < 30:
-        algo = "coinrule_supertrend_swing_reversal"
+    if (
+        last_supertrend > close_price
+        or prev_last_supertrend > close_price
+        or prev_prev_last_supertrend > close_price
+    ) and (last_rsi < 30 or prev_last_rsi < 30 or prev_prev_last_rsi < 30):
+        algo = "coinrule_twap_momentum_sniper"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
         bot_strategy = Strategy.long
 
