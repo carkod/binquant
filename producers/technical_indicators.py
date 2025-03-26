@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import pandas
 import pandas_ta as ta
+
 from algorithms.coinrule import (
     buy_low_sell_high,
     fast_and_slow_macd,
@@ -19,12 +20,13 @@ from shared.utils import round_numbers
 
 
 class TechnicalIndicators(BinbotApi):
-    def __init__(self, df, symbol) -> None:
+    def __init__(self, df, symbol, df_4h) -> None:
         self.base_producer = BaseProducer()
         self.base_producer.start_producer()
         self.producer = self.base_producer.producer
         self.df = df
         self.symbol = symbol
+        self.df_4h = df_4h
         self.interval = BinanceKlineIntervals.fifteen_minutes.value
         # describes current USDC market: gainers vs losers
         self.current_market_dominance: MarketDominance = MarketDominance.NEUTRAL
@@ -176,22 +178,22 @@ class TechnicalIndicators(BinbotApi):
         self.df["supertrend"] = st["SUPERT_10_3.0"]
         return
 
-    def set_twap(self, periods: int = 1, interval=4) -> None:
+    def set_twap(self, periods: int = 12, interval=4) -> None:
         """
         Time-weighted average price
         https://stackoverflow.com/a/69517577/2454059
         """
-        pre_df = self.df.copy()
-        pre_df["Event Time"] = pandas.to_datetime(pre_df["Event Time"])
+        pre_df = self.df_4h.copy()
+        pre_df["Event Time"] = pandas.to_datetime(pre_df["close_time"])
         pre_df["Time Diff"] = (
             pre_df["Event Time"].diff(periods=periods).dt.total_seconds() / 3600
         )
-        pre_df["Weighted Value"] = pre_df["Value"] * pre_df["Time Diff"]
+        pre_df["Weighted Value"] = pre_df["close"] * pre_df["Time Diff"]
         pre_df["Weighted Average"] = (
-            pre_df["Weighted Value"].rolling(2).sum() / interval
+            pre_df["Weighted Value"].rolling(periods).sum() / pre_df["Time Diff"].sum()
         )
         # Fixed window of given interval
-        self.df["twap"] = pre_df["Weighted Average"]
+        self.df_4h["twap"] = pre_df["Weighted Average"]
 
         return
 
@@ -342,6 +344,9 @@ class TechnicalIndicators(BinbotApi):
                 ma_7,
                 ma_25,
                 volatility,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
             )
 
             ma_candlestick_jump(
@@ -353,6 +358,9 @@ class TechnicalIndicators(BinbotApi):
                 ma_100,
                 ma_7_prev,
                 volatility,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
             )
 
             ma_candlestick_drop(
@@ -364,9 +372,21 @@ class TechnicalIndicators(BinbotApi):
                 ma_25=ma_25,
                 ma_25_prev=ma_25_prev,
                 volatility=volatility,
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
             )
 
-            buy_low_sell_high(self, close_price, rsi, ma_25, volatility)
+            buy_low_sell_high(
+                self,
+                close_price=close_price,
+                rsi=rsi,
+                ma_25=ma_25,
+                volatility=volatility,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
 
             # This function calls a lot ticker24 revise it before uncommenting
             # rally_or_pullback(
@@ -384,6 +404,9 @@ class TechnicalIndicators(BinbotApi):
                 close_price=close_price,
                 open_price=open_price,
                 volatility=volatility,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
             )
 
             supertrend_swing_reversal(

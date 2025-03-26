@@ -25,6 +25,8 @@ class KlinesProvider(KafkaDB):
         super().__init__()
         # If we don't instantiate separately, almost no messages are received
         self.consumer = consumer
+        self.df = pd.DataFrame()
+        self.df_4h = pd.DataFrame()
 
     def aggregate_data(self, results):
         if results:
@@ -51,8 +53,19 @@ class KlinesProvider(KafkaDB):
                     "open_time": "first",
                 }
             )
+            # Resample to 4 hour candles for TWAP
+            self.df_4h = self.df.resample("4h", on="close_time").agg(
+                {
+                    "open": "first",
+                    "close": "last",
+                    "high": "max",
+                    "low": "min",
+                    "close_time": "last",
+                    "open_time": "first",
+                }
+            )
             # reverse the order to get the oldest data first, to dropnas and use latest date for technical indicators
             self.df = self.df[::-1].reset_index(drop=True)
-            TechnicalIndicators(self.df, symbol).publish()
+            TechnicalIndicators(df=self.df, symbol=symbol, df_4h=self.df_4h).publish()
 
         pass

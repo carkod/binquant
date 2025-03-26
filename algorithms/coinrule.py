@@ -14,17 +14,14 @@ def twap_momentum_sniper(
 ):
     """
     Coinrule top performance rule
+    uses 4 hour candles df_4h
     https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
     """
 
-    last_twas = cls.df["twas"].iloc[-1]
-    prev_last_twas = cls.df["twas"].iloc[-2]
-    prev_prev_last_twas = cls.df["twas"].iloc[-3]
+    last_twap = cls.df_4h["twap"].iloc[-1]
 
     if (
-        last_twas > close_price
-        or prev_last_twas > close_price
-        or prev_prev_last_twas > close_price
+        last_twap > close_price
     ):
         algo = "coinrule_twap_momentum_sniper"
 
@@ -32,7 +29,7 @@ def twap_momentum_sniper(
         - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
-        - TWAS (> current price): {round_numbers(last_twas)}
+        - TWAP (> current price): {round_numbers(last_twap)}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -60,7 +57,9 @@ def twap_momentum_sniper(
     pass
 
 
-def supertrend_swing_reversal(cls: "TechnicalIndicators", close_price):
+def supertrend_swing_reversal(
+    cls: "TechnicalIndicators", close_price, bb_high, bb_low, bb_mid
+):
     """
     Coinrule top performance rule
     https://web.coinrule.com/rule/67c8bf4bdb949c69ab4200b3/draft
@@ -72,11 +71,13 @@ def supertrend_swing_reversal(cls: "TechnicalIndicators", close_price):
     last_rsi = round_numbers(cls.df["rsi"].iloc[-1])
     prev_last_rsi = round_numbers(cls.df["rsi"].iloc[-2])
     prev_prev_last_rsi = round_numbers(cls.df["rsi"].iloc[-3])
+    prev_close_price = cls.df["close"].iloc[-2]
+    prev_prev_close_price = cls.df["close"].iloc[-3]
 
     if (
         last_supertrend > close_price
-        or prev_last_supertrend > close_price
-        or prev_prev_last_supertrend > close_price
+        or prev_last_supertrend > prev_close_price
+        or prev_prev_last_supertrend > prev_prev_close_price
     ) and (last_rsi < 30 or prev_last_rsi < 30 or prev_prev_last_rsi < 30):
         algo = "coinrule_twap_momentum_sniper"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
@@ -125,6 +126,9 @@ def fast_and_slow_macd(
     ma_7,
     ma_25,
     volatility,
+    bb_high,
+    bb_mid,
+    bb_low,
 ):
     """
     Coinrule top performance rule
@@ -134,7 +138,6 @@ def fast_and_slow_macd(
     algo = "coinrule_fast_and_slow_macd"
     volatility = round_numbers(volatility, 6)
     spread = volatility
-    bb_high, bb_mid, bb_low = cls.bb_spreads()
     btc_correlation: float = 0
 
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
@@ -223,13 +226,15 @@ def buy_low_sell_high(
     rsi,
     ma_25,
     volatility,
+    bb_high,
+    bb_mid,
+    bb_low,
 ):
     """
     Coinrule top performance rule
     https://web.coinrule.com/share-rule/Multi-Time-Frame-Buy-Low-Sell-High-Short-term-8f02df
     """
     volatility = round_numbers(volatility, 6)
-    bb_high, bb_mid, bb_low = cls.bb_spreads()
     bot_strategy = cls.bot_strategy
 
     if rsi < 35 and close_price > ma_25 and volatility > 0.01:
@@ -246,12 +251,6 @@ def buy_low_sell_high(
             bot_strategy = Strategy.long
         else:
             return
-
-        # Second stage filtering when volatility is high
-        # when volatility is high we assume that
-        # difference between MA_7 and MA_25 is wide
-        # if this is not the case it may fail to signal correctly
-        bb_high, bb_mid, bb_low = cls.bb_spreads()
 
         msg = f"""
         - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{cls.symbol}
