@@ -20,6 +20,9 @@ def ma_candlestick_jump(
     ma_100,
     ma_7_prev,
     volatility,
+    bb_high,
+    bb_mid,
+    bb_low,
 ):
     """
     Candlesticks are in an upward trending motion for several periods
@@ -35,7 +38,6 @@ def ma_candlestick_jump(
     SD: standard deviation of 0.006 seems to be a good threshold after monitoring signals,
     whereas it is possible to get around 3% increase to actually make a profit
     """
-    bb_high, bb_mid, bb_low = cls.bb_spreads()
 
     if (
         float(close_price) > float(open_price)
@@ -126,6 +128,9 @@ def ma_candlestick_drop(
     ma_25,
     ma_25_prev,
     volatility,
+    bb_high,
+    bb_mid,
+    bb_low,
 ):
     """
     Opposite algorithm of ma_candletick_jump
@@ -151,7 +156,6 @@ def ma_candlestick_drop(
         and (abs(float(close_price) - float(open_price)) / float(close_price)) > 0.02
     ):
         algo = "ma_candlestick_drop"
-        bb_high, bb_mid, bb_low = cls.bb_spreads()
         bot_strategy = cls.bot_strategy
 
         if cls.market_domination_reversal:
