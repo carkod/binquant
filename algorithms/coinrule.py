@@ -19,10 +19,12 @@ def twap_momentum_sniper(
     """
 
     last_twap = cls.df_4h["twap"].iloc[-1]
+    price_decrease = (
+        cls.df_4h["close"].iloc[-1]
+        - cls.df_4h["close"].iloc[-2] / cls.df_4h["close"].iloc[-1]
+    )
 
-    if (
-        last_twap > close_price
-    ):
+    if last_twap > close_price and price_decrease > -0.05:
         algo = "coinrule_twap_momentum_sniper"
 
         msg = f"""

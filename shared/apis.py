@@ -179,8 +179,8 @@ class BinbotApi(BinanceApi):
         response = self.request(url=self.bb_available_fiat_url)
         return response["data"]
 
-    def get_symbols(self, status="active") -> list[dict]:
-        response = self.request(url=self.bb_symbols, params={"status": status})
+    def get_symbols(self) -> list[dict]:
+        response = self.request(url=self.bb_symbols)
         return response["data"]
 
     def get_single_symbol(self, symbol: str) -> dict:
