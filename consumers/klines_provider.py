@@ -6,7 +6,9 @@ from kafka import KafkaConsumer
 
 from database import KafkaDB
 from models.klines import KlineProduceModel
+from producers.base import BaseProducer
 from producers.technical_indicators import TechnicalIndicators
+from shared.apis import BinanceApi, BinbotApi
 from shared.enums import BinanceKlineIntervals
 
 # spark = SparkSession.builder.appName("Klines Statistics analyses")\
@@ -24,7 +26,10 @@ class KlinesProvider(KafkaDB):
     def __init__(self, consumer: KafkaConsumer):
         super().__init__()
         # If we don't instantiate separately, almost no messages are received
+        self.binbot_api = BinbotApi()
+        self.binance_api = BinanceApi()
         self.consumer = consumer
+        self.load_data_on_start()
         # 15 minutes default candles
         self.default_aggregation = {
             "open": "first",
@@ -37,6 +42,12 @@ class KlinesProvider(KafkaDB):
         self.df = pd.DataFrame()
         self.df_4h = pd.DataFrame()
         self.df_1h = pd.DataFrame()
+
+    def load_data_on_start(self):
+        self.active_pairs = self.binbot_api.get_active_pairs()
+        self.base_producer = BaseProducer()
+        self.base_producer.start_producer()
+        self.producer = self.base_producer.producer
 
     def aggregate_data(self, results):
         if results:
@@ -65,7 +76,13 @@ class KlinesProvider(KafkaDB):
             # reverse the order to get the oldest data first, to dropnas and use latest date for technical indicators
             self.df = self.df[::-1].reset_index(drop=True)
             TechnicalIndicators(
-                df=self.df, symbol=symbol, df_4h=self.df_4h, df_1h=self.df_1h
+                base_producer=self.base_producer,
+                producer=self.producer,
+                binbot_api=self.binbot_api,
+                df=self.df,
+                symbol=symbol,
+                df_4h=self.df_4h,
+                df_1h=self.df_1h,
             ).publish()
 
         pass

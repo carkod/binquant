@@ -13,17 +13,23 @@ from algorithms.coinrule import (
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.timeseries_gpt import TimeseriesGPT
 from algorithms.top_gainer_drop import top_gainers_drop
-from producers.base import BaseProducer
-from shared.apis import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.utils import round_numbers
 
 
-class TechnicalIndicators(BinbotApi):
-    def __init__(self, df, symbol, df_4h, df_1h) -> None:
-        self.base_producer = BaseProducer()
-        self.base_producer.start_producer()
-        self.producer = self.base_producer.producer
+class TechnicalIndicators:
+    def __init__(
+        self, base_producer, producer, binbot_api, df, symbol, df_4h, df_1h
+    ) -> None:
+        """
+        Only variables
+        no data requests (third party or db)
+        or pipeline instances
+        That will cause a lot of network requests
+        """
+        self.base_producer = base_producer
+        self.producer = producer
+        self.binbot_api = binbot_api
         self.df = df
         self.symbol = symbol
         self.df_4h = df_4h
@@ -34,7 +40,6 @@ class TechnicalIndicators(BinbotApi):
         # describes whether tide is shifting
         self.market_domination_reversal: bool = False
         self.bot_strategy: Strategy = Strategy.long
-        self.active_pairs = self.get_active_pairs()
         self.top_coins_gainers: list[str] = []
         self.forecast = ""
         pass
@@ -226,8 +231,8 @@ class TechnicalIndicators(BinbotApi):
             logging.info(
                 f"Performing market domination analyses. Current trend: {self.current_market_dominance}"
             )
-            data = self.get_market_domination_series()
-            top_gainers_day = self.get_top_gainers()["data"]
+            data = self.binbot_api.get_market_domination_series()
+            top_gainers_day = self.binbot_api.get_top_gainers()["data"]
             self.top_coins_gainers = [item["symbol"] for item in top_gainers_day]
             # reverse to make latest series more important
             data["gainers_count"].reverse()

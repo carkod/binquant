@@ -64,7 +64,7 @@ def ma_candlestick_jump(
             # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
             bot_strategy = Strategy.long
         else:
-            btc_correlation = cls.get_btc_correlation(symbol=cls.symbol)
+            btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
             # Negative correlation with BTC and when market is downtrend
             # means this crypto is good for hedging against BTC going down
             if (

@@ -15,6 +15,7 @@ from shared.enums import KafkaTopics
 async def data_process_pipe() -> None:
     consumer = AIOKafkaConsumer(
         KafkaTopics.klines_store_topic.value,
+        KafkaTopics.restart_streaming.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
         group_id="klines_consumer",
@@ -25,8 +26,13 @@ async def data_process_pipe() -> None:
         klines_provider = KlinesProvider(consumer)
 
         async for message in consumer:
-            klines_provider.aggregate_data(message.value)
-            consumer.commit()
+            if message.topic == KafkaTopics.restart_streaming.value:
+                klines_provider.load_data_on_start()
+
+            if message.topic == KafkaTopics.klines_store_topic.value:
+                klines_provider.aggregate_data(message.value)
+
+            await consumer.commit()
     except Exception as e:
         logging.error(f"Error in data_process_pipe: {e}")
         await data_process_pipe()
@@ -53,6 +59,8 @@ async def data_analytics_pipe() -> None:
         if message.topic == KafkaTopics.signals.value:
             await telegram_consumer.send_msg(message.value)
             at_consumer.process_autotrade_restrictions(message.value)
+
+        await consumer.commit()
 
 
 async def main() -> None:

@@ -19,7 +19,7 @@ def twap_momentum_sniper(
     https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
     """
     if cls.df_4h.isnull().values.any():
-        logging.error("4h candles twap momentum have null values")
+        logging.warning("4h candles twap momentum have null values")
         return
 
     last_twap = cls.df_4h["twap"].iloc[-1]
@@ -73,7 +73,7 @@ def supertrend_swing_reversal(
     Uses 1 hour candles df_1h
     """
     if cls.df_1h.isnull().values.any():
-        logging.error("1h candles supertrend have null values")
+        logging.warning("1h candles supertrend have null values")
         return
     last_supertrend = cls.df_1h["supertrend"].iloc[-1]
     prev_last_supertrend = cls.df_1h["supertrend"].iloc[-2]
@@ -153,7 +153,7 @@ def fast_and_slow_macd(
     # If volatility is too low, dynamic trailling will close too early with bb_spreads
     if macd > macd_signal and ma_7 > ma_25 and bb_high < 1 and bb_high > 0.001:
         bot_strategy = cls.bot_strategy
-        btc_correlation = cls.get_btc_correlation(symbol=cls.symbol)
+        btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
         if cls.current_market_dominance == MarketDominance.NEUTRAL:
             return
 
