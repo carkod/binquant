@@ -25,8 +25,18 @@ class KlinesProvider(KafkaDB):
         super().__init__()
         # If we don't instantiate separately, almost no messages are received
         self.consumer = consumer
+        # 15 minutes default candles
+        self.default_aggregation = {
+            "open": "first",
+            "close": "last",
+            "high": "max",
+            "low": "min",
+            "close_time": "last",
+            "open_time": "first",
+        }
         self.df = pd.DataFrame()
         self.df_4h = pd.DataFrame()
+        self.df_1h = pd.DataFrame()
 
     def aggregate_data(self, results):
         if results:
@@ -43,29 +53,19 @@ class KlinesProvider(KafkaDB):
 
             # Pre-process
             self.df = pd.DataFrame(candles)
-            self.df.resample("15Min", on="close_time").agg(
-                {
-                    "open": "first",
-                    "close": "last",
-                    "high": "max",
-                    "low": "min",
-                    "close_time": "last",
-                    "open_time": "first",
-                }
-            )
+            self.df.resample("15Min", on="close_time").agg(self.default_aggregation)
             # Resample to 4 hour candles for TWAP
             self.df_4h = self.df.resample("4h", on="close_time").agg(
-                {
-                    "open": "first",
-                    "close": "last",
-                    "high": "max",
-                    "low": "min",
-                    "close_time": "last",
-                    "open_time": "first",
-                }
+                self.default_aggregation
+            )
+            # Resample to 1 hour candles for Supertrend
+            self.df_1h = self.df.resample("1h", on="close_time").agg(
+                self.default_aggregation
             )
             # reverse the order to get the oldest data first, to dropnas and use latest date for technical indicators
             self.df = self.df[::-1].reset_index(drop=True)
-            TechnicalIndicators(df=self.df, symbol=symbol, df_4h=self.df_4h).publish()
+            TechnicalIndicators(
+                df=self.df, symbol=symbol, df_4h=self.df_4h, df_1h=self.df_1h
+            ).publish()
 
         pass

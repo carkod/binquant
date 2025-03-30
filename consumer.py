@@ -26,6 +26,7 @@ async def data_process_pipe() -> None:
 
         async for message in consumer:
             klines_provider.aggregate_data(message.value)
+            consumer.commit()
     except Exception as e:
         logging.error(f"Error in data_process_pipe: {e}")
         await data_process_pipe()
@@ -39,7 +40,7 @@ async def data_analytics_pipe() -> None:
         KafkaTopics.restart_streaming.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        max_poll_interval_ms=5000,
+        max_poll_records=10,
     )
     await consumer.start()
     telegram_consumer = TelegramConsumer()

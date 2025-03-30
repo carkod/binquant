@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,9 @@ def twap_momentum_sniper(
     uses 4 hour candles df_4h
     https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
     """
+    if cls.df_4h.isnull().values.any():
+        logging.error("4h candles twap momentum have null values")
+        return
 
     last_twap = cls.df_4h["twap"].iloc[-1]
     price_decrease = (
@@ -65,16 +69,20 @@ def supertrend_swing_reversal(
     """
     Coinrule top performance rule
     https://web.coinrule.com/rule/67c8bf4bdb949c69ab4200b3/draft
-    """
 
-    last_supertrend = cls.df["supertrend"].iloc[-1]
-    prev_last_supertrend = cls.df["supertrend"].iloc[-2]
-    prev_prev_last_supertrend = cls.df["supertrend"].iloc[-3]
-    last_rsi = round_numbers(cls.df["rsi"].iloc[-1])
-    prev_last_rsi = round_numbers(cls.df["rsi"].iloc[-2])
-    prev_prev_last_rsi = round_numbers(cls.df["rsi"].iloc[-3])
-    prev_close_price = cls.df["close"].iloc[-2]
-    prev_prev_close_price = cls.df["close"].iloc[-3]
+    Uses 1 hour candles df_1h
+    """
+    if cls.df_1h.isnull().values.any():
+        logging.error("1h candles supertrend have null values")
+        return
+    last_supertrend = cls.df_1h["supertrend"].iloc[-1]
+    prev_last_supertrend = cls.df_1h["supertrend"].iloc[-2]
+    prev_prev_last_supertrend = cls.df_1h["supertrend"].iloc[-3]
+    last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-1])
+    prev_last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-2])
+    prev_prev_last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-3])
+    prev_close_price = cls.df_1h["close"].iloc[-2]
+    prev_prev_close_price = cls.df_1h["close"].iloc[-3]
 
     if (
         last_supertrend > close_price

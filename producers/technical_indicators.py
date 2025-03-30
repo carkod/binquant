@@ -20,13 +20,14 @@ from shared.utils import round_numbers
 
 
 class TechnicalIndicators(BinbotApi):
-    def __init__(self, df, symbol, df_4h) -> None:
+    def __init__(self, df, symbol, df_4h, df_1h) -> None:
         self.base_producer = BaseProducer()
         self.base_producer.start_producer()
         self.producer = self.base_producer.producer
         self.df = df
         self.symbol = symbol
         self.df_4h = df_4h
+        self.df_1h = df_1h
         self.interval = BinanceKlineIntervals.fifteen_minutes.value
         # describes current USDC market: gainers vs losers
         self.current_market_dominance: MarketDominance = MarketDominance.NEUTRAL
@@ -99,13 +100,13 @@ class TechnicalIndicators(BinbotApi):
         self.df["macd"] = macd
         self.df["macd_signal"] = macd_s
 
-    def rsi(self):
+    def rsi(self, df):
         """
         Relative Strength Index (RSI) indicator
         https://www.qmr.ai/relative-strength-index-rsi-in-python/
         """
 
-        change = self.df["close"].astype(float).diff()
+        change = df["close"].astype(float).diff()
 
         gain = change.mask(change < 0, 0.0)
         loss = -change.mask(change > 0, -0.0)
@@ -118,7 +119,8 @@ class TechnicalIndicators(BinbotApi):
         avg_down = loss.rolling(14).mean().abs()
 
         rsi = 100 * avg_up / (avg_up + avg_down)
-        self.df["rsi"] = rsi
+        df["rsi"] = rsi
+        return df
 
     def ma_spreads(self):
         """
@@ -174,8 +176,10 @@ class TechnicalIndicators(BinbotApi):
         """
         Supertrend indicator
         """
-        st = ta.supertrend(self.df["high"], self.df["low"], self.df["close"], 10, 3)
-        self.df["supertrend"] = st["SUPERT_10_3.0"]
+        st = ta.supertrend(
+            self.df_1h["high"], self.df_1h["low"], self.df_1h["close"], 10, 3
+        )
+        self.df_1h["supertrend"] = st["SUPERT_10_3.0"]
         return
 
     def set_twap(self, periods: int = 12, interval=4) -> None:
@@ -295,7 +299,8 @@ class TechnicalIndicators(BinbotApi):
 
             # Oscillators
             self.macd()
-            self.rsi()
+            self.rsi(df=self.df)
+            self.rsi(df=self.df_1h)
 
             # Bollinguer bands
             self.ma_spreads()
@@ -307,6 +312,8 @@ class TechnicalIndicators(BinbotApi):
 
             # Post-processing
             self.df.reset_index(drop=True, inplace=True)
+            self.df_1h.reset_index(drop=True, inplace=True)
+            self.df_4h.reset_index(drop=True, inplace=True)
 
             # Dropped NaN values may end up with empty dataframe
             if (
