@@ -4,7 +4,7 @@ import logging
 from kafka import KafkaProducer
 
 from producers.produce_klines import KlinesProducer
-from shared.apis import BinbotApi
+from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals
 from shared.exceptions import WebSocketError
 from shared.streaming.socket_client import SpotWebsocketStreamClient

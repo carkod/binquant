@@ -19,6 +19,8 @@ async def data_process_pipe() -> None:
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
         group_id="klines_consumer",
+        max_poll_interval_ms=10000,
+        max_poll_records=1,
     )
 
     try:
@@ -33,9 +35,6 @@ async def data_process_pipe() -> None:
                 klines_provider.aggregate_data(message.value)
 
             await consumer.commit()
-    except Exception as e:
-        logging.error(f"Error in data_process_pipe: {e}")
-        await data_process_pipe()
     finally:
         await consumer.stop()
 

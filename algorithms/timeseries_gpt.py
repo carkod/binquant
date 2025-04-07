@@ -1,25 +1,56 @@
 import os
+from typing import TYPE_CHECKING
 
-from nixtla import NixtlaClient
+from models.signals import SignalsConsumer
+from shared.enums import KafkaTopics, MarketDominance, Strategy
+
+if TYPE_CHECKING:
+    from producers.technical_indicators import TechnicalIndicators
 
 
-class TimeseriesGPT:
-    def __init__(self, df):
-        self.nixtla_client = NixtlaClient(api_key=os.environ["NIXTLA_API_KEY"])
+def time_gpt_market_domination(
+    cls: "TechnicalIndicators", close_price, gainers_count, losers_count, msf
+):
+    """
+    Wrapper function for the TimeseriesGPT class
+    """
+    forecasted_gainers = msf["gainers_count"].values[0]
+    total_count = gainers_count[-1:] + losers_count[-1:]
+    forecasted_losers = total_count - forecasted_gainers
 
-    def multiple_series_forecast(self, df, period_hr=24):
+    if forecasted_gainers > forecasted_losers:
+        # Update current market dominance
+        cls.current_market_dominance = MarketDominance.GAINERS
+
+        if (
+            gainers_count[-1] > losers_count[-1]
+            and gainers_count[-2] > losers_count[-2]
+        ):
+            cls.market_domination_reversal = True
+            cls.bot_strategy = Strategy.long
+
+        algo = "time_gpt_market_domination"
+
+        msg = f"""
+        - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - Current price: {close_price}
+        - Strategy: {cls.bot_strategy.value}
+        - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
+        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
-        Multiple series forecast
-        """
-        confidence_levels = [80.0, 90.0]
-        timegpt_fcst_multiseries_df = self.nixtla_client.forecast(
-            df=df,
-            h=24,
-            level=confidence_levels,
-            freq="H",
-            time_col="dates",
-            target_col="gainers_count",
-            hist_exog_list=df["losers_count"],
+
+        value = SignalsConsumer(
+            current_price=close_price,
+            msg=msg,
+            symbol=cls.symbol,
+            algo=algo,
+            bot_strategy=cls.bot_strategy,
+            autotrade=False,
+            bb_spreads=None,
         )
 
-        return timegpt_fcst_multiseries_df
+        cls.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        ).add_callback(cls.base_producer.on_send_success).add_errback(
+            cls.base_producer.on_send_error
+        )

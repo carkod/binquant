@@ -11,15 +11,17 @@ from algorithms.coinrule import (
     twap_momentum_sniper,
 )
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
-from algorithms.timeseries_gpt import TimeseriesGPT
+from algorithms.timeseries_gpt import time_gpt_market_domination
 from algorithms.top_gainer_drop import top_gainers_drop
+from shared.apis.binbot_api import BinbotApi
+from shared.apis.time_gpt import TimeseriesGPT
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.utils import round_numbers
 
 
 class TechnicalIndicators:
     def __init__(
-        self, base_producer, producer, binbot_api, df, symbol, df_4h, df_1h
+        self, base_producer, producer, binbot_api: BinbotApi, df, symbol, df_4h, df_1h
     ) -> None:
         """
         Only variables
@@ -41,7 +43,7 @@ class TechnicalIndicators:
         self.market_domination_reversal: bool = False
         self.bot_strategy: Strategy = Strategy.long
         self.top_coins_gainers: list[str] = []
-        self.forecast = ""
+        self.times_gpt_api = TimeseriesGPT()
         pass
 
     def check_kline_gaps(self, data):
@@ -210,13 +212,31 @@ class TechnicalIndicators:
         """
         Forecasting using GPT-3
         """
-        df = pandas.DataFrame(data)
-        times_gpt = TimeseriesGPT(df)
-        # df.rename(columns={'dates': 'ds', 'gainers_count': 'y'}, inplace=True)
-        msf = times_gpt.multiple_series_forecast(df)
-        return msf
 
-    def market_domination(self) -> MarketDominance:
+        dates = data["dates"][-10:]
+        gainers_count = data["gainers_count"][-10:]
+        losers_count = data["losers_count"][-10:]
+        forecast_df = pandas.DataFrame(
+            {
+                "dates": dates,
+                "gainers_count": pandas.Series(gainers_count),
+            }
+        )
+        forecast_df["unique_id"] = forecast_df.index
+        df_x = pandas.DataFrame(
+            {
+                "dates": dates,
+                "ex_1": losers_count,
+            }
+        )
+        df_x["unique_id"] = df_x.index
+        self.msf = self.times_gpt_api.multiple_series_forecast(
+            df=forecast_df, df_x=df_x
+        )
+
+        return self.msf
+
+    def market_domination(self) -> tuple[list[str], list[str], dict]:
         """
         Get data from gainers and losers endpoint to analyze market trends
 
@@ -227,65 +247,58 @@ class TechnicalIndicators:
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        if datetime.now().minute == 0:
-            logging.info(
-                f"Performing market domination analyses. Current trend: {self.current_market_dominance}"
-            )
-            data = self.binbot_api.get_market_domination_series()
-            top_gainers_day = self.binbot_api.get_top_gainers()["data"]
-            self.top_coins_gainers = [item["symbol"] for item in top_gainers_day]
-            # reverse to make latest series more important
-            data["gainers_count"].reverse()
-            data["losers_count"].reverse()
-            gainers_count = data["gainers_count"]
-            losers_count = data["losers_count"]
-            # no data from db
-            if len(gainers_count) < 2 and len(losers_count) < 2:
-                return self.current_market_dominance
+        # if datetime.now().minute == 0:
+        logging.info(
+            f"Performing market domination analyses. Current trend: {self.current_market_dominance}"
+        )
+        data = self.binbot_api.get_market_domination_series()
+        top_gainers_day = self.binbot_api.get_top_gainers()["data"]
+        self.top_coins_gainers = [item["symbol"] for item in top_gainers_day]
+        # reverse to make latest series more important
+        data["gainers_count"].reverse()
+        data["losers_count"].reverse()
+        gainers_count = data["gainers_count"]
+        losers_count = data["losers_count"]
+        # no data from db
+        if len(gainers_count) < 2 and len(losers_count) < 2:
+            return [], [], {}
 
-            # if len(data["dates"]) > 144:
-            #     try:
-            #         self.forecast = self.time_gpt_forecast(data)
-            #     except Exception as e:
-            #         logging.error(f"Error forecasting data: {e}")
-            #         pass
+        # if len(data["dates"]) > 51:
+        #     msf = self.time_gpt_forecast(data)
+        msf: dict = {}
 
-            try:
-                # Proportion indicates whether trend is significant or not
-                # to be replaced by TimesGPT if that works better
-                proportion = max(gainers_count[-1], losers_count[-1]) / (
-                    gainers_count[-1] + losers_count[-1]
-                )
+        # Proportion indicates whether trend is significant or not
+        # to be replaced by TimesGPT if that works better
+        proportion = max(gainers_count[-1], losers_count[-1]) / (
+            gainers_count[-1] + losers_count[-1]
+        )
 
-                # Check reversal
-                if gainers_count[-1] > losers_count[-1]:
-                    # Update current market dominance
-                    self.current_market_dominance = MarketDominance.GAINERS
+        # Check reversal
+        if gainers_count[-1] > losers_count[-1]:
+            # Update current market dominance
+            self.current_market_dominance = MarketDominance.GAINERS
 
-                    if (
-                        gainers_count[-2] > losers_count[-2]
-                        and gainers_count[-3] > losers_count[-3]
-                        and proportion < 0.6
-                    ):
-                        self.market_domination_reversal = True
-                        self.bot_strategy = Strategy.long
+            if (
+                gainers_count[-2] > losers_count[-2]
+                and gainers_count[-3] > losers_count[-3]
+                and proportion < 0.6
+            ):
+                self.market_domination_reversal = True
+                self.bot_strategy = Strategy.long
 
-                if gainers_count[-1] < losers_count[-1]:
-                    self.current_market_dominance = MarketDominance.LOSERS
+        if gainers_count[-1] < losers_count[-1]:
+            self.current_market_dominance = MarketDominance.LOSERS
 
-                    if (
-                        gainers_count[-2] < losers_count[-2]
-                        and (gainers_count[-3] < losers_count[-3])
-                        and proportion < 0.6
-                    ):
-                        # Negative reversal
-                        self.market_domination_reversal = True
-                        self.bot_strategy = Strategy.margin_short
-            except Exception as e:
-                logging.error(f"Error processing market domination data: {e}")
-                pass
+            if (
+                gainers_count[-2] < losers_count[-2]
+                and (gainers_count[-3] < losers_count[-3])
+                and proportion < 0.6
+            ):
+                # Negative reversal
+                self.market_domination_reversal = True
+                self.bot_strategy = Strategy.margin_short
 
-        return self.current_market_dominance
+        return gainers_count, losers_count, msf
 
     def publish(self):
         """
@@ -295,7 +308,7 @@ class TechnicalIndicators:
         """
 
         if self.df.empty is False and self.df.close.size > 0:
-            # Bolliguer bands
+            # Basic technical indicators
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe
             self.moving_averages(7)
@@ -316,8 +329,11 @@ class TechnicalIndicators:
             self.set_twap()
 
             # Post-processing
+            self.df.dropna(inplace=True)
             self.df.reset_index(drop=True, inplace=True)
+            self.df_1h.dropna(inplace=True)
             self.df_1h.reset_index(drop=True, inplace=True)
+            self.df_4h.dropna(inplace=True)
             self.df_4h.reset_index(drop=True, inplace=True)
 
             # Dropped NaN values may end up with empty dataframe
@@ -326,6 +342,9 @@ class TechnicalIndicators:
                 or self.df.ma_25.size < 25
                 or self.df.ma_100.size < 100
             ):
+                return
+
+            if self.bot_strategy == Strategy.margin_short:
                 return
 
             close_price = float(self.df.close[len(self.df.close) - 1])
@@ -345,8 +364,18 @@ class TechnicalIndicators:
                 self.df.perc_volatility[len(self.df.perc_volatility) - 1]
             )
 
-            self.market_domination()
+            gainers_count, losers_count, msf = self.market_domination()
             bb_high, bb_mid, bb_low = self.bb_spreads()
+
+            # too expensive
+            # if len(gainers_count) > 0 or len(losers_count) > 0:
+            #     time_gpt_market_domination(
+            #         cls=self,
+            #         close_price=close_price,
+            #         gainers_count=gainers_count,
+            #         losers_count=losers_count,
+            #         msf=msf,
+            #     )
 
             fast_and_slow_macd(
                 self,
@@ -420,7 +449,6 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-
             supertrend_swing_reversal(
                 self,
                 close_price=close_price,

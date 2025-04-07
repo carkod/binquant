@@ -90,7 +90,6 @@ def ma_candlestick_jump(
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
         - Strategy: {bot_strategy.value}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-        - TimesGPT forecast: {cls.forecast}
         - BTC correlation: {btc_correlation}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
@@ -179,7 +178,6 @@ def ma_candlestick_drop(
         - Reversal? {cls.market_domination_reversal}
         - Strategy: {bot_strategy.value}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-        - TimesGPT forecast: {cls.forecast}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """

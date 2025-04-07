@@ -18,15 +18,19 @@ def twap_momentum_sniper(
     uses 4 hour candles df_4h
     https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
     """
-    if cls.df_4h.isnull().values.any():
+    if cls.df_4h.isnull().values.any() or cls.df_4h.size == 0:
         logging.warning("4h candles twap momentum have null values")
         return
 
-    last_twap = cls.df_4h["twap"].iloc[-1]
-    price_decrease = (
-        cls.df_4h["close"].iloc[-1]
-        - cls.df_4h["close"].iloc[-2] / cls.df_4h["close"].iloc[-1]
-    )
+    try:
+        last_twap = cls.df_4h["twap"].iloc[-1]
+        price_decrease = (
+            cls.df_4h["close"].iloc[-1]
+            - cls.df_4h["close"].iloc[-2] / cls.df_4h["close"].iloc[-1]
+        )
+    except Exception as e:
+        logging.error(f"Error in supertrend or twap: {e}")
+        pass
 
     if last_twap > close_price and price_decrease > -0.05:
         algo = "coinrule_twap_momentum_sniper"
@@ -72,9 +76,10 @@ def supertrend_swing_reversal(
 
     Uses 1 hour candles df_1h
     """
-    if cls.df_1h.isnull().values.any():
+    if cls.df_1h.isnull().values.any() or cls.df_1h.size == 0:
         logging.warning("1h candles supertrend have null values")
         return
+
     last_supertrend = cls.df_1h["supertrend"].iloc[-1]
     prev_last_supertrend = cls.df_1h["supertrend"].iloc[-2]
     prev_prev_last_supertrend = cls.df_1h["supertrend"].iloc[-3]
@@ -99,7 +104,6 @@ def supertrend_swing_reversal(
         - Strategy: {bot_strategy.value}
         - RSI (< 30): {last_rsi}
         - Supertrend (> current price): {round_numbers(last_supertrend)}
-        - TimesGPT forecast: {cls.forecast}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -202,7 +206,6 @@ def fast_and_slow_macd(
         - Strategy: {bot_strategy.value}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - BTC correlation: {btc_correlation}
-        - TimesGPT forecast: {cls.forecast}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -269,7 +272,6 @@ def buy_low_sell_high(
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - Strategy: {bot_strategy.value}
         - Reversal? {"No reversal" if not cls.market_domination_reversal else "Positive" if cls.market_domination_reversal else "Negative"}
-        - TimesGPT forecast: {cls.forecast}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """

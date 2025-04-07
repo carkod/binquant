@@ -8,7 +8,7 @@ from database import KafkaDB
 from models.klines import KlineProduceModel
 from producers.base import BaseProducer
 from producers.technical_indicators import TechnicalIndicators
-from shared.apis import BinanceApi, BinbotApi
+from shared.apis.binbot_api import BinanceApi, BinbotApi
 from shared.enums import BinanceKlineIntervals
 
 # spark = SparkSession.builder.appName("Klines Statistics analyses")\
