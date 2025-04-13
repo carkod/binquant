@@ -1,3 +1,5 @@
+import logging
+
 from kafka import KafkaProducer
 
 from database import KafkaDB
@@ -15,7 +17,7 @@ class KlinesProducer(KafkaDB):
         pass
 
     def on_send_error(self, excp):
-        print(f"Message production failed to send: {excp}")
+        logging.error(f"Message production failed to send: {excp}")
 
     def store(self, result):
         data = result["k"]

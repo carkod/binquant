@@ -6,7 +6,7 @@ from datetime import datetime
 from models.bot import BotModel
 from models.signals import SignalsConsumer
 from producers.base import BaseProducer
-from shared.apis import BinbotApi
+from shared.apis.binbot_api import BinbotApi
 from shared.enums import CloseConditions, KafkaTopics, Strategy
 from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, supress_notation

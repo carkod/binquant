@@ -24,7 +24,7 @@ def rally_or_pullback(
     but day or minute percentage change
     https://www.binance.com/en/support/faq/understanding-top-movers-statuses-on-binance-spot-trading-18c97e8ab67a4e1b824edd590cae9f16
     """
-    data = cls.ticker_24(symbol=cls.symbol)
+    data = cls.binbot_api.ticker_24(symbol=cls.symbol)
 
     # Rally
     day_diff = (float(data["lowPrice"]) - float(data["openPrice"])) / float(
@@ -64,7 +64,6 @@ def rally_or_pullback(
             - Log volatility (log SD): {volatility}
             - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
             - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
-            - TimesGPT forecast: {cls.forecast}
             - https://www.binance.com/en/trade/{cls.symbol}
             - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """

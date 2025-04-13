@@ -35,7 +35,7 @@ def price_rise_15(
         bot_strategy = Strategy.long
 
     else:
-        btc_correlation = cls.get_btc_correlation(symbol=cls.symbol)
+        btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
         if (
             cls.current_market_dominance == MarketDominance.LOSERS
             and btc_correlation > 0

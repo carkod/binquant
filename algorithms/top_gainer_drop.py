@@ -13,6 +13,9 @@ def top_gainers_drop(
     close_price,
     open_price,
     volatility,
+    bb_high,
+    bb_mid,
+    bb_low,
 ):
     """
     From the list of USDT top gainers
@@ -22,7 +25,6 @@ def top_gainers_drop(
     """
     if float(close_price) < float(open_price) and cls.symbol in cls.top_coins_gainers:
         algo = "top_gainers_drop"
-        bb_high, bb_mid, bb_low = cls.bb_spreads()
 
         if (
             cls.market_domination_reversal

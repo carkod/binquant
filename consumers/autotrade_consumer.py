@@ -2,7 +2,7 @@ import json
 import logging
 
 from models.signals import SignalsConsumer
-from shared.apis import BinbotApi
+from shared.apis.binbot_api import BinbotApi
 from shared.autotrade import Autotrade
 
 
@@ -35,9 +35,9 @@ class AutotradeConsumer(BinbotApi):
         )
         self.all_symbols = self.get_symbols()
         # Active bot symbols substracting exchange active symbols (not blacklisted)
-        self.active_symbols = set({s["id"] for s in self.all_symbols}) - set(
-            self.active_bot_pairs
-        )
+        self.active_symbols = set(
+            {s["id"] for s in self.all_symbols if s["active"]}
+        ) - set(self.active_bot_pairs)
         self.active_test_bots = [
             item["pair"] for item in self.paper_trading_active_bots
         ]
@@ -113,6 +113,7 @@ class AutotradeConsumer(BinbotApi):
         if (
             symbol not in self.active_test_bots
             and self.test_autotrade_settings["autotrade"]
+            and not data.autotrade
         ):
             if self.reached_max_active_autobots("paper_trading"):
                 logging.info(
@@ -134,7 +135,11 @@ class AutotradeConsumer(BinbotApi):
         """
         Real autotrade starts
         """
-        if self.autotrade_settings["autotrade"] and symbol in self.active_symbols:
+        if (
+            self.autotrade_settings["autotrade"]
+            and symbol in self.active_symbols
+            and data.autotrade
+        ):
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
