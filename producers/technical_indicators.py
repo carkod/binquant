@@ -367,15 +367,16 @@ class TechnicalIndicators:
             gainers_count, losers_count, msf = self.market_domination()
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            # too expensive
-            # if len(gainers_count) > 0 or len(losers_count) > 0:
-            #     time_gpt_market_domination(
-            #         cls=self,
-            #         close_price=close_price,
-            #         gainers_count=gainers_count,
-            #         losers_count=losers_count,
-            #         msf=msf,
-            #     )
+            if len(gainers_count) > 0 or len(losers_count) > 0:
+                # Due to high cost, use only 9am in the morning when markets open
+                # there are possible reversals
+                time_gpt_market_domination(
+                    cls=self,
+                    close_price=close_price,
+                    gainers_count=gainers_count,
+                    losers_count=losers_count,
+                    msf=msf,
+                )
 
             fast_and_slow_macd(
                 self,

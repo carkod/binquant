@@ -26,18 +26,6 @@ def top_gainers_drop(
     if float(close_price) < float(open_price) and cls.symbol in cls.top_coins_gainers:
         algo = "top_gainers_drop"
 
-        if (
-            cls.market_domination_reversal
-            and cls.current_market_dominance == MarketDominance.GAINERS
-            or cls.current_market_dominance == MarketDominance.NEUTRAL
-        ):
-            # market is bullish, most prices increasing,
-            # but looks like it's dropping and going bearish (reversal)
-            # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
-            bot_strategy = Strategy.margin_short
-        else:
-            return
-
         msg = f"""
         - [{os.getenv('ENV')}] Top gainers's drop <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
@@ -45,7 +33,7 @@ def top_gainers_drop(
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
         - Market domination trend: {cls.current_market_dominance}
-        - Strategy: {bot_strategy}
+        - Strategy: {cls.bot_strategy}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -56,7 +44,7 @@ def top_gainers_drop(
             msg=msg,
             symbol=cls.symbol,
             algo=algo,
-            bot_strategy=bot_strategy,
+            bot_strategy=cls.bot_strategy,
             bb_spreads=BollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
