@@ -5,6 +5,7 @@ import logging
 import os
 
 from aiokafka import AIOKafkaConsumer
+
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
 from consumers.telegram_consumer import TelegramConsumer
@@ -48,8 +49,6 @@ async def data_analytics_pipe() -> None:
         if message.topic == KafkaTopics.signals.value:
             await telegram_consumer.send_msg(message.value)
             at_consumer.process_autotrade_restrictions(message.value)
-
-        await consumer.commit()
 
 
 async def main() -> None:

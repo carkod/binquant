@@ -17,7 +17,6 @@ from shared.apis.binbot_api import BinbotApi
 from shared.apis.time_gpt import TimeseriesGPT
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.utils import round_numbers
-from typing import Optional
 
 
 class TechnicalIndicators:
@@ -237,7 +236,7 @@ class TechnicalIndicators:
 
         return self.msf
 
-    def market_domination(self) -> tuple[list[str], list[str], Optional[dict]]:
+    def market_domination(self) -> tuple[list[str], list[str], dict | None]:
         """
         Get data from gainers and losers endpoint to analyze market trends
 
@@ -266,7 +265,7 @@ class TechnicalIndicators:
 
         # if len(data["dates"]) > 51:
         #     msf = self.time_gpt_forecast(data)
-        msf: Optional[dict] = None
+        msf: dict | None = None
 
         # Proportion indicates whether trend is significant or not
         # to be replaced by TimesGPT if that works better
