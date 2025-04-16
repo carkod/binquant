@@ -153,13 +153,6 @@ class Autotrade(BaseProducer, BinbotApi):
             activate_func = self.activate_paper_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
-                # Check if margin trading is available
-                if not self.margin_trading_check(self.default_bot.pair):
-                    logging.info(
-                        f"Margin trading is not available for {self.default_bot.pair}"
-                    )
-                    return
-
                 self.set_margin_short_values(data)
                 pass
             else:
