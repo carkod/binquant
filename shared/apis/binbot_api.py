@@ -37,7 +37,6 @@ class BinbotApi(BinanceApi):
     bb_stop_sell_order_url = f"{bb_base_url}/order/sell/stop-limit"
     bb_submit_errors = f"{bb_base_url}/bot/errors"
     bb_liquidation_url = f"{bb_base_url}/account/one-click-liquidation"
-    bb_margin_trading_check_url = f"{bb_base_url}/account/check-margin-trading"
 
     # balances
     bb_balance_url = f"{bb_base_url}/account/balance/raw"
@@ -167,12 +166,12 @@ class BinbotApi(BinanceApi):
         return data
 
     def create_paper_bot(self, data):
-        data = self.request(url=self.bb_test_bot_url, method="POST", json=data)
+        data = self.request(url=self.bb_test_bot_url, method="POST", data=data)
         return data
 
     def activate_paper_bot(self, bot_id):
         data = self.request(
-            url=f"{self.bb_activate_test_bot_url}/{bot_id}", method="POST"
+            url=f"{self.bb_activate_test_bot_url}/{bot_id}", method="GET"
         )
         return data
 
@@ -188,10 +187,6 @@ class BinbotApi(BinanceApi):
             url=url,
         )
         return res["data"]
-
-    def margin_trading_check(self, symbol):
-        data = self.request(url=f"{self.bb_margin_trading_check_url}/{symbol}")
-        return data
 
     def get_top_gainers(self):
         """
