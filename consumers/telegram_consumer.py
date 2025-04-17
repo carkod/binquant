@@ -1,5 +1,6 @@
 import json
 import os
+from html import escape
 
 from telegram import Bot
 from telegram.constants import ParseMode
@@ -14,7 +15,7 @@ class TelegramConsumer:
     def parse_signal(self, result):
         payload = json.loads(result)
         message = payload.get("msg", "")
-        return message
+        return escape(message)
 
     async def send_msg(self, result):
         async with self.bot:

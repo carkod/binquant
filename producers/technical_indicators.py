@@ -6,12 +6,11 @@ import pandas_ta as ta
 
 from algorithms.coinrule import (
     buy_low_sell_high,
-    fast_and_slow_macd,
     supertrend_swing_reversal,
     twap_momentum_sniper,
 )
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
-from algorithms.timeseries_gpt import time_gpt_market_domination
+from algorithms.market_domination import MarketDominationAlgo
 from algorithms.top_gainer_drop import top_gainers_drop
 from shared.apis.binbot_api import BinbotApi
 from shared.apis.time_gpt import TimeseriesGPT
@@ -208,98 +207,6 @@ class TechnicalIndicators:
 
         return
 
-    def time_gpt_forecast(self, data):
-        """
-        Forecasting using GPT-3
-        """
-
-        dates = data["dates"][-10:]
-        gainers_count = data["gainers_count"][-10:]
-        losers_count = data["losers_count"][-10:]
-        forecast_df = pandas.DataFrame(
-            {
-                "dates": dates,
-                "gainers_count": pandas.Series(gainers_count),
-            }
-        )
-        forecast_df["unique_id"] = forecast_df.index
-        df_x = pandas.DataFrame(
-            {
-                "dates": dates,
-                "ex_1": losers_count,
-            }
-        )
-        df_x["unique_id"] = df_x.index
-        self.msf = self.times_gpt_api.multiple_series_forecast(
-            df=forecast_df, df_x=df_x
-        )
-
-        return self.msf
-
-    def market_domination(self) -> tuple[list[str], list[str], dict | None]:
-        """
-        Get data from gainers and losers endpoint to analyze market trends
-
-        We want to know when it's more suitable to do long positions
-        when it's more suitable to do short positions
-        For now setting threshold to 70% i.e.
-        if > 70% of assets in a given market (USDT) dominated by gainers
-        if < 70% of assets in a given market dominated by losers
-        Establish the timing
-        """
-        # if datetime.now().minute == 0:
-        logging.info(
-            f"Performing market domination analyses. Current trend: {self.current_market_dominance}"
-        )
-        data = self.binbot_api.get_market_domination_series()
-        top_gainers_day = self.binbot_api.get_top_gainers()["data"]
-        self.top_coins_gainers = [item["symbol"] for item in top_gainers_day]
-        # reverse to make latest series more important
-        data["gainers_count"].reverse()
-        data["losers_count"].reverse()
-        gainers_count = data["gainers_count"]
-        losers_count = data["losers_count"]
-        # no data from db
-        if len(gainers_count) < 2 and len(losers_count) < 2:
-            return [], [], {}
-
-        # if len(data["dates"]) > 51:
-        #     msf = self.time_gpt_forecast(data)
-        msf: dict | None = None
-
-        # Proportion indicates whether trend is significant or not
-        # to be replaced by TimesGPT if that works better
-        proportion = max(gainers_count[-1], losers_count[-1]) / (
-            gainers_count[-1] + losers_count[-1]
-        )
-
-        # Check reversal
-        if gainers_count[-1] > losers_count[-1]:
-            # Update current market dominance
-            self.current_market_dominance = MarketDominance.GAINERS
-
-            if (
-                gainers_count[-2] > losers_count[-2]
-                and gainers_count[-3] > losers_count[-3]
-                and proportion < 0.6
-            ):
-                self.market_domination_reversal = True
-                self.bot_strategy = Strategy.long
-
-        if gainers_count[-1] < losers_count[-1]:
-            self.current_market_dominance = MarketDominance.LOSERS
-
-            if (
-                gainers_count[-2] < losers_count[-2]
-                and (gainers_count[-3] < losers_count[-3])
-                and proportion < 0.6
-            ):
-                # Negative reversal
-                self.market_domination_reversal = True
-                self.bot_strategy = Strategy.margin_short
-
-        return gainers_count, losers_count, msf
-
     def publish(self):
         """
         Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
@@ -364,32 +271,18 @@ class TechnicalIndicators:
                 self.df.perc_volatility[len(self.df.perc_volatility) - 1]
             )
 
-            gainers_count, losers_count, msf = self.market_domination()
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            if len(gainers_count) > 0 and len(losers_count) > 0 and msf:
-                # Due to high cost, use only 9am in the morning when markets open
-                # there are possible reversals
-                time_gpt_market_domination(
-                    cls=self,
-                    close_price=close_price,
-                    gainers_count=gainers_count,
-                    losers_count=losers_count,
-                    msf=msf,
-                )
-
-            fast_and_slow_macd(
-                self,
-                close_price,
-                macd,
-                macd_signal,
-                ma_7,
-                ma_25,
-                volatility,
+            mda = MarketDominationAlgo(
+                cls=self,
+                close_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
+            mda.market_domination_signal()
+            # Activate next month
+            # mda.time_gpt_market_domination()
 
             ma_candlestick_jump(
                 self,
