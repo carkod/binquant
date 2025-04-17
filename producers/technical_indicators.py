@@ -256,8 +256,6 @@ class TechnicalIndicators:
 
             close_price = float(self.df.close[len(self.df.close) - 1])
             open_price = float(self.df.open[len(self.df.open) - 1])
-            macd = float(self.df.macd[len(self.df.macd) - 1])
-            macd_signal = float(self.df.macd_signal[len(self.df.macd_signal) - 1])
             rsi = float(self.df.rsi[len(self.df.rsi) - 1])
 
             ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
@@ -272,6 +270,7 @@ class TechnicalIndicators:
             )
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
+            btc_correlation = self.binbot_api.get_btc_correlation(symbol=self.symbol)
 
             mda = MarketDominationAlgo(
                 cls=self,
@@ -280,7 +279,7 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-            mda.market_domination_signal()
+            mda.market_domination_signal(btc_correlation=btc_correlation)
             # Activate next month
             # mda.time_gpt_market_domination()
 
@@ -296,6 +295,7 @@ class TechnicalIndicators:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
+                btc_correlation=btc_correlation,
             )
 
             ma_candlestick_drop(

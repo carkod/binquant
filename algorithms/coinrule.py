@@ -46,7 +46,6 @@ def twap_momentum_sniper(
             symbol=cls.symbol,
             algo=algo,
             bot_strategy=cls.bot_strategy,
-            autotrade=False,
             bb_spreads=BollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
