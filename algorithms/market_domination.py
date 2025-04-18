@@ -22,35 +22,36 @@ class MarketDominationAlgo:
         self.bb_low = bb_low
         self.bb_mid = bb_mid
         self.current_market_dominance = MarketDominance.NEUTRAL
-        self.data = self.ti.binbot_api.get_market_domination_series()
+        self.market_domination_data = None
         self.msf = None
         self.reversal = False
+        self.market_domination_data = cls.market_domination_data
 
     def time_gpt_forecast(self):
         """
         Forecasting using GPT-3
         """
-
-        dates = self.data["dates"][-10:]
-        gainers_count = self.data["gainers_count"][-10:]
-        losers_count = self.data["losers_count"][-10:]
-        forecast_df = DataFrame(
-            {
-                "dates": dates,
-                "gainers_count": Series(gainers_count),
-            }
-        )
-        forecast_df["unique_id"] = forecast_df.index
-        df_x = DataFrame(
-            {
-                "dates": dates,
-                "ex_1": losers_count,
-            }
-        )
-        df_x["unique_id"] = df_x.index
-        self.msf = self.ti.times_gpt_api.multiple_series_forecast(
-            df=forecast_df, df_x=df_x
-        )
+        if self.market_domination_data:
+            dates = self.market_domination_data["dates"][-10:]
+            gainers_count = self.market_domination_data["gainers_count"][-10:]
+            losers_count = self.market_domination_data["losers_count"][-10:]
+            forecast_df = DataFrame(
+                {
+                    "dates": dates,
+                    "gainers_count": Series(gainers_count),
+                }
+            )
+            forecast_df["unique_id"] = forecast_df.index
+            df_x = DataFrame(
+                {
+                    "dates": dates,
+                    "ex_1": losers_count,
+                }
+            )
+            df_x["unique_id"] = df_x.index
+            self.msf = self.ti.times_gpt_api.multiple_series_forecast(
+                df=forecast_df, df_x=df_x
+            )
 
         return self.msf
 
@@ -65,19 +66,20 @@ class MarketDominationAlgo:
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        if datetime.now().minute == 0:
-            logging.info(
-                f"Performing market domination analyses. Current trend: {self.ti.current_market_dominance}"
-            )
+        logging.info(
+            f"Performing market domination analyses. Current trend: {self.ti.current_market_dominance}"
+        )
+        if not self.market_domination_data or datetime.now().minute == 0:
+            self.market_domination_data = self.ti.binbot_api.get_market_domination_series()
 
-            top_gainers_day = self.ti.binbot_api.get_top_gainers()["data"]
-            self.top_coins_gainers = [item["symbol"] for item in top_gainers_day]
+        self.top_coins_gainers = [item["symbol"] for item in self.ti.top_gainers_day]
+        if self.market_domination_data:
             # reverse to make latest series more important
-            self.data["gainers_count"].reverse()
-            self.data["losers_count"].reverse()
-            gainers_count = self.data["gainers_count"]
-            losers_count = self.data["losers_count"]
-            # no self.data from db
+            self.market_domination_data["gainers_count"].reverse()
+            self.market_domination_data["losers_count"].reverse()
+            gainers_count = self.market_domination_data["gainers_count"]
+            losers_count = self.market_domination_data["losers_count"]
+            # no self.market_domination_data from db
             if len(gainers_count) < 2 and len(losers_count) < 2:
                 return
 
@@ -111,6 +113,8 @@ class MarketDominationAlgo:
                     # Negative reversal
                     self.reversal = True
                     self.bot_strategy = Strategy.margin_short
+                    # temporarily disable margin short
+                    return
 
     def market_domination_signal(self, btc_correlation):
         self.calculate_reversal()
@@ -165,7 +169,7 @@ class MarketDominationAlgo:
 
         # Due to 50 requests per month limit
         # run only once a day for testing
-        if len(self.data["dates"]) > 51 and (
+        if self.market_domination_data and len(self.market_domination_data["dates"]) > 51 and (
             datetime.now().hour == 9 and datetime.now().minute == 0
         ):
             self.msf = self.time_gpt_forecast()
@@ -183,7 +187,7 @@ class MarketDominationAlgo:
                         gainers_count[-1] > losers_count[-1]
                         and gainers_count[-2] > losers_count[-2]
                     ):
-                        self.ti.reversal = True
+                        self.reversal = True
                         self.ti.bot_strategy = Strategy.long
 
                     algo = "time_gpt_reversal"

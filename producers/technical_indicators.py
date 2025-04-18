@@ -20,7 +20,7 @@ from shared.utils import round_numbers
 
 class TechnicalIndicators:
     def __init__(
-        self, base_producer, producer, binbot_api: BinbotApi, df, symbol, df_4h, df_1h
+        self, base_producer, producer, binbot_api: BinbotApi, df, symbol, df_4h, df_1h, market_domination_data, top_gainers_day
     ) -> None:
         """
         Only variables
@@ -43,6 +43,8 @@ class TechnicalIndicators:
         self.bot_strategy: Strategy = Strategy.long
         self.top_coins_gainers: list[str] = []
         self.times_gpt_api = TimeseriesGPT()
+        self.market_domination_data = market_domination_data
+        self.top_gainers_day = top_gainers_day["data"]
         pass
 
     def check_kline_gaps(self, data):
@@ -343,6 +345,7 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
+
             supertrend_swing_reversal(
                 self,
                 close_price=close_price,

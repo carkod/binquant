@@ -18,6 +18,9 @@ async def data_process_pipe() -> None:
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
         group_id="klines-consumer",
+        auto_offset_reset="latest",
+        max_poll_interval_ms=6000,
+        max_poll_records=1,
     )
 
     await consumer.start()

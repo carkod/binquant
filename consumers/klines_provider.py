@@ -10,6 +10,7 @@ from producers.base import BaseProducer
 from producers.technical_indicators import TechnicalIndicators
 from shared.apis.binbot_api import BinanceApi, BinbotApi
 from shared.enums import BinanceKlineIntervals
+from datetime import datetime
 
 # spark = SparkSession.builder.appName("Klines Statistics analyses")\
 #     .config("compute.ops_on_diff_frames", "true").getOrCreate()
@@ -48,8 +49,15 @@ class KlinesProvider(KafkaDB):
         self.base_producer = BaseProducer()
         self.base_producer.start_producer()
         self.producer = self.base_producer.producer
+        self.market_domination_data = self.binbot_api.get_market_domination_series()
+        self.top_gainers_day = self.binbot_api.get_top_gainers()
 
     def aggregate_data(self, results):
+        # Reload time-constrained data
+        if datetime.now().minute == 0:
+            self.market_domination_data = self.binbot_api.get_market_domination_series()
+            self.top_gainers_day = self.binbot_api.get_top_gainers()
+
         if results:
             payload = json.loads(results)
             klines = KlineProduceModel.model_validate(payload)
@@ -83,6 +91,8 @@ class KlinesProvider(KafkaDB):
                 symbol=symbol,
                 df_4h=self.df_4h,
                 df_1h=self.df_1h,
+                market_domination_data=self.market_domination_data,
+                top_gainers_day=self.top_gainers_day,
             ).publish()
 
         pass
