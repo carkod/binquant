@@ -10,6 +10,7 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
 from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
+from producers.base import BaseProducer
 
 
 async def data_process_pipe() -> None:
@@ -17,41 +18,78 @@ async def data_process_pipe() -> None:
         KafkaTopics.klines_store_topic.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        group_id="klines-consumer",
-        auto_offset_reset="latest",
-        max_poll_interval_ms=6000,
-        max_poll_records=1,
+        group_id="data-process-group",
+        enable_auto_commit=False,
+        session_timeout_ms=300000,  # Increase session timeout to 5 minutes
+        heartbeat_interval_ms=300000,  # Keep heartbeat interval at 10 seconds
+        request_timeout_ms=305000,  # Increase request timeout to slightly more than session timeout
     )
 
-    await consumer.start()
-    klines_provider = KlinesProvider(consumer)
+    base_producer = BaseProducer()
+    base_producer.start_producer()
+    producer = base_producer.producer
 
-    async for message in consumer:
-        if message.topic == KafkaTopics.klines_store_topic.value:
-            klines_provider.aggregate_data(message.value)
+    try:
+        # Start dependencies before the consumer to avoid timeouts
+        # klines_provider = KlinesProvider(consumer)
+        await consumer.start()
+        count = 0
 
-    await consumer.commit()
+        async for message in consumer:
+            if message.topic == KafkaTopics.klines_store_topic.value:
+                count += 1
+                value = f"""{{"symbol":"ADAUSDC","open_time":"1745099760000","close_time":"1745099819999","open_price":"0.62980000","close_price":"0.62980000","high_price":"0.62980000","low_price":"0.62980000","volume":560.0, "count": {count}}}"""
+                producer.send(KafkaTopics.signals.value, value=f"{count}")
+                # klines_provider.aggregate_data(value)
+
+            await consumer.commit()
+
+    except Exception as e:
+        logging.error(f"Error in data_process_pipe: {e}")
+    finally:
+        await consumer.stop()
 
 
 async def data_analytics_pipe() -> None:
     consumer = AIOKafkaConsumer(
-        KafkaTopics.signals.value,
-        KafkaTopics.restart_streaming.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        max_poll_records=1,
+        group_id="data-analytics-group",
+        session_timeout_ms=300000,  # Increase session timeout to 5 minutes
+        heartbeat_interval_ms=300000,  # Keep heartbeat interval at 10 seconds
+        request_timeout_ms=305000,  # Increase request timeout to slightly more than session timeout
+        enable_auto_commit=False,
     )
-    await consumer.start()
-    telegram_consumer = TelegramConsumer()
-    at_consumer = AutotradeConsumer(consumer)
 
-    async for message in consumer:
-        if message.topic == KafkaTopics.restart_streaming.value:
-            raise Exception("Received restart streaming signal, restarting streaming.")
+    try:
+        await consumer.start()
 
-        if message.topic == KafkaTopics.signals.value:
-            await telegram_consumer.send_msg(message.value)
-            at_consumer.process_autotrade_restrictions(message.value)
+        # Seek to the end of each partition to consume only the latest messages
+        from aiokafka.structs import TopicPartition
+        topic_partitions = [
+            TopicPartition(topic, partition)
+            for topic in [KafkaTopics.signals.value, KafkaTopics.restart_streaming.value]
+            for partition in range(15)  # Assuming 15 partitions
+        ]
+
+        consumer.assign(topic_partitions)  # Assign partitions exclusively
+        for tp in topic_partitions:
+            await consumer.seek_to_end(tp)  # Move offset to the end of each partition
+
+        # Consume messages and print their values
+        async for message in consumer:
+            print(f"Received message: topic={message.topic}, partition={message.partition}, offset={message.offset}, value={message.value}")
+            if message.topic == KafkaTopics.restart_streaming.value:
+                raise Exception("Received restart streaming signal, restarting streaming.")
+
+            if message.topic == KafkaTopics.signals.value:
+                print(f"Received signal: {message.value}")
+            await consumer.commit()
+
+    except Exception as e:
+        logging.error(f"Error in data_analytics_pipe: {e}")
+    finally:
+        await consumer.stop()
 
 
 async def main() -> None:
