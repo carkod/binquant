@@ -39,7 +39,7 @@ async def data_analytics_pipe() -> None:
         KafkaTopics.restart_streaming.value,
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
-        max_poll_records=50,
+        max_poll_records=1,
     )
     await consumer.start()
     telegram_consumer = TelegramConsumer()

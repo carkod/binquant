@@ -73,61 +73,65 @@ class MarketDominationAlgo:
             self.market_domination_data = self.ti.binbot_api.get_market_domination_series()
 
         self.top_coins_gainers = [item["symbol"] for item in self.ti.top_gainers_day]
-        if self.market_domination_data:
-            # reverse to make latest series more important
-            self.market_domination_data["gainers_count"].reverse()
-            self.market_domination_data["losers_count"].reverse()
-            gainers_count = self.market_domination_data["gainers_count"]
-            losers_count = self.market_domination_data["losers_count"]
-            # no self.market_domination_data from db
-            if len(gainers_count) < 2 and len(losers_count) < 2:
-                return
+        # reverse to make latest series more important
+        self.market_domination_data["gainers_count"].reverse()
+        self.market_domination_data["losers_count"].reverse()
+        gainers_count = self.market_domination_data["gainers_count"]
+        losers_count = self.market_domination_data["losers_count"]
+        # no self.market_domination_data from db
+        if len(gainers_count) < 2 and len(losers_count) < 2:
+            return
 
-            # Proportion indicates whether trend is significant or not
-            # to be replaced by TimesGPT if that works better
-            proportion = max(gainers_count[-1], losers_count[-1]) / (
-                gainers_count[-1] + losers_count[-1]
-            )
+        # Proportion indicates whether trend is significant or not
+        # to be replaced by TimesGPT if that works better
+        proportion = max(gainers_count[-1], losers_count[-1]) / (
+            gainers_count[-1] + losers_count[-1]
+        )
 
-            # Check reversal
-            if gainers_count[-1] > losers_count[-1]:
-                # Update current market dominance
-                self.current_market_dominance = MarketDominance.GAINERS
+        # Check reversal
+        if gainers_count[-1] > losers_count[-1]:
+            # Update current market dominance
+            self.current_market_dominance = MarketDominance.GAINERS
 
-                if (
-                    gainers_count[-2] > losers_count[-2]
-                    and gainers_count[-3] > losers_count[-3]
-                    and proportion < 0.6
-                ):
-                    self.reversal = True
-                    self.bot_strategy = Strategy.long
+            if (
+                gainers_count[-2] > losers_count[-2]
+                and gainers_count[-3] > losers_count[-3]
+                # More than 60% it's way past reversal
+                # and proportion < 0.6
+            ):
+                self.reversal = True
+                self.bot_strategy = Strategy.long
 
-            if gainers_count[-1] < losers_count[-1]:
-                self.current_market_dominance = MarketDominance.LOSERS
+        if gainers_count[-1] < losers_count[-1]:
+            self.current_market_dominance = MarketDominance.LOSERS
+            # temporarily disable margin short
+            return
 
-                if (
-                    gainers_count[-2] < losers_count[-2]
-                    and (gainers_count[-3] < losers_count[-3])
-                    and proportion < 0.6
-                ):
-                    # Negative reversal
-                    self.reversal = True
-                    self.bot_strategy = Strategy.margin_short
-                    # temporarily disable margin short
-                    return
+            # if (
+            #     gainers_count[-2] < losers_count[-2]
+            #     and (gainers_count[-3] < losers_count[-3])
+            #     and proportion < 0.6
+            # ):
+            #     # Negative reversal
+            #     self.reversal = True
+            #     self.bot_strategy = Strategy.margin_short
 
     def market_domination_signal(self, btc_correlation):
         self.calculate_reversal()
+        btc_price = self.ti.binbot_api.get_latest_btc_price()
 
         if self.reversal and self.current_market_dominance != MarketDominance.NEUTRAL:
             if (
                 self.current_market_dominance == MarketDominance.GAINERS
                 and btc_correlation > 0
+                and btc_price < 0
             ) or (
                 self.current_market_dominance == MarketDominance.LOSERS
                 and btc_correlation < 0
+                and btc_price > 0
             ):
-                strategy = Strategy.margin_short
+                return
+                # strategy = Strategy.margin_short
             else:
                 strategy = Strategy.long
 
