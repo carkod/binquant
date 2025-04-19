@@ -21,7 +21,7 @@ class BinbotApi(BinanceApi):
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
-    bb_ticker24 = f"{bb_base_url}/charts/ticker-24"
+    bb_ticker24_url = f"{bb_base_url}/charts/ticker-24"
     bb_btc_correlation_url = f"{bb_base_url}/charts/btc-correlation"
 
     # Trade operations

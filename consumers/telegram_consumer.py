@@ -13,7 +13,9 @@ class TelegramConsumer:
 
     def parse_signal(self, result):
         payload = json.loads(result)
-        message = payload.get("msg", "")
+        message = payload.get("msg", None)
+        if not message:
+            return
         return message
 
     async def send_msg(self, result):

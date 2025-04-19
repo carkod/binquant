@@ -111,6 +111,7 @@ class AutotradeConsumer(BinbotApi):
         if (
             symbol not in self.active_test_bots
             and self.test_autotrade_settings["autotrade"]
+            and not data.autotrade
         ):
             if self.reached_max_active_autobots("paper_trading"):
                 logging.info(
