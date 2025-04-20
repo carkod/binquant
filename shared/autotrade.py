@@ -5,14 +5,14 @@ from datetime import datetime
 
 from models.bot import BotModel
 from models.signals import SignalsConsumer
-from producers.base import BaseProducer
+from producers.base import AsyncProducer
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import CloseConditions, KafkaTopics, Strategy
 from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, supress_notation
 
 
-class Autotrade(BaseProducer, BinbotApi):
+class Autotrade(AsyncProducer, BinbotApi):
     def __init__(
         self, pair, settings, algorithm_name, db_collection_name="paper_trading"
     ) -> None:
@@ -138,7 +138,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 )
                 pass
 
-    def activate_autotrade(self, data: SignalsConsumer):
+    async def activate_autotrade(self, data: SignalsConsumer):
         """
         Run autotrade
         2. Create bot with given parameters from research_controller
@@ -225,7 +225,7 @@ class Autotrade(BaseProducer, BinbotApi):
             # Send message to restart streaming at the end to avoid blocking
             # Message is sent only after activation is successful,
             # if bot activation failed, we want to try again with a new bot
-            self.producer.send(
+            await self.producer.send(
                 KafkaTopics.restart_streaming.value,
                 value=json.dumps(value),
                 partition=0,

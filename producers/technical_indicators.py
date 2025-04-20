@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import pandas
 import pandas_ta as ta
-
+from aiokafka import AIOKafkaProducer
 from algorithms.coinrule import (
     buy_low_sell_high,
     supertrend_swing_reversal,
@@ -17,10 +17,9 @@ from shared.apis.time_gpt import TimeseriesGPT
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.utils import round_numbers
 
-
 class TechnicalIndicators:
     def __init__(
-        self, base_producer, producer, binbot_api: BinbotApi, df, symbol, df_4h, df_1h, market_domination_data, top_gainers_day
+        self, base_producer, producer: AIOKafkaProducer, binbot_api: BinbotApi, df, symbol, df_4h, df_1h, market_domination_data, top_gainers_day
     ) -> None:
         """
         Only variables
@@ -209,7 +208,7 @@ class TechnicalIndicators:
 
         return
 
-    def publish(self):
+    async def publish(self):
         """
         Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
 
@@ -259,7 +258,6 @@ class TechnicalIndicators:
             close_price = float(self.df.close[len(self.df.close) - 1])
             open_price = float(self.df.open[len(self.df.open) - 1])
             rsi = float(self.df.rsi[len(self.df.rsi) - 1])
-
             ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
             ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
             ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
@@ -281,49 +279,49 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-            mda.market_domination_signal(btc_correlation=btc_correlation)
+            await mda.market_domination_signal(btc_correlation=btc_correlation)
             # Activate next month
             # mda.time_gpt_market_domination()
 
-            ma_candlestick_jump(
-                self,
-                close_price,
-                open_price,
-                ma_7,
-                ma_25,
-                ma_100,
-                ma_7_prev,
-                volatility,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-                btc_correlation=btc_correlation,
-            )
+            # ma_candlestick_jump(
+            #     self,
+            #     close_price,
+            #     open_price,
+            #     ma_7,
+            #     ma_25,
+            #     ma_100,
+            #     ma_7_prev,
+            #     volatility,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            #     btc_correlation=btc_correlation,
+            # )
 
-            ma_candlestick_drop(
-                self,
-                close_price=close_price,
-                open_price=open_price,
-                ma_7=ma_7,
-                ma_100=ma_100,
-                ma_25=ma_25,
-                ma_25_prev=ma_25_prev,
-                volatility=volatility,
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            )
+            # ma_candlestick_drop(
+            #     self,
+            #     close_price=close_price,
+            #     open_price=open_price,
+            #     ma_7=ma_7,
+            #     ma_100=ma_100,
+            #     ma_25=ma_25,
+            #     ma_25_prev=ma_25_prev,
+            #     volatility=volatility,
+            #     bb_high=bb_high,
+            #     bb_mid=bb_mid,
+            #     bb_low=bb_low,
+            # )
 
-            buy_low_sell_high(
-                self,
-                close_price=close_price,
-                rsi=rsi,
-                ma_25=ma_25,
-                volatility=volatility,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # buy_low_sell_high(
+            #     self,
+            #     close_price=close_price,
+            #     rsi=rsi,
+            #     ma_25=ma_25,
+            #     volatility=volatility,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             # This function calls a lot ticker24 revise it before uncommenting
             # rally_or_pullback(
@@ -336,30 +334,30 @@ class TechnicalIndicators:
             #     volatility=volatility,
             # )
 
-            top_gainers_drop(
-                self,
-                close_price=close_price,
-                open_price=open_price,
-                volatility=volatility,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # top_gainers_drop(
+            #     self,
+            #     close_price=close_price,
+            #     open_price=open_price,
+            #     volatility=volatility,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
-            supertrend_swing_reversal(
-                self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # supertrend_swing_reversal(
+            #     self,
+            #     close_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
-            twap_momentum_sniper(
-                self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # twap_momentum_sniper(
+            #     self,
+            #     close_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
         return

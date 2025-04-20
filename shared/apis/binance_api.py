@@ -6,7 +6,6 @@ from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from requests import Session, get
-
 from shared.utils import handle_binance_errors
 
 load_dotenv()

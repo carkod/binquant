@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from decimal import Decimal
 from time import sleep
+from aiohttp import ClientResponse
 
 from requests import Response
 
@@ -120,3 +121,8 @@ def timestamp_to_datetime(timestamp: str | int) -> str:
     format = "%Y-%m-%d %H:%M:%S"
     timestamp = int(round_numbers_ceiling(int(timestamp) / 1000, 0))
     return datetime.fromtimestamp(timestamp).strftime(format)
+
+
+async def aio_response_handler(response: ClientResponse):
+    content = await response.json()
+    return content

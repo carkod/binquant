@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 # Algorithms based on Bollinguer bands
 
 
-def ma_candlestick_jump(
+async def ma_candlestick_jump(
     cls: "TechnicalIndicators",
     close_price,
     open_price,
@@ -111,7 +111,7 @@ def ma_candlestick_jump(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
         ).add_callback(cls.base_producer.on_send_success).add_errback(
             cls.base_producer.on_send_error
@@ -120,7 +120,7 @@ def ma_candlestick_jump(
     return
 
 
-def ma_candlestick_drop(
+async def ma_candlestick_drop(
     cls: "TechnicalIndicators",
     close_price,
     open_price,
@@ -200,7 +200,7 @@ def ma_candlestick_drop(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
         ).add_callback(cls.base_producer.on_send_success).add_errback(
             cls.base_producer.on_send_error

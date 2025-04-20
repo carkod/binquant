@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 
-from producers.base import BaseProducer
+from producers.base import AsyncProducer
 from producers.klines_connector import KlinesConnector
 
 logging.basicConfig(
@@ -14,13 +14,15 @@ logging.basicConfig(
 
 
 async def main():
-    base_producer = BaseProducer()
-    producer = base_producer.start_producer()
+    base_producer = AsyncProducer()
+    producer = await base_producer.start_producer()
     connector = KlinesConnector(producer)
     connector.start_stream()
 
 
 if __name__ == "__main__":
+    logging.getLogger("aiokafka").setLevel(os.environ["LOG_LEVEL"])
+
     try:
         asyncio.run(main())
     except Exception as error:

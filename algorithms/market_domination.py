@@ -116,7 +116,7 @@ class MarketDominationAlgo:
             #     self.reversal = True
             #     self.bot_strategy = Strategy.margin_short
 
-    def market_domination_signal(self, btc_correlation):
+    async def market_domination_signal(self, btc_correlation):
         self.calculate_reversal()
         btc_price = self.ti.binbot_api.get_latest_btc_price()
 
@@ -159,10 +159,8 @@ class MarketDominationAlgo:
                 ),
             )
 
-            self.ti.producer.send(
+            await self.ti.producer.send(
                 KafkaTopics.signals.value, value=value.model_dump_json()
-            ).add_callback(self.ti.base_producer.on_send_success).add_errback(
-                self.ti.base_producer.on_send_error
             )
 
     def time_gpt_market_domination(self, close_price, gainers_count, losers_count):
@@ -216,6 +214,4 @@ class MarketDominationAlgo:
 
                     self.ti.producer.send(
                         KafkaTopics.signals.value, value=value.model_dump_json()
-                    ).add_callback(self.ti.base_producer.on_send_success).add_errback(
-                        self.ti.base_producer.on_send_error
                     )
