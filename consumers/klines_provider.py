@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 
 import pandas as pd
 from kafka import KafkaConsumer
@@ -10,7 +11,6 @@ from producers.base import AsyncProducer
 from producers.technical_indicators import TechnicalIndicators
 from shared.apis.binbot_api import BinanceApi, BinbotApi
 from shared.enums import BinanceKlineIntervals
-from datetime import datetime
 
 # spark = SparkSession.builder.appName("Klines Statistics analyses")\
 #     .config("compute.ops_on_diff_frames", "true").getOrCreate()
@@ -45,10 +45,12 @@ class KlinesProvider(KafkaDB):
 
     async def load_data_on_start(self):
         self.active_pairs = self.binbot_api.get_active_pairs()
-        self.base_producer = AsyncProducer()
-        self.base_producer.start_producer()
-        self.producer = self.base_producer.producer
-        self.market_domination_data = await self.binbot_api.get_market_domination_series()
+        base_producer = AsyncProducer().get_producer()
+        self.producer = base_producer
+        await self.producer.start()
+        self.market_domination_data = (
+            await self.binbot_api.get_market_domination_series()
+        )
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
 
     async def aggregate_data(self, results):
@@ -83,7 +85,6 @@ class KlinesProvider(KafkaDB):
             # reverse the order to get the oldest data first, to dropnas and use latest date for technical indicators
             self.df = self.df[::-1].reset_index(drop=True)
             technical_indicators = TechnicalIndicators(
-                base_producer=self.base_producer,
                 producer=self.producer,
                 binbot_api=self.binbot_api,
                 df=self.df,

@@ -50,7 +50,6 @@ class Autotrade(AsyncProducer, BinbotApi):
         self.db_collection_name = db_collection_name
         # restart streams after bot activation
         super().__init__()
-        self.producer = self.start_producer()
 
     def _set_bollinguer_spreads(self, data: SignalsConsumer):
         bb_spreads = data.bb_spreads

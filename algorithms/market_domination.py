@@ -26,6 +26,7 @@ class MarketDominationAlgo:
         self.msf = None
         self.reversal = False
         self.market_domination_data = cls.market_domination_data
+        self.btc_price = 0
 
     def time_gpt_forecast(self):
         """
@@ -70,7 +71,9 @@ class MarketDominationAlgo:
             f"Performing market domination analyses. Current trend: {self.ti.current_market_dominance}"
         )
         if not self.market_domination_data or datetime.now().minute == 0:
-            self.market_domination_data = self.ti.binbot_api.get_market_domination_series()
+            self.market_domination_data = (
+                self.ti.binbot_api.get_market_domination_series()
+            )
 
         self.top_coins_gainers = [item["symbol"] for item in self.ti.top_gainers_day]
         # reverse to make latest series more important
@@ -107,31 +110,32 @@ class MarketDominationAlgo:
             # temporarily disable margin short
             return
 
-            # if (
-            #     gainers_count[-2] < losers_count[-2]
-            #     and (gainers_count[-3] < losers_count[-3])
-            #     and proportion < 0.6
-            # ):
-            #     # Negative reversal
-            #     self.reversal = True
-            #     self.bot_strategy = Strategy.margin_short
+            if (
+                gainers_count[-2] < losers_count[-2]
+                and (gainers_count[-3] < losers_count[-3])
+                and proportion < 0.6
+            ):
+                # Negative reversal
+                self.reversal = True
+                self.bot_strategy = Strategy.margin_short
 
     async def market_domination_signal(self, btc_correlation):
         self.calculate_reversal()
-        btc_price = self.ti.binbot_api.get_latest_btc_price()
+        # Reduce network calls
+        if not self.btc_price == 0 or datetime.now().minute == 5:
+            self.btc_price = self.ti.binbot_api.get_latest_btc_price()
 
         if self.reversal and self.current_market_dominance != MarketDominance.NEUTRAL:
             if (
                 self.current_market_dominance == MarketDominance.GAINERS
                 and btc_correlation > 0
-                and btc_price < 0
+                and self.btc_price < 0
             ) or (
                 self.current_market_dominance == MarketDominance.LOSERS
                 and btc_correlation < 0
-                and btc_price > 0
+                and self.btc_price > 0
             ):
                 return
-                # strategy = Strategy.margin_short
             else:
                 strategy = Strategy.long
 
@@ -171,8 +175,10 @@ class MarketDominationAlgo:
 
         # Due to 50 requests per month limit
         # run only once a day for testing
-        if self.market_domination_data and len(self.market_domination_data["dates"]) > 51 and (
-            datetime.now().hour == 9 and datetime.now().minute == 0
+        if (
+            self.market_domination_data
+            and len(self.market_domination_data["dates"]) > 51
+            and (datetime.now().hour == 9 and datetime.now().minute == 0)
         ):
             self.msf = self.time_gpt_forecast()
 

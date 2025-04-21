@@ -4,8 +4,8 @@ import re
 from datetime import datetime
 from decimal import Decimal
 from time import sleep
-from aiohttp import ClientResponse
 
+from aiohttp import ClientResponse
 from requests import Response
 
 from shared.exceptions import InvalidSymbol

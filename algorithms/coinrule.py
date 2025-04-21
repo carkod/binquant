@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
 
-def twap_momentum_sniper(
+async def twap_momentum_sniper(
     cls: "TechnicalIndicators", close_price, bb_high, bb_low, bb_mid
 ):
     """
@@ -53,16 +53,14 @@ def twap_momentum_sniper(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     pass
 
 
-def supertrend_swing_reversal(
+async def supertrend_swing_reversal(
     cls: "TechnicalIndicators", close_price, bb_high, bb_low, bb_mid
 ):
     """
@@ -118,16 +116,14 @@ def supertrend_swing_reversal(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     pass
 
 
-def buy_low_sell_high(
+async def buy_low_sell_high(
     cls: "TechnicalIndicators",
     close_price,
     rsi,
@@ -183,10 +179,8 @@ def buy_low_sell_high(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     pass

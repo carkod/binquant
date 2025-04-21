@@ -1,10 +1,10 @@
 import os
 
+from aiohttp import ClientSession
 from dotenv import load_dotenv
 
 from shared.apis.binance_api import BinanceApi
 from shared.enums import Status
-from aiohttp import ClientSession
 from shared.utils import aio_response_handler
 
 load_dotenv()
@@ -23,7 +23,6 @@ class BinbotApi(BinanceApi):
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
-    bb_ticker24_url = f"{bb_base_url}/charts/ticker-24"
     bb_btc_correlation_url = f"{bb_base_url}/charts/btc-correlation"
 
     # Trade operations
@@ -66,6 +65,7 @@ class BinbotApi(BinanceApi):
     Async HTTP client/server for asyncio
     that replaces requests library
     """
+
     async def fetch(self, url, method="GET", **kwargs):
         async with ClientSession() as session:
             async with session.request(method=method, url=url, **kwargs) as response:
@@ -85,20 +85,10 @@ class BinbotApi(BinanceApi):
         return response["data"]
 
     async def get_market_domination_series(self, size=200):
-        response = await self.fetch(url=self.bb_market_domination, params={"size": size})
-        return response["data"]
-
-    def ticker_24(self, symbol: str | None = None):
-        """
-        Weight 40 without symbol
-        https://github.com/carkod/binbot/issues/438
-
-        Using cache
-        """
-        data = self.request(
-            method="GET", url=self.ticker24_url, params={"symbol": symbol}
+        response = await self.fetch(
+            url=self.bb_market_domination, params={"size": size}
         )
-        return data
+        return response["data"]
 
     def get_latest_btc_price(self):
         # Get 24hr last BTCUSDC

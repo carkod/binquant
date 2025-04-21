@@ -85,7 +85,7 @@ class AutotradeConsumer(BinbotApi):
         )
         return is_margin_allowed
 
-    def process_autotrade_restrictions(self, result: str):
+    async def process_autotrade_restrictions(self, result: str):
         """
         Refactored autotrade conditions.
         Previously part of process_kline_stream
@@ -122,7 +122,7 @@ class AutotradeConsumer(BinbotApi):
                 test_autotrade = Autotrade(
                     symbol, self.test_autotrade_settings, data.algo, "paper_trading"
                 )
-                test_autotrade.activate_autotrade(data)
+                await test_autotrade.activate_autotrade(data)
 
         # Check balance to avoid failed autotrades
         balance_check = self.get_available_fiat()
@@ -147,6 +147,6 @@ class AutotradeConsumer(BinbotApi):
                     autotrade = Autotrade(
                         symbol, self.autotrade_settings, data.algo, "bots"
                     )
-                    autotrade.activate_autotrade(data)
+                    await autotrade.activate_autotrade(data)
 
         return

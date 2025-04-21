@@ -113,8 +113,6 @@ async def ma_candlestick_jump(
 
         await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     return
@@ -202,8 +200,6 @@ async def ma_candlestick_drop(
 
         await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     return

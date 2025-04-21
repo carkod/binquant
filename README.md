@@ -44,7 +44,7 @@ Inside of the docker container i.e. `docker exec -ti binquant_kafka bash`
 1. Run the following command, replacing topic with the one you want to inspect.
 
 ```
-kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic klines-store-topic --from-beginning
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic klines-store-topic
 ```
 
 This will tell you if the producer is emitting data.

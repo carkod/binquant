@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
 
-def top_gainers_drop(
+async def top_gainers_drop(
     cls: "TechnicalIndicators",
     close_price,
     open_price,
@@ -52,10 +52,8 @@ def top_gainers_drop(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     return

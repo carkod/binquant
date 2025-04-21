@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from requests import Session, get
+
 from shared.utils import handle_binance_errors
 
 load_dotenv()
@@ -107,6 +108,18 @@ class BinanceApi:
 
     def ticker_24_price(self, symbol: str):
         data = self.request(url=self.ticker_price_url, params={"symbol": symbol})
+        return data
+
+    def ticker_24(self, symbol: str | None = None):
+        """
+        Weight 40 without symbol
+        https://github.com/carkod/binbot/issues/438
+
+        Using cache
+        """
+        data = self.request(
+            method="GET", url=self.ticker24_url, params={"symbol": symbol}
+        )
         return data
 
     def launchpool_projects(self):

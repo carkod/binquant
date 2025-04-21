@@ -1,42 +1,16 @@
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
 
 from aiokafka import AIOKafkaConsumer
-from aiokafka.abc import ConsumerRebalanceListener
+
+from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
+from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
-from aiokafka.structs import TopicPartition
-
-
-class RebalanceListener(ConsumerRebalanceListener):
-    def __init__(self, consumer: AIOKafkaConsumer):
-        self.consumer = consumer
-
-    """
-    Reset offsets every time there is rebalancing
-    because consumption is interrupted
-    """
-
-    async def reset_offsets(self):
-        # Reset offsets to the end of the partitions
-        partitions = self.consumer.partitions_for_topic(
-            KafkaTopics.klines_store_topic.value
-        )
-        if partitions:
-            for partition in partitions:
-                tp = TopicPartition(KafkaTopics.klines_store_topic.value, partition)
-                await self.consumer.seek_to_end(tp)
-
-    async def on_partitions_revoked(self, revoked):
-        if revoked:
-            raise Exception("Partitions revoked, restarting data_process_pipe")
-
-    async def on_partitions_assigned(self, assigned):
-        logging.info(f"Partitions assigned: {assigned}")
-        # Seek to the end of the assigned partitions to start from the latest offset
-        await self.reset_offsets()
+from shared.rebalance_listener import RebalanceListener
 
 
 async def data_process_pipe() -> None:
@@ -46,10 +20,9 @@ async def data_process_pipe() -> None:
         value_deserializer=lambda m: json.loads(m),
         group_id="data-process-group",
         enable_auto_commit=False,
-        session_timeout_ms=120000,
-        # heartbeat should be sent less than timouts to check connection
+        session_timeout_ms=30000,
         heartbeat_interval_ms=30000,
-        request_timeout_ms=125000,
+        request_timeout_ms=30000,
     )
 
     # Set rebalance listener
@@ -66,7 +39,6 @@ async def data_process_pipe() -> None:
     try:
         async for message in consumer:
             if message.topic == KafkaTopics.klines_store_topic.value:
-                logging.debug(f"Received message: {message.value}")
                 await klines_provider.aggregate_data(message.value)
 
             await consumer.commit()
@@ -75,6 +47,62 @@ async def data_process_pipe() -> None:
         await consumer.stop()
 
 
+async def data_analytics_pipe() -> None:
+    consumer = AIOKafkaConsumer(
+        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+        value_deserializer=lambda m: json.loads(m),
+        group_id="data-analytics-group",
+        enable_auto_commit=False,
+        session_timeout_ms=30000,
+        heartbeat_interval_ms=30000,
+        request_timeout_ms=30000,
+    )
+
+    # Set rebalance listener
+    rebalance_listener = RebalanceListener(consumer)
+    consumer.subscribe(
+        [KafkaTopics.signals.value, KafkaTopics.restart_streaming.value],
+        listener=rebalance_listener,
+    )
+
+    try:
+        telegram_consumer = TelegramConsumer()
+        at_consumer = AutotradeConsumer(consumer)
+        await consumer.start()
+
+        # Consume messages and print their values
+        async for message in consumer:
+            if message.topic == KafkaTopics.restart_streaming.value:
+                raise Exception(
+                    "Received restart streaming signal, restarting streaming."
+                )
+
+            if message.topic == KafkaTopics.signals.value:
+                logging.info("Received signals")
+                await telegram_consumer.send_msg(message.value)
+                await at_consumer.process_autotrade_restrictions(message.value)
+
+            await consumer.commit()
+
+    except Exception as e:
+        logging.error(f"Error in data_analytics_pipe: {e}")
+    finally:
+        await consumer.stop()
+
+
+async def main() -> None:
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        await asyncio.gather(
+            loop.run_in_executor(pool, asyncio.run, data_process_pipe()),
+            loop.run_in_executor(pool, asyncio.run, data_analytics_pipe()),
+        )
+
+
 if __name__ == "__main__":
     logging.getLogger("aiokafka").setLevel(os.environ["LOG_LEVEL"])
-    asyncio.run(data_process_pipe())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logging.error(f"Error in main: {e}")
+        asyncio.run(main())
