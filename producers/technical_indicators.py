@@ -52,7 +52,7 @@ class TechnicalIndicators:
         self.top_coins_gainers: list[str] = []
         self.times_gpt_api = TimeseriesGPT()
         self.market_domination_data = market_domination_data
-        self.top_gainers_day = top_gainers_day["data"]
+        self.top_gainers_day = top_gainers_day
         pass
 
     def check_kline_gaps(self, data):
@@ -290,7 +290,7 @@ class TechnicalIndicators:
             )
             await mda.market_domination_signal(btc_correlation=btc_correlation)
             # Activate next month
-            # mda.time_gpt_market_domination()
+            # await mda.time_gpt_market_domination()
 
             await ma_candlestick_jump(
                 self,

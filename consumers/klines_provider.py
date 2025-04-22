@@ -56,8 +56,8 @@ class KlinesProvider(KafkaDB):
     async def aggregate_data(self, results):
         # Reload time-constrained data
         if datetime.now().minute == 0:
-            self.market_domination_data = self.binbot_api.get_market_domination_series()
-            self.top_gainers_day = self.binbot_api.get_top_gainers()
+            self.market_domination_data = await self.binbot_api.get_market_domination_series()
+            self.top_gainers_day = await self.binbot_api.get_top_gainers()
 
         if results:
             payload = json.loads(results)

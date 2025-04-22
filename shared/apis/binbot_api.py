@@ -194,8 +194,8 @@ class BinbotApi(BinanceApi):
         """
         Top crypto/token/coin gainers of the day
         """
-        data = await self.fetch(url=self.bb_top_gainers)
-        return data
+        response = await self.fetch(url=self.bb_top_gainers)
+        return response["data"]
 
     def get_btc_correlation(self, symbol) -> float:
         """

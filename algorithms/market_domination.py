@@ -22,7 +22,6 @@ class MarketDominationAlgo:
         self.bb_low = bb_low
         self.bb_mid = bb_mid
         self.current_market_dominance = MarketDominance.NEUTRAL
-        self.market_domination_data = None
         self.msf = None
         self.reversal = False
         self.market_domination_data = cls.market_domination_data
@@ -63,18 +62,13 @@ class MarketDominationAlgo:
         We want to know when it's more suitable to do long positions
         when it's more suitable to do short positions
         For now setting threshold to 70% i.e.
-        if > 70% of assets in a given market (USDT) dominated by gainers
+        if > 70% of assets in a given market (USDC) dominated by gainers
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
         logging.info(
             f"Performing market domination analyses. Current trend: {self.ti.current_market_dominance}"
         )
-        if not self.market_domination_data or datetime.now().minute == 0:
-            self.market_domination_data = (
-                self.ti.binbot_api.get_market_domination_series()
-            )
-
         self.top_coins_gainers = [item["symbol"] for item in self.ti.top_gainers_day]
         # reverse to make latest series more important
         self.market_domination_data["gainers_count"].reverse()
@@ -120,6 +114,12 @@ class MarketDominationAlgo:
                 self.bot_strategy = Strategy.margin_short
 
     async def market_domination_signal(self, btc_correlation):
+        if not self.market_domination_data or datetime.now().minute == 0:
+            self.market_domination_data = await self.ti.binbot_api.get_market_domination_series()
+
+        if not self.market_domination_data:
+            return
+
         self.calculate_reversal()
         # Reduce network calls
         if not self.btc_price == 0 or datetime.now().minute == 5:
@@ -139,11 +139,10 @@ class MarketDominationAlgo:
             else:
                 strategy = Strategy.long
 
-            algo = "reversal"
+            algo = "market_domination_reversal"
             msg = f"""
             - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
             - Current price: {self.close_price}
-            - Reversal: {self.reversal}
             - Strategy: {strategy}
             - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
             - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
@@ -167,7 +166,7 @@ class MarketDominationAlgo:
                 KafkaTopics.signals.value, value=value.model_dump_json()
             )
 
-    def time_gpt_market_domination(self, close_price, gainers_count, losers_count):
+    async def time_gpt_market_domination(self, close_price, gainers_count, losers_count):
         """
         Same as market_domination_signal but using TimesGPT
         to forecast it this means we get ahead of the market_domination before it reverses.
@@ -218,6 +217,6 @@ class MarketDominationAlgo:
                         bb_spreads=None,
                     )
 
-                    self.ti.producer.send(
+                    await self.ti.producer.send(
                         KafkaTopics.signals.value, value=value.model_dump_json()
                     )
