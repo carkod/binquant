@@ -149,7 +149,6 @@ class MarketDominationAlgo:
             """
 
             value = SignalsConsumer(
-                autotrade=False,
                 current_price=self.close_price,
                 msg=msg,
                 symbol=self.ti.symbol,

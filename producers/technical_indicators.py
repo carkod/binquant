@@ -195,7 +195,9 @@ class TechnicalIndicators:
         st = ta.supertrend(
             self.df_1h["high"], self.df_1h["low"], self.df_1h["close"], 10, 3
         )
-        self.df_1h["supertrend"] = st["SUPERT_10_3.0"]
+        if st is not None:
+            self.df_1h["supertrend"] = st["SUPERT_10_3.0"]
+
         return
 
     def set_twap(self, periods: int = 12, interval=4) -> None:

@@ -78,7 +78,6 @@ async def data_analytics_pipe() -> None:
                 )
 
             if message.topic == KafkaTopics.signals.value:
-                logging.info("Received signals")
                 await telegram_consumer.send_msg(message.value)
                 await at_consumer.process_autotrade_restrictions(message.value)
 
