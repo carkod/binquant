@@ -120,7 +120,9 @@ class AutotradeConsumer(BinbotApi):
             else:
                 # Test autotrade runs independently of autotrade = 1
                 test_autotrade = Autotrade(
-                    symbol, self.test_autotrade_settings, data.algo, "paper_trading"
+                    pair=symbol,
+                    settings=self.test_autotrade_settings,
+                    algorithm_name=data.algo,
                 )
                 await test_autotrade.activate_autotrade(data)
 
@@ -145,7 +147,10 @@ class AutotradeConsumer(BinbotApi):
             else:
                 if self.is_margin_available(symbol=symbol):
                     autotrade = Autotrade(
-                        symbol, self.autotrade_settings, data.algo, "bots"
+                        pair=symbol,
+                        settings=self.autotrade_settings,
+                        algorithm_name=data.algo,
+                        db_collection_name="bots",
                     )
                     await autotrade.activate_autotrade(data)
 

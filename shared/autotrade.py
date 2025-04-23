@@ -3,6 +3,8 @@ import logging
 import math
 from datetime import datetime
 
+from aiokafka import AIOKafkaProducer
+
 from models.bot import BotModel
 from models.signals import SignalsConsumer
 from producers.base import AsyncProducer
@@ -14,7 +16,11 @@ from shared.utils import round_numbers, supress_notation
 
 class Autotrade(AsyncProducer, BinbotApi):
     def __init__(
-        self, pair, settings, algorithm_name, db_collection_name="paper_trading"
+        self,
+        pair,
+        settings,
+        algorithm_name,
+        db_collection_name="paper_trading",
     ) -> None:
         """
         Initialize automatic bot trading.
@@ -50,6 +56,7 @@ class Autotrade(AsyncProducer, BinbotApi):
         self.db_collection_name = db_collection_name
         # restart streams after bot activation
         super().__init__()
+        self.producer: AIOKafkaProducer
 
     def _set_bollinguer_spreads(self, data: SignalsConsumer):
         bb_spreads = data.bb_spreads

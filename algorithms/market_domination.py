@@ -26,6 +26,7 @@ class MarketDominationAlgo:
         self.reversal = False
         self.market_domination_data = cls.market_domination_data
         self.btc_price = 0
+        self.autotrade = True
 
     def time_gpt_forecast(self):
         """
@@ -94,15 +95,14 @@ class MarketDominationAlgo:
                 gainers_count[-2] > losers_count[-2]
                 and gainers_count[-3] > losers_count[-3]
                 # More than 60% it's way past reversal
-                # and proportion < 0.6
+                and proportion < 0.6
             ):
                 self.reversal = True
                 self.bot_strategy = Strategy.long
+                return
 
         if gainers_count[-1] < losers_count[-1]:
             self.current_market_dominance = MarketDominance.LOSERS
-            # temporarily disable margin short
-            return
 
             if (
                 gainers_count[-2] < losers_count[-2]
@@ -112,60 +112,73 @@ class MarketDominationAlgo:
                 # Negative reversal
                 self.reversal = True
                 self.bot_strategy = Strategy.margin_short
+                # Testing only
+                self.autotrade = False
+
+        self.reversal = False
+        return
 
     async def market_domination_signal(self, btc_correlation):
-        if not self.market_domination_data or datetime.now().minute == 0:
-            self.market_domination_data = await self.ti.binbot_api.get_market_domination_series()
+        if not self.market_domination_data or datetime.now().minute % 30 == 0:
+            self.market_domination_data = (
+                await self.ti.binbot_api.get_market_domination_series()
+            )
 
         if not self.market_domination_data:
             return
 
-        self.calculate_reversal()
         # Reduce network calls
-        if not self.btc_price == 0 or datetime.now().minute == 5:
+        if not self.btc_price == 0 or datetime.now().minute % 10 == 0:
+            self.calculate_reversal()
             self.btc_price = self.ti.binbot_api.get_latest_btc_price()
 
-        if self.reversal and self.current_market_dominance != MarketDominance.NEUTRAL:
             if (
-                self.current_market_dominance == MarketDominance.GAINERS
-                and btc_correlation > 0
-                and self.btc_price < 0
-            ) or (
-                self.current_market_dominance == MarketDominance.LOSERS
-                and btc_correlation < 0
-                and self.btc_price > 0
+                self.reversal
+                and self.current_market_dominance != MarketDominance.NEUTRAL
             ):
-                return
-            else:
-                strategy = Strategy.long
+                if (
+                    self.current_market_dominance == MarketDominance.GAINERS
+                    and btc_correlation > 0
+                    and self.btc_price < 0
+                ) or (
+                    self.current_market_dominance == MarketDominance.LOSERS
+                    and btc_correlation < 0
+                    and self.btc_price > 0
+                ):
+                    return
+                else:
+                    strategy = Strategy.long
 
-            algo = "market_domination_reversal"
-            msg = f"""
-            - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-            - Current price: {self.close_price}
-            - Strategy: {strategy}
-            - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
-            - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
-            """
+                algo = "market_domination_reversal"
+                msg = f"""
+                - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
+                - Current price: {self.close_price}
+                - Strategy: {strategy}
+                - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
+                - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
+                """
 
-            value = SignalsConsumer(
-                current_price=self.close_price,
-                msg=msg,
-                symbol=self.ti.symbol,
-                algo=algo,
-                bot_strategy=strategy,
-                bb_spreads=BollinguerSpread(
-                    bb_high=self.bb_high,
-                    bb_mid=self.bb_mid,
-                    bb_low=self.bb_low,
-                ),
-            )
+                value = SignalsConsumer(
+                    autotrade=self.autotrade,
+                    current_price=self.close_price,
+                    msg=msg,
+                    symbol=self.ti.symbol,
+                    algo=algo,
+                    bot_strategy=strategy,
+                    bb_spreads=BollinguerSpread(
+                        bb_high=self.bb_high,
+                        bb_mid=self.bb_mid,
+                        bb_low=self.bb_low,
+                    ),
+                )
 
-            await self.ti.producer.send(
-                KafkaTopics.signals.value, value=value.model_dump_json()
-            )
+                await self.ti.producer.send(
+                    KafkaTopics.signals.value, value=value.model_dump_json()
+                )
 
-    async def time_gpt_market_domination(self, close_price, gainers_count, losers_count):
+    async def time_gpt_market_domination(
+        self, close_price, gainers_count, losers_count
+    ):
         """
         Same as market_domination_signal but using TimesGPT
         to forecast it this means we get ahead of the market_domination before it reverses.

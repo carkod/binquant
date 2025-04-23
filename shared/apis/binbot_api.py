@@ -172,9 +172,7 @@ class BinbotApi(BinanceApi):
         return data
 
     def activate_paper_bot(self, bot_id):
-        data = self.request(
-            url=f"{self.bb_activate_test_bot_url}/{bot_id}", method="GET"
-        )
+        data = self.request(url=f"{self.bb_activate_test_bot_url}/{bot_id}")
         return data
 
     def get_active_pairs(self, collection_name="bots"):
