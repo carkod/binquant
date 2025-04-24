@@ -86,16 +86,17 @@ class MarketDominationAlgo:
             gainers_count[-1] + losers_count[-1]
         )
 
-        # Check reversal
+        # Check current market dominance
         if gainers_count[-1] > losers_count[-1]:
             # Update current market dominance
             self.current_market_dominance = MarketDominance.GAINERS
 
+            # Now check reversal (tides turning?)
             if (
-                gainers_count[-2] > losers_count[-2]
-                and gainers_count[-3] > losers_count[-3]
+                gainers_count[-2] < losers_count[-2]
+                and gainers_count[-3] < losers_count[-3]
                 # More than 60% it's way past reversal
-                and proportion < 0.6
+                and proportion < 0.65
             ):
                 self.reversal = True
                 self.bot_strategy = Strategy.long
@@ -105,8 +106,8 @@ class MarketDominationAlgo:
             self.current_market_dominance = MarketDominance.LOSERS
 
             if (
-                gainers_count[-2] < losers_count[-2]
-                and (gainers_count[-3] < losers_count[-3])
+                gainers_count[-2] > losers_count[-2]
+                and (gainers_count[-3] > losers_count[-3])
                 and proportion < 0.6
             ):
                 # Negative reversal
@@ -128,9 +129,11 @@ class MarketDominationAlgo:
             return
 
         # Reduce network calls
-        if not self.btc_price == 0 or datetime.now().minute % 10 == 0:
-            self.calculate_reversal()
-            self.btc_price = self.ti.binbot_api.get_latest_btc_price()
+        if datetime.now().minute % 10 == 0:
+            if not self.btc_price == 0:
+                self.btc_price = self.ti.binbot_api.get_latest_btc_price()
+
+            self.calculate_reversal()           
 
             if (
                 self.reversal
@@ -183,7 +186,7 @@ class MarketDominationAlgo:
         Same as market_domination_signal but using TimesGPT
         to forecast it this means we get ahead of the market_domination before it reverses.
         """
-
+  
         # Due to 50 requests per month limit
         # run only once a day for testing
         if (

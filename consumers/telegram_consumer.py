@@ -3,6 +3,7 @@ import os
 
 from telegram import Bot
 from telegram.constants import ParseMode
+from models.signals import SignalsConsumer
 
 
 class TelegramConsumer:
@@ -24,3 +25,10 @@ class TelegramConsumer:
             await self.bot.send_message(
                 self.chat_id, text=message, parse_mode=ParseMode.HTML
             )
+
+    async def send_signal(self, result):
+        payload = json.loads(result)
+        data = SignalsConsumer(**payload)
+        await self.bot.send_message(
+            self.chat_id, text=data.msg, parse_mode=ParseMode.HTML
+        )

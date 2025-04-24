@@ -78,13 +78,11 @@ async def data_analytics_pipe() -> None:
                 )
 
             if message.topic == KafkaTopics.signals.value:
-                await telegram_consumer.send_msg(message.value)
+                await telegram_consumer.send_signal(message.value)
                 await at_consumer.process_autotrade_restrictions(message.value)
 
             await consumer.commit()
 
-    except Exception as e:
-        logging.error(f"Error in data_analytics_pipe: {e}")
     finally:
         await consumer.stop()
 

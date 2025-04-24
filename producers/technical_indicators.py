@@ -200,15 +200,18 @@ class TechnicalIndicators:
 
         return
 
-    def set_twap(self, periods: int = 12, interval=4) -> None:
+    def set_twap(self, periods: int = 4, interval=4) -> None:
         """
         Time-weighted average price
         https://stackoverflow.com/a/69517577/2454059
+
+        Periods kept at 4 by default,
+        otherwise there's not enough data
         """
         pre_df = self.df_4h.copy()
         pre_df["Event Time"] = pandas.to_datetime(pre_df["close_time"])
         pre_df["Time Diff"] = (
-            pre_df["Event Time"].diff(periods=periods).dt.total_seconds() / 3600
+            pre_df["Event Time"].diff(periods=1).dt.total_seconds() / 3600
         )
         pre_df["Weighted Value"] = pre_df["close"] * pre_df["Time Diff"]
         pre_df["Weighted Average"] = (

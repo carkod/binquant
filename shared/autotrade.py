@@ -157,6 +157,7 @@ class Autotrade(AsyncProducer, BinbotApi):
             # Dynamic switch to real bot URLs
             create_func = self.create_paper_bot
             activate_func = self.activate_paper_bot
+            errors_func = self.submit_paper_trading_event_logs
 
             if self.default_bot.strategy == Strategy.margin_short:
                 self.set_margin_short_values(data)
@@ -174,6 +175,7 @@ class Autotrade(AsyncProducer, BinbotApi):
         if self.db_collection_name == "bots":
             create_func = self.create_bot
             activate_func = self.activate_bot
+            errors_func = self.submit_bot_event_logs
 
             if self.default_bot.strategy == Strategy.margin_short:
                 try:
@@ -208,7 +210,7 @@ class Autotrade(AsyncProducer, BinbotApi):
         create_bot = create_func(payload)
 
         if "error" in create_bot and create_bot["error"] == 1:
-            self.submit_bot_event_logs(create_bot["botId"], create_bot["message"])
+            errors_func(create_bot["botId"], create_bot["message"])
             return
 
         # Activate bot
@@ -218,7 +220,7 @@ class Autotrade(AsyncProducer, BinbotApi):
 
         if "error" in bot and bot["error"] > 0:
             message = bot["message"]
-            self.submit_bot_event_logs(bot_id, message)
+            errors_func(bot_id, message)
             if self.default_bot.strategy == Strategy.margin_short:
                 self.clean_margin_short(self.default_bot.pair)
             self.delete_bot(bot_id)
@@ -227,7 +229,7 @@ class Autotrade(AsyncProducer, BinbotApi):
         else:
             value = {"botId": bot_id, "action": "AUTOTRADE_ACTIVATION"}
             message = f"Succesful {self.db_collection_name} autotrade, opened with {self.pair}!"
-            self.submit_bot_event_logs(bot_id, message)
+            errors_func(bot_id, message)
             # Send message to restart streaming at the end to avoid blocking
             # Message is sent only after activation is successful,
             # if bot activation failed, we want to try again with a new bot
@@ -236,3 +238,4 @@ class Autotrade(AsyncProducer, BinbotApi):
                 value=json.dumps(value),
                 partition=0,
             )
+            await self.producer.flush()

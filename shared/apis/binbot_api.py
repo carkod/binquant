@@ -37,6 +37,7 @@ class BinbotApi(BinanceApi):
     bb_stop_buy_order_url = f"{bb_base_url}/order/buy/stop-limit"
     bb_stop_sell_order_url = f"{bb_base_url}/order/sell/stop-limit"
     bb_submit_errors = f"{bb_base_url}/bot/errors"
+    bb_pt_submit_errors_url = f"{bb_base_url}/paper-trading/errors"
     bb_liquidation_url = f"{bb_base_url}/account/one-click-liquidation"
 
     # balances
@@ -135,7 +136,15 @@ class BinbotApi(BinanceApi):
         data = self.request(
             url=f"{self.bb_submit_errors}/{bot_id}",
             method="POST",
-            json={"errors": message},
+            json={"errors": [message]},
+        )
+        return data
+
+    def submit_paper_trading_event_logs(self, bot_id, message):
+        data = self.request(
+            url=f"{self.bb_test_bot_url}/{bot_id}/errors",
+            method="POST",
+            json={"errors": [message]},
         )
         return data
 

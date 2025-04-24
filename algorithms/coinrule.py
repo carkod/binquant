@@ -87,7 +87,7 @@ async def supertrend_swing_reversal(
         or prev_last_supertrend > prev_close_price
         or prev_prev_last_supertrend > prev_prev_close_price
     ) and (last_rsi < 30 or prev_last_rsi < 30 or prev_prev_last_rsi < 30):
-        algo = "coinrule_twap_momentum_sniper"
+        algo = "coinrule_supertrend_swing_reversal"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
         bot_strategy = Strategy.long
 
