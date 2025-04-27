@@ -34,7 +34,7 @@ class TelegramConsumer:
         lines = [
             line.strip() for line in lines if line.strip()
         ]  # Strip each line, remove empty ones
-        cleaned_message = "\n".join(lines)  # Join lines back with a single newline
+        cleaned_message = "\n".join(lines)
         await self.bot.send_message(
             self.chat_id, text=cleaned_message, parse_mode=ParseMode.HTML
         )
