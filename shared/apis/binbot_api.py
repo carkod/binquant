@@ -142,7 +142,7 @@ class BinbotApi(BinanceApi):
 
     def submit_paper_trading_event_logs(self, bot_id, message):
         data = self.request(
-            url=f"{self.bb_test_bot_url}/{bot_id}/errors",
+            url=f"{self.bb_pt_submit_errors_url}/{bot_id}",
             method="POST",
             json={"errors": [message]},
         )

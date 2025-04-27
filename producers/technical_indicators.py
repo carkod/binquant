@@ -294,8 +294,7 @@ class TechnicalIndicators:
                 bb_mid=bb_mid,
             )
             await mda.market_domination_signal(btc_correlation=btc_correlation)
-            # Activate next month
-            # await mda.time_gpt_market_domination()
+            await mda.time_gpt_market_domination(close_price=close_price)
 
             await ma_candlestick_jump(
                 self,

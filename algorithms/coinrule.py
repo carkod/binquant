@@ -95,8 +95,8 @@ async def supertrend_swing_reversal(
         - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {bot_strategy.value}
-        - RSI (< 30): {last_rsi}
-        - Supertrend (> current price): {round_numbers(last_supertrend)}
+        - RSI smaller than 30: {last_rsi}
+        - Supertrend larger than current price: {round_numbers(last_supertrend)}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """

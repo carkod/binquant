@@ -1,4 +1,3 @@
-import json
 import logging
 import math
 from datetime import datetime
@@ -9,7 +8,7 @@ from models.bot import BotModel
 from models.signals import SignalsConsumer
 from producers.base import AsyncProducer
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import CloseConditions, KafkaTopics, Strategy
+from shared.enums import CloseConditions, Strategy
 from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, supress_notation
 
@@ -227,15 +226,6 @@ class Autotrade(AsyncProducer, BinbotApi):
             raise AutotradeError(message)
 
         else:
-            value = {"botId": bot_id, "action": "AUTOTRADE_ACTIVATION"}
             message = f"Succesful {self.db_collection_name} autotrade, opened with {self.pair}!"
             errors_func(bot_id, message)
-            # Send message to restart streaming at the end to avoid blocking
-            # Message is sent only after activation is successful,
-            # if bot activation failed, we want to try again with a new bot
-            await self.producer.send(
-                KafkaTopics.restart_streaming.value,
-                value=json.dumps(value),
-                partition=0,
-            )
-            await self.producer.flush()
+            # restart streaming is not necessary, because activation already did it

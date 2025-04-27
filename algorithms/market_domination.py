@@ -133,7 +133,7 @@ class MarketDominationAlgo:
             if not self.btc_price == 0:
                 self.btc_price = self.ti.binbot_api.get_latest_btc_price()
 
-            self.calculate_reversal()           
+            self.calculate_reversal()
 
             if (
                 self.reversal
@@ -179,14 +179,12 @@ class MarketDominationAlgo:
                     KafkaTopics.signals.value, value=value.model_dump_json()
                 )
 
-    async def time_gpt_market_domination(
-        self, close_price, gainers_count, losers_count
-    ):
+    async def time_gpt_market_domination(self, close_price):
         """
         Same as market_domination_signal but using TimesGPT
         to forecast it this means we get ahead of the market_domination before it reverses.
         """
-  
+
         # Due to 50 requests per month limit
         # run only once a day for testing
         if (
@@ -197,6 +195,8 @@ class MarketDominationAlgo:
             self.msf = self.time_gpt_forecast()
 
             if self.msf:
+                gainers_count = self.market_domination_data["gainers_count"]
+                losers_count = self.market_domination_data["losers_count"]
                 forecasted_gainers = self.msf["gainers_count"].values[0]
                 total_count = gainers_count[-1:] + losers_count[-1:]
                 forecasted_losers = total_count - forecasted_gainers
