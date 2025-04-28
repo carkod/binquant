@@ -110,6 +110,18 @@ class BinanceApi:
         data = self.request(url=self.ticker_price_url, params={"symbol": symbol})
         return data
 
+    def ticker_24(self, symbol: str | None = None):
+        """
+        Weight 40 without symbol
+        https://github.com/carkod/binbot/issues/438
+
+        Using cache
+        """
+        data = self.request(
+            method="GET", url=self.ticker24_url, params={"symbol": symbol}
+        )
+        return data
+
     def launchpool_projects(self):
         data = self.request(url=self.launchpool_url, headers={"User-Agent": "Mozilla"})
         return data

@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
 
-def price_rise_15(
+async def price_rise_15(
     cls: "TechnicalIndicators",
     close_price,
     symbol,
@@ -78,10 +78,6 @@ def price_rise_15(
         ),
     )
 
-    cls.producer.send(
-        KafkaTopics.signals.value, value=value.model_dump_json()
-    ).add_callback(cls.base_producer.on_send_success).add_errback(
-        cls.base_producer.on_send_error
-    )
+    await cls.producer.send(KafkaTopics.signals.value, value=value.model_dump_json())
 
     return

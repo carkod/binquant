@@ -21,6 +21,8 @@ async def main():
 
 
 if __name__ == "__main__":
+    logging.getLogger("aiokafka").setLevel(os.environ["LOG_LEVEL"])
+
     try:
         asyncio.run(main())
     except Exception as error:

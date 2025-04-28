@@ -27,7 +27,9 @@ class SignalsConsumer(BaseModel):
     algo: str
     bot_strategy: Strategy = Field(default=Strategy.long)
     bb_spreads: BollinguerSpread | None
-    autotrade: bool = Field(default=True, description="If it is in testing mode, False")
+    autotrade: bool = Field(
+        default=True, description="If it is in testing mode = False"
+    )
 
     model_config = ConfigDict(
         extra="allow",

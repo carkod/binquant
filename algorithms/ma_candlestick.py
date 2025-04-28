@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 # Algorithms based on Bollinguer bands
 
 
-def ma_candlestick_jump(
+async def ma_candlestick_jump(
     cls: "TechnicalIndicators",
     close_price,
     open_price,
@@ -23,6 +23,7 @@ def ma_candlestick_jump(
     bb_high,
     bb_mid,
     bb_low,
+    btc_correlation,
 ):
     """
     Candlesticks are in an upward trending motion for several periods
@@ -64,7 +65,6 @@ def ma_candlestick_jump(
             # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
             bot_strategy = Strategy.long
         else:
-            btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
             # Negative correlation with BTC and when market is downtrend
             # means this crypto is good for hedging against BTC going down
             if (
@@ -79,6 +79,8 @@ def ma_candlestick_jump(
                 and cls.current_market_dominance == MarketDominance.LOSERS
             ):
                 bot_strategy = Strategy.margin_short
+                # temporarily disable margin bots
+                return
 
             else:
                 return
@@ -109,16 +111,14 @@ def ma_candlestick_jump(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     return
 
 
-def ma_candlestick_drop(
+async def ma_candlestick_drop(
     cls: "TechnicalIndicators",
     close_price,
     open_price,
@@ -163,6 +163,8 @@ def ma_candlestick_drop(
                 # but looks like it's dropping and going bearish (reversal)
                 # candlesticks of this specific crypto are seeing a huge drop (candlstick drop algo)
                 bot_strategy = Strategy.margin_short
+                # temporarily disable margin bots
+                return
             else:
                 # market is bearish, most prices decreasing, (LOSERS)
                 # but looks like it's picking up and going bullish (reversal)
@@ -196,10 +198,8 @@ def ma_candlestick_drop(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     return

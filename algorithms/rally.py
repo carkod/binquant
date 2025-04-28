@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
 
-def rally_or_pullback(
+async def rally_or_pullback(
     cls: "TechnicalIndicators",
     close_price,
     ma_25,
@@ -82,10 +82,8 @@ def rally_or_pullback(
             ),
         )
 
-        cls.producer.send(
+        await cls.producer.send(
             KafkaTopics.signals.value, value=value.model_dump_json()
-        ).add_callback(cls.base_producer.on_send_success).add_errback(
-            cls.base_producer.on_send_error
         )
 
     return

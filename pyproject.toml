@@ -21,6 +21,7 @@ dependencies = [
     "scipy>=1.14.1",
     "pandas-ta==0.3.14b0",
     "numpy==1.26.4",
+    "aiohttp>=3.11.17",
 ]
 
 [dependency-groups]

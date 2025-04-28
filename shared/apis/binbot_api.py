@@ -1,9 +1,11 @@
 import os
 
+from aiohttp import ClientSession
 from dotenv import load_dotenv
 
 from shared.apis.binance_api import BinanceApi
 from shared.enums import Status
+from shared.utils import aio_response_handler
 
 load_dotenv()
 
@@ -21,7 +23,6 @@ class BinbotApi(BinanceApi):
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
-    bb_ticker24 = f"{bb_base_url}/charts/ticker-24"
     bb_btc_correlation_url = f"{bb_base_url}/charts/btc-correlation"
 
     # Trade operations
@@ -36,6 +37,7 @@ class BinbotApi(BinanceApi):
     bb_stop_buy_order_url = f"{bb_base_url}/order/buy/stop-limit"
     bb_stop_sell_order_url = f"{bb_base_url}/order/sell/stop-limit"
     bb_submit_errors = f"{bb_base_url}/bot/errors"
+    bb_pt_submit_errors_url = f"{bb_base_url}/paper-trading/errors"
     bb_liquidation_url = f"{bb_base_url}/account/one-click-liquidation"
 
     # balances
@@ -60,6 +62,17 @@ class BinbotApi(BinanceApi):
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
     bb_test_active_pairs = f"{bb_base_url}/paper/active-pairs"
 
+    """
+    Async HTTP client/server for asyncio
+    that replaces requests library
+    """
+
+    async def fetch(self, url, method="GET", **kwargs):
+        async with ClientSession() as session:
+            async with session.request(method=method, url=url, **kwargs) as response:
+                data = await aio_response_handler(response)
+                return data
+
     def get_available_fiat(self):
         response = self.request(url=self.bb_available_fiat_url)
         return response["data"]
@@ -72,21 +85,11 @@ class BinbotApi(BinanceApi):
         response = self.request(url=f"{self.bb_one_symbol_url}/{symbol}")
         return response["data"]
 
-    def get_market_domination_series(self, size=200):
-        response = self.request(url=self.bb_market_domination, params={"size": size})
-        return response["data"]
-
-    def ticker_24(self, symbol: str | None = None):
-        """
-        Weight 40 without symbol
-        https://github.com/carkod/binbot/issues/438
-
-        Using cache
-        """
-        data = self.request(
-            method="GET", url=self.ticker24_url, params={"symbol": symbol}
+    async def get_market_domination_series(self, size=200):
+        response = await self.fetch(
+            url=self.bb_market_domination, params={"size": size}
         )
-        return data
+        return response["data"]
 
     def get_latest_btc_price(self):
         # Get 24hr last BTCUSDC
@@ -133,7 +136,15 @@ class BinbotApi(BinanceApi):
         data = self.request(
             url=f"{self.bb_submit_errors}/{bot_id}",
             method="POST",
-            json={"errors": message},
+            json={"errors": [message]},
+        )
+        return data
+
+    def submit_paper_trading_event_logs(self, bot_id, message):
+        data = self.request(
+            url=f"{self.bb_pt_submit_errors_url}/{bot_id}",
+            method="POST",
+            json={"errors": [message]},
         )
         return data
 
@@ -170,9 +181,7 @@ class BinbotApi(BinanceApi):
         return data
 
     def activate_paper_bot(self, bot_id):
-        data = self.request(
-            url=f"{self.bb_activate_test_bot_url}/{bot_id}", method="GET"
-        )
+        data = self.request(url=f"{self.bb_activate_test_bot_url}/{bot_id}")
         return data
 
     def get_active_pairs(self, collection_name="bots"):
@@ -188,12 +197,12 @@ class BinbotApi(BinanceApi):
         )
         return res["data"]
 
-    def get_top_gainers(self):
+    async def get_top_gainers(self):
         """
         Top crypto/token/coin gainers of the day
         """
-        data = self.request(url=self.bb_top_gainers)
-        return data
+        response = await self.fetch(url=self.bb_top_gainers)
+        return response["data"]
 
     def get_btc_correlation(self, symbol) -> float:
         """

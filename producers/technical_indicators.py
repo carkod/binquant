@@ -3,15 +3,15 @@ from datetime import datetime, timedelta
 
 import pandas
 import pandas_ta as ta
+from aiokafka import AIOKafkaProducer
 
 from algorithms.coinrule import (
     buy_low_sell_high,
-    fast_and_slow_macd,
     supertrend_swing_reversal,
     twap_momentum_sniper,
 )
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
-from algorithms.timeseries_gpt import time_gpt_market_domination
+from algorithms.market_domination import MarketDominationAlgo
 from algorithms.top_gainer_drop import top_gainers_drop
 from shared.apis.binbot_api import BinbotApi
 from shared.apis.time_gpt import TimeseriesGPT
@@ -21,7 +21,15 @@ from shared.utils import round_numbers
 
 class TechnicalIndicators:
     def __init__(
-        self, base_producer, producer, binbot_api: BinbotApi, df, symbol, df_4h, df_1h
+        self,
+        producer: AIOKafkaProducer,
+        binbot_api: BinbotApi,
+        df,
+        symbol,
+        df_4h,
+        df_1h,
+        market_domination_data,
+        top_gainers_day,
     ) -> None:
         """
         Only variables
@@ -29,7 +37,6 @@ class TechnicalIndicators:
         or pipeline instances
         That will cause a lot of network requests
         """
-        self.base_producer = base_producer
         self.producer = producer
         self.binbot_api = binbot_api
         self.df = df
@@ -44,6 +51,8 @@ class TechnicalIndicators:
         self.bot_strategy: Strategy = Strategy.long
         self.top_coins_gainers: list[str] = []
         self.times_gpt_api = TimeseriesGPT()
+        self.market_domination_data = market_domination_data
+        self.top_gainers_day = top_gainers_day
         pass
 
     def check_kline_gaps(self, data):
@@ -186,18 +195,23 @@ class TechnicalIndicators:
         st = ta.supertrend(
             self.df_1h["high"], self.df_1h["low"], self.df_1h["close"], 10, 3
         )
-        self.df_1h["supertrend"] = st["SUPERT_10_3.0"]
+        if st is not None:
+            self.df_1h["supertrend"] = st["SUPERT_10_3.0"]
+
         return
 
-    def set_twap(self, periods: int = 12, interval=4) -> None:
+    def set_twap(self, periods: int = 4, interval=4) -> None:
         """
         Time-weighted average price
         https://stackoverflow.com/a/69517577/2454059
+
+        Periods kept at 4 by default,
+        otherwise there's not enough data
         """
         pre_df = self.df_4h.copy()
         pre_df["Event Time"] = pandas.to_datetime(pre_df["close_time"])
         pre_df["Time Diff"] = (
-            pre_df["Event Time"].diff(periods=periods).dt.total_seconds() / 3600
+            pre_df["Event Time"].diff(periods=1).dt.total_seconds() / 3600
         )
         pre_df["Weighted Value"] = pre_df["close"] * pre_df["Time Diff"]
         pre_df["Weighted Average"] = (
@@ -208,99 +222,7 @@ class TechnicalIndicators:
 
         return
 
-    def time_gpt_forecast(self, data):
-        """
-        Forecasting using GPT-3
-        """
-
-        dates = data["dates"][-10:]
-        gainers_count = data["gainers_count"][-10:]
-        losers_count = data["losers_count"][-10:]
-        forecast_df = pandas.DataFrame(
-            {
-                "dates": dates,
-                "gainers_count": pandas.Series(gainers_count),
-            }
-        )
-        forecast_df["unique_id"] = forecast_df.index
-        df_x = pandas.DataFrame(
-            {
-                "dates": dates,
-                "ex_1": losers_count,
-            }
-        )
-        df_x["unique_id"] = df_x.index
-        self.msf = self.times_gpt_api.multiple_series_forecast(
-            df=forecast_df, df_x=df_x
-        )
-
-        return self.msf
-
-    def market_domination(self) -> tuple[list[str], list[str], dict | None]:
-        """
-        Get data from gainers and losers endpoint to analyze market trends
-
-        We want to know when it's more suitable to do long positions
-        when it's more suitable to do short positions
-        For now setting threshold to 70% i.e.
-        if > 70% of assets in a given market (USDT) dominated by gainers
-        if < 70% of assets in a given market dominated by losers
-        Establish the timing
-        """
-        # if datetime.now().minute == 0:
-        logging.info(
-            f"Performing market domination analyses. Current trend: {self.current_market_dominance}"
-        )
-        data = self.binbot_api.get_market_domination_series()
-        top_gainers_day = self.binbot_api.get_top_gainers()["data"]
-        self.top_coins_gainers = [item["symbol"] for item in top_gainers_day]
-        # reverse to make latest series more important
-        data["gainers_count"].reverse()
-        data["losers_count"].reverse()
-        gainers_count = data["gainers_count"]
-        losers_count = data["losers_count"]
-        # no data from db
-        if len(gainers_count) < 2 and len(losers_count) < 2:
-            return [], [], {}
-
-        # if len(data["dates"]) > 51:
-        #     msf = self.time_gpt_forecast(data)
-        msf: dict | None = None
-
-        # Proportion indicates whether trend is significant or not
-        # to be replaced by TimesGPT if that works better
-        proportion = max(gainers_count[-1], losers_count[-1]) / (
-            gainers_count[-1] + losers_count[-1]
-        )
-
-        # Check reversal
-        if gainers_count[-1] > losers_count[-1]:
-            # Update current market dominance
-            self.current_market_dominance = MarketDominance.GAINERS
-
-            if (
-                gainers_count[-2] > losers_count[-2]
-                and gainers_count[-3] > losers_count[-3]
-                and proportion < 0.6
-            ):
-                self.market_domination_reversal = True
-                self.bot_strategy = Strategy.long
-
-        if gainers_count[-1] < losers_count[-1]:
-            self.current_market_dominance = MarketDominance.LOSERS
-
-            if (
-                gainers_count[-2] < losers_count[-2]
-                and (gainers_count[-3] < losers_count[-3])
-                and proportion < 0.6
-            ):
-                # Negative reversal
-                self.market_domination_reversal = True
-                self.bot_strategy = Strategy.margin_short
-
-        return gainers_count, losers_count, msf
-
-    def publish(self):
+    async def publish(self):
         """
         Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
 
@@ -349,10 +271,7 @@ class TechnicalIndicators:
 
             close_price = float(self.df.close[len(self.df.close) - 1])
             open_price = float(self.df.open[len(self.df.open) - 1])
-            macd = float(self.df.macd[len(self.df.macd) - 1])
-            macd_signal = float(self.df.macd_signal[len(self.df.macd_signal) - 1])
             rsi = float(self.df.rsi[len(self.df.rsi) - 1])
-
             ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
             ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
             ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
@@ -364,34 +283,20 @@ class TechnicalIndicators:
                 self.df.perc_volatility[len(self.df.perc_volatility) - 1]
             )
 
-            gainers_count, losers_count, msf = self.market_domination()
             bb_high, bb_mid, bb_low = self.bb_spreads()
+            btc_correlation = self.binbot_api.get_btc_correlation(symbol=self.symbol)
 
-            if len(gainers_count) > 0 and len(losers_count) > 0 and msf:
-                # Due to high cost, use only 9am in the morning when markets open
-                # there are possible reversals
-                time_gpt_market_domination(
-                    cls=self,
-                    close_price=close_price,
-                    gainers_count=gainers_count,
-                    losers_count=losers_count,
-                    msf=msf,
-                )
-
-            fast_and_slow_macd(
-                self,
-                close_price,
-                macd,
-                macd_signal,
-                ma_7,
-                ma_25,
-                volatility,
+            mda = MarketDominationAlgo(
+                cls=self,
+                close_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
+            await mda.market_domination_signal(btc_correlation=btc_correlation)
+            await mda.time_gpt_market_domination(close_price=close_price)
 
-            ma_candlestick_jump(
+            await ma_candlestick_jump(
                 self,
                 close_price,
                 open_price,
@@ -403,9 +308,10 @@ class TechnicalIndicators:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
+                btc_correlation=btc_correlation,
             )
 
-            ma_candlestick_drop(
+            await ma_candlestick_drop(
                 self,
                 close_price=close_price,
                 open_price=open_price,
@@ -419,7 +325,7 @@ class TechnicalIndicators:
                 bb_low=bb_low,
             )
 
-            buy_low_sell_high(
+            await buy_low_sell_high(
                 self,
                 close_price=close_price,
                 rsi=rsi,
@@ -441,7 +347,7 @@ class TechnicalIndicators:
             #     volatility=volatility,
             # )
 
-            top_gainers_drop(
+            await top_gainers_drop(
                 self,
                 close_price=close_price,
                 open_price=open_price,
@@ -450,7 +356,8 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-            supertrend_swing_reversal(
+
+            await supertrend_swing_reversal(
                 self,
                 close_price=close_price,
                 bb_high=bb_high,
@@ -458,7 +365,7 @@ class TechnicalIndicators:
                 bb_mid=bb_mid,
             )
 
-            twap_momentum_sniper(
+            await twap_momentum_sniper(
                 self,
                 close_price=close_price,
                 bb_high=bb_high,
