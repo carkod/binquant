@@ -50,9 +50,6 @@ class MarketDominationAlgo:
                 }
             )
             df_x["unique_id"] = df_x.index
-            # self.msf = self.ti.times_gpt_api.multiple_series_forecast(
-            #     df=forecast_df, df_x=df_x
-            # )
             self.msf = self.ti.times_gpt_api.multiple_series_forecast(
                 df=forecast_df, df_x=df_x
             )
@@ -99,7 +96,7 @@ class MarketDominationAlgo:
                 gainers_count[-2] < losers_count[-2]
                 # and gainers_count[-3] < losers_count[-3]
                 # More than 60% it's way past reversal
-                and proportion < 0.65
+                and proportion > 0.65
             ):
                 self.reversal = True
                 self.bot_strategy = Strategy.long
@@ -118,6 +115,7 @@ class MarketDominationAlgo:
                 self.bot_strategy = Strategy.margin_short
                 # Testing only
                 self.autotrade = False
+                return
 
         self.reversal = False
         return
@@ -196,43 +194,39 @@ class MarketDominationAlgo:
             and (datetime.now().hour == 9 and datetime.now().minute == 0)
         ):
             self.msf = self.time_gpt_forecast()
-            # self.msf = [
-            #     [0, "2025-04-20 03:00:00", 133.73448181152344],
-            #     [1, "2025-04-20 02:00:00", 126.03958892822266],
-            #     [2, "2025-04-20 01:00:00", 119.29606628417969],
-            #     [3, "2025-04-20 00:00:00", 108.70953369140625],
-            #     [4, "2025-04-19 23:00:00", 77.91168975830078],
-            #     [5, "2025-04-19 22:00:00", 104.86540222167969],
-            #     [6, "2025-04-19 21:00:00", 65.39773559570312],
-            #     [7, "2025-04-19 20:00:00", 88.49836730957031],
-            #     [8, "2025-04-19 19:00:00", 136.6216278076172],
-            #     [9, "2025-04-19 18:00:00", 97.16024017333984],
-            # ]
 
             if self.msf:
                 gainers_count = self.market_domination_data["gainers_count"]
                 losers_count = self.market_domination_data["losers_count"]
                 forecasted_gainers = self.msf[0][2]
-                total_count = gainers_count[-1:] + losers_count[-1:]
+                total_count = gainers_count[-1:][0] + losers_count[-1:][0]
                 forecasted_losers = total_count - forecasted_gainers
 
-                if forecasted_gainers > forecasted_losers:
-                    # Update current market dominance
-                    self.ti.current_market_dominance = MarketDominance.GAINERS
+                time_gpt_reversal = False
+                strategy = self.ti.bot_strategy
 
+                if forecasted_gainers > forecasted_losers:
                     if (
                         gainers_count[-1] > losers_count[-1]
                         and gainers_count[-2] > losers_count[-2]
                     ):
-                        self.reversal = True
-                        self.ti.bot_strategy = Strategy.long
+                        time_gpt_reversal = True
+                        strategy = Strategy.long
+
+                else:
+                    if gainers_count[-1] < losers_count[-1]:
+                        time_gpt_reversal = True
+                        strategy = Strategy.margin_short
+                        return
+                    
 
                     algo = "time_gpt_reversal"
 
                     msg = f"""
                     - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
                     - Current price: {close_price}
-                    - Strategy: {self.ti.bot_strategy.value}
+                    - Strategy: {strategy.value}
+                    - TimeGPT forecasted reversal: {time_gpt_reversal}
                     - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
                     - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
                     """
