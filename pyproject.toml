@@ -20,7 +20,7 @@ dependencies = [
     "python-telegram-bot>=21.7",
     "scipy>=1.14.1",
     "pandas-ta==0.3.14b0",
-    "numpy==1.26.4",
+    "numpy==2.2.5",
     "aiohttp>=3.11.17",
 ]
 
