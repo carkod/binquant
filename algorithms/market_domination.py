@@ -3,8 +3,6 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from pandas import DataFrame, Series
-
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
 
@@ -22,39 +20,10 @@ class MarketDominationAlgo:
         self.bb_low = bb_low
         self.bb_mid = bb_mid
         self.current_market_dominance = MarketDominance.NEUTRAL
-        self.msf: list = []
         self.reversal = False
         self.market_domination_data = cls.market_domination_data
         self.btc_price = 0
         self.autotrade = True
-
-    def time_gpt_forecast(self):
-        """
-        Forecasting using GPT-3
-        """
-        if self.market_domination_data:
-            dates = self.market_domination_data["dates"][-10:]
-            gainers_count = self.market_domination_data["gainers_count"][-10:]
-            losers_count = self.market_domination_data["losers_count"][-10:]
-            forecast_df = DataFrame(
-                {
-                    "dates": dates,
-                    "gainers_count": Series(gainers_count),
-                }
-            )
-            forecast_df["unique_id"] = forecast_df.index
-            df_x = DataFrame(
-                {
-                    "dates": dates,
-                    "ex_1": losers_count,
-                }
-            )
-            df_x["unique_id"] = df_x.index
-            self.msf = self.ti.times_gpt_api.multiple_series_forecast(
-                df=forecast_df, df_x=df_x
-            )
-
-        return self.msf
 
     def calculate_reversal(self) -> None:
         """
@@ -182,67 +151,3 @@ class MarketDominationAlgo:
                 await self.ti.producer.send(
                     KafkaTopics.signals.value, value=value.model_dump_json()
                 )
-
-    async def time_gpt_market_domination(self, close_price):
-        """
-        Same as market_domination_signal but using TimesGPT
-        to forecast it this means we get ahead of the market_domination before it reverses.
-        """
-
-        # Due to 50 requests per month limit
-        # run only once a day for testing
-        if (
-            self.market_domination_data
-            and len(self.market_domination_data["dates"]) > 51
-            and (datetime.now().hour == 9 and datetime.now().minute == 0)
-        ):
-            self.msf = self.time_gpt_forecast()
-
-            if self.msf:
-                gainers_count = self.market_domination_data["gainers_count"]
-                losers_count = self.market_domination_data["losers_count"]
-                forecasted_gainers = self.msf[0][2]
-                total_count = gainers_count[-1:][0] + losers_count[-1:][0]
-                forecasted_losers = total_count - forecasted_gainers
-
-                time_gpt_reversal = False
-                strategy = self.ti.bot_strategy
-
-                if forecasted_gainers > forecasted_losers:
-                    if (
-                        gainers_count[-1] > losers_count[-1]
-                        and gainers_count[-2] > losers_count[-2]
-                    ):
-                        time_gpt_reversal = True
-                        strategy = Strategy.long
-
-                else:
-                    if gainers_count[-1] < losers_count[-1]:
-                        time_gpt_reversal = True
-                        strategy = Strategy.margin_short
-                        return
-
-                    algo = "time_gpt_reversal"
-
-                    msg = f"""
-                    - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                    - Current price: {close_price}
-                    - Strategy: {strategy.value}
-                    - TimeGPT forecasted reversal: {time_gpt_reversal}
-                    - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
-                    - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
-                    """
-
-                    value = SignalsConsumer(
-                        autotrade=False,
-                        current_price=close_price,
-                        msg=msg,
-                        symbol=self.ti.symbol,
-                        algo=algo,
-                        bot_strategy=self.ti.bot_strategy,
-                        bb_spreads=None,
-                    )
-
-                    await self.ti.producer.send(
-                        KafkaTopics.signals.value, value=value.model_dump_json()
-                    )
