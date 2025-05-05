@@ -284,7 +284,6 @@ class TechnicalIndicators:
             )
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
-            btc_correlation = self.binbot_api.get_btc_correlation(symbol=self.symbol)
 
             mda = MarketDominationAlgo(
                 cls=self,
@@ -293,8 +292,8 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-            await mda.market_domination_signal(btc_correlation=btc_correlation)
-            await mda.time_gpt_market_domination(close_price=close_price)
+            await mda.market_domination_signal()
+            # await mda.time_gpt_market_domination(close_price=close_price)
 
             await ma_candlestick_jump(
                 self,
@@ -308,7 +307,6 @@ class TechnicalIndicators:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
-                btc_correlation=btc_correlation,
             )
 
             await ma_candlestick_drop(

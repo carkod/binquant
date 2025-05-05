@@ -120,7 +120,7 @@ class MarketDominationAlgo:
         self.reversal = False
         return
 
-    async def market_domination_signal(self, btc_correlation):
+    async def market_domination_signal(self):
         if not self.market_domination_data or datetime.now().minute % 30 == 0:
             self.market_domination_data = (
                 await self.ti.binbot_api.get_market_domination_series()
@@ -140,6 +140,9 @@ class MarketDominationAlgo:
                 self.reversal
                 and self.current_market_dominance != MarketDominance.NEUTRAL
             ):
+                btc_correlation = self.ti.binbot_api.get_btc_correlation(
+                    symbol=self.ti.symbol
+                )
                 if (
                     self.current_market_dominance == MarketDominance.GAINERS
                     and btc_correlation > 0
@@ -218,7 +221,6 @@ class MarketDominationAlgo:
                         time_gpt_reversal = True
                         strategy = Strategy.margin_short
                         return
-                    
 
                     algo = "time_gpt_reversal"
 

@@ -23,7 +23,6 @@ async def ma_candlestick_jump(
     bb_high,
     bb_mid,
     bb_low,
-    btc_correlation,
 ):
     """
     Candlesticks are in an upward trending motion for several periods
@@ -58,6 +57,7 @@ async def ma_candlestick_jump(
         algo = "ma_candlestick_jump"
         spread = volatility
         bot_strategy = cls.bot_strategy
+        btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
 
         if cls.current_market_dominance == MarketDominance.GAINERS:
             # market is bullish, most prices increasing,
@@ -67,17 +67,10 @@ async def ma_candlestick_jump(
         else:
             # Negative correlation with BTC and when market is downtrend
             # means this crypto is good for hedging against BTC going down
-            if (
-                btc_correlation < 0
-                and cls.current_market_dominance == MarketDominance.LOSERS
-                and not cls.market_domination_reversal
-            ):
+            if btc_correlation < 0:
                 bot_strategy = Strategy.long
 
-            elif (
-                btc_correlation > 0
-                and cls.current_market_dominance == MarketDominance.LOSERS
-            ):
+            elif btc_correlation > 0:
                 bot_strategy = Strategy.margin_short
                 # temporarily disable margin bots
                 return
