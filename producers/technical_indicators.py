@@ -7,14 +7,12 @@ from aiokafka import AIOKafkaProducer
 
 from algorithms.coinrule import (
     buy_low_sell_high,
-    supertrend_swing_reversal,
     twap_momentum_sniper,
 )
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
 from algorithms.market_domination import MarketDominationAlgo
 from algorithms.top_gainer_drop import top_gainers_drop
 from shared.apis.binbot_api import BinbotApi
-from shared.apis.time_gpt import TimeseriesGPT
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.utils import round_numbers
 
@@ -50,7 +48,6 @@ class TechnicalIndicators:
         self.market_domination_reversal: bool = False
         self.bot_strategy: Strategy = Strategy.long
         self.top_coins_gainers: list[str] = []
-        self.times_gpt_api = TimeseriesGPT()
         self.market_domination_data = market_domination_data
         self.top_gainers_day = top_gainers_day
         pass
@@ -284,7 +281,6 @@ class TechnicalIndicators:
             )
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
-            btc_correlation = self.binbot_api.get_btc_correlation(symbol=self.symbol)
 
             mda = MarketDominationAlgo(
                 cls=self,
@@ -293,8 +289,7 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-            await mda.market_domination_signal(btc_correlation=btc_correlation)
-            await mda.time_gpt_market_domination(close_price=close_price)
+            await mda.market_domination_signal()
 
             await ma_candlestick_jump(
                 self,
@@ -308,7 +303,6 @@ class TechnicalIndicators:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
-                btc_correlation=btc_correlation,
             )
 
             await ma_candlestick_drop(
@@ -357,13 +351,14 @@ class TechnicalIndicators:
                 bb_mid=bb_mid,
             )
 
-            await supertrend_swing_reversal(
-                self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # bad algo
+            # await supertrend_swing_reversal(
+            #     self,
+            #     close_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             await twap_momentum_sniper(
                 self,
