@@ -11,6 +11,12 @@ from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
 from shared.rebalance_listener import RebalanceListener
 
+logging.basicConfig(
+    level=os.environ["LOG_LEVEL"],
+    filename=None,
+    format="%(asctime)s.%(msecs)03d UTC %(levelname)s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 async def data_process_pipe() -> None:
     consumer = AIOKafkaConsumer(
@@ -77,6 +83,7 @@ async def data_analytics_pipe() -> None:
 
             if message.topic == KafkaTopics.signals.value:
                 await telegram_consumer.send_signal(message.value)
+                logging.debug(f"Received {message.topic} message: {message.value}")
                 await at_consumer.process_autotrade_restrictions(message.value)
 
             await consumer.commit()
