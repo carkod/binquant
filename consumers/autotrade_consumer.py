@@ -108,17 +108,19 @@ class AutotradeConsumer(BinbotApi):
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
+        logging.error(f'process_autotrade_restrictions... symbol: {", ".join(self.active_test_bots)} autotrade?: {not data.autotrade}, active?: {self.test_autotrade_settings["autotrade"]}')
         if (
             symbol not in self.active_test_bots
             and self.test_autotrade_settings["autotrade"]
             and not data.autotrade
         ):
             if self.reached_max_active_autobots("paper_trading"):
-                logging.info(
+                logging.error(
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
                 # Test autotrade runs independently of autotrade = 1
+                logging.error("Running test autotrade...")
                 test_autotrade = Autotrade(
                     pair=symbol,
                     settings=self.test_autotrade_settings,

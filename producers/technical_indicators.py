@@ -7,6 +7,7 @@ from aiokafka import AIOKafkaProducer
 
 from algorithms.coinrule import (
     buy_low_sell_high,
+    supertrend_swing_reversal,
     twap_momentum_sniper,
 )
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
@@ -197,7 +198,7 @@ class TechnicalIndicators:
 
         return
 
-    def set_twap(self, periods: int = 4, interval=4) -> None:
+    def set_twap(self, periods: int = 30, interval=4) -> None:
         """
         Time-weighted average price
         https://stackoverflow.com/a/69517577/2454059
@@ -205,17 +206,17 @@ class TechnicalIndicators:
         Periods kept at 4 by default,
         otherwise there's not enough data
         """
-        pre_df = self.df_4h.copy()
+        pre_df = self.df_1h.copy()
         pre_df["Event Time"] = pandas.to_datetime(pre_df["close_time"])
         pre_df["Time Diff"] = (
-            pre_df["Event Time"].diff(periods=1).dt.total_seconds() / 3600
+            pre_df["Event Time"].diff(periods=periods).dt.total_seconds() / 3600
         )
         pre_df["Weighted Value"] = pre_df["close"] * pre_df["Time Diff"]
         pre_df["Weighted Average"] = (
             pre_df["Weighted Value"].rolling(periods).sum() / pre_df["Time Diff"].sum()
         )
         # Fixed window of given interval
-        self.df_4h["twap"] = pre_df["Weighted Average"]
+        self.df_1h["twap"] = pre_df["Weighted Average"]
 
         return
 
@@ -352,13 +353,13 @@ class TechnicalIndicators:
             )
 
             # bad algo
-            # await supertrend_swing_reversal(
-            #     self,
-            #     close_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            # )
+            await supertrend_swing_reversal(
+                self,
+                close_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
 
             await twap_momentum_sniper(
                 self,

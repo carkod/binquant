@@ -18,6 +18,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+
 async def data_process_pipe() -> None:
     consumer = AIOKafkaConsumer(
         KafkaTopics.klines_store_topic.value,
@@ -83,7 +84,6 @@ async def data_analytics_pipe() -> None:
 
             if message.topic == KafkaTopics.signals.value:
                 await telegram_consumer.send_signal(message.value)
-                logging.debug(f"Received {message.topic} message: {message.value}")
                 await at_consumer.process_autotrade_restrictions(message.value)
 
             await consumer.commit()
