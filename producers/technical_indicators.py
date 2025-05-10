@@ -7,7 +7,6 @@ from aiokafka import AIOKafkaProducer
 
 from algorithms.coinrule import (
     buy_low_sell_high,
-    supertrend_swing_reversal,
     twap_momentum_sniper,
 )
 from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
