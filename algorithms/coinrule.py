@@ -18,9 +18,9 @@ async def twap_momentum_sniper(
     uses 4 hour candles df_4h
     https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
     """
-    # if cls.df_4h.isnull().values.any() or cls.df_4h.size == 0:
-    #     logging.error("4h candles twap momentum have null values")
-    #     return
+    if cls.df_1h.isnull().values.any() or cls.df_1h.size == 0:
+        logging.error("4h candles twap momentum have null values")
+        return
 
     last_twap = cls.df_1h["twap"].iloc[-1]
     price_decrease = (
@@ -75,14 +75,12 @@ async def supertrend_swing_reversal(
         return
 
     last_supertrend = cls.df_1h["supertrend"].iloc[-1]
-    prev_last_supertrend = cls.df_1h["supertrend"].iloc[-2]
+    # prev_last_supertrend = cls.df_1h["supertrend"].iloc[-2]
     last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-1])
     # prev_last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-2])
-    prev_close_price = cls.df_1h["close"].iloc[-2]
+    # prev_close_price = cls.df_1h["close"].iloc[-2]
 
-    if (last_supertrend < close_price and prev_last_supertrend < prev_close_price) and (
-        last_rsi < 30
-    ):
+    if last_supertrend < close_price and last_rsi < 30:
         algo = "coinrule_supertrend_swing_reversal"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
         bot_strategy = Strategy.long
@@ -99,7 +97,6 @@ async def supertrend_swing_reversal(
 
         value = SignalsConsumer(
             autotrade=False,
-            spread=None,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,

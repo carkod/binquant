@@ -22,7 +22,7 @@ class MarketDominationAlgo:
         self.current_market_dominance = MarketDominance.NEUTRAL
         self.reversal = False
         self.market_domination_data = cls.market_domination_data
-        self.btc_price = 0
+        self.btc_change_perc = 0
         self.autotrade = True
 
     def calculate_reversal(self) -> None:
@@ -50,7 +50,6 @@ class MarketDominationAlgo:
             return
 
         # Proportion indicates whether trend is significant or not
-        # to be replaced by TimesGPT if that works better
         proportion = max(gainers_count[-1], losers_count[-1]) / (
             gainers_count[-1] + losers_count[-1]
         )
@@ -100,8 +99,8 @@ class MarketDominationAlgo:
 
         # Reduce network calls
         if datetime.now().minute % 10 == 0 and datetime.now().second == 0:
-            if not self.btc_price == 0:
-                self.btc_price = self.ti.binbot_api.get_latest_btc_price()
+            if self.btc_change_perc == 0:
+                self.btc_change_perc = self.ti.binbot_api.get_latest_btc_price()
 
             self.calculate_reversal()
 
@@ -115,11 +114,11 @@ class MarketDominationAlgo:
                 if (
                     self.current_market_dominance == MarketDominance.GAINERS
                     and btc_correlation > 0
-                    and self.btc_price < 0
+                    and self.btc_change_perc < 0
                 ) or (
                     self.current_market_dominance == MarketDominance.LOSERS
                     and btc_correlation < 0
-                    and self.btc_price > 0
+                    and self.btc_change_perc > 0
                 ):
                     return
                 else:

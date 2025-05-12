@@ -106,6 +106,10 @@ class AutotradeConsumer(BinbotApi):
         data = SignalsConsumer(**payload)
         symbol = data.symbol
 
+        logging.error(
+            f"Autotrade consumer: {data.symbol} - {data.algo} - {data.autotrade}"
+        )
+
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
         if (
