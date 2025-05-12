@@ -136,7 +136,7 @@ class BinbotApi(BinanceApi):
         data = self.request(
             url=f"{self.bb_submit_errors}/{bot_id}",
             method="POST",
-            json={"errors": [message]},
+            json={"errors": message},
         )
         return data
 
@@ -144,7 +144,7 @@ class BinbotApi(BinanceApi):
         data = self.request(
             url=f"{self.bb_pt_submit_errors_url}/{bot_id}",
             method="POST",
-            json={"errors": [message]},
+            json={"errors": message},
         )
         return data
 

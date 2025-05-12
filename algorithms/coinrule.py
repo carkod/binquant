@@ -19,7 +19,9 @@ async def twap_momentum_sniper(
     https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
     """
     if cls.df_1h.isnull().values.any() or cls.df_1h.size == 0:
-        logging.error("4h candles twap momentum have null values")
+        logging.warning(
+            f"1h candles twap momentum not enough data for symbol: {cls.symbol}"
+        )
         return
 
     last_twap = cls.df_1h["twap"].iloc[-1]

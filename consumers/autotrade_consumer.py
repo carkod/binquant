@@ -93,14 +93,8 @@ class AutotradeConsumer(BinbotApi):
         1. Checks if we have balance to trade
         2. Check if we need to update websockets
         3. Check if autotrade is enabled
-        4. Check if test autotrades
+        4. Check if test algorithms (autotrade = False)
         5. Check active strategy
-        """
-
-        """
-        Test autotrade starts
-
-        Wrap in try and except to avoid bugs stopping real bot trades
         """
         payload = json.loads(result)
         data = SignalsConsumer(**payload)
@@ -146,10 +140,11 @@ class AutotradeConsumer(BinbotApi):
             and data.autotrade
         ):
             if self.reached_max_active_autobots("bots"):
-                logging.info(
+                logging.error(
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
+                logging.error("Running real autotrade...")
                 if self.is_margin_available(symbol=symbol):
                     autotrade = Autotrade(
                         pair=symbol,

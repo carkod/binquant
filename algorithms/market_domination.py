@@ -1,4 +1,3 @@
-import logging
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -36,9 +35,6 @@ class MarketDominationAlgo:
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        logging.info(
-            f"Performing market domination analyses. Current trend: {self.ti.current_market_dominance}"
-        )
         self.top_coins_gainers = [item["symbol"] for item in self.ti.top_gainers_day]
         # reverse to make latest series more important
         self.market_domination_data["gainers_count"].reverse()
@@ -64,7 +60,6 @@ class MarketDominationAlgo:
                 gainers_count[-2] < losers_count[-2]
                 # and gainers_count[-3] < losers_count[-3]
                 # More than 60% it's way past reversal
-                and proportion > 0.65
             ):
                 self.reversal = True
                 self.bot_strategy = Strategy.long
