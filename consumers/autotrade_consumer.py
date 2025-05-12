@@ -108,7 +108,6 @@ class AutotradeConsumer(BinbotApi):
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
-        logging.error(f'process_autotrade_restrictions... symbol: {", ".join(self.active_test_bots)} autotrade?: {not data.autotrade}, active?: {self.test_autotrade_settings["autotrade"]}')
         if (
             symbol not in self.active_test_bots
             and self.test_autotrade_settings["autotrade"]

@@ -60,7 +60,7 @@ class BinbotApi(BinanceApi):
     bb_activate_test_bot_url = f"{bb_base_url}/paper-trading/activate"
     bb_test_bot_active_list = f"{bb_base_url}/paper-trading/active-list"
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
-    bb_test_active_pairs = f"{bb_base_url}/paper/active-pairs"
+    bb_test_active_pairs = f"{bb_base_url}/paper-trading/active-pairs"
 
     """
     Async HTTP client/server for asyncio
@@ -190,11 +190,15 @@ class BinbotApi(BinanceApi):
         """
         url = self.bb_active_pairs
         if collection_name == "paper_trading":
-            url = self.bb_test_bot_url
+            url = self.bb_test_active_pairs
 
         res = self.request(
             url=url,
         )
+
+        if res["data"] is None:
+            return []
+
         return res["data"]
 
     async def get_top_gainers(self):
