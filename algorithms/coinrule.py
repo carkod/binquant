@@ -18,16 +18,15 @@ async def twap_momentum_sniper(
     uses 4 hour candles df_4h
     https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
     """
-    if cls.df_1h.isnull().values.any() or cls.df_1h.size == 0:
+    if cls.df_1h.isnull().values.any() or len(cls.df_1h) < 10:
         logging.warning(
             f"1h candles twap momentum not enough data for symbol: {cls.symbol}"
         )
         return
 
     last_twap = cls.df_1h["twap"].iloc[-1]
-    price_decrease = (
-        cls.df_1h["close"].iloc[-1]
-        - cls.df_1h["close"].iloc[-2] / cls.df_1h["close"].iloc[-1]
+    price_decrease = cls.df_1h["close"].iloc[-1] - (
+        cls.df_1h["close"].iloc[-2] / cls.df_1h["close"].iloc[-1]
     )
 
     if last_twap > close_price and price_decrease > -0.05:
