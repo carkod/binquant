@@ -198,7 +198,7 @@ class TechnicalIndicators:
 
         return
 
-    def set_twap(self, periods: int = 30, interval=4) -> None:
+    def set_twap(self, periods: int = 30) -> None:
         """
         Time-weighted average price
         https://stackoverflow.com/a/69517577/2454059
