@@ -107,6 +107,7 @@ class KafkaTopics(str, Enum):
     technical_indicators = "technical-indicators"
     signals = "signals"
     restart_streaming = "restart-streaming"
+    restart_autotrade = "restart-autotrade"
 
 
 class BinanceKlineIntervals(str, Enum):

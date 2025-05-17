@@ -1,9 +1,6 @@
-import logging
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING
-
-from pandas import DataFrame, Series
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
@@ -22,42 +19,10 @@ class MarketDominationAlgo:
         self.bb_low = bb_low
         self.bb_mid = bb_mid
         self.current_market_dominance = MarketDominance.NEUTRAL
-        self.msf: list = []
         self.reversal = False
         self.market_domination_data = cls.market_domination_data
-        self.btc_price = 0
+        self.btc_change_perc = 0
         self.autotrade = True
-
-    def time_gpt_forecast(self):
-        """
-        Forecasting using GPT-3
-        """
-        if self.market_domination_data:
-            dates = self.market_domination_data["dates"][-10:]
-            gainers_count = self.market_domination_data["gainers_count"][-10:]
-            losers_count = self.market_domination_data["losers_count"][-10:]
-            forecast_df = DataFrame(
-                {
-                    "dates": dates,
-                    "gainers_count": Series(gainers_count),
-                }
-            )
-            forecast_df["unique_id"] = forecast_df.index
-            df_x = DataFrame(
-                {
-                    "dates": dates,
-                    "ex_1": losers_count,
-                }
-            )
-            df_x["unique_id"] = df_x.index
-            # self.msf = self.ti.times_gpt_api.multiple_series_forecast(
-            #     df=forecast_df, df_x=df_x
-            # )
-            self.msf = self.ti.times_gpt_api.multiple_series_forecast(
-                df=forecast_df, df_x=df_x
-            )
-
-        return self.msf
 
     def calculate_reversal(self) -> None:
         """
@@ -70,9 +35,6 @@ class MarketDominationAlgo:
         if < 70% of assets in a given market dominated by losers
         Establish the timing
         """
-        logging.info(
-            f"Performing market domination analyses. Current trend: {self.ti.current_market_dominance}"
-        )
         self.top_coins_gainers = [item["symbol"] for item in self.ti.top_gainers_day]
         # reverse to make latest series more important
         self.market_domination_data["gainers_count"].reverse()
@@ -84,7 +46,6 @@ class MarketDominationAlgo:
             return
 
         # Proportion indicates whether trend is significant or not
-        # to be replaced by TimesGPT if that works better
         proportion = max(gainers_count[-1], losers_count[-1]) / (
             gainers_count[-1] + losers_count[-1]
         )
@@ -99,7 +60,6 @@ class MarketDominationAlgo:
                 gainers_count[-2] < losers_count[-2]
                 # and gainers_count[-3] < losers_count[-3]
                 # More than 60% it's way past reversal
-                and proportion < 0.65
             ):
                 self.reversal = True
                 self.bot_strategy = Strategy.long
@@ -118,11 +78,12 @@ class MarketDominationAlgo:
                 self.bot_strategy = Strategy.margin_short
                 # Testing only
                 self.autotrade = False
+                return
 
         self.reversal = False
         return
 
-    async def market_domination_signal(self, btc_correlation):
+    async def market_domination_signal(self):
         if not self.market_domination_data or datetime.now().minute % 30 == 0:
             self.market_domination_data = (
                 await self.ti.binbot_api.get_market_domination_series()
@@ -133,8 +94,8 @@ class MarketDominationAlgo:
 
         # Reduce network calls
         if datetime.now().minute % 10 == 0 and datetime.now().second == 0:
-            if not self.btc_price == 0:
-                self.btc_price = self.ti.binbot_api.get_latest_btc_price()
+            if self.btc_change_perc == 0:
+                self.btc_change_perc = self.ti.binbot_api.get_latest_btc_price()
 
             self.calculate_reversal()
 
@@ -142,14 +103,17 @@ class MarketDominationAlgo:
                 self.reversal
                 and self.current_market_dominance != MarketDominance.NEUTRAL
             ):
+                btc_correlation = self.ti.binbot_api.get_btc_correlation(
+                    symbol=self.ti.symbol
+                )
                 if (
                     self.current_market_dominance == MarketDominance.GAINERS
                     and btc_correlation > 0
-                    and self.btc_price < 0
+                    and self.btc_change_perc < 0
                 ) or (
                     self.current_market_dominance == MarketDominance.LOSERS
                     and btc_correlation < 0
-                    and self.btc_price > 0
+                    and self.btc_change_perc > 0
                 ):
                     return
                 else:
@@ -181,72 +145,3 @@ class MarketDominationAlgo:
                 await self.ti.producer.send(
                     KafkaTopics.signals.value, value=value.model_dump_json()
                 )
-
-    async def time_gpt_market_domination(self, close_price):
-        """
-        Same as market_domination_signal but using TimesGPT
-        to forecast it this means we get ahead of the market_domination before it reverses.
-        """
-
-        # Due to 50 requests per month limit
-        # run only once a day for testing
-        if (
-            self.market_domination_data
-            and len(self.market_domination_data["dates"]) > 51
-            and (datetime.now().hour == 9 and datetime.now().minute == 0)
-        ):
-            self.msf = self.time_gpt_forecast()
-            # self.msf = [
-            #     [0, "2025-04-20 03:00:00", 133.73448181152344],
-            #     [1, "2025-04-20 02:00:00", 126.03958892822266],
-            #     [2, "2025-04-20 01:00:00", 119.29606628417969],
-            #     [3, "2025-04-20 00:00:00", 108.70953369140625],
-            #     [4, "2025-04-19 23:00:00", 77.91168975830078],
-            #     [5, "2025-04-19 22:00:00", 104.86540222167969],
-            #     [6, "2025-04-19 21:00:00", 65.39773559570312],
-            #     [7, "2025-04-19 20:00:00", 88.49836730957031],
-            #     [8, "2025-04-19 19:00:00", 136.6216278076172],
-            #     [9, "2025-04-19 18:00:00", 97.16024017333984],
-            # ]
-
-            if self.msf:
-                gainers_count = self.market_domination_data["gainers_count"]
-                losers_count = self.market_domination_data["losers_count"]
-                forecasted_gainers = self.msf[0][2]
-                total_count = gainers_count[-1:] + losers_count[-1:]
-                forecasted_losers = total_count - forecasted_gainers
-
-                if forecasted_gainers > forecasted_losers:
-                    # Update current market dominance
-                    self.ti.current_market_dominance = MarketDominance.GAINERS
-
-                    if (
-                        gainers_count[-1] > losers_count[-1]
-                        and gainers_count[-2] > losers_count[-2]
-                    ):
-                        self.reversal = True
-                        self.ti.bot_strategy = Strategy.long
-
-                    algo = "time_gpt_reversal"
-
-                    msg = f"""
-                    - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                    - Current price: {close_price}
-                    - Strategy: {self.ti.bot_strategy.value}
-                    - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
-                    - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
-                    """
-
-                    value = SignalsConsumer(
-                        autotrade=False,
-                        current_price=close_price,
-                        msg=msg,
-                        symbol=self.ti.symbol,
-                        algo=algo,
-                        bot_strategy=self.ti.bot_strategy,
-                        bb_spreads=None,
-                    )
-
-                    await self.ti.producer.send(
-                        KafkaTopics.signals.value, value=value.model_dump_json()
-                    )
