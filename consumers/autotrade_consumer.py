@@ -30,17 +30,12 @@ class AutotradeConsumer(BinbotApi):
         )
         self.autotrade_settings: dict = self.get_autotrade_settings()
         self.active_bot_pairs = self.get_active_pairs()
-        self.paper_trading_active_bots = self.get_active_pairs(
-            collection_name="paper_trading"
-        )
+        self.active_test_bots = self.get_active_pairs(collection_name="paper_trading")
         self.all_symbols = self.get_symbols()
         # Active bot symbols substracting exchange active symbols (not blacklisted)
         self.active_symbols = set(
             {s["id"] for s in self.all_symbols if s["active"]}
         ) - set(self.active_bot_pairs)
-        self.active_test_bots = [
-            item["pair"] for item in self.paper_trading_active_bots
-        ]
         self.test_autotrade_settings: dict = self.get_test_autotrade_settings()
         pass
 
@@ -93,18 +88,19 @@ class AutotradeConsumer(BinbotApi):
         1. Checks if we have balance to trade
         2. Check if we need to update websockets
         3. Check if autotrade is enabled
-        4. Check if test autotrades
+        4. Check if test algorithms (autotrade = False)
         5. Check active strategy
-        """
-
-        """
-        Test autotrade starts
-
-        Wrap in try and except to avoid bugs stopping real bot trades
         """
         payload = json.loads(result)
         data = SignalsConsumer(**payload)
         symbol = data.symbol
+
+        logging.error(
+            f"Autotrade consumer: {data.symbol} - {data.algo} - {data.autotrade}"
+        )
+
+        # Reload every time until fix restarting pipeline
+        self.load_data_on_start()
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
@@ -114,7 +110,7 @@ class AutotradeConsumer(BinbotApi):
             and not data.autotrade
         ):
             if self.reached_max_active_autobots("paper_trading"):
-                logging.info(
+                logging.error(
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
@@ -141,10 +137,11 @@ class AutotradeConsumer(BinbotApi):
             and data.autotrade
         ):
             if self.reached_max_active_autobots("bots"):
-                logging.info(
+                logging.error(
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
+                logging.error("Running real autotrade...")
                 if self.is_margin_available(symbol=symbol):
                     autotrade = Autotrade(
                         pair=symbol,

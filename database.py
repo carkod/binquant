@@ -22,23 +22,6 @@ class KafkaDB:
             password=os.getenv("MONGO_AUTH_PASSWORD"),
         )
         self.db = client[os.environ["MONGO_KAFKA_DATABASE"]]
-        self.setup()
-
-    def setup(self) -> None:
-        list_of_collections = self.db.list_collection_names()
-        # Return a list of collections in 'test_db'
-        if "kline" not in list_of_collections:
-            self.db.create_collection(
-                "kline",
-                timeseries={
-                    "timeField": "close_time",
-                    "metaField": "symbol",
-                    "granularity": "minutes",
-                },
-                expireAfterSeconds=604800,  # 7 days, minimize server cost
-            )
-
-        return
 
     def get_partitions(self):
         query = self.db.kline.aggregate(

@@ -11,6 +11,13 @@ from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
 from shared.rebalance_listener import RebalanceListener
 
+logging.basicConfig(
+    level=os.environ["LOG_LEVEL"],
+    filename=None,
+    format="%(asctime)s.%(msecs)03d UTC %(levelname)s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 
 async def data_process_pipe() -> None:
     consumer = AIOKafkaConsumer(
@@ -51,6 +58,7 @@ async def data_analytics_pipe() -> None:
         bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
         value_deserializer=lambda m: json.loads(m),
         group_id="data-analytics-group",
+        auto_offset_reset="latest",
         enable_auto_commit=False,
         session_timeout_ms=30000,
         heartbeat_interval_ms=10_000,
@@ -60,7 +68,7 @@ async def data_analytics_pipe() -> None:
     # Set rebalance listener
     rebalance_listener = RebalanceListener(consumer)
     consumer.subscribe(
-        [KafkaTopics.signals.value, KafkaTopics.restart_streaming.value],
+        [KafkaTopics.signals.value],
         listener=rebalance_listener,
     )
     # Start dependencies before the consumer to avoid timeouts
@@ -72,9 +80,6 @@ async def data_analytics_pipe() -> None:
 
         # Consume messages and print their values
         async for message in consumer:
-            if message.topic == KafkaTopics.restart_streaming.value:
-                at_consumer.load_data_on_start()
-
             if message.topic == KafkaTopics.signals.value:
                 await telegram_consumer.send_signal(message.value)
                 await at_consumer.process_autotrade_restrictions(message.value)

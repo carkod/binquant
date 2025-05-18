@@ -23,7 +23,6 @@ async def ma_candlestick_jump(
     bb_high,
     bb_mid,
     bb_low,
-    btc_correlation,
 ):
     """
     Candlesticks are in an upward trending motion for several periods
@@ -58,62 +57,56 @@ async def ma_candlestick_jump(
         algo = "ma_candlestick_jump"
         spread = volatility
         bot_strategy = cls.bot_strategy
+        btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
 
         if cls.current_market_dominance == MarketDominance.GAINERS:
             # market is bullish, most prices increasing,
             # but looks like it's dropping and going bearish (reversal)
             # candlesticks of this specific crypto are seeing a huge jump (candlstick jump algo)
             bot_strategy = Strategy.long
+
+            msg = f"""
+            - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
+            - Current price: {close_price}
+            - %threshold based on volatility: {volatility}
+            - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
+            - Strategy: {bot_strategy.value}
+            - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+            - BTC correlation: {btc_correlation}
+            - https://www.binance.com/en/trade/{cls.symbol}
+            - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+            """
+
+            value = SignalsConsumer(
+                spread=spread,
+                current_price=close_price,
+                msg=msg,
+                symbol=cls.symbol,
+                algo=algo,
+                bot_strategy=bot_strategy,
+                bb_spreads=BollinguerSpread(
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
+                ),
+            )
+
+            await cls.producer.send(
+                KafkaTopics.signals.value, value=value.model_dump_json()
+            )
         else:
             # Negative correlation with BTC and when market is downtrend
             # means this crypto is good for hedging against BTC going down
-            if (
-                btc_correlation < 0
-                and cls.current_market_dominance == MarketDominance.LOSERS
-                and not cls.market_domination_reversal
-            ):
+            if btc_correlation < 0:
                 bot_strategy = Strategy.long
 
-            elif (
-                btc_correlation > 0
-                and cls.current_market_dominance == MarketDominance.LOSERS
-            ):
+            elif btc_correlation > 0:
                 bot_strategy = Strategy.margin_short
                 # temporarily disable margin bots
                 return
 
             else:
                 return
-
-        msg = f"""
-        - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
-        - Current price: {close_price}
-        - %threshold based on volatility: {volatility}
-        - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
-        - Strategy: {bot_strategy.value}
-        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-        - BTC correlation: {btc_correlation}
-        - https://www.binance.com/en/trade/{cls.symbol}
-        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
-        """
-
-        value = SignalsConsumer(
-            spread=spread,
-            current_price=close_price,
-            msg=msg,
-            symbol=cls.symbol,
-            algo=algo,
-            bot_strategy=bot_strategy,
-            bb_spreads=BollinguerSpread(
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            ),
-        )
-
-        await cls.producer.send(
-            KafkaTopics.signals.value, value=value.model_dump_json()
-        )
 
     return
 
@@ -170,36 +163,36 @@ async def ma_candlestick_drop(
                 # but looks like it's picking up and going bullish (reversal)
                 # candlesticks of this specific crypto are seeing a huge drop (candlstick drop algo)
                 bot_strategy = Strategy.long
+
+                msg = f"""
+                - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
+                - Current price: {close_price}
+                - Log volatility (log SD): {volatility}
+                - Reversal? {cls.market_domination_reversal}
+                - Strategy: {bot_strategy.value}
+                - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+                - https://www.binance.com/en/trade/{cls.symbol}
+                - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+                """
+
+                value = SignalsConsumer(
+                    spread=None,
+                    current_price=close_price,
+                    msg=msg,
+                    symbol=cls.symbol,
+                    algo=algo,
+                    bot_strategy=bot_strategy,
+                    bb_spreads=BollinguerSpread(
+                        bb_high=bb_high,
+                        bb_mid=bb_mid,
+                        bb_low=bb_low,
+                    ),
+                )
+
+                await cls.producer.send(
+                    KafkaTopics.signals.value, value=value.model_dump_json()
+                )
         else:
             return
-
-        msg = f"""
-        - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
-        - Current price: {close_price}
-        - Log volatility (log SD): {volatility}
-        - Reversal? {cls.market_domination_reversal}
-        - Strategy: {bot_strategy.value}
-        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-        - https://www.binance.com/en/trade/{cls.symbol}
-        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
-        """
-
-        value = SignalsConsumer(
-            spread=None,
-            current_price=close_price,
-            msg=msg,
-            symbol=cls.symbol,
-            algo=algo,
-            bot_strategy=bot_strategy,
-            bb_spreads=BollinguerSpread(
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            ),
-        )
-
-        await cls.producer.send(
-            KafkaTopics.signals.value, value=value.model_dump_json()
-        )
 
     return
