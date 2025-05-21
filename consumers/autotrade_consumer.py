@@ -95,10 +95,6 @@ class AutotradeConsumer(BinbotApi):
         data = SignalsConsumer(**payload)
         symbol = data.symbol
 
-        logging.error(
-            f"Autotrade consumer: {data.symbol} - {data.algo} - {data.autotrade}"
-        )
-
         # Reload every time until fix restarting pipeline
         self.load_data_on_start()
 
