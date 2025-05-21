@@ -76,12 +76,13 @@ async def supertrend_swing_reversal(
         return
 
     last_supertrend = cls.df_1h["supertrend"].iloc[-1]
-    # prev_last_supertrend = cls.df_1h["supertrend"].iloc[-2]
+    prev_last_supertrend = cls.df_1h["supertrend"].iloc[-2]
     last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-1])
-    # prev_last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-2])
-    # prev_close_price = cls.df_1h["close"].iloc[-2]
+    prev_last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-2])
+    prev_close_price = cls.df_1h["close"].iloc[-2]
 
-    if last_supertrend < close_price and last_rsi < 30:
+    if (last_supertrend < close_price and last_rsi < 30) and (
+        prev_last_supertrend > prev_close_price and prev_last_rsi < 30):
         algo = "coinrule_supertrend_swing_reversal"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
         bot_strategy = Strategy.long
@@ -97,7 +98,6 @@ async def supertrend_swing_reversal(
         """
 
         value = SignalsConsumer(
-            autotrade=False,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,
