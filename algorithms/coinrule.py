@@ -82,7 +82,8 @@ async def supertrend_swing_reversal(
     prev_close_price = cls.df_1h["close"].iloc[-2]
 
     if (last_supertrend < close_price and last_rsi < 30) and (
-        prev_last_supertrend > prev_close_price and prev_last_rsi < 30):
+        prev_last_supertrend > prev_close_price and prev_last_rsi < 30
+    ):
         algo = "coinrule_supertrend_swing_reversal"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
         bot_strategy = Strategy.long
@@ -146,35 +147,33 @@ async def buy_low_sell_high(
             and cls.current_market_dominance == MarketDominance.LOSERS
         ):
             bot_strategy = Strategy.long
-        else:
-            return
+            msg = f"""
+            - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{cls.symbol}
+            - Current price: {close_price}
+            - Log volatility (log SD): {volatility}
+            - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
+            - Strategy: {bot_strategy.value}
+            - Reversal? {"No reversal" if not cls.market_domination_reversal else "Positive" if cls.market_domination_reversal else "Negative"}
+            - https://www.binance.com/en/trade/{cls.symbol}
+            - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+            """
 
-        msg = f"""
-        - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{cls.symbol}
-        - Current price: {close_price}
-        - Log volatility (log SD): {volatility}
-        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
-        - Strategy: {bot_strategy.value}
-        - Reversal? {"No reversal" if not cls.market_domination_reversal else "Positive" if cls.market_domination_reversal else "Negative"}
-        - https://www.binance.com/en/trade/{cls.symbol}
-        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
-        """
+            value = SignalsConsumer(
+                autotrade=False,
+                current_price=close_price,
+                msg=msg,
+                symbol=cls.symbol,
+                algo=algo,
+                bot_strategy=bot_strategy,
+                bb_spreads=BollinguerSpread(
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
+                ),
+            )
 
-        value = SignalsConsumer(
-            current_price=close_price,
-            msg=msg,
-            symbol=cls.symbol,
-            algo=algo,
-            bot_strategy=bot_strategy,
-            bb_spreads=BollinguerSpread(
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            ),
-        )
-
-        await cls.producer.send(
-            KafkaTopics.signals.value, value=value.model_dump_json()
-        )
+            await cls.producer.send(
+                KafkaTopics.signals.value, value=value.model_dump_json()
+            )
 
     pass

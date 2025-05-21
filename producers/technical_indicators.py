@@ -10,7 +10,11 @@ from algorithms.coinrule import (
     supertrend_swing_reversal,
     twap_momentum_sniper,
 )
-from algorithms.ma_candlestick import ma_candlestick_drop, ma_candlestick_jump
+from algorithms.ma_candlestick import (
+    atr_breakout,
+    ma_candlestick_drop,
+    ma_candlestick_jump,
+)
 from algorithms.market_domination import MarketDominationAlgo
 from algorithms.top_gainer_drop import top_gainers_drop
 from shared.apis.binbot_api import BinbotApi
@@ -220,6 +224,35 @@ class TechnicalIndicators:
 
         return
 
+    def set_atr(self, period: int = 14):
+        """
+        Calculate the Average True Range (ATR) indicator.
+        ATR is a measure of volatility.
+
+        Choice of window
+        Window	Behavior        When to use
+        3	    Very sensitive	Scalping, volatile coins
+        5	    Fast & balanced	Intraday breakouts (like your case)
+        10–14	Smoothed	    Swing setups, reduce noise
+        20+	    Very stable	    Long-term trends only
+        """
+        if self.df_1h.empty:
+            return
+
+        df = self.df_1h.copy()
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
+        prev_close = close.shift(1)
+        tr = pandas.concat(
+            [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+        ).max(axis=1)
+        atr = tr.rolling(window=period, min_periods=period).mean()
+        self.df_1h["ATR_14"] = tr
+        self.df_1h["ATR_baseline"] = atr
+
+        return
+
     async def publish(self):
         """
         Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
@@ -247,6 +280,7 @@ class TechnicalIndicators:
             self.log_volatility()
             self.set_supertrend()
             self.set_twap()
+            self.set_atr()
 
             # Post-processing
             self.df.dropna(inplace=True)
@@ -291,6 +325,8 @@ class TechnicalIndicators:
                 bb_mid=bb_mid,
             )
             await mda.market_domination_signal()
+
+            await atr_breakout(cls=self)
 
             await ma_candlestick_jump(
                 self,
