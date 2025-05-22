@@ -173,6 +173,21 @@ class TechnicalIndicators:
         self.df["bb_lower"] = bb_df["lower_band"]
         self.df["bb_mid"] = bb_df["rolling_mean"]
 
+        bb_df_1h = self.df_1h.copy()
+        rolling_mean = bb_df_1h["close"].rolling(window).mean()
+        bb_df_1h["rolling_std"] = bb_df_1h["close"].rolling(window).std()
+        bb_df_1h["upper_band"] = rolling_mean + (num_std * bb_df_1h["rolling_std"])
+        bb_df_1h["lower_band"] = rolling_mean - (num_std * bb_df_1h["rolling_std"])
+
+        self.df_1h["bb_upper"] = bb_df_1h["upper_band"]
+        self.df_1h["bb_lower"] = bb_df_1h["lower_band"]
+
+        self.df_1h["bb_high"] = bb_df_1h["upper_band"]
+        self.df_1h["bb_low"] = bb_df_1h["lower_band"]
+        self.df_1h["bb_mid"] = rolling_mean
+
+        return
+
     def log_volatility(self, window_size=7):
         """
         Volatility (standard deviation of returns) using logarithm, this normalizes data
@@ -247,10 +262,9 @@ class TechnicalIndicators:
         tr = pandas.concat(
             [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
         ).max(axis=1)
-        atr = tr.rolling(window=period, min_periods=period).mean()
+        atr = tr.rolling(window=5, min_periods=5).mean()
         self.df_1h["ATR_14"] = tr
         self.df_1h["ATR_baseline"] = atr
-
         return
 
     async def publish(self):

@@ -24,11 +24,13 @@ async def atr_breakout(cls: "TechnicalIndicators"):
         return
 
     prev_high = cls.df_1h["high"].shift(1)
-    atr_spike = cls.df_1h["ATR_14"] > 1.5 * cls.df_1h["ATR_baseline"]
+    atr_spike = cls.df_1h["ATR_14"] > (2 * cls.df_1h["ATR_baseline"])
     price_breakout = cls.df_1h["close"] > prev_high
-    breakout_signal = atr_spike & price_breakout
+    bullish_breakout_signal = atr_spike & price_breakout
 
-    if breakout_signal.iloc[-1]:
+    green_candle = cls.df_1h["close"] > cls.df_1h["open"]
+
+    if bullish_breakout_signal.iloc[-1] and green_candle:
         algo = "atr_breakout"
         close_price = cls.df_1h["close"].iloc[-1]
         bb_high = cls.df_1h["bb_high"].iloc[-1]
@@ -63,10 +65,7 @@ async def atr_breakout(cls: "TechnicalIndicators"):
             KafkaTopics.signals.value, value=value.model_dump_json()
         )
 
-    pass
 
-
-# Algorithms based on Bollinguer bands
 async def ma_candlestick_jump(
     cls: "TechnicalIndicators",
     close_price,
