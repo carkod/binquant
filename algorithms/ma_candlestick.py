@@ -10,39 +10,41 @@ if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
 
-async def atr_breakout(cls: "TechnicalIndicators"):
+async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
     """
-    ATR breakout detection algorithm based chatGPT
+    ATR breakout detection algorithm based on chatGPT
 
     Detect breakout: price close above previous high AND ATR spike
     """
 
-    if "ATR_14" not in cls.df_1h:
-        logging.error(
-            f"1h candles atp breakout not enough data for symbol: {cls.symbol}"
-        )
+    if "ATR_14" not in cls.df:
+        logging.error(f"ATP breakout not enough data for symbol: {cls.symbol}")
         return
 
-    prev_high = cls.df_1h["high"].shift(1)
-    atr_spike = cls.df_1h["ATR_14"] > (2 * cls.df_1h["ATR_baseline"])
-    price_breakout = cls.df_1h["close"] > prev_high
+    prev_high = cls.df["high"].shift(1)
+    atr_spike = cls.df["ATR_14"] > (1.5 * cls.df["ATR_baseline"])
+    price_breakout = cls.df["close"] > prev_high
     bullish_breakout_signal = atr_spike & price_breakout
 
-    green_candle = cls.df_1h["close"] > cls.df_1h["open"]
+    green_candle = cls.df["close"] > cls.df["open"]
+    volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
 
-    if bullish_breakout_signal.iloc[-1] and green_candle:
+    if (
+        bullish_breakout_signal.iloc[-1]
+        and bullish_breakout_signal.iloc[-2]
+        and green_candle.iloc[-1]
+        and volume_confirmation.iloc[-1]
+    ):
         algo = "atr_breakout"
-        close_price = cls.df_1h["close"].iloc[-1]
-        bb_high = cls.df_1h["bb_high"].iloc[-1]
-        bb_mid = cls.df_1h["bb_mid"].iloc[-1]
-        bb_low = cls.df_1h["bb_low"].iloc[-1]
+        close_price = cls.df["close"].iloc[-1]
 
         msg = f"""
         - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
-        - ATR spike: {cls.df_1h['ATR_14'].iloc[-1]}
+        - ATR spike: {cls.df['ATR_14'].iloc[-1]}
         - Previous high: {prev_high.iloc[-1]}
+        - Volume higher than avg? {"Yes" if volume_confirmation else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """

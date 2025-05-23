@@ -251,10 +251,10 @@ class TechnicalIndicators:
         10–14	Smoothed	    Swing setups, reduce noise
         20+	    Very stable	    Long-term trends only
         """
-        if self.df_1h.empty:
+        if self.df.empty:
             return
 
-        df = self.df_1h.copy()
+        df = self.df.copy()
         high = df["high"]
         low = df["low"]
         close = df["close"]
@@ -263,8 +263,8 @@ class TechnicalIndicators:
             [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
         ).max(axis=1)
         atr = tr.rolling(window=5, min_periods=5).mean()
-        self.df_1h["ATR_14"] = tr
-        self.df_1h["ATR_baseline"] = atr
+        self.df["ATR_14"] = tr
+        self.df["ATR_baseline"] = atr
         return
 
     async def publish(self):
@@ -340,7 +340,7 @@ class TechnicalIndicators:
             )
             await mda.market_domination_signal()
 
-            await atr_breakout(cls=self)
+            await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 
             await ma_candlestick_jump(
                 self,
