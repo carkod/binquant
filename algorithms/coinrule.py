@@ -80,9 +80,13 @@ async def supertrend_swing_reversal(
     last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-1])
     prev_last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-2])
     prev_close_price = cls.df_1h["close"].iloc[-2]
+    btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
 
     if (last_supertrend < close_price and last_rsi < 30) and (
         prev_last_supertrend > prev_close_price and prev_last_rsi < 30
+        # make sure the *trend* of market_domination is bearish
+        and cls.market_domination_data["gainers_count"][-1] > cls.market_domination_data["losers_count"][-1]
+        and btc_correlation > 0
     ):
         algo = "coinrule_supertrend_swing_reversal"
         bb_high, bb_mid, bb_low = cls.bb_spreads()

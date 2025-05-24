@@ -44,7 +44,7 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         - Strategy: {cls.bot_strategy.value}
         - ATR spike: {cls.df['ATR_14'].iloc[-1]}
         - Previous high: {prev_high.iloc[-1]}
-        - Volume higher than avg? {"Yes" if volume_confirmation else "No"}
+        - Volume higher than avg? {"Yes" if volume_confirmation.iloc[-1] else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
