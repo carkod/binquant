@@ -95,10 +95,6 @@ class AutotradeConsumer(BinbotApi):
         data = SignalsConsumer(**payload)
         symbol = data.symbol
 
-        logging.error(
-            f"Autotrade consumer: {data.symbol} - {data.algo} - {data.autotrade}"
-        )
-
         # Reload every time until fix restarting pipeline
         self.load_data_on_start()
 
@@ -111,7 +107,7 @@ class AutotradeConsumer(BinbotApi):
         ):
             if self.reached_max_active_autobots("paper_trading"):
                 logging.error(
-                    "Reached maximum number of active bots set in controller settings"
+                    "Reached maximum number of paper_trading active bots set in controller settings"
                 )
             else:
                 # Test autotrade runs independently of autotrade = 1
@@ -141,14 +137,14 @@ class AutotradeConsumer(BinbotApi):
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
-                logging.error("Running real autotrade...")
-                if self.is_margin_available(symbol=symbol):
-                    autotrade = Autotrade(
-                        pair=symbol,
-                        settings=self.autotrade_settings,
-                        algorithm_name=data.algo,
-                        db_collection_name="bots",
-                    )
-                    await autotrade.activate_autotrade(data)
+                # temporarily disable margin trading
+                # if self.is_margin_available(symbol=symbol):
+                autotrade = Autotrade(
+                    pair=symbol,
+                    settings=self.autotrade_settings,
+                    algorithm_name=data.algo,
+                    db_collection_name="bots",
+                )
+                await autotrade.activate_autotrade(data)
 
         return

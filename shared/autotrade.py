@@ -149,10 +149,6 @@ class Autotrade(AsyncProducer, BinbotApi):
         2. Create bot with given parameters from research_controller
         3. Activate bot
         """
-        logging.error(
-            f"{self.db_collection_name} Autotrade running with {self.pair}..."
-        )
-
         self.default_bot.strategy = data.bot_strategy
         if self.db_collection_name == "paper_trading":
             # Dynamic switch to real bot URLs
