@@ -83,6 +83,9 @@ async def supertrend_swing_reversal(
 
     if (last_supertrend < close_price and last_rsi < 30) and (
         prev_last_supertrend > prev_close_price and prev_last_rsi < 30
+        # make sure the *trend* of market_domination is bearish
+        and cls.market_domination_data["gainers_count"][-1] > cls.market_domination_data["losers_count"][-1]
+        and cls.market_domination_data["gainers_count"][-2] > cls.market_domination_data["losers_count"][-2]
     ):
         algo = "coinrule_supertrend_swing_reversal"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
