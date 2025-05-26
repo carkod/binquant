@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -8,7 +9,63 @@ from shared.utils import round_numbers
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
 
-# Algorithms based on Bollinguer bands
+
+async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
+    """
+    ATR breakout detection algorithm based on chatGPT
+
+    Detect breakout: price close above previous high AND ATR spike
+    """
+
+    if "ATR_14" not in cls.df:
+        logging.error(f"ATP breakout not enough data for symbol: {cls.symbol}")
+        return
+
+    prev_high = cls.df["high"].shift(1)
+    atr_spike = cls.df["ATR_14"] > (1.5 * cls.df["ATR_baseline"])
+    price_breakout = cls.df["close"] > prev_high
+    bullish_breakout_signal = atr_spike & price_breakout
+
+    green_candle = cls.df["close"] > cls.df["open"]
+    volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
+
+    if (
+        bullish_breakout_signal.iloc[-1]
+        and bullish_breakout_signal.iloc[-2]
+        and green_candle.iloc[-1]
+        and volume_confirmation.iloc[-1]
+    ):
+        algo = "atr_breakout"
+        close_price = cls.df["close"].iloc[-1]
+
+        msg = f"""
+        - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - Current price: {close_price}
+        - Strategy: {cls.bot_strategy.value}
+        - ATR spike: {cls.df['ATR_14'].iloc[-1]}
+        - Previous high: {prev_high.iloc[-1]}
+        - Volume higher than avg? {"Yes" if volume_confirmation.iloc[-1] else "No"}
+        - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
+        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+        """
+
+        value = SignalsConsumer(
+            autotrade=False,
+            current_price=close_price,
+            msg=msg,
+            symbol=cls.symbol,
+            algo=algo,
+            bot_strategy=cls.bot_strategy,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+
+        await cls.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        )
 
 
 async def ma_candlestick_jump(
@@ -41,8 +98,6 @@ async def ma_candlestick_jump(
 
     if (
         float(close_price) > float(open_price)
-        and bb_high < 1
-        and bb_high > 0.01
         and close_price > ma_7
         and open_price > ma_7
         and close_price > ma_25
