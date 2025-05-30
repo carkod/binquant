@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
+from algorithms.nbeats_market_breadth import NBeatsMarketBreadth
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -94,6 +95,11 @@ class MarketDominationAlgo:
 
         # Reduce network calls
         if datetime.now().minute % 10 == 0 and datetime.now().second == 0:
+
+            nb_mb = NBeatsMarketBreadth()
+            nb_mb.predict(self.market_domination_data)
+
+
             if self.btc_change_perc == 0:
                 self.btc_change_perc = self.ti.binbot_api.get_latest_btc_price()
 
