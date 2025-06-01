@@ -1,10 +1,14 @@
+from os import path
+
 import pandas as pd
-from darts import TimeSeries
-from darts.models import NBEATSModel
-from darts.dataprocessing.transformers import Scaler, MissingValuesFiller
 import torch.optim as optim
+from darts import TimeSeries
+from darts.dataprocessing.transformers import MissingValuesFiller, Scaler
+from darts.models import NBEATSModel
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 from shared.apis.binbot_api import BinbotApi
+
 
 class NBeatsMarketBreadth:
     """
@@ -13,11 +17,16 @@ class NBeatsMarketBreadth:
     It is designed to analyze the breadth of market movements using a neural network architecture.
     """
 
-    def __init__(self):
+    def __init__(self, input_chunk_length=240, forecast_horizon=72):
         # Initialize pre-trained model
-        self.model = NBEATSModel.load("algorithms/dist/market_breadth_nbeats_model_v1.pth")
+        script_dir = path.dirname(__file__)  # <-- absolute dir the script is in
+        rel_path = "dist/market_breadth_nbeats_model_v1.pth"
+        abs_file_path = path.join(script_dir, rel_path)
+        self.model = NBEATSModel.load(abs_file_path)
         self.binbot_api = BinbotApi()
-
+        # Parameters
+        self.input_chunk_length = input_chunk_length
+        self.forecast_horizon = forecast_horizon
 
     def pre_process(self, data):
         """
@@ -25,7 +34,7 @@ class NBeatsMarketBreadth:
         as training data
         """
 
-        df = pd.DataFrame(data["data"])
+        df = pd.DataFrame(data)
 
         # Clean and preprocess
         df["dates"] = pd.to_datetime(df["dates"], format="%Y-%m-%d %H:%M:%S.%f")
@@ -83,34 +92,36 @@ class NBeatsMarketBreadth:
         scaler_series = Scaler()
         scaler_covariate = Scaler()
         series_scaled = scaler_series.fit_transform(series_filled)
-        covariate_series_scaled = scaler_covariate.fit_transform(covariate_series_filled)
-
-        # Parameters
-        input_chunk_length = 240
-        forecast_horizon = 72
+        covariate_series_scaled = scaler_covariate.fit_transform(
+            covariate_series_filled
+        )
 
         # Train/validation split for both series and covariate series
         train_scaled, val_scaled = (
-            series_scaled[:-forecast_horizon],
-            series_scaled[-forecast_horizon:],
+            series_scaled[: -self.forecast_horizon],
+            series_scaled[-self.forecast_horizon :],
         )
         train_orig, val_orig = (
-            series_filled[:-forecast_horizon],
-            series_filled[-forecast_horizon:],
+            series_filled[: -self.forecast_horizon],
+            series_filled[-self.forecast_horizon :],
         )
-        train_covariate_scaled = covariate_series_scaled[:-forecast_horizon]
+        train_covariate_scaled = covariate_series_scaled[: -self.forecast_horizon]
 
         # Define N-BEATS model with future covariates
         model = NBEATSModel(
-            input_chunk_length=input_chunk_length,
-            output_chunk_length=forecast_horizon,
+            input_chunk_length=self.input_chunk_length,
+            output_chunk_length=self.forecast_horizon,
             n_epochs=600,
             batch_size=16,
             random_state=42,
             optimizer_cls=optim.AdamW,
             optimizer_kwargs={"lr": 1e-4},
             lr_scheduler_cls=ReduceLROnPlateau,
-            lr_scheduler_kwargs={"patience": 15, "factor": 0.5, "monitor": "train_loss"},
+            lr_scheduler_kwargs={
+                "patience": 15,
+                "factor": 0.5,
+                "monitor": "train_loss",
+            },
         )
 
         # Fit model with future covariates
@@ -118,7 +129,7 @@ class NBeatsMarketBreadth:
 
         # Forecast beyond training data using the last available covariate window
         future_covariates = covariate_series_scaled[
-            -(input_chunk_length + forecast_horizon) :
+            -(self.input_chunk_length + self.forecast_horizon) :
         ]
 
         return (
@@ -130,11 +141,9 @@ class NBeatsMarketBreadth:
             val_scaled,
             val_orig,
             model,
-            forecast_horizon,
+            self.forecast_horizon,
             train_covariate_scaled,
         )
-
-        
 
     def predict(self, data):
         """
@@ -142,10 +151,7 @@ class NBeatsMarketBreadth:
         """
         # Production prediction script for N-BEATS model with covariates
 
-
         # Load the saved model
-        model = NBEATSModel.load("dist/market_breadth_nbeats_model_v1.pth")
-
         (
             series_filled,
             future_covariates,
@@ -155,12 +161,14 @@ class NBeatsMarketBreadth:
             val_scaled,
             val_orig,
             model,
-            forecast_horizon,
+            self.forecast_horizon,
             train_covariate_scaled,
         ) = self.pre_process(data)
 
         # Forecast using the latest covariates
-        y_pred_scaled = model.predict(n=forecast_horizon, past_covariates=future_covariates)
+        y_pred_scaled = model.predict(
+            n=self.forecast_horizon, past_covariates=future_covariates
+        )
 
         # Inverse transform to get forecast in original scale
         y_pred = scaler_series.inverse_transform(y_pred_scaled)

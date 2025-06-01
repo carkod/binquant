@@ -2,9 +2,9 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from algorithms.nbeats_market_breadth import NBeatsMarketBreadth
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
-from algorithms.nbeats_market_breadth import NBeatsMarketBreadth
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -93,13 +93,13 @@ class MarketDominationAlgo:
         if not self.market_domination_data:
             return
 
-        # Reduce network calls
-        if datetime.now().minute % 10 == 0 and datetime.now().second == 0:
-
+        # move inside of time constraint after testing
+        if len(self.market_domination_data["dates"]) > 312:
             nb_mb = NBeatsMarketBreadth()
             nb_mb.predict(self.market_domination_data)
 
-
+        # Reduce network calls
+        if datetime.now().minute % 10 == 0 and datetime.now().second == 0:
             if self.btc_change_perc == 0:
                 self.btc_change_perc = self.ti.binbot_api.get_latest_btc_price()
 
@@ -127,7 +127,7 @@ class MarketDominationAlgo:
 
                 algo = "market_domination_reversal"
                 msg = f"""
-                - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
+                - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
                 - Current price: {self.close_price}
                 - Strategy: {strategy}
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>

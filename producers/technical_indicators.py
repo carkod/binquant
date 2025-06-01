@@ -2,8 +2,8 @@ import logging
 from datetime import datetime, timedelta
 
 import pandas
-import pandas_ta as ta
 from aiokafka import AIOKafkaProducer
+from pandas import Series
 
 from algorithms.coinrule import (
     buy_low_sell_high,
@@ -33,6 +33,7 @@ class TechnicalIndicators:
         df_1h,
         market_domination_data,
         top_gainers_day,
+        market_breadth_data,
     ) -> None:
         """
         Only variables
@@ -55,7 +56,7 @@ class TechnicalIndicators:
         self.top_coins_gainers: list[str] = []
         self.market_domination_data = market_domination_data
         self.top_gainers_day = top_gainers_day
-        pass
+        self.market_breadth_data = market_breadth_data
 
     def check_kline_gaps(self, data):
         """
@@ -73,7 +74,7 @@ class TechnicalIndicators:
         min_diff = int(time_diff.total_seconds() / 60)
         if self.interval == "15m":
             if min_diff > 15:
-                logging.warning(f'Gap in {data["symbol"]} klines: {min_diff} minutes')
+                logging.warning(f"Gap in {data['symbol']} klines: {min_diff} minutes")
 
     def days(self, secs):
         return secs * 86400
@@ -197,25 +198,13 @@ class TechnicalIndicators:
         - Volatility in percentage
         """
         log_volatility = (
-            pandas.Series(self.df["close"])
+            Series(self.df["close"])
             .astype(float)
             .pct_change()
             .rolling(window_size)
             .std()
         )
         self.df["perc_volatility"] = log_volatility
-
-    def set_supertrend(self) -> None:
-        """
-        Supertrend indicator
-        """
-        st = ta.supertrend(
-            self.df_1h["high"], self.df_1h["low"], self.df_1h["close"], 10, 3
-        )
-        if st is not None:
-            self.df_1h["supertrend"] = st["SUPERT_10_3.0"]
-
-        return
 
     def set_twap(self, periods: int = 30) -> None:
         """
@@ -265,7 +254,71 @@ class TechnicalIndicators:
         atr = tr.rolling(window=5, min_periods=5).mean()
         self.df["ATR_14"] = tr
         self.df["ATR_baseline"] = atr
+
+        # Calculate ATR if not present
+        if "ATR_baseline" not in df.columns or df["ATR_baseline"].isnull().all():
+            high = df["high"]
+            low = df["low"]
+            close = df["close"]
+            prev_close = close.shift(1)
+            tr = pandas.concat(
+                [(high - low), (high - prev_close).abs(), (low - prev_close).abs()],
+                axis=1,
+            ).max(axis=1)
+            atr = tr.rolling(window=period, min_periods=period).mean()
+            df["ATR_baseline"] = atr
+        else:
+            atr = df["ATR_baseline"]
+
         return
+
+    def set_supertrend(self, df, period: int = 14, multiplier: float = 3.0) -> None:
+        """
+        Calculate the Supertrend indicator and add it to the DataFrame.
+        """
+
+        hl2 = (df["high"] + df["low"]) / 2
+
+        # True Range (TR)
+        previous_close = df["close"].shift(1)
+        high_low = df["high"] - df["low"]
+        high_pc = abs(df["high"] - previous_close)
+        low_pc = abs(df["low"] - previous_close)
+        tr = pandas.concat([high_low, high_pc, low_pc], axis=1).max(axis=1)
+
+        # Average True Range (ATR)
+        df["atr"] = tr.rolling(window=period).mean()
+
+        # Bands
+        df["upperband"] = hl2 + (multiplier * df["atr"])
+        df["lowerband"] = hl2 - (multiplier * df["atr"])
+
+        supertrend = []
+
+        for i in range(period, len(df)):
+            if df["close"].iloc[i - 1] > df["upperband"].iloc[i - 1]:
+                df.at[i, "upperband"] = max(
+                    df["upperband"].iloc[i], df["upperband"].iloc[i - 1]
+                )
+            else:
+                df.at[i, "upperband"] = df["upperband"].iloc[i]
+
+            if df["close"].iloc[i - 1] < df["lowerband"].iloc[i - 1]:
+                df.at[i, "lowerband"] = min(
+                    df["lowerband"].iloc[i], df["lowerband"].iloc[i - 1]
+                )
+            else:
+                df.at[i, "lowerband"] = df["lowerband"].iloc[i]
+
+            # Determine trend direction
+            if df["close"].iloc[i] > df["upperband"].iloc[i - 1]:
+                supertrend.append(True)
+            elif df["close"].iloc[i] < df["lowerband"].iloc[i - 1]:
+                supertrend.append(False)
+
+            df["supertrend"] = supertrend
+
+            return
 
     async def publish(self):
         """
@@ -292,7 +345,6 @@ class TechnicalIndicators:
             self.bollinguer_spreads()
 
             self.log_volatility()
-            self.set_supertrend()
             self.set_twap()
             self.set_atr()
 

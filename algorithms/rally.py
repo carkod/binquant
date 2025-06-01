@@ -59,10 +59,10 @@ async def rally_or_pullback(
         bb_high, bb_mid, bb_low = cls.bb_spreads()
 
         msg = f"""
-            - [{os.getenv('ENV')}] <strong>{algo_type} #algorithm</strong> #{cls.symbol}
+            - [{os.getenv("ENV")}] <strong>{algo_type} #algorithm</strong> #{cls.symbol}
             - Current price: {close_price}
             - Log volatility (log SD): {volatility}
-            - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
+            - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
             - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
             - https://www.binance.com/en/trade/{cls.symbol}
             - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>

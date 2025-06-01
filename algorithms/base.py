@@ -47,14 +47,14 @@ class AlgoBase:
 
         if market_domination_reversal is not None:
             market_domination_reversal_line = (
-                f'Reversal? {"Yes" if market_domination_reversal else "No"}'
+                f"Reversal? {'Yes' if market_domination_reversal else 'No'}"
             )
 
         if bot_strategy is not None:
             bot_strategy_line = f"Strategy: {bot_strategy.value}"
 
         if bb_high > 0 and bb_low > 0:
-            bb_line = f"Bollinguer bands spread: {(bb_high - bb_low) / bb_high }"
+            bb_line = f"Bollinguer bands spread: {(bb_high - bb_low) / bb_high}"
 
         if btc_correlation is not None:
             btc_correlation_line = f"BTC correlation: {btc_correlation}"
@@ -63,7 +63,7 @@ class AlgoBase:
             forecast_line = f"TimesGPT forecast: {forecast}"
 
         msg = f"""
-        - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{symbol}
+        - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
         - {close_price_line}
         - {volatility_line}
         - {market_domination_reversal_line}

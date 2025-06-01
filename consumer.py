@@ -22,7 +22,7 @@ logging.basicConfig(
 async def data_process_pipe() -> None:
     consumer = AIOKafkaConsumer(
         KafkaTopics.klines_store_topic.value,
-        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+        bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
         value_deserializer=lambda m: json.loads(m),
         group_id="data-process-group",
         enable_auto_commit=False,
@@ -55,7 +55,7 @@ async def data_process_pipe() -> None:
 
 async def data_analytics_pipe() -> None:
     consumer = AIOKafkaConsumer(
-        bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+        bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
         value_deserializer=lambda m: json.loads(m),
         group_id="data-analytics-group",
         auto_offset_reset="latest",

@@ -91,6 +91,15 @@ class BinbotApi(BinanceApi):
         )
         return response["data"]
 
+    async def get_market_breadth(self, size=400):
+        """
+        Get market breadth data
+        """
+        response = await self.fetch(
+            url=f"{self.bb_base_url}/charts/adr-series", params={"size": size}
+        )
+        return response["data"]
+
     def get_latest_btc_price(self):
         # Get 24hr last BTCUSDC
         btc_ticker_24 = self.ticker_24("BTCUSDC")

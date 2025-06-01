@@ -2,6 +2,8 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+import pandas
+
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
 from shared.utils import round_numbers
@@ -33,7 +35,7 @@ async def twap_momentum_sniper(
         algo = "coinrule_twap_momentum_sniper"
 
         msg = f"""
-        - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
         - TWAP (> current price): {round_numbers(last_twap)}
@@ -75,34 +77,63 @@ async def supertrend_swing_reversal(
         logging.warning("1h candles supertrend have null values")
         return
 
-    last_supertrend = cls.df_1h["supertrend"].iloc[-1]
-    prev_last_supertrend = cls.df_1h["supertrend"].iloc[-2]
-    last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-1])
-    prev_last_rsi = round_numbers(cls.df_1h["rsi"].iloc[-2])
-    prev_close_price = cls.df_1h["close"].iloc[-2]
-    btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
+    hl2 = (cls.df_1h["high"] + cls.df_1h["low"]) / 2
+    period = 10
+    multiplier = 3.0
 
-    if (last_supertrend < close_price and last_rsi < 30) and (
-        prev_last_supertrend > prev_close_price and prev_last_rsi < 30
-        # make sure the *trend* of market_domination is bearish
-        and cls.market_domination_data["gainers_count"][-1] > cls.market_domination_data["losers_count"][-1]
-        and btc_correlation > 0
-    ):
+    # True Range (TR)
+    previous_close = cls.df_1h["close"].shift(1)
+    high_low = cls.df_1h["high"] - cls.df_1h["low"]
+    high_pc = abs(cls.df_1h["high"] - previous_close)
+    low_pc = abs(cls.df_1h["low"] - previous_close)
+    tr = pandas.concat([high_low, high_pc, low_pc], axis=1).max(axis=1)
+
+    # Average True Range (ATR)
+    cls.df_1h["atr"] = tr.rolling(window=period).mean()
+
+    # Bands
+    cls.df_1h["upperband"] = hl2 + (multiplier * cls.df_1h["atr"])
+    cls.df_1h["lowerband"] = hl2 - (multiplier * cls.df_1h["atr"])
+
+    supertrend = []
+
+    for i in range(period, len(cls.df_1h)):
+        if cls.df_1h["close"].iloc[i - 1] > cls.df_1h["upperband"].iloc[i - 1]:
+            cls.df_1h.at[i, "upperband"] = max(
+                cls.df_1h["upperband"].iloc[i], cls.df_1h["upperband"].iloc[i - 1]
+            )
+        else:
+            cls.df_1h.at[i, "upperband"] = cls.df_1h["upperband"].iloc[i]
+
+        if cls.df_1h["close"].iloc[i - 1] < cls.df_1h["lowerband"].iloc[i - 1]:
+            cls.df_1h.at[i, "lowerband"] = min(
+                cls.df_1h["lowerband"].iloc[i], cls.df_1h["lowerband"].iloc[i - 1]
+            )
+        else:
+            cls.df_1h.at[i, "lowerband"] = cls.df_1h["lowerband"].iloc[i]
+
+        # Determine trend direction
+        if cls.df_1h["close"].iloc[i] > cls.df_1h["upperband"].iloc[i - 1]:
+            supertrend.append(True)
+        elif cls.df_1h["close"].iloc[i] < cls.df_1h["lowerband"].iloc[i - 1]:
+            supertrend.append(False)
+
+    if len(supertrend) > 0 and supertrend[-1] and cls.df_1h["rsi"].iloc[-1] < 30:
         algo = "coinrule_supertrend_swing_reversal"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
         bot_strategy = Strategy.long
 
         msg = f"""
-        - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {bot_strategy.value}
-        - RSI smaller than 30: {last_rsi}
-        - Supertrend larger than current price: {round_numbers(last_supertrend)}
+        - RSI smaller than 30: {cls.df["rsi"]}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
 
         value = SignalsConsumer(
+            autotrade=False,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,
@@ -152,10 +183,10 @@ async def buy_low_sell_high(
         ):
             bot_strategy = Strategy.long
             msg = f"""
-            - [{os.getenv('ENV')}] <strong>{algo} #algorithm</strong> #{cls.symbol}
+            - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{cls.symbol}
             - Current price: {close_price}
             - Log volatility (log SD): {volatility}
-            - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
+            - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
             - Strategy: {bot_strategy.value}
             - Reversal? {"No reversal" if not cls.market_domination_reversal else "Positive" if cls.market_domination_reversal else "Negative"}
             - https://www.binance.com/en/trade/{cls.symbol}
