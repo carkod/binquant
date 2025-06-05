@@ -27,10 +27,10 @@ async def top_gainers_drop(
         algo = "top_gainers_drop"
 
         msg = f"""
-        - [{os.getenv('ENV')}] Top gainers's drop <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - [{os.getenv("ENV")}] Top gainers's drop <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Log volatility (log SD): {volatility}
-        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high }
+        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
         - Market domination trend: {cls.current_market_dominance}
         - Strategy: {cls.bot_strategy}

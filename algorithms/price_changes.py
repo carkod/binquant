@@ -56,7 +56,7 @@ async def price_rise_15(
         return
 
     msg = f"""
-    - [{os.getenv('ENV')}] {first_line} #{symbol}
+    - [{os.getenv("ENV")}] {first_line} #{symbol}
     - Current price: {close_price}
     - P-value: {p_value}
     - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}

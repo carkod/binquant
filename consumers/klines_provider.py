@@ -52,6 +52,7 @@ class KlinesProvider(KafkaDB):
             await self.binbot_api.get_market_domination_series()
         )
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
+        self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
     async def aggregate_data(self, results):
         # Reload time-constrained data
@@ -95,6 +96,7 @@ class KlinesProvider(KafkaDB):
                 df_1h=self.df_1h,
                 market_domination_data=self.market_domination_data,
                 top_gainers_day=self.top_gainers_day,
+                market_breadth_data=self.market_breadth_data,
             )
             await technical_indicators.publish()  # Await the async publish method
 

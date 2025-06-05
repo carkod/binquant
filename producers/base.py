@@ -14,7 +14,7 @@ class BaseProducer(KafkaDB):
 
     def start_producer(self):
         self.producer = KafkaProducer(
-            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+            bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             acks=1,
             api_version=(2, 5, 0),
@@ -35,7 +35,7 @@ class AsyncProducer(KafkaDB):
 
     def get_producer(self):
         self.producer = AIOKafkaProducer(
-            bootstrap_servers=f'{os.environ["KAFKA_HOST"]}:{os.environ["KAFKA_PORT"]}',
+            bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             acks=1,
         )

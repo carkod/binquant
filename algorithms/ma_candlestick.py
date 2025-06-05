@@ -34,15 +34,19 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         and bullish_breakout_signal.iloc[-2]
         and green_candle.iloc[-1]
         and volume_confirmation.iloc[-1]
+        # check if market is bullish
+        and cls.market_breadth_data["adp"][-1] > 0
+        and cls.market_breadth_data["adp"][-2] > 0
+        and cls.market_breadth_data["adp"][-3] > 0
     ):
         algo = "atr_breakout"
         close_price = cls.df["close"].iloc[-1]
 
         msg = f"""
-        - [{os.getenv('ENV')}] <strong>#{algo} algorithm</strong> #{cls.symbol}
+        - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
-        - ATR spike: {cls.df['ATR_14'].iloc[-1]}
+        - ATR spike: {cls.df["ATR_14"].iloc[-1]}
         - Previous high: {prev_high.iloc[-1]}
         - Volume higher than avg? {"Yes" if volume_confirmation.iloc[-1] else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
@@ -50,7 +54,6 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         """
 
         value = SignalsConsumer(
-            autotrade=False,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,
@@ -121,7 +124,7 @@ async def ma_candlestick_jump(
             bot_strategy = Strategy.long
 
             msg = f"""
-            - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
+            - [{os.getenv("ENV")}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
             - Current price: {close_price}
             - %threshold based on volatility: {volatility}
             - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
@@ -220,7 +223,7 @@ async def ma_candlestick_drop(
                 bot_strategy = Strategy.long
 
                 msg = f"""
-                - [{os.getenv('ENV')}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
+                - [{os.getenv("ENV")}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
                 - Current price: {close_price}
                 - Log volatility (log SD): {volatility}
                 - Reversal? {cls.market_domination_reversal}

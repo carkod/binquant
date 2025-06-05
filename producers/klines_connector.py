@@ -58,7 +58,7 @@ class KlinesConnector(BinbotApi):
         """
         symbols = self.get_symbols()
         markets = [
-            f'{symbol["id"].lower()}@kline_{self.interval.value}' for symbol in symbols
+            f"{symbol['id'].lower()}@kline_{self.interval.value}" for symbol in symbols
         ]
         self.client.send_message_to_server(
             markets, action=self.client.ACTION_SUBSCRIBE, id=1

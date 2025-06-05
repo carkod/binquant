@@ -1,4 +1,4 @@
-.PHONY: up down test migrate format
+.PHONY: up down test migrate format get-models
 
 ifneq (,$(wildcard ./.env))
     include .env
@@ -28,3 +28,10 @@ format:
 	ruff format .
 	ruff check .  --fix
 	mypy .
+
+get-models: ## Get AI models from binbot-notebooks
+	curl -s https://api.github.com/repos/carkod/binbot-notebooks/contents/dist | \
+        grep '"name":' | grep '.pth' | cut -d '"' -f 4 | \
+        while read filename; do \
+            curl -L -o algorithms/ai/$$filename https://raw.githubusercontent.com/carkod/binbot-notebooks/main/dist/$$filename; \
+        done
