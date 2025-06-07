@@ -127,7 +127,7 @@ async def supertrend_swing_reversal(
         - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {bot_strategy.value}
-        - RSI smaller than 30: {cls.df["rsi"]}
+        - RSI smaller than 30: {cls.df["rsi"].iloc[-1]}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
