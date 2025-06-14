@@ -2,7 +2,6 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from algorithms.nbeats_market_breadth import NBeatsMarketBreadth
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
 
@@ -24,7 +23,6 @@ class MarketDominationAlgo:
         self.market_domination_data = cls.market_domination_data
         self.btc_change_perc = 0
         self.autotrade = True
-        self.predicted_market_breadth = 0.0
 
     def calculate_reversal(self) -> None:
         """
@@ -96,11 +94,6 @@ class MarketDominationAlgo:
 
         # Reduce network calls
         if datetime.now().minute % 10 == 0 and datetime.now().second == 0:
-
-            if len(self.market_domination_data["dates"]) > 312:
-                nb_mb = NBeatsMarketBreadth()
-                self.predicted_market_breadth = await nb_mb.predict(self.market_domination_data)
-
             if self.btc_change_perc == 0:
                 self.btc_change_perc = self.ti.binbot_api.get_latest_btc_price()
 
@@ -130,7 +123,7 @@ class MarketDominationAlgo:
                 msg = f"""
                 - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
                 - Current price: {self.close_price}
-                - Strategy: {strategy}
+                - Strategy: {strategy.value}
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
                 - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
                 """
