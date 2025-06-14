@@ -24,6 +24,7 @@ class MarketDominationAlgo:
         self.market_domination_data = cls.market_domination_data
         self.btc_change_perc = 0
         self.autotrade = True
+        self.predicted_market_breadth = 0.0
 
     def calculate_reversal(self) -> None:
         """
@@ -93,13 +94,13 @@ class MarketDominationAlgo:
         if not self.market_domination_data:
             return
 
-        # move inside of time constraint after testing
-        if len(self.market_domination_data["dates"]) > 312:
-            nb_mb = NBeatsMarketBreadth()
-            nb_mb.predict(self.market_domination_data)
-
         # Reduce network calls
         if datetime.now().minute % 10 == 0 and datetime.now().second == 0:
+
+            if len(self.market_domination_data["dates"]) > 312:
+                nb_mb = NBeatsMarketBreadth()
+                self.predicted_market_breadth = await nb_mb.predict(self.market_domination_data)
+
             if self.btc_change_perc == 0:
                 self.btc_change_perc = self.ti.binbot_api.get_latest_btc_price()
 

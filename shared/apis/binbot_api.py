@@ -85,7 +85,7 @@ class BinbotApi(BinanceApi):
         response = self.request(url=f"{self.bb_one_symbol_url}/{symbol}")
         return response["data"]
 
-    async def get_market_domination_series(self, size=200):
+    async def get_market_domination_series(self, size=400):
         response = await self.fetch(
             url=self.bb_market_domination, params={"size": size}
         )
