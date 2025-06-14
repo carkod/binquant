@@ -118,7 +118,15 @@ async def supertrend_swing_reversal(
         elif cls.df_1h["close"].iloc[i] < cls.df_1h["lowerband"].iloc[i - 1]:
             supertrend.append(False)
 
-    if len(supertrend) > 0 and supertrend[-1] and cls.df_1h["rsi"].iloc[-1] < 30:
+    if (
+        len(supertrend) > 0
+        and supertrend[-1]
+        and cls.df_1h["rsi"].iloc[-1] < 30
+        # Long position bots
+        and cls.market_breadth_data["adp"][-1] > 0
+        and cls.market_breadth_data["adp"][-2] > 0
+        and cls.market_breadth_data["adp"][-3] > 0
+    ):
         algo = "coinrule_supertrend_swing_reversal"
         bb_high, bb_mid, bb_low = cls.bb_spreads()
         bot_strategy = Strategy.long
@@ -127,13 +135,12 @@ async def supertrend_swing_reversal(
         - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {bot_strategy.value}
-        - RSI smaller than 30: {cls.df["rsi"]}
+        - RSI smaller than 30: {cls.df["rsi"].iloc[-1]}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
 
         value = SignalsConsumer(
-            autotrade=False,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,
