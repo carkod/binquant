@@ -28,11 +28,10 @@ class TechnicalIndicators:
         self,
         producer: AIOKafkaProducer,
         binbot_api: BinbotApi,
-        df,
+        df: pandas.DataFrame,
         symbol,
         df_4h,
         df_1h,
-        market_domination_data,
         top_gainers_day,
         market_breadth_data,
     ) -> None:
@@ -55,7 +54,6 @@ class TechnicalIndicators:
         self.market_domination_reversal: bool = False
         self.bot_strategy: Strategy = Strategy.long
         self.top_coins_gainers: list[str] = []
-        self.market_domination_data = market_domination_data
         self.top_gainers_day = top_gainers_day
         self.market_breadth_data = market_breadth_data
 

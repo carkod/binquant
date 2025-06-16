@@ -40,9 +40,9 @@ class NBeatsMarketBreadth:
         self.binbot_api: BinbotApi
         self.market_breadth_data: dict[Any, Any] | None = None
         self.btc_change_perc = 0.0
-        # Initialize pre-trained model
-        script_dir = path.dirname(__file__)  # <-- absolute dir the script is in
-        rel_path = "dist/market_breadth_nbeats_model_v2.pth"
+        # Initialize pre-trained model directly from zipfile using Darts utility
+        script_dir = path.dirname(__file__)
+        rel_path = "checkpoints/market_breadth_nbeats_model_v1.pth"
         abs_file_path = path.join(script_dir, rel_path)
         self.model = NBEATSModel.load(abs_file_path)
         self.binbot_api = BinbotApi()
