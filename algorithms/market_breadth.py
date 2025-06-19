@@ -12,27 +12,14 @@ if TYPE_CHECKING:
 
 class MarketBreadthAlgo:
     def __init__(
-<<<<<<< HEAD
         self, cls: "TechnicalIndicators"
     ) -> None:
         self.ti = cls
-=======
-        self, cls: "TechnicalIndicators", close_price, bb_high, bb_low, bb_mid
-    ) -> None:
-        self.ti = cls
-        self.close_price = close_price
-        self.bb_high = bb_high
-        self.bb_low = bb_low
-        self.bb_mid = bb_mid
->>>>>>> ca10992 (Market domination overhaul + Nbeats market breadth)
         self.current_market_dominance = MarketDominance.NEUTRAL
         self.btc_change_perc = 0
         self.autotrade = True
         self.market_breadth_data = None
-<<<<<<< HEAD
         self.predicted_market_breadth = None
-=======
->>>>>>> ca10992 (Market domination overhaul + Nbeats market breadth)
 
     def calculate_reversal(self) -> None:
         """
@@ -94,11 +81,7 @@ class MarketBreadthAlgo:
 
         return
 
-<<<<<<< HEAD
     async def predict_market_breadth(self, close_price: float, bb_high: float, bb_low: float, bb_mid: float):
-=======
-    async def predicted_market_breadth(self):
->>>>>>> ca10992 (Market domination overhaul + Nbeats market breadth)
         """
         Predict market breadth using NBeatsMarketBreadth model.
         This method is called when the market breadth data is available.
@@ -108,7 +91,6 @@ class MarketBreadthAlgo:
 
         nb_mb = NBeatsMarketBreadth(
             cls=self.ti,
-<<<<<<< HEAD
             close_price=close_price,
             bb_high=bb_high,
             bb_low=bb_low,
@@ -119,20 +101,6 @@ class MarketBreadthAlgo:
         return self.predicted_market_breadth
 
     async def signal(self, close_price: float, bb_high: float, bb_low: float, bb_mid: float):
-=======
-            close_price=self.close_price,
-            bb_high=self.bb_high,
-            bb_low=self.bb_low,
-            bb_mid=self.bb_mid,
-        )
-        predicted_market_breadth = await nb_mb.predict(self.market_breadth_data)
-        if predicted_market_breadth is None:
-            return None
-
-        return predicted_market_breadth
-
-    async def signal(self):
->>>>>>> ca10992 (Market domination overhaul + Nbeats market breadth)
         if not self.market_breadth_data or datetime.now().minute % 30 == 0:
             self.market_breadth_data = await self.ti.binbot_api.get_market_breadth()
 
@@ -141,25 +109,15 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
-<<<<<<< HEAD
         await self.predict_market_breadth(close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
-=======
-        predicted_market_breadth = await self.predicted_market_breadth()
->>>>>>> ca10992 (Market domination overhaul + Nbeats market breadth)
 
         predicted_advancers = False
 
         if (
-<<<<<<< HEAD
             self.predicted_market_breadth is not None
             and float(self.predicted_market_breadth.iloc[-1]) > 0
             and float(self.predicted_market_breadth.iloc[-2]) > 0
             and float(self.predicted_market_breadth.iloc[-3]) > 0
-=======
-            float(predicted_market_breadth.iloc[-1]) > 0
-            and float(predicted_market_breadth.iloc[-2]) > 0
-            and float(predicted_market_breadth.iloc[-3]) > 0
->>>>>>> ca10992 (Market domination overhaul + Nbeats market breadth)
         ):
             predicted_advancers = True
 
