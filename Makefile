@@ -30,8 +30,8 @@ format:
 	mypy .
 
 get-models: ## Get AI models from binbot-notebooks
-	curl -s https://api.github.com/repos/carkod/binbot-notebooks/contents/dist | \
+	curl -s https://api.github.com/repos/carkod/binbot-notebooks/contents/checkpoints | \
         grep '"name":' | grep '.pth' | cut -d '"' -f 4 | \
         while read filename; do \
-            curl -L -o algorithms/dist/$$filename https://raw.githubusercontent.com/carkod/binbot-notebooks/main/dist/$$filename; \
+            curl -L -o algorithms/checkpoints/$$filename https://raw.githubusercontent.com/carkod/binbot-notebooks/main/checkpoints/$$filename; \
         done

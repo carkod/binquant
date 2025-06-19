@@ -136,6 +136,7 @@ async def ma_candlestick_jump(
             """
 
             value = SignalsConsumer(
+                autotrade=False,
                 spread=spread,
                 current_price=close_price,
                 msg=msg,
@@ -209,7 +210,10 @@ async def ma_candlestick_drop(
         bot_strategy = cls.bot_strategy
 
         if cls.market_domination_reversal:
-            if cls.current_market_dominance == MarketDominance.GAINERS:
+            if (
+                cls.market_breadth_data["adp"][-1] > 0
+                and cls.market_breadth_data["adp"][-2] > 0
+            ):
                 # market is bullish, most prices increasing,
                 # but looks like it's dropping and going bearish (reversal)
                 # candlesticks of this specific crypto are seeing a huge drop (candlstick drop algo)

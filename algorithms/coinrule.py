@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pandas
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import KafkaTopics, MarketDominance, Strategy
+from shared.enums import KafkaTopics, Strategy
 from shared.utils import round_numbers
 
 if TYPE_CHECKING:
@@ -177,45 +177,43 @@ async def buy_low_sell_high(
     volatility = round_numbers(volatility, 6)
     bot_strategy = cls.bot_strategy
 
-    if rsi < 35 and close_price > ma_25 and volatility > 0.01:
+    if (
+        rsi < 35
+        and close_price > ma_25
+        and volatility > 0.01
+        and cls.market_domination_reversal
+    ):
         algo = "coinrule_buy_low_sell_high"
         volatility = round_numbers(volatility, 6)
 
-        # market is bearish, most prices decreasing, (LOSERS)
-        # but looks like it's picking up and going bullish (reversal)
-        # candlesticks of this specific crypto are seeing a huge drop (candlstick drop algo)
-        if (
-            cls.market_domination_reversal
-            and cls.current_market_dominance == MarketDominance.LOSERS
-        ):
-            bot_strategy = Strategy.long
-            msg = f"""
-            - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{cls.symbol}
-            - Current price: {close_price}
-            - Log volatility (log SD): {volatility}
-            - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-            - Strategy: {bot_strategy.value}
-            - Reversal? {"No reversal" if not cls.market_domination_reversal else "Positive" if cls.market_domination_reversal else "Negative"}
-            - https://www.binance.com/en/trade/{cls.symbol}
-            - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
-            """
+        bot_strategy = Strategy.long
+        msg = f"""
+        - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{cls.symbol}
+        - Current price: {close_price}
+        - Log volatility (log SD): {volatility}
+        - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
+        - Strategy: {bot_strategy.value}
+        - Reversal? {"No reversal" if not cls.market_domination_reversal else "Positive" if cls.market_domination_reversal else "Negative"}
+        - https://www.binance.com/en/trade/{cls.symbol}
+        - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
+        """
 
-            value = SignalsConsumer(
-                autotrade=False,
-                current_price=close_price,
-                msg=msg,
-                symbol=cls.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                bb_spreads=BollinguerSpread(
-                    bb_high=bb_high,
-                    bb_mid=bb_mid,
-                    bb_low=bb_low,
-                ),
-            )
+        value = SignalsConsumer(
+            autotrade=False,
+            current_price=close_price,
+            msg=msg,
+            symbol=cls.symbol,
+            algo=algo,
+            bot_strategy=bot_strategy,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
 
-            await cls.producer.send(
-                KafkaTopics.signals.value, value=value.model_dump_json()
-            )
+        await cls.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        )
 
     pass
