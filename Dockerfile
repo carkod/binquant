@@ -16,7 +16,6 @@ RUN pip3 install uv
 RUN uv pip install --system -r pyproject.toml
 
 RUN rm -rf /root/.cache/pip
-RUN rm -rf algorithms/checkpoints/*.ckpt
 
 STOPSIGNAL SIGTERM
 EXPOSE 8080 80 9092 9093 9094

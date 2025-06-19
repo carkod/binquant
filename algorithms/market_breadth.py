@@ -23,6 +23,7 @@ class MarketBreadthAlgo:
         self.btc_change_perc = 0
         self.autotrade = True
         self.market_breadth_data = None
+        self.predicted_market_breadth = None
 
     def calculate_reversal(self) -> None:
         """
@@ -84,7 +85,7 @@ class MarketBreadthAlgo:
 
         return
 
-    async def predicted_market_breadth(self):
+    async def predict_market_breadth(self):
         """
         Predict market breadth using NBeatsMarketBreadth model.
         This method is called when the market breadth data is available.
@@ -99,11 +100,11 @@ class MarketBreadthAlgo:
             bb_low=self.bb_low,
             bb_mid=self.bb_mid,
         )
-        predicted_market_breadth = await nb_mb.predict(self.market_breadth_data)
-        if predicted_market_breadth is None:
-            return None
+        self.predicted_market_breadth = await nb_mb.predict(
+            self.market_breadth_data
+        )
 
-        return predicted_market_breadth
+        return self.predicted_market_breadth
 
     async def signal(self):
         if not self.market_breadth_data or datetime.now().minute % 30 == 0:
@@ -114,14 +115,14 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
-        predicted_market_breadth = await self.predicted_market_breadth()
+        await self.predict_market_breadth()
 
         predicted_advancers = False
 
         if (
-            float(predicted_market_breadth.iloc[-1]) > 0
-            and float(predicted_market_breadth.iloc[-2]) > 0
-            and float(predicted_market_breadth.iloc[-3]) > 0
+            float(self.predicted_market_breadth.iloc[-1]) > 0
+            and float(self.predicted_market_breadth.iloc[-2]) > 0
+            and float(self.predicted_market_breadth.iloc[-3]) > 0
         ):
             predicted_advancers = True
 
