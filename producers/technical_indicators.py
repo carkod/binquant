@@ -15,8 +15,7 @@ from algorithms.ma_candlestick import (
     ma_candlestick_drop,
     ma_candlestick_jump,
 )
-from algorithms.market_domination import MarketDominationAlgo
-from algorithms.nbeats_market_breadth import NBeatsMarketBreadth
+from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.top_gainer_drop import top_gainers_drop
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
@@ -382,14 +381,14 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            mda = MarketDominationAlgo(
+            mda = MarketBreadthAlgo(
                 cls=self,
                 close_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-            await mda.market_domination_signal()
+            await mda.signal()
 
             await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 
@@ -469,14 +468,5 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-
-            nb_mb = NBeatsMarketBreadth(
-                cls=self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
-            await nb_mb.market_breadth_signal()
 
         return
