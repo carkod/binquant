@@ -55,6 +55,9 @@ class TechnicalIndicators:
         self.top_coins_gainers: list[str] = []
         self.top_gainers_day = top_gainers_day
         self.market_breadth_data = market_breadth_data
+        # Pre-initialize Market Breadth algorithm
+        # because we don't need to load model every time
+        self.mda = MarketBreadthAlgo(cls=self)
 
     def check_kline_gaps(self, data):
         """
@@ -381,14 +384,9 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            mda = MarketBreadthAlgo(
-                cls=self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
+            await self.mda.signal(
+                close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
-            await mda.signal()
 
             await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 

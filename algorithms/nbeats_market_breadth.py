@@ -117,9 +117,10 @@ class NBeatsMarketBreadth:
         covariate_df_full = pd.concat(
             [df[["total_volume", "adp_ma", "adp_ma7"]], future_covariates_df]
         )
-
         # Ensure index is sorted and unique
-        covariate_df_full = covariate_df_full[~covariate_df_full.index.duplicated(keep="last")]
+        covariate_df_full = covariate_df_full[
+            ~covariate_df_full.index.duplicated(keep="last")
+        ]
         covariate_df_full = covariate_df_full.sort_index()
 
         # Create TimeSeries for target and covariates

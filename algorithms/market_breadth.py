@@ -12,13 +12,9 @@ if TYPE_CHECKING:
 
 class MarketBreadthAlgo:
     def __init__(
-        self, cls: "TechnicalIndicators", close_price, bb_high, bb_low, bb_mid
+        self, cls: "TechnicalIndicators"
     ) -> None:
         self.ti = cls
-        self.close_price = close_price
-        self.bb_high = bb_high
-        self.bb_low = bb_low
-        self.bb_mid = bb_mid
         self.current_market_dominance = MarketDominance.NEUTRAL
         self.btc_change_perc = 0
         self.autotrade = True
@@ -85,7 +81,7 @@ class MarketBreadthAlgo:
 
         return
 
-    async def predict_market_breadth(self):
+    async def predict_market_breadth(self, close_price: float, bb_high: float, bb_low: float, bb_mid: float):
         """
         Predict market breadth using NBeatsMarketBreadth model.
         This method is called when the market breadth data is available.
@@ -95,18 +91,16 @@ class MarketBreadthAlgo:
 
         nb_mb = NBeatsMarketBreadth(
             cls=self.ti,
-            close_price=self.close_price,
-            bb_high=self.bb_high,
-            bb_low=self.bb_low,
-            bb_mid=self.bb_mid,
+            close_price=close_price,
+            bb_high=bb_high,
+            bb_low=bb_low,
+            bb_mid=bb_mid,
         )
-        self.predicted_market_breadth = await nb_mb.predict(
-            self.market_breadth_data
-        )
+        self.predicted_market_breadth = await nb_mb.predict(self.market_breadth_data)
 
         return self.predicted_market_breadth
 
-    async def signal(self):
+    async def signal(self, close_price: float, bb_high: float, bb_low: float, bb_mid: float):
         if not self.market_breadth_data or datetime.now().minute % 30 == 0:
             self.market_breadth_data = await self.ti.binbot_api.get_market_breadth()
 
@@ -115,7 +109,7 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
-        # await self.predict_market_breadth()
+        await self.predict_market_breadth(close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 
         predicted_advancers = False
 
