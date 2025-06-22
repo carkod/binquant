@@ -115,12 +115,13 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
-        await self.predict_market_breadth()
+        # await self.predict_market_breadth()
 
         predicted_advancers = False
 
         if (
-            float(self.predicted_market_breadth.iloc[-1]) > 0
+            self.predicted_market_breadth is not None
+            and float(self.predicted_market_breadth.iloc[-1]) > 0
             and float(self.predicted_market_breadth.iloc[-2]) > 0
             and float(self.predicted_market_breadth.iloc[-3]) > 0
         ):
