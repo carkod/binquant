@@ -11,9 +11,7 @@ if TYPE_CHECKING:
 
 
 class MarketBreadthAlgo:
-    def __init__(
-        self, cls: "TechnicalIndicators"
-    ) -> None:
+    def __init__(self, cls: "TechnicalIndicators") -> None:
         self.ti = cls
         self.current_market_dominance = MarketDominance.NEUTRAL
         self.btc_change_perc = 0
@@ -81,7 +79,9 @@ class MarketBreadthAlgo:
 
         return
 
-    async def predict_market_breadth(self, close_price: float, bb_high: float, bb_low: float, bb_mid: float):
+    async def predict_market_breadth(
+        self, close_price: float, bb_high: float, bb_low: float, bb_mid: float
+    ):
         """
         Predict market breadth using NBeatsMarketBreadth model.
         This method is called when the market breadth data is available.
@@ -100,7 +100,9 @@ class MarketBreadthAlgo:
 
         return self.predicted_market_breadth
 
-    async def signal(self, close_price: float, bb_high: float, bb_low: float, bb_mid: float):
+    async def signal(
+        self, close_price: float, bb_high: float, bb_low: float, bb_mid: float
+    ):
         if not self.market_breadth_data or datetime.now().minute % 30 == 0:
             self.market_breadth_data = await self.ti.binbot_api.get_market_breadth()
 
@@ -109,15 +111,7 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
-<<<<<<< HEAD
-<<<<<<< HEAD
-        await self.predict_market_breadth(close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
-=======
-        # await self.predict_market_breadth()
->>>>>>> 045c39d (Temporarily disable nbeats predictions)
-=======
-        await self.predict_market_breadth(close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
->>>>>>> 597698f (Fix Nbeats prediction with improved performance)
+        # await self.predict_market_breadth(close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 
         predicted_advancers = False
 
@@ -142,15 +136,15 @@ class MarketBreadthAlgo:
 
             value = SignalsConsumer(
                 autotrade=self.autotrade,
-                current_price=self.close_price,
+                current_price=close_price,
                 msg=msg,
                 symbol=self.ti.symbol,
                 algo=algo,
                 bot_strategy=self.bot_strategy,
                 bb_spreads=BollinguerSpread(
-                    bb_high=self.bb_high,
-                    bb_mid=self.bb_mid,
-                    bb_low=self.bb_low,
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
                 ),
             )
 
