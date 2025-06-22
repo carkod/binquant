@@ -1,7 +1,12 @@
-FROM python:3.11
+FROM python:3.11-slim
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-RUN apt update && apt install --no-install-recommends -y build-essential default-jre
+
+RUN apt-get update && \
+    apt-get install -y build-essential default-jre-headless && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY . .
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -9,6 +14,8 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 RUN pip3 install uv
 RUN uv pip install --system -r pyproject.toml
-RUN apt clean && apt autoremove --purge -y && rm -rf /var/lib/apt/lists/* && rm -rf /etc/apt/sources.list.d/*.list
+
+RUN rm -rf /root/.cache/pip
+
 STOPSIGNAL SIGTERM
 EXPOSE 8080 80 9092 9093 9094

@@ -15,8 +15,7 @@ from algorithms.ma_candlestick import (
     ma_candlestick_drop,
     ma_candlestick_jump,
 )
-from algorithms.market_domination import MarketDominationAlgo
-from algorithms.nbeats_market_breadth import NBeatsMarketBreadth
+from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.top_gainer_drop import top_gainers_drop
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
@@ -28,11 +27,10 @@ class TechnicalIndicators:
         self,
         producer: AIOKafkaProducer,
         binbot_api: BinbotApi,
-        df,
+        df: pandas.DataFrame,
         symbol,
         df_4h,
         df_1h,
-        market_domination_data,
         top_gainers_day,
         market_breadth_data,
     ) -> None:
@@ -55,9 +53,11 @@ class TechnicalIndicators:
         self.market_domination_reversal: bool = False
         self.bot_strategy: Strategy = Strategy.long
         self.top_coins_gainers: list[str] = []
-        self.market_domination_data = market_domination_data
         self.top_gainers_day = top_gainers_day
         self.market_breadth_data = market_breadth_data
+        # Pre-initialize Market Breadth algorithm
+        # because we don't need to load model every time
+        self.mda = MarketBreadthAlgo(cls=self)
 
     def check_kline_gaps(self, data):
         """
@@ -384,14 +384,9 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            mda = MarketDominationAlgo(
-                cls=self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
+            await self.mda.signal(
+                close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
-            await mda.market_domination_signal()
 
             await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 
@@ -471,14 +466,5 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-
-            nb_mb = NBeatsMarketBreadth(
-                cls=self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
-            await nb_mb.market_breadth_signal()
 
         return
