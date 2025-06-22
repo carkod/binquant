@@ -109,7 +109,11 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
+<<<<<<< HEAD
         await self.predict_market_breadth(close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
+=======
+        # await self.predict_market_breadth()
+>>>>>>> 045c39d (Temporarily disable nbeats predictions)
 
         predicted_advancers = False
 
