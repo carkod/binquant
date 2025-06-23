@@ -253,23 +253,9 @@ class TechnicalIndicators:
             [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
         ).max(axis=1)
         atr = tr.rolling(window=5, min_periods=5).mean()
-        self.df["ATR_14"] = tr
-        self.df["ATR_baseline"] = atr
-
-        # Calculate ATR if not present
-        if "ATR_baseline" not in df.columns or df["ATR_baseline"].isnull().all():
-            high = df["high"]
-            low = df["low"]
-            close = df["close"]
-            prev_close = close.shift(1)
-            tr = pandas.concat(
-                [(high - low), (high - prev_close).abs(), (low - prev_close).abs()],
-                axis=1,
-            ).max(axis=1)
-            atr = tr.rolling(window=period, min_periods=period).mean()
-            df["ATR_baseline"] = atr
-        else:
-            atr = df["ATR_baseline"]
+        self.df["rolling_high"] = df["high"].rolling(window=20).max().shift(1)
+        self.df["ATR_breakout"] = df["close"] > (self.df["rolling_high"] + 0.8 * atr)
+        self.df["breakout_strength"] = (df["close"] - self.df["rolling_high"]) / atr
 
         return
 

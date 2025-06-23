@@ -17,21 +17,17 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
     Detect breakout: price close above previous high AND ATR spike
     """
 
-    if "ATR_14" not in cls.df:
+    if "ATR_breakout" not in cls.df:
         logging.error(f"ATP breakout not enough data for symbol: {cls.symbol}")
         return
 
     prev_high = cls.df["high"].shift(1)
-    atr_spike = cls.df["ATR_14"] > (1.5 * cls.df["ATR_baseline"])
-    price_breakout = cls.df["close"] > prev_high
-    bullish_breakout_signal = atr_spike & price_breakout
 
     green_candle = cls.df["close"] > cls.df["open"]
     volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
 
     if (
-        bullish_breakout_signal.iloc[-1]
-        and bullish_breakout_signal.iloc[-2]
+        cls.df["ATR_breakout"].iloc[-1]
         and green_candle.iloc[-1]
         and volume_confirmation.iloc[-1]
         # check if market is bullish
@@ -48,12 +44,13 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         - Strategy: {cls.bot_strategy.value}
         - ATR spike: {cls.df["ATR_14"].iloc[-1]}
         - Previous high: {prev_high.iloc[-1]}
-        - Volume higher than avg? {"Yes" if volume_confirmation.iloc[-1] else "No"}
+        - Breakout strength {str(cls.df["ATR_breakout"].iloc[-1])}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
 
         value = SignalsConsumer(
+            autotrade=False,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,

@@ -123,6 +123,12 @@ class NBeatsMarketBreadth:
         ]
         covariate_df_full = covariate_df_full.sort_index()
 
+        # Ensure index is sorted and unique
+        covariate_df_full = covariate_df_full[
+            ~covariate_df_full.index.duplicated(keep="last")
+        ]
+        covariate_df_full = covariate_df_full.sort_index()
+
         # Create TimeSeries for target and covariates
         covariate_series = TimeSeries.from_dataframe(
             covariate_df_full,
