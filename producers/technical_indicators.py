@@ -441,13 +441,13 @@ class TechnicalIndicators:
             )
 
             # bad algo
-            await supertrend_swing_reversal(
-                self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # await supertrend_swing_reversal(
+            #     self,
+            #     close_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             await twap_momentum_sniper(
                 self,

@@ -40,7 +40,7 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
-        - ATR spike: {cls.df["ATR_14"].iloc[-1]}
+        - ATR spike: {str(cls.df["ATR_breakout"].iloc[-1])}
         - Breakout strength {str(cls.df["ATR_breakout"].iloc[-1])}
         - Anomaly detected: {"Yes" if str(cls.df["anomaly_loaded"].iloc[-1]) else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
