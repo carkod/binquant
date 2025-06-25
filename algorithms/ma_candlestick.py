@@ -21,8 +21,6 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         logging.error(f"ATP breakout not enough data for symbol: {cls.symbol}")
         return
 
-    prev_high = cls.df["high"].shift(1)
-
     green_candle = cls.df["close"] > cls.df["open"]
     volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
 
@@ -43,8 +41,8 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
         - ATR spike: {cls.df["ATR_14"].iloc[-1]}
-        - Previous high: {prev_high.iloc[-1]}
         - Breakout strength {str(cls.df["ATR_breakout"].iloc[-1])}
+        - Anomaly detected: {"Yes" if str(cls.df["anomaly_loaded"].iloc[-1]) else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """

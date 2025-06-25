@@ -141,6 +141,7 @@ async def supertrend_swing_reversal(
         """
 
         value = SignalsConsumer(
+            autotrade=False,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,
