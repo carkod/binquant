@@ -127,8 +127,9 @@ class MarketBreadthAlgo:
             algo = "market_domination_reversal"
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-            - Current price: {self.close_price}
+            - Current price: {close_price}
             - Strategy: {self.bot_strategy.value}
+            - Anomaly detected: {"Yes" if str(self.ti.df["anomaly_loaded"].iloc[-1]) else "No"}
             - Predicted market breadth confirmation: {"Yes" if predicted_advancers else "No"}
             - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
             - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
