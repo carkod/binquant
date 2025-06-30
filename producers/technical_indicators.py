@@ -10,6 +10,7 @@ from algorithms.coinrule import (
     supertrend_swing_reversal,
     twap_momentum_sniper,
 )
+from algorithms.isolation_forest_anomalies import IsolationForestAnomalies
 from algorithms.ma_candlestick import (
     atr_breakout,
     ma_candlestick_drop,
@@ -58,6 +59,7 @@ class TechnicalIndicators:
         # Pre-initialize Market Breadth algorithm
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
+        self.ifa = IsolationForestAnomalies()
 
     def check_kline_gaps(self, data):
         """
@@ -370,6 +372,8 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
+            self.ifa.predict(df=self.df)
+
             await self.mda.signal(
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
@@ -437,13 +441,13 @@ class TechnicalIndicators:
             )
 
             # bad algo
-            await supertrend_swing_reversal(
-                self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # await supertrend_swing_reversal(
+            #     self,
+            #     close_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             await twap_momentum_sniper(
                 self,
