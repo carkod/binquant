@@ -24,14 +24,16 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
     green_candle = cls.df["close"] > cls.df["open"]
     volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
 
+    # df[df["ATR_breakout"]]["close"]
+
     if (
-        cls.df["ATR_breakout"].iloc[-1]
+        cls.df[cls.df["ATR_breakout"]]["close"].iloc[-1]
         and green_candle.iloc[-1]
-        and volume_confirmation.iloc[-1]
+        # and volume_confirmation.iloc[-1]
         # check if market is bullish
         and cls.market_breadth_data["adp"][-1] > 0
-        and cls.market_breadth_data["adp"][-2] > 0
-        and cls.market_breadth_data["adp"][-3] > 0
+        # and cls.market_breadth_data["adp"][-2] > 0
+        # and cls.market_breadth_data["adp"][-3] > 0
     ):
         algo = "atr_breakout"
         close_price = cls.df["close"].iloc[-1]

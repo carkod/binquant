@@ -7,7 +7,6 @@ from pandas import Series
 
 from algorithms.coinrule import (
     buy_low_sell_high,
-    supertrend_swing_reversal,
     twap_momentum_sniper,
 )
 from algorithms.isolation_forest_anomalies import IsolationForestAnomalies
@@ -254,11 +253,13 @@ class TechnicalIndicators:
         tr = pandas.concat(
             [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
         ).max(axis=1)
-        atr = tr.rolling(window=5, min_periods=5).mean()
-        self.df["rolling_high"] = df["high"].rolling(window=20).max().shift(1)
-        self.df["ATR_breakout"] = df["close"] > (self.df["rolling_high"] + 0.8 * atr)
-        self.df["breakout_strength"] = (df["close"] - self.df["rolling_high"]) / atr
 
+        atr = tr.rolling(window=5, min_periods=5).mean()
+        rolling_high = df["high"].rolling(window=20).max().shift(1)
+        self.df["ATR_breakout"] = df["close"] > (rolling_high + 0.8 * atr)
+        self.df["breakout_strength"] = (df["close"] - rolling_high) / atr
+
+        
         return
 
     def set_supertrend(self, df, period: int = 14, multiplier: float = 3.0) -> None:
