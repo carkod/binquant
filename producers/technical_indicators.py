@@ -12,6 +12,7 @@ from algorithms.coinrule import (
 from algorithms.isolation_forest_anomalies import IsolationForestAnomalies
 from algorithms.ma_candlestick import (
     atr_breakout,
+    reverse_atr_breakout,
     ma_candlestick_drop,
     ma_candlestick_jump,
 )
@@ -59,6 +60,7 @@ class TechnicalIndicators:
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
         self.ifa = IsolationForestAnomalies()
+        self.btc_correlation = 0
 
     def check_kline_gaps(self, data):
         """
@@ -367,6 +369,9 @@ class TechnicalIndicators:
             ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
             # ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
 
+            if self.btc_correlation == 0:
+                self.btc_correlation = self.binbot_api.get_btc_correlation(symbol=self.symbol)
+
             volatility = float(
                 self.df.perc_volatility[len(self.df.perc_volatility) - 1]
             )
@@ -380,6 +385,7 @@ class TechnicalIndicators:
             )
 
             await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
+            await reverse_atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 
             await ma_candlestick_jump(
                 self,

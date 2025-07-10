@@ -18,6 +18,7 @@ class MarketBreadthAlgo:
         self.autotrade = True
         self.market_breadth_data = None
         self.predicted_market_breadth = None
+        self.btc_correlation = 0
 
     def calculate_reversal(self) -> None:
         """
@@ -50,11 +51,11 @@ class MarketBreadthAlgo:
                 # Is there a gainers reversal trend?
                 and self.market_breadth_data["adp"][-4] < 0
             ):
-                btc_correlation = self.ti.binbot_api.get_btc_correlation(
+                self.btc_correlation = self.ti.binbot_api.get_btc_correlation(
                     symbol=self.ti.symbol
                 )
 
-                if btc_correlation > 0 and self.btc_change_perc > 0:
+                if self.btc_correlation > 0 and self.btc_change_perc > 0:
                     # Update current market dominance
                     self.current_market_dominance = MarketDominance.GAINERS
                     self.bot_strategy = Strategy.long
@@ -66,10 +67,10 @@ class MarketBreadthAlgo:
                 and self.market_breadth_data["adp"][-3] < 0
                 and self.market_breadth_data["adp"][-4] > 0
             ):
-                btc_correlation = self.ti.binbot_api.get_btc_correlation(
+                self.btc_correlation = self.ti.binbot_api.get_btc_correlation(
                     symbol=self.ti.symbol
                 )
-                if btc_correlation < 0 and self.btc_change_perc < 0:
+                if self.btc_correlation < 0 and self.btc_change_perc < 0:
                     self.current_market_dominance = MarketDominance.LOSERS
                     self.bot_strategy = Strategy.margin_short
                     self.autotrade = False
