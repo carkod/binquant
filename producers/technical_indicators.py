@@ -7,11 +7,12 @@ from pandas import Series
 
 from algorithms.coinrule import (
     buy_low_sell_high,
-    supertrend_swing_reversal,
     twap_momentum_sniper,
 )
+from algorithms.isolation_forest_anomalies import IsolationForestAnomalies
 from algorithms.ma_candlestick import (
     atr_breakout,
+    reverse_atr_breakout,
     ma_candlestick_drop,
     ma_candlestick_jump,
 )
@@ -58,6 +59,8 @@ class TechnicalIndicators:
         # Pre-initialize Market Breadth algorithm
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
+        self.ifa = IsolationForestAnomalies()
+        self.btc_correlation = 0
 
     def check_kline_gaps(self, data):
         """
@@ -252,11 +255,13 @@ class TechnicalIndicators:
         tr = pandas.concat(
             [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
         ).max(axis=1)
-        atr = tr.rolling(window=5, min_periods=5).mean()
-        self.df["rolling_high"] = df["high"].rolling(window=20).max().shift(1)
-        self.df["ATR_breakout"] = df["close"] > (self.df["rolling_high"] + 0.8 * atr)
-        self.df["breakout_strength"] = (df["close"] - self.df["rolling_high"]) / atr
 
+        atr = tr.rolling(window=5, min_periods=5).mean()
+        rolling_high = df["high"].rolling(window=20).max().shift(1)
+        self.df["ATR_breakout"] = df["close"] > (rolling_high + 0.8 * atr)
+        self.df["breakout_strength"] = (df["close"] - rolling_high) / atr
+
+        
         return
 
     def set_supertrend(self, df, period: int = 14, multiplier: float = 3.0) -> None:
@@ -364,17 +369,23 @@ class TechnicalIndicators:
             ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
             # ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
 
+            if self.btc_correlation == 0:
+                self.btc_correlation = self.binbot_api.get_btc_correlation(symbol=self.symbol)
+
             volatility = float(
                 self.df.perc_volatility[len(self.df.perc_volatility) - 1]
             )
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
+            self.ifa.predict(df=self.df)
+
             await self.mda.signal(
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
             await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
+            await reverse_atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 
             await ma_candlestick_jump(
                 self,
@@ -437,13 +448,13 @@ class TechnicalIndicators:
             )
 
             # bad algo
-            await supertrend_swing_reversal(
-                self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # await supertrend_swing_reversal(
+            #     self,
+            #     close_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             await twap_momentum_sniper(
                 self,
