@@ -12,9 +12,9 @@ from algorithms.coinrule import (
 from algorithms.isolation_forest_anomalies import IsolationForestAnomalies
 from algorithms.ma_candlestick import (
     atr_breakout,
-    reverse_atr_breakout,
     ma_candlestick_drop,
     ma_candlestick_jump,
+    reverse_atr_breakout,
 )
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.top_gainer_drop import top_gainers_drop
@@ -61,6 +61,7 @@ class TechnicalIndicators:
         self.mda = MarketBreadthAlgo(cls=self)
         self.ifa = IsolationForestAnomalies()
         self.btc_correlation = 0
+        self.repeated_signals: dict = {}
 
     def check_kline_gaps(self, data):
         """
@@ -261,7 +262,6 @@ class TechnicalIndicators:
         self.df["ATR_breakout"] = df["close"] > (rolling_high + 0.8 * atr)
         self.df["breakout_strength"] = (df["close"] - rolling_high) / atr
 
-        
         return
 
     def set_supertrend(self, df, period: int = 14, multiplier: float = 3.0) -> None:
@@ -348,11 +348,17 @@ class TechnicalIndicators:
             self.df_4h.dropna(inplace=True)
             self.df_4h.reset_index(drop=True, inplace=True)
 
+            # Avoid repeated signals in short periods of time
+            is_lapsed = self.symbol in self.repeated_signals and self.repeated_signals[
+                self.symbol
+            ] < datetime.now() - timedelta(minutes=30)
+
             # Dropped NaN values may end up with empty dataframe
             if (
                 self.df.ma_7.size < 7
                 or self.df.ma_25.size < 25
                 or self.df.ma_100.size < 100
+                and not is_lapsed
             ):
                 return
 
@@ -367,10 +373,11 @@ class TechnicalIndicators:
             ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
             ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
             ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
-            # ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
 
             if self.btc_correlation == 0:
-                self.btc_correlation = self.binbot_api.get_btc_correlation(symbol=self.symbol)
+                self.btc_correlation = self.binbot_api.get_btc_correlation(
+                    symbol=self.symbol
+                )
 
             volatility = float(
                 self.df.perc_volatility[len(self.df.perc_volatility) - 1]
@@ -385,7 +392,9 @@ class TechnicalIndicators:
             )
 
             await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
-            await reverse_atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
+            await reverse_atr_breakout(
+                cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            )
 
             await ma_candlestick_jump(
                 self,
@@ -463,5 +472,8 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
+
+            # avoid repeating signals in short periods of time
+            self.repeated_signals[self.symbol] = datetime.now()
 
         return

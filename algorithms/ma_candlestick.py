@@ -25,8 +25,10 @@ async def reverse_atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_m
     green_candle = cls.df["close"] > cls.df["open"]
     volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
 
-    adp_diff = (cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2])
-    adp_diff_prev = (cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3])
+    adp_diff = cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
+    adp_diff_prev = (
+        cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3]
+    )
 
     if (
         cls.df["ATR_breakout"].iloc[-1]
@@ -70,7 +72,6 @@ async def reverse_atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_m
         )
 
 
-
 async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
     """
     ATR breakout detection algorithm based on chatGPT
@@ -85,8 +86,10 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
     green_candle = cls.df["close"] > cls.df["open"]
     volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
 
-    adp_diff = (cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2])
-    adp_diff_prev = (cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3])
+    adp_diff = cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
+    adp_diff_prev = (
+        cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3]
+    )
 
     # df[df["ATR_breakout"]]["close"]
 

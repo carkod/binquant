@@ -124,8 +124,9 @@ class MarketBreadthAlgo:
         ):
             predicted_advancers = True
 
-        if self.current_market_dominance == MarketDominance.GAINERS:
-            algo = "market_domination_reversal"
+        # We want to trade when the market is at its lowest point
+        if self.current_market_dominance == MarketDominance.LOSERS:
+            algo = "market_breadth"
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
             - Current price: {close_price}

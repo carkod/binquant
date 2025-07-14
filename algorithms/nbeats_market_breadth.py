@@ -8,7 +8,6 @@ from darts.dataprocessing.transformers import MissingValuesFiller, Scaler
 from darts.models import NBEATSModel
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.apis.binbot_api import BinbotApi
 from shared.enums import KafkaTopics, Strategy
 
 if TYPE_CHECKING:
