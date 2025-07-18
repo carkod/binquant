@@ -23,7 +23,8 @@ dependencies = [
     "torch",
     "torchvision",
     "darts",
-    "scikit-learn"
+    "scikit-learn==1.7.0",
+    "statsforecast>=2.0.1",
 ]
 
 [dependency-groups]

@@ -7,13 +7,14 @@ from pandas import Series
 
 from algorithms.coinrule import (
     buy_low_sell_high,
-    supertrend_swing_reversal,
     twap_momentum_sniper,
 )
+from algorithms.isolation_forest_anomalies import IsolationForestAnomalies
 from algorithms.ma_candlestick import (
     atr_breakout,
     ma_candlestick_drop,
     ma_candlestick_jump,
+    reverse_atr_breakout,
 )
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.top_gainer_drop import top_gainers_drop
@@ -58,6 +59,9 @@ class TechnicalIndicators:
         # Pre-initialize Market Breadth algorithm
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
+        self.ifa = IsolationForestAnomalies()
+        self.btc_correlation = 0
+        self.repeated_signals: dict = {}
 
     def check_kline_gaps(self, data):
         """
@@ -252,10 +256,11 @@ class TechnicalIndicators:
         tr = pandas.concat(
             [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
         ).max(axis=1)
+
         atr = tr.rolling(window=5, min_periods=5).mean()
-        self.df["rolling_high"] = df["high"].rolling(window=20).max().shift(1)
-        self.df["ATR_breakout"] = df["close"] > (self.df["rolling_high"] + 0.8 * atr)
-        self.df["breakout_strength"] = (df["close"] - self.df["rolling_high"]) / atr
+        rolling_high = df["high"].rolling(window=20).max().shift(1)
+        self.df["ATR_breakout"] = df["close"] > (rolling_high + 0.8 * atr)
+        self.df["breakout_strength"] = (df["close"] - rolling_high) / atr
 
         return
 
@@ -343,11 +348,17 @@ class TechnicalIndicators:
             self.df_4h.dropna(inplace=True)
             self.df_4h.reset_index(drop=True, inplace=True)
 
+            # Avoid repeated signals in short periods of time
+            is_lapsed = self.symbol in self.repeated_signals and self.repeated_signals[
+                self.symbol
+            ] < datetime.now() - timedelta(minutes=30)
+
             # Dropped NaN values may end up with empty dataframe
             if (
                 self.df.ma_7.size < 7
                 or self.df.ma_25.size < 25
                 or self.df.ma_100.size < 100
+                and not is_lapsed
             ):
                 return
 
@@ -362,7 +373,11 @@ class TechnicalIndicators:
             ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
             ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
             ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
-            # ma_100_prev = float(self.df.ma_100[len(self.df.ma_100) - 2])
+
+            if self.btc_correlation == 0:
+                self.btc_correlation = self.binbot_api.get_btc_correlation(
+                    symbol=self.symbol
+                )
 
             volatility = float(
                 self.df.perc_volatility[len(self.df.perc_volatility) - 1]
@@ -370,11 +385,16 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
+            self.ifa.predict(df=self.df)
+
             await self.mda.signal(
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
             await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
+            await reverse_atr_breakout(
+                cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            )
 
             await ma_candlestick_jump(
                 self,
@@ -437,13 +457,13 @@ class TechnicalIndicators:
             )
 
             # bad algo
-            await supertrend_swing_reversal(
-                self,
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # await supertrend_swing_reversal(
+            #     self,
+            #     close_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             await twap_momentum_sniper(
                 self,
@@ -452,5 +472,8 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
+
+            # avoid repeating signals in short periods of time
+            self.repeated_signals[self.symbol] = datetime.now()
 
         return

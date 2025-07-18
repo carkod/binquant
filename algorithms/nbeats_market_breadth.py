@@ -8,7 +8,6 @@ from darts.dataprocessing.transformers import MissingValuesFiller, Scaler
 from darts.models import NBEATSModel
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.apis.binbot_api import BinbotApi
 from shared.enums import KafkaTopics, Strategy
 
 if TYPE_CHECKING:
@@ -37,7 +36,6 @@ class NBeatsMarketBreadth:
         self.bb_high = bb_high
         self.bb_mid = bb_mid
         self.bb_low = bb_low
-        self.binbot_api: BinbotApi
         self.market_breadth_data: dict[Any, Any] | None = None
         self.btc_change_perc = 0.0
         # Initialize pre-trained model directly from zipfile using Darts utility
@@ -45,7 +43,6 @@ class NBeatsMarketBreadth:
         rel_path = "checkpoints/market_breadth_nbeats_model_v1.pth"
         abs_file_path = path.join(script_dir, rel_path)
         self.model = NBEATSModel.load(abs_file_path)
-        self.binbot_api = BinbotApi()
         # Parameters
         self.input_chunk_length = input_chunk_length
         self.forecast_horizon = forecast_horizon
@@ -59,7 +56,7 @@ class NBeatsMarketBreadth:
         """
 
         # Fetch data (production endpoint)
-        self.market_breadth_data = await self.binbot_api.get_market_breadth(size=700)
+        self.market_breadth_data = await self.ti.binbot_api.get_market_breadth(size=700)
         df = pd.DataFrame(data)
 
         # Clean and preprocess
@@ -175,7 +172,7 @@ class NBeatsMarketBreadth:
 
     async def market_breadth_signal(self):
         if not self.market_breadth_data:
-            self.market_breadth_data = await self.binbot_api.get_market_breadth(
+            self.market_breadth_data = await self.ti.binbot_api.get_market_breadth(
                 size=700
             )
 

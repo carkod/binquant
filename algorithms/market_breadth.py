@@ -18,6 +18,7 @@ class MarketBreadthAlgo:
         self.autotrade = True
         self.market_breadth_data = None
         self.predicted_market_breadth = None
+        self.btc_correlation = 0
 
     def calculate_reversal(self) -> None:
         """
@@ -50,11 +51,11 @@ class MarketBreadthAlgo:
                 # Is there a gainers reversal trend?
                 and self.market_breadth_data["adp"][-4] < 0
             ):
-                btc_correlation = self.ti.binbot_api.get_btc_correlation(
+                self.btc_correlation = self.ti.binbot_api.get_btc_correlation(
                     symbol=self.ti.symbol
                 )
 
-                if btc_correlation > 0 and self.btc_change_perc > 0:
+                if self.btc_correlation > 0 and self.btc_change_perc > 0:
                     # Update current market dominance
                     self.current_market_dominance = MarketDominance.GAINERS
                     self.bot_strategy = Strategy.long
@@ -66,10 +67,10 @@ class MarketBreadthAlgo:
                 and self.market_breadth_data["adp"][-3] < 0
                 and self.market_breadth_data["adp"][-4] > 0
             ):
-                btc_correlation = self.ti.binbot_api.get_btc_correlation(
+                self.btc_correlation = self.ti.binbot_api.get_btc_correlation(
                     symbol=self.ti.symbol
                 )
-                if btc_correlation < 0 and self.btc_change_perc < 0:
+                if self.btc_correlation < 0 and self.btc_change_perc < 0:
                     self.current_market_dominance = MarketDominance.LOSERS
                     self.bot_strategy = Strategy.margin_short
                     self.autotrade = False
@@ -123,12 +124,14 @@ class MarketBreadthAlgo:
         ):
             predicted_advancers = True
 
-        if self.current_market_dominance == MarketDominance.GAINERS:
-            algo = "market_domination_reversal"
+        # We want to trade when the market is at its lowest point
+        if self.current_market_dominance == MarketDominance.LOSERS:
+            algo = "market_breadth"
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-            - Current price: {self.close_price}
+            - Current price: {close_price}
             - Strategy: {self.bot_strategy.value}
+            - Anomaly detected: {"Yes" if str(self.ti.df["anomaly_loaded"].iloc[-1]) else "No"}
             - Predicted market breadth confirmation: {"Yes" if predicted_advancers else "No"}
             - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
             - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
