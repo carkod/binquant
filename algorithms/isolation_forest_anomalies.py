@@ -12,6 +12,10 @@ class IsolationForestAnomalies:
     Should use 15m candlesticks for best results.
     The model was trained with contamination set to 0.01 so that it
     detects only the extremme peaks
+
+    Veridict:
+    After running for a while, it seems to always return anomalies.
+    Therefore not useful, may require tweaking
     """
 
     def __init__(self):

@@ -48,7 +48,6 @@ async def reverse_atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_m
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
         - BTC correlation: {round_numbers(cls.btc_correlation)}
-        - Anomaly detected: {"Yes" if str(cls.df["anomaly_loaded"].iloc[-1]) else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -112,7 +111,6 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
         - BTC correlation: {round_numbers(cls.btc_correlation)}
-        - Anomaly detected: {"Yes" if str(cls.df["anomaly_loaded"].iloc[-1]) else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """

@@ -112,8 +112,6 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
-        # await self.predict_market_breadth(close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
-
         predicted_advancers = False
 
         if (
@@ -131,7 +129,6 @@ class MarketBreadthAlgo:
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
             - Current price: {close_price}
             - Strategy: {self.bot_strategy.value}
-            - Anomaly detected: {"Yes" if str(self.ti.df["anomaly_loaded"].iloc[-1]) else "No"}
             - Predicted market breadth confirmation: {"Yes" if predicted_advancers else "No"}
             - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
             - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
