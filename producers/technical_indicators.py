@@ -58,7 +58,7 @@ class TechnicalIndicators:
         # Pre-initialize Market Breadth algorithm
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
-        self.gp = GainersPredictor()
+        self.gp = GainersPredictor(cls=self)
         self.btc_correlation = 0
         self.repeated_signals: dict = {}
         self.all_symbols = self.binbot_api.get_symbols()
@@ -368,7 +368,7 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            self.gp.predict(df=self.df, pairs=self.active_symbols)
+            # await self.gp.signal(df=self.df, pairs=self.active_symbols, current_price=close_price, bb_high=bb_high, bb_mid=bb_mid, bb_low=bb_low)
 
             await self.mda.signal(
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid

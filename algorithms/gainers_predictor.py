@@ -1,10 +1,15 @@
 import copy
-from os import path
-
 import joblib
 import pandas as pd
 
+from os import path, getenv
+from models.signals import BollinguerSpread, SignalsConsumer
 from shared.apis.binbot_api import BinbotApi
+from typing import TYPE_CHECKING
+from shared.enums import KafkaTopics, Strategy
+
+if TYPE_CHECKING:
+    from producers.technical_indicators import TechnicalIndicators
 
 
 class GainersPredictor:
@@ -15,7 +20,7 @@ class GainersPredictor:
     detects only the extremme peaks
     """
 
-    def __init__(self):
+    def __init__(self, cls: "TechnicalIndicators"):
         """
         Initialize the Isolation Forest model with a specified contamination level.
 
@@ -26,6 +31,7 @@ class GainersPredictor:
         abs_file_path = path.join(script_dir, rel_path)
         self.model = joblib.load(abs_file_path)
         self.binbot = BinbotApi()
+        self.ti = cls
 
     def compute_features(self, df):
         df["return_5m"] = df["close"].pct_change(5)
@@ -61,3 +67,38 @@ class GainersPredictor:
         feature_df["score"] = self.model.predict_proba(features)[:, 1]
         top10 = feature_df.sort_values("score", ascending=False).head(10)
         return top10[["symbol", "score", "current_price"]]
+
+    async def signal(self, pairs, df, current_price, bb_high, bb_mid, bb_low):
+        """
+        Generate trading signals based on the predictions.
+        """
+        top10 = self.predict(pairs=pairs, df=df)
+        algo = "gainers_predictor"
+
+        if top10.empty:
+            return
+
+        msg = f"""
+        - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
+        - Current price: {current_price}
+        - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
+        - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
+        """
+
+        value = SignalsConsumer(
+            autotrade=False,
+            current_price=current_price,
+            msg=msg,
+            symbol=self.ti.symbol,
+            algo=algo,
+            bot_strategy=Strategy.long,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+
+        await self.ti.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        )
