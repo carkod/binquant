@@ -24,6 +24,7 @@ class BinbotApi(BinanceApi):
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
     bb_btc_correlation_url = f"{bb_base_url}/charts/btc-correlation"
+    bb_timeseries_url = f"{bb_base_url}/charts/timeseries"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -247,3 +248,13 @@ class BinbotApi(BinanceApi):
         symbol_info = self.get_single_symbol(symbol)
         min_notional = symbol_info["min_notional"]
         return amount > min_notional
+
+    def get_timeseries(self, symbol, interval="1m", limit=500):
+        """
+        Get timeseries data for a symbol
+        """
+        response = self.request(
+            url=self.bb_timeseries_url,
+            params={"symbol": symbol, "interval": interval, "limit": limit},
+        )
+        return response["data"]

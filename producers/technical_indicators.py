@@ -368,7 +368,18 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            # await self.gp.signal(df=self.df, pairs=self.active_symbols, current_price=close_price, bb_high=bb_high, bb_mid=bb_mid, bb_low=bb_low)
+            now = datetime.now()
+            if (now.hour == 8 and now.minute == 30) or (
+                now.hour == 17 and now.minute == 0
+            ):
+                await self.gp.signal(
+                    df=self.df,
+                    pairs=self.active_symbols,
+                    current_price=close_price,
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
+                )
 
             await self.mda.signal(
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid

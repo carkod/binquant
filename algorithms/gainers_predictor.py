@@ -1,11 +1,13 @@
 import copy
+import time
+from os import getenv, path
+from typing import TYPE_CHECKING
+
 import joblib
 import pandas as pd
 
-from os import path, getenv
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.apis.binbot_api import BinbotApi
-from typing import TYPE_CHECKING
 from shared.enums import KafkaTopics, Strategy
 
 if TYPE_CHECKING:
@@ -33,6 +35,18 @@ class GainersPredictor:
         self.binbot = BinbotApi()
         self.ti = cls
 
+    def prep_kline_data(self, symbol: str):
+        """
+        Prepare the DataFrame for feature extraction.
+        This includes renaming columns and ensuring the DataFrame is sorted by time.
+        """
+        data = self.ti.binbot_api.get_timeseries(symbol)
+        if not data:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(data)
+        return df
+
     def compute_features(self, df):
         df["return_5m"] = df["close"].pct_change(5)
         df["return_15m"] = df["close"].pct_change(15)
@@ -51,10 +65,14 @@ class GainersPredictor:
         """
         rows = []
         for symbol in pairs:
+            df = self.prep_kline_data(symbol=symbol)
+            if df.empty:
+                continue
             features = self.compute_features(df)
             features["symbol"] = symbol
             features["current_price"] = df["close"].iloc[-1]
             rows.append(features)
+            time.sleep(0.1)
         return pd.DataFrame(rows)
 
     def predict(self, pairs, df):
