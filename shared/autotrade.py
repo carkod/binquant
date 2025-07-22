@@ -49,6 +49,7 @@ class Autotrade(AsyncProducer, BinbotApi):
             trailling=settings["trailling"],
             trailling_deviation=settings["trailling_deviation"],
             trailling_profit=settings["trailling_profit"],
+            margin_short_reversal=settings["autoswitch"],
             close_condition=CloseConditions.dynamic_trailling,
             dynamic_trailling=True,  # not added to settings yet
         )
