@@ -107,7 +107,6 @@ class Autotrade(AsyncProducer, BinbotApi):
         """
         # Binances forces isolated pair to go through 24hr deactivation after traded
         self.default_bot.cooldown = 1440
-        self.default_bot.margin_short_reversal = True
 
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)
@@ -117,7 +116,6 @@ class Autotrade(AsyncProducer, BinbotApi):
         Set values for default_bot
         """
         self.default_bot.cooldown = 360  # Avoid cannibalization of profits
-        self.default_bot.margin_short_reversal = True
 
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)

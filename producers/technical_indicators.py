@@ -59,7 +59,7 @@ class TechnicalIndicators:
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
         self.gp = GainersPredictor(cls=self)
-        self.btc_correlation = 0
+        self.btc_correlation: float = 0
         self.repeated_signals: dict = {}
         self.all_symbols = self.binbot_api.get_symbols()
         self.active_symbols = [s["id"] for s in self.all_symbols if s["active"]]

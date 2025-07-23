@@ -90,12 +90,10 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3]
     )
 
-    # df[df["ATR_breakout"]]["close"]
-
     if (
         cls.df["ATR_breakout"].iloc[-1]
         and green_candle.iloc[-1]
-        # and volume_confirmation.iloc[-1]
+        and volume_confirmation.iloc[-1]
         # check market is bullish. we don't want to trade when all assets are uptrend
         # because the potential of growth is low, market is already mature
         # still want to get in when there is a trend (positive ADP)
