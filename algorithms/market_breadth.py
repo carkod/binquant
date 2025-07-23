@@ -90,24 +90,25 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
-        predicted_advancers = False
 
-        if (
-            self.market_breadth_data is not None
-            and float(self.market_breadth_data.iloc[-1]) > 0
-            and float(self.market_breadth_data.iloc[-2]) > 0
-            and float(self.market_breadth_data.iloc[-3]) > 0
-        ):
-            predicted_advancers = True
+        adp_diff = (
+            self.market_breadth_data["adp"][-1] - self.market_breadth_data["adp"][-2]
+        )
+        adp_diff_prev = (
+            self.market_breadth_data["adp"][-2] - self.market_breadth_data["adp"][-3]
+        )
 
         # We want to trade when the market is at its lowest point
-        if self.current_market_dominance == MarketDominance.LOSERS:
+        if (
+            self.current_market_dominance == MarketDominance.LOSERS
+            and adp_diff > 0
+            and adp_diff_prev > 0
+        ):
             algo = "market_breadth"
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
             - Current price: {close_price}
             - Strategy: {self.bot_strategy.value}
-            - Predicted market breadth confirmation: {"Yes" if predicted_advancers else "No"}
             - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
             - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
             """

@@ -23,7 +23,6 @@ async def reverse_atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_m
         return
 
     green_candle = cls.df["close"] > cls.df["open"]
-    # volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
 
     adp_diff = cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
     adp_diff_prev = (
