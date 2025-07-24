@@ -2,7 +2,6 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from algorithms.nbeats_market_breadth import NBeatsMarketBreadth
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
 
@@ -80,27 +79,6 @@ class MarketBreadthAlgo:
 
         return
 
-    async def predict_market_breadth(
-        self, close_price: float, bb_high: float, bb_low: float, bb_mid: float
-    ):
-        """
-        Predict market breadth using NBeatsMarketBreadth model.
-        This method is called when the market breadth data is available.
-        """
-        if not self.market_breadth_data:
-            return None
-
-        nb_mb = NBeatsMarketBreadth(
-            cls=self.ti,
-            close_price=close_price,
-            bb_high=bb_high,
-            bb_low=bb_low,
-            bb_mid=bb_mid,
-        )
-        self.predicted_market_breadth = await nb_mb.predict(self.market_breadth_data)
-
-        return self.predicted_market_breadth
-
     async def signal(
         self, close_price: float, bb_high: float, bb_low: float, bb_mid: float
     ):
@@ -115,10 +93,10 @@ class MarketBreadthAlgo:
         predicted_advancers = False
 
         if (
-            self.predicted_market_breadth is not None
-            and float(self.predicted_market_breadth.iloc[-1]) > 0
-            and float(self.predicted_market_breadth.iloc[-2]) > 0
-            and float(self.predicted_market_breadth.iloc[-3]) > 0
+            self.market_breadth_data is not None
+            and float(self.market_breadth_data.iloc[-1]) > 0
+            and float(self.market_breadth_data.iloc[-2]) > 0
+            and float(self.market_breadth_data.iloc[-3]) > 0
         ):
             predicted_advancers = True
 
