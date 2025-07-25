@@ -29,6 +29,7 @@ async def data_process_pipe() -> None:
         session_timeout_ms=30000,
         heartbeat_interval_ms=10_000,
         request_timeout_ms=30000,
+        max_poll_records=500,
     )
 
     # Set rebalance listener
@@ -63,6 +64,7 @@ async def data_analytics_pipe() -> None:
         session_timeout_ms=30000,
         heartbeat_interval_ms=10_000,
         request_timeout_ms=30000,
+        max_poll_records=500,
     )
 
     # Set rebalance listener
