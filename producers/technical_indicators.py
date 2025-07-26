@@ -16,6 +16,7 @@ from algorithms.ma_candlestick import (
     reverse_atr_breakout,
 )
 from algorithms.market_breadth import MarketBreadthAlgo
+from algorithms.spike_hunter import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
@@ -33,6 +34,7 @@ class TechnicalIndicators:
         df_1h,
         top_gainers_day,
         market_breadth_data,
+        top_losers_day,
     ) -> None:
         """
         Only variables
@@ -54,11 +56,13 @@ class TechnicalIndicators:
         self.bot_strategy: Strategy = Strategy.long
         self.top_coins_gainers: list[str] = []
         self.top_gainers_day = top_gainers_day
+        self.top_losers_day = top_losers_day
         self.market_breadth_data = market_breadth_data
         # Pre-initialize Market Breadth algorithm
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
         self.gp = GainersPredictor(cls=self)
+        self.sh = SpikeHunter(cls=self)
         self.btc_correlation: float = 0
         self.repeated_signals: dict = {}
         self.all_symbols = self.binbot_api.get_symbols()
@@ -368,6 +372,9 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
+            if not self.market_breadth_data or datetime.now().minute % 30 == 0:
+                self.market_breadth_data = await self.binbot_api.get_market_breadth()
+
             now = datetime.now()
             if (now.hour == 8 and now.minute == 30) or (
                 now.hour == 17 and now.minute == 0
@@ -383,6 +390,14 @@ class TechnicalIndicators:
 
             await self.mda.signal(
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            )
+
+            await self.sh.signal(
+                df=self.df,
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
             )
 
             await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)

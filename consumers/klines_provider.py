@@ -49,12 +49,14 @@ class KlinesProvider(KafkaDB):
         self.producer = base_producer
         await self.producer.start()
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
+        self.top_losers_day = await self.binbot_api.get_top_losers()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
     async def aggregate_data(self, results):
         # Reload time-constrained data
         if datetime.now().minute == 0:
             self.top_gainers_day = await self.binbot_api.get_top_gainers()
+            self.top_losers_day = await self.binbot_api.get_top_losers()
             self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
         if results:
@@ -91,6 +93,7 @@ class KlinesProvider(KafkaDB):
                 df_1h=self.df_1h,
                 top_gainers_day=self.top_gainers_day,
                 market_breadth_data=self.market_breadth_data,
+                top_losers_day=self.top_losers_day,
             )
             await technical_indicators.publish()  # Await the async publish method
 

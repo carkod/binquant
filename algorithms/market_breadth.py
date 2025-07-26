@@ -15,9 +15,9 @@ class MarketBreadthAlgo:
         self.current_market_dominance = MarketDominance.NEUTRAL
         self.btc_change_perc = 0
         self.autotrade = True
-        self.market_breadth_data = None
+        self.market_breadth_data = cls.market_breadth_data
         self.predicted_market_breadth = None
-        self.btc_correlation = 0
+        self.btc_correlation: float = 0
 
     def calculate_reversal(self) -> None:
         """
@@ -82,9 +82,6 @@ class MarketBreadthAlgo:
     async def signal(
         self, close_price: float, bb_high: float, bb_low: float, bb_mid: float
     ):
-        if not self.market_breadth_data or datetime.now().minute % 30 == 0:
-            self.market_breadth_data = await self.ti.binbot_api.get_market_breadth()
-
         if not self.market_breadth_data:
             return
 
