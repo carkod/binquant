@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta
 
 import pandas
@@ -9,7 +8,7 @@ from algorithms.coinrule import (
     buy_low_sell_high,
     twap_momentum_sniper,
 )
-from algorithms.isolation_forest_anomalies import IsolationForestAnomalies
+from algorithms.gainers_predictor import GainersPredictor
 from algorithms.ma_candlestick import (
     atr_breakout,
     ma_candlestick_drop,
@@ -59,27 +58,11 @@ class TechnicalIndicators:
         # Pre-initialize Market Breadth algorithm
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
-        self.ifa = IsolationForestAnomalies()
-        self.btc_correlation = 0
+        self.gp = GainersPredictor(cls=self)
+        self.btc_correlation: float = 0
         self.repeated_signals: dict = {}
-
-    def check_kline_gaps(self, data):
-        """
-        Check data consistency
-
-        Currently not implemented with kafka streams data
-        as we need to check the nature of such gaps, as now
-        data needs to be aggregated for larger windows > 1m
-        i.e. 15m -> aggregate 1m * 15
-        """
-
-        ot = datetime.fromtimestamp(round(int(data["open_time"]) / 1000))
-        ct = datetime.fromtimestamp(round(int(data["close_time"]) / 1000))
-        time_diff: timedelta = ct - ot
-        min_diff = int(time_diff.total_seconds() / 60)
-        if self.interval == "15m":
-            if min_diff > 15:
-                logging.warning(f"Gap in {data['symbol']} klines: {min_diff} minutes")
+        self.all_symbols = self.binbot_api.get_symbols()
+        self.active_symbols = [s["id"] for s in self.all_symbols if s["active"]]
 
     def days(self, secs):
         return secs * 86400
@@ -385,7 +368,18 @@ class TechnicalIndicators:
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
 
-            self.ifa.predict(df=self.df)
+            now = datetime.now()
+            if (now.hour == 8 and now.minute == 30) or (
+                now.hour == 17 and now.minute == 0
+            ):
+                await self.gp.signal(
+                    df=self.df,
+                    pairs=self.active_symbols,
+                    current_price=close_price,
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
+                )
 
             await self.mda.signal(
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid

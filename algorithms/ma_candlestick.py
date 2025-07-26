@@ -23,7 +23,6 @@ async def reverse_atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_m
         return
 
     green_candle = cls.df["close"] > cls.df["open"]
-    volume_confirmation = cls.df["volume"] > cls.df["volume"].rolling(20).mean()
 
     adp_diff = cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
     adp_diff_prev = (
@@ -33,6 +32,7 @@ async def reverse_atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_m
     if (
         cls.df["ATR_breakout"].iloc[-1]
         and green_candle.iloc[-1]
+        # and volume_confirmation.iloc[-1]
         and cls.btc_correlation < 0
         # because the potential of growth is low, market is already mature
         # still want to get in when there is a trend (positive ADP)
@@ -48,7 +48,6 @@ async def reverse_atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_m
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
         - BTC correlation: {round_numbers(cls.btc_correlation)}
-        - Anomaly detected: {"Yes" if str(cls.df["anomaly_loaded"].iloc[-1]) else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
@@ -91,12 +90,10 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3]
     )
 
-    # df[df["ATR_breakout"]]["close"]
-
     if (
         cls.df["ATR_breakout"].iloc[-1]
         and green_candle.iloc[-1]
-        # and volume_confirmation.iloc[-1]
+        and volume_confirmation.iloc[-1]
         # check market is bullish. we don't want to trade when all assets are uptrend
         # because the potential of growth is low, market is already mature
         # still want to get in when there is a trend (positive ADP)
@@ -112,7 +109,6 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         - Current price: {close_price}
         - Strategy: {cls.bot_strategy.value}
         - BTC correlation: {round_numbers(cls.btc_correlation)}
-        - Anomaly detected: {"Yes" if str(cls.df["anomaly_loaded"].iloc[-1]) else "No"}
         - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """

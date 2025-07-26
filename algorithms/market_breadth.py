@@ -2,7 +2,6 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from algorithms.nbeats_market_breadth import NBeatsMarketBreadth
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
 
@@ -80,27 +79,6 @@ class MarketBreadthAlgo:
 
         return
 
-    async def predict_market_breadth(
-        self, close_price: float, bb_high: float, bb_low: float, bb_mid: float
-    ):
-        """
-        Predict market breadth using NBeatsMarketBreadth model.
-        This method is called when the market breadth data is available.
-        """
-        if not self.market_breadth_data:
-            return None
-
-        nb_mb = NBeatsMarketBreadth(
-            cls=self.ti,
-            close_price=close_price,
-            bb_high=bb_high,
-            bb_low=bb_low,
-            bb_mid=bb_mid,
-        )
-        self.predicted_market_breadth = await nb_mb.predict(self.market_breadth_data)
-
-        return self.predicted_market_breadth
-
     async def signal(
         self, close_price: float, bb_high: float, bb_low: float, bb_mid: float
     ):
@@ -112,27 +90,25 @@ class MarketBreadthAlgo:
 
         # Reduce network calls
         self.calculate_reversal()
-        # await self.predict_market_breadth(close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
 
-        predicted_advancers = False
-
-        if (
-            self.predicted_market_breadth is not None
-            and float(self.predicted_market_breadth.iloc[-1]) > 0
-            and float(self.predicted_market_breadth.iloc[-2]) > 0
-            and float(self.predicted_market_breadth.iloc[-3]) > 0
-        ):
-            predicted_advancers = True
+        adp_diff = (
+            self.market_breadth_data["adp"][-1] - self.market_breadth_data["adp"][-2]
+        )
+        adp_diff_prev = (
+            self.market_breadth_data["adp"][-2] - self.market_breadth_data["adp"][-3]
+        )
 
         # We want to trade when the market is at its lowest point
-        if self.current_market_dominance == MarketDominance.LOSERS:
+        if (
+            self.current_market_dominance == MarketDominance.LOSERS
+            and adp_diff > 0
+            and adp_diff_prev > 0
+        ):
             algo = "market_breadth"
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
             - Current price: {close_price}
             - Strategy: {self.bot_strategy.value}
-            - Anomaly detected: {"Yes" if str(self.ti.df["anomaly_loaded"].iloc[-1]) else "No"}
-            - Predicted market breadth confirmation: {"Yes" if predicted_advancers else "No"}
             - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
             - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
             """

@@ -49,6 +49,7 @@ class Autotrade(AsyncProducer, BinbotApi):
             trailling=settings["trailling"],
             trailling_deviation=settings["trailling_deviation"],
             trailling_profit=settings["trailling_profit"],
+            margin_short_reversal=settings["autoswitch"],
             close_condition=CloseConditions.dynamic_trailling,
             dynamic_trailling=True,  # not added to settings yet
         )
@@ -106,7 +107,6 @@ class Autotrade(AsyncProducer, BinbotApi):
         """
         # Binances forces isolated pair to go through 24hr deactivation after traded
         self.default_bot.cooldown = 1440
-        self.default_bot.margin_short_reversal = True
 
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)
@@ -116,7 +116,6 @@ class Autotrade(AsyncProducer, BinbotApi):
         Set values for default_bot
         """
         self.default_bot.cooldown = 360  # Avoid cannibalization of profits
-        self.default_bot.margin_short_reversal = True
 
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)

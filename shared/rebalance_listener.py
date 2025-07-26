@@ -26,7 +26,8 @@ class RebalanceListener(ConsumerRebalanceListener):
 
     async def on_partitions_revoked(self, revoked):
         if revoked:
-            raise Exception("Partitions revoked, restarting container...")
+            await self.reset_offsets()
+        pass
 
     async def on_partitions_assigned(self, assigned):
         if assigned:
