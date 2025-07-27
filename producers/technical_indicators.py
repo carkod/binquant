@@ -243,9 +243,9 @@ class TechnicalIndicators:
             [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
         ).max(axis=1)
 
-        atr = tr.rolling(window=5, min_periods=5).mean()
-        rolling_high = df["high"].rolling(window=20).max().shift(1)
-        self.df["ATR_breakout"] = df["close"] > (rolling_high + 0.8 * atr)
+        atr = tr.rolling(window=100, min_periods=10).mean()
+        rolling_high = df["high"].rolling(window=100).max().shift(1)
+        self.df["ATR_breakout"] = df["close"] > (rolling_high + 1 * atr)
         self.df["breakout_strength"] = (df["close"] - rolling_high) / atr
 
         return
@@ -357,7 +357,6 @@ class TechnicalIndicators:
             ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
             ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
             ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
-            ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
             ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
 
             if self.btc_correlation == 0:

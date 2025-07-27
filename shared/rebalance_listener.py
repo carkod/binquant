@@ -26,9 +26,7 @@ class RebalanceListener(ConsumerRebalanceListener):
 
     async def on_partitions_revoked(self, revoked):
         if revoked:
-            raise Exception(
-                "Partitions revoked, resetting offsets to the end of the partitions."
-            )
+            await self.reset_offsets()
         pass
 
     async def on_partitions_assigned(self, assigned):

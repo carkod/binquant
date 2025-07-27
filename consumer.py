@@ -2,18 +2,17 @@ import asyncio
 import json
 import logging
 import os
+from asyncio import Semaphore, create_task, gather
+from collections import defaultdict
 
 from aiokafka import AIOKafkaConsumer
+from aiokafka.structs import TopicPartition
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
 from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
 from shared.rebalance_listener import RebalanceListener
-from collections import defaultdict
-from asyncio import create_task, gather, Semaphore
-from aiokafka.structs import TopicPartition
-
 
 logging.basicConfig(
     level=os.environ["LOG_LEVEL"],

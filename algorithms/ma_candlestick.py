@@ -98,7 +98,6 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         # check market is bullish. we don't want to trade when all assets are uptrend
         # because the potential of growth is low, market is already mature
         # still want to get in when there is a trend (positive ADP)
-        and cls.market_breadth_data["adp"][-1] < 0
         and adp_diff > 0
         and adp_diff_prev > 0
     ):
