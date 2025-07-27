@@ -11,7 +11,6 @@ from algorithms.coinrule import (
 from algorithms.gainers_predictor import GainersPredictor
 from algorithms.ma_candlestick import (
     atr_breakout,
-    ma_candlestick_drop,
     ma_candlestick_jump,
     reverse_atr_breakout,
 )
@@ -417,20 +416,6 @@ class TechnicalIndicators:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
-            )
-
-            await ma_candlestick_drop(
-                self,
-                close_price=close_price,
-                open_price=open_price,
-                ma_7=ma_7,
-                ma_100=ma_100,
-                ma_25=ma_25,
-                ma_25_prev=ma_25_prev,
-                volatility=volatility,
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
             )
 
             await buy_low_sell_high(
