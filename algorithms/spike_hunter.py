@@ -162,8 +162,8 @@ class SpikeHunter:
         if (
             bool(spike_data["spike_pred"] == 1)
             # Test without ADP because there are spikes when market is bullish
-            # and adp_diff > 0
-            # and adp_diff_prev > 0
+            and adp_diff > 0
+            and adp_diff_prev > 0
         ):
             algo = "spike_hunter"
 

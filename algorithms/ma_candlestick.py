@@ -91,7 +91,11 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
     )
 
     if (
-        cls.df["ATR_breakout"].iloc[-1]
+        (
+            cls.df["ATR_breakout"].iloc[-1]
+            or cls.df["ATR_breakout"].iloc[-2]
+            or cls.df["ATR_breakout"].iloc[-3]
+        )
         and green_candle.iloc[-1]
         and volume_confirmation.iloc[-1]
         and cls.current_market_dominance == MarketDominance.LOSERS

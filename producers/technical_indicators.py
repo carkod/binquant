@@ -10,10 +10,9 @@ from algorithms.coinrule import (
 )
 from algorithms.gainers_predictor import GainersPredictor
 from algorithms.ma_candlestick import (
-    atr_breakout,
     ma_candlestick_jump,
-    reverse_atr_breakout,
 )
+from algorithms.atr_breakout import ATRBreakout
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
@@ -219,37 +218,6 @@ class TechnicalIndicators:
 
         return
 
-    def set_atr(self, period: int = 14):
-        """
-        Calculate the Average True Range (ATR) indicator.
-        ATR is a measure of volatility.
-
-        Choice of window
-        Window	Behavior        When to use
-        3	    Very sensitive	Scalping, volatile coins
-        5	    Fast & balanced	Intraday breakouts (like your case)
-        10–14	Smoothed	    Swing setups, reduce noise
-        20+	    Very stable	    Long-term trends only
-        """
-        if self.df.empty:
-            return
-
-        df = self.df.copy()
-        high = df["high"]
-        low = df["low"]
-        close = df["close"]
-        prev_close = close.shift(1)
-        tr = pandas.concat(
-            [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
-        ).max(axis=1)
-
-        atr = tr.rolling(window=100, min_periods=10).mean()
-        rolling_high = df["high"].rolling(window=100).max().shift(1)
-        self.df["ATR_breakout"] = df["close"] > (rolling_high + 1 * atr)
-        self.df["breakout_strength"] = (df["close"] - rolling_high) / atr
-
-        return
-
     def set_supertrend(self, df, period: int = 14, multiplier: float = 3.0) -> None:
         """
         Calculate the Supertrend indicator and add it to the DataFrame.
@@ -324,7 +292,6 @@ class TechnicalIndicators:
 
             self.log_volatility()
             self.set_twap()
-            self.set_atr()
 
             # Post-processing
             self.df.dropna(inplace=True)
@@ -398,8 +365,11 @@ class TechnicalIndicators:
                 bb_mid=bb_mid,
             )
 
-            await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
-            await reverse_atr_breakout(
+            atr = ATRBreakout(df=self.df)
+            await atr.atr_breakout(
+                cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            )
+            await atr.reverse_atr_breakout(
                 cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
