@@ -4,6 +4,7 @@ import pandas
 from aiokafka import AIOKafkaProducer
 from pandas import Series
 
+from algorithms.atr_breakout import ATRBreakout
 from algorithms.coinrule import (
     buy_low_sell_high,
     twap_momentum_sniper,
@@ -12,7 +13,6 @@ from algorithms.gainers_predictor import GainersPredictor
 from algorithms.ma_candlestick import (
     ma_candlestick_jump,
 )
-from algorithms.atr_breakout import ATRBreakout
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop

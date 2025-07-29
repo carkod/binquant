@@ -1,13 +1,13 @@
-from os import getenv, path
+import os
+from os import path
 from typing import TYPE_CHECKING
 
 import joblib
-import numpy as np
 import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import KafkaTopics, MarketDominance, Strategy
+from shared.enums import KafkaTopics, Strategy
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -63,81 +63,164 @@ class SpikeHunter:
         )
         return df_adr
 
-    def label_spike_patterns_with_adr(
+    def calculate_rsi(self, prices: pd.Series, window: int = 14) -> pd.Series:
+        """Calculate RSI indicator efficiently."""
+        delta = prices.diff()
+        gain = delta.where(delta > 0, 0).rolling(window=window, min_periods=1).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=window, min_periods=1).mean()
+        rs = gain / (loss + 1e-10)  # Avoid division by zero
+        return 100 - (100 / (1 + rs))
+
+    def get_last_spike_details(self, df: pd.DataFrame, max_minutes_ago=30):
+        """
+        Extract detailed information about the most recent spike detection.
+
+        Args:
+            df: DataFrame with spike analysis results
+            max_minutes_ago: Maximum minutes ago to consider a spike valid
+        Returns:
+            Dictionary with last spike details or None if no spikes found
+        """
+        spikes = df[df["spike_signal"] == 1]
+
+        if len(spikes) == 0:
+            return None
+
+        # Get the most recent spike (last chronologically)
+        last_spike = spikes.iloc[-1]
+
+        # Calculate how many minutes ago this spike occurred
+        current_time = pd.Timestamp.now(tz="UTC")
+        spike_time = last_spike["timestamp"]
+
+        # Handle timezone-naive timestamps by assuming UTC
+        if spike_time.tz is None:
+            spike_time = spike_time.tz_localize("UTC")
+
+        minutes_ago = (current_time - spike_time).total_seconds() / 60
+
+        # Only return spike if it's within the time window
+        if minutes_ago > max_minutes_ago:
+            return None
+
+        return {
+            "timestamp": last_spike["timestamp"],
+            "price": last_spike["close"],
+            "price_change": last_spike["price_change"],
+            "price_change_pct": last_spike["price_change"] * 100,
+            "volume": last_spike["volume"],
+            "volume_ratio": last_spike["volume_ratio"],
+            "spike_type": last_spike["spike_type"],
+            "signal_strength": last_spike["signal_strength"],
+            "rsi": last_spike["rsi"],
+            "body_size_pct": last_spike["body_size_pct"],
+            "minutes_ago": minutes_ago,
+        }
+
+    def detect_spikes(
         self,
-        df,
-        adp_col="adp",
-        adp_thresh=0.5,
-        price_thresh=0.015,
-        vol_ratio_thresh=1.3,
-        window=10,
-    ):
-        labels = []
-        for i in range(len(df)):
-            if i < window:
-                labels.append(0)
-                continue
-            adp_val = df.loc[i, adp_col]
-            if np.isnan(adp_val) or adp_val >= adp_thresh:
-                labels.append(0)
-                continue
-            prev_close = df.loc[i - 1, "close"]
-            curr_close = df.loc[i, "close"]
-            price_change = (curr_close - prev_close) / prev_close
-            avg_vol = df.loc[i - window : i - 1, "volume"].mean()
-            vol_ratio = df.loc[i, "volume"] / (avg_vol + 1e-6)
-            labels.append(
-                int(price_change > price_thresh and vol_ratio > vol_ratio_thresh)
-            )
+        df: pd.DataFrame,
+        window: int = 12,
+        price_threshold: float = 0.01,
+        volume_threshold: float = 2.0,
+        momentum_threshold: float = 0.02,
+        rsi_oversold: float = 30.0,
+    ) -> pd.DataFrame:
+        """Main spike detection algorithm."""
         df = df.copy()
-        df["label"] = labels
-        return df
 
-    def feature_engineering(self, df, window=10, adp_col="adp", adp_thresh=0.5):
-        df["timestamp"] = pd.to_datetime(df["close_time"])
-        df_adr = self.fetch_adr_series()
-        df = df.sort_values("timestamp").reset_index(drop=True)
-        df_adr = df_adr.sort_values("timestamp").reset_index(drop=True)
+        # pre-processing
+        df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms")
+        df = df[["timestamp", "open", "high", "low", "close", "volume"]]
+        df.sort_values("timestamp").reset_index(drop=True)
 
-        # Align ADR to candles by nearest previous timestamp
-        df = pd.merge_asof(df, df_adr, on="timestamp", direction="backward")
-        df[[adp_col, "adp_ma", "advancers", "decliners", "total_volume"]] = df[
-            [adp_col, "adp_ma", "advancers", "decliners", "total_volume"]
-        ].ffill()
-
-        # Label spikes using the same thresholds as model training
-        df = self.label_spike_patterns_with_adr(
-            df,
-            adp_col=adp_col,
-            adp_thresh=adp_thresh,
-            price_thresh=0.015,
-            vol_ratio_thresh=1.3,
-            window=window,
-        )
-
-        # Feature calculations
+        # Basic calculations
         df["price_change"] = df["close"].pct_change()
         df["body_size"] = abs(df["close"] - df["open"])
-        df["upper_wick"] = df["high"] - df[["close", "open"]].max(axis=1)
-        df["lower_wick"] = df[["close", "open"]].min(axis=1) - df["low"]
-        df["upper_wick_ratio"] = df["upper_wick"] / (df["body_size"] + 1e-6)
-        df["lower_wick_ratio"] = df["lower_wick"] / (df["body_size"] + 1e-6)
-        df["is_bullish"] = (df["close"] > df["open"]).astype(int)
-        df["close_open_ratio"] = (df["close"] - df["open"]) / (df["open"] + 1e-6)
+        df["body_size_pct"] = df["body_size"] / df["open"]
 
-        # Drop NaNs from pct_change and other features
-        df = df.dropna().reset_index(drop=True)
+        # Volume analysis with adaptive window
+        effective_window = min(window, len(df) // 4)
+        if effective_window < 3:
+            effective_window = 3
+
+        df["volume_ma"] = (
+            df["volume"].rolling(window=effective_window, min_periods=1).mean()
+        )
+        df["volume_ratio"] = df["volume"] / (df["volume_ma"] + 1e-10)
+
+        # RSI calculation
+        df["rsi"] = self.calculate_rsi(df["close"])
+
+        # Initialize spike signals
+        df["spike_signal"] = 0
+        df["spike_type"] = ""
+        df["signal_strength"] = 0.0
+
+        # Main detection loop
+        for i in range(effective_window, len(df)):
+            signal = 0
+            signal_type = ""
+            strength = 0.0
+
+            current_price_change = df.loc[i, "price_change"]
+            current_volume_ratio = df.loc[i, "volume_ratio"]
+            current_rsi = df.loc[i, "rsi"]
+
+            # Method 1: Price + Volume Spike
+            if (
+                current_price_change > price_threshold
+                and current_volume_ratio > volume_threshold
+            ):
+                signal = 1
+                signal_type = "price_volume"
+                strength = min(current_price_change * current_volume_ratio * 10, 10.0)
+
+            # Method 2: Momentum Detection
+            elif i >= 5:
+                recent_changes = df.loc[i - 3 : i, "price_change"]
+                positive_moves = (recent_changes > momentum_threshold).sum()
+                total_momentum = recent_changes.sum()
+
+                if positive_moves >= 2 and total_momentum > price_threshold:
+                    signal = 1
+                    signal_type = "momentum"
+                    strength = min(total_momentum * 20, 8.0)
+
+            # Method 3: RSI Oversold Reversal
+            elif (
+                i >= 14
+                and current_rsi > rsi_oversold
+                and df.loc[i - 1, "rsi"] <= rsi_oversold
+                and current_price_change > 0.008
+            ):
+                signal = 1
+                signal_type = "rsi_reversal"
+                strength = min(
+                    (current_rsi - rsi_oversold) / 10 * current_price_change * 50,
+                    6.0,
+                )
+
+            df.loc[i, "spike_signal"] = signal
+            df.loc[i, "spike_type"] = signal_type
+            df.loc[i, "signal_strength"] = strength
+
         return df
 
-    def predict_spikes(self, df, threshold=0.3):
-        df_features = self.feature_engineering(df)
-        X = df_features[self.feature_cols]
-        probs = self.model.predict_proba(X)[:, 1]
-        preds = (probs >= threshold).astype(int)
-        df_features["spike_prob"] = probs
-        df_features["spike_pred"] = preds
+    def run_analysis(self, df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+        """Run complete spike analysis for a trading pair."""
+        # Detect spikes
+        df = self.detect_spikes(df)
 
-        return df_features.iloc[-1]
+        # Generate summary
+        spikes = df[df["spike_signal"] == 1]
+        summary = {
+            "total_spikes": len(spikes),
+            "spike_rate": len(spikes) / len(df) if len(df) > 0 else 0,
+            "date_range": f"{df['timestamp'].min()} to {df['timestamp'].max()}",
+        }
+
+        return df, summary
 
     async def signal(
         self,
@@ -150,7 +233,6 @@ class SpikeHunter:
         """
         Generate a signal based on the spike prediction.
         """
-        spike_data = self.predict_spikes(df)
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
             - self.ti.market_breadth_data["adp"][-2]
@@ -159,37 +241,65 @@ class SpikeHunter:
             self.ti.market_breadth_data["adp"][-2]
             - self.ti.market_breadth_data["adp"][-3]
         )
-        if (
-            bool(spike_data["spike_pred"] == 1)
-            # Test without ADP because there are spikes when market is bullish
-            and adp_diff > 0
-            and adp_diff_prev > 0
-        ):
-            algo = "spike_hunter"
+        algo = "spike_hunter"
 
-            if self.match_loser(self.ti.symbol):
-                algo = "top_loser_spike_hunter"
+        if self.match_loser(self.ti.symbol):
+            algo = "top_loser_spike_hunter"
 
-            msg = f"""
-            - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-            - Current price: {current_price}
-            - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
-            - <a href='https://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
-            """
+        fresh_df, _ = self.run_analysis(df)
 
-            value = SignalsConsumer(
-                autotrade=False,
-                current_price=current_price,
-                msg=msg,
-                symbol=self.ti.symbol,
-                algo=algo,
-                bot_strategy=Strategy.long,
-                bb_spreads=BollinguerSpread(
-                    bb_high=bb_high,
-                    bb_mid=bb_mid,
-                    bb_low=bb_low,
-                ),
-            )
-            await self.ti.producer.send(
-                KafkaTopics.signals.value, value=value.model_dump_json()
-            )
+        # Check for spikes in different time windows
+        time_windows = [5, 15, 30]  # 5 minutes, 15 minutes, 30 minutes
+
+        spike_found = False
+        for window in time_windows:
+            last_spike = self.get_last_spike_details(fresh_df, max_minutes_ago=window)
+
+            if last_spike:
+                spike_found = True
+                break
+
+        if not spike_found:
+            all_spikes = fresh_df[fresh_df["spike_signal"] == 1]
+            if len(all_spikes) > 0:
+                last_any_spike = all_spikes.iloc[-1]
+                minutes_ago = (
+                    pd.Timestamp.now(tz="UTC")
+                    - (
+                        last_any_spike["timestamp"].tz_localize("UTC")
+                        if last_any_spike["timestamp"].tz is None
+                        else last_any_spike["timestamp"]
+                    )
+                ).total_seconds() / 60
+                print(
+                    f"💡 Last spike for {self.ti.symbol} was {minutes_ago / 60:.1f} hours ago at {last_any_spike['timestamp'].strftime('%Y-%m-%d %H:%M')}"
+                )
+            return
+
+        msg = f"""
+        - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
+        - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
+        - 📈 Price: +{last_spike["price_change_pct"]}
+        - 📊 Volume: {last_spike["volume_ratio"]}x above average
+        - 🏷️ Type: {last_spike["spike_type"]}
+        - ⚡ Strength: {last_spike["signal_strength"]}/10
+        - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
+        - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
+        """
+
+        value = SignalsConsumer(
+            autotrade=False,
+            current_price=current_price,
+            msg=msg,
+            symbol=self.ti.symbol,
+            algo=algo,
+            bot_strategy=Strategy.long,
+            bb_spreads=BollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+        await self.ti.producer.send(
+            KafkaTopics.signals.value, value=value.model_dump_json()
+        )

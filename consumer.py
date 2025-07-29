@@ -29,10 +29,11 @@ async def data_process_pipe() -> None:
         value_deserializer=lambda m: json.loads(m),
         group_id="data-process-group",
         enable_auto_commit=False,
-        session_timeout_ms=30000,
-        heartbeat_interval_ms=10_000,
-        max_poll_records=5,
-        max_poll_interval_ms=600_000,  # added to handle long processing
+        session_timeout_ms=60000,  # Increased from 30000
+        heartbeat_interval_ms=20_000,  # Increased from 10_000
+        max_poll_records=2,  # Reduced from 5 to process fewer messages per poll
+        max_poll_interval_ms=1200_000,  # Increased from 600_000 (20 minutes)
+        request_timeout_ms=60000,  # Added explicit request timeout
     )
 
     rebalance_listener = RebalanceListener(consumer)
@@ -43,15 +44,20 @@ async def data_process_pipe() -> None:
     klines_provider = KlinesProvider(consumer)
     await klines_provider.load_data_on_start()
 
-    sem = Semaphore(10)
+    sem = Semaphore(5)  # Reduced from 10 to limit concurrent processing
     last_offsets = defaultdict(int)
     pending_tasks = []
 
     async def handle_message(message):
         tp = (message.topic, message.partition)
         async with sem:
-            await klines_provider.aggregate_data(message.value)
-            last_offsets[tp] = message.offset
+            try:
+                await klines_provider.aggregate_data(message.value)
+                last_offsets[tp] = message.offset
+            except Exception as e:
+                logging.error(f"Error processing message: {e}", exc_info=True)
+                # Still update offset to avoid reprocessing failed messages
+                last_offsets[tp] = message.offset
 
     try:
         await consumer.start()
@@ -60,25 +66,37 @@ async def data_process_pipe() -> None:
             task = create_task(handle_message(message))
             pending_tasks.append(task)
 
-            if len(pending_tasks) >= 20:  # tune this threshold
+            if len(pending_tasks) >= 10:  # Reduced from 20 to commit more frequently
                 await gather(*pending_tasks)
                 pending_tasks.clear()
 
-                offsets = {
-                    TopicPartition(topic, partition): offset + 1
-                    for (topic, partition), offset in last_offsets.items()
-                }
-                await consumer.commit(offsets=offsets)
+                # Commit offsets more frequently to avoid rebalance issues
+                if last_offsets:
+                    offsets = {
+                        TopicPartition(topic, partition): offset + 1
+                        for (topic, partition), offset in last_offsets.items()
+                    }
+                    try:
+                        await consumer.commit(offsets=offsets)
+                        last_offsets.clear()  # Clear after successful commit
+                    except Exception as e:
+                        logging.error(f"Commit failed: {e}", exc_info=True)
 
     finally:
-        await gather(*pending_tasks)
-        # Final commit
+        # Wait for remaining tasks to complete
+        if pending_tasks:
+            await gather(*pending_tasks)
+
+        # Final commit with error handling
         if last_offsets:
             offsets = {
                 TopicPartition(topic, partition): offset + 1
                 for (topic, partition), offset in last_offsets.items()
             }
-            await consumer.commit(offsets=offsets)
+            try:
+                await consumer.commit(offsets=offsets)
+            except Exception as e:
+                logging.error(f"Final commit failed: {e}", exc_info=True)
 
         await consumer.stop()
 

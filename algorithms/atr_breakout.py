@@ -1,7 +1,8 @@
 import logging
 import os
-import pandas as pd
 from typing import TYPE_CHECKING
+
+import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance
@@ -12,7 +13,6 @@ if TYPE_CHECKING:
 
 
 class ATRBreakout:
-
     def __init__(self, df):
         """
         Calculate the Average True Range (ATR) indicator.
@@ -42,11 +42,15 @@ class ATRBreakout:
         df["ATR"] = tr.rolling(window=30, min_periods=20).mean()
         df["rolling_high"] = df["high"].rolling(window=30).max().shift(1)
         df["breakout_strength"] = (df["close"] - df["rolling_high"]) / df["ATR"]
-        df["ATR_breakout"] = (df["close"] > (df["rolling_high"] + 1.1 * df["ATR"])) & (df["breakout_strength"] > 0.05)
+        df["ATR_breakout"] = (df["close"] > (df["rolling_high"] + 1.1 * df["ATR"])) & (
+            df["breakout_strength"] > 0.05
+        )
 
         self.df = df
 
-    async def reverse_atr_breakout(self, cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
+    async def reverse_atr_breakout(
+        self, cls: "TechnicalIndicators", bb_high, bb_low, bb_mid
+    ):
         """
         Reverse atr_breakout
         When market is bearish, most prices decreasing,
@@ -60,7 +64,9 @@ class ATRBreakout:
 
         green_candle = self.df["close"] > self.df["open"]
 
-        adp_diff = cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
+        adp_diff = (
+            cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
+        )
         adp_diff_prev = (
             cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3]
         )
@@ -106,7 +112,6 @@ class ATRBreakout:
                 KafkaTopics.signals.value, value=value.model_dump_json()
             )
 
-
     async def atr_breakout(self, cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
         """
         ATR breakout detection algorithm based on chatGPT
@@ -121,15 +126,15 @@ class ATRBreakout:
         green_candle = self.df["close"] > self.df["open"]
         volume_confirmation = self.df["volume"] > self.df["volume"].rolling(20).mean()
 
-        adp_diff = cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
+        adp_diff = (
+            cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
+        )
         adp_diff_prev = (
             cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3]
         )
 
         if (
-            (
-                self.df["ATR_breakout"].iloc[-1]
-            )
+            (self.df["ATR_breakout"].iloc[-1])
             and green_candle.iloc[-1]
             and volume_confirmation.iloc[-1]
             and cls.current_market_dominance == MarketDominance.LOSERS

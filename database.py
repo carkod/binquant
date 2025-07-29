@@ -116,6 +116,7 @@ class KafkaDB:
                         "volume": {"$sum": "$volume"},
                     }
                 },
+                {"$sort": {"close_time": DESCENDING}},
             ]
             query = self.db.kline.aggregate(pipeline)
         data = list(query)
