@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 class ATRBreakout:
-    def __init__(self, df):
+    def __init__(self, origin_df: pd.DataFrame):
         """
         Calculate the Average True Range (ATR) indicator.
         ATR is a measure of volatility.
@@ -25,16 +25,26 @@ class ATRBreakout:
         10–14	Smoothed	    Swing setups, reduce noise
         20+	    Very stable	    Long-term trends only
         """
-        if df.empty:
+
+        if origin_df.empty:
             return
 
-        df = df.copy()
-        high = df["high"]
-        low = df["low"]
-        close = df["close"]
-        prev_close = close.shift(1)
+        df = origin_df.copy()
+
+        df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
+        df.set_index("open_time", inplace=True)
+        df[["open", "high", "low", "close", "volume"]] = df[
+            ["open", "high", "low", "close", "volume"]
+        ].astype(float)
+
+        # ATR breakout logic
         tr = pd.concat(
-            [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+            [
+                df["high"] - df["low"],
+                (df["high"] - df["close"].shift()).abs(),
+                (df["low"] - df["close"].shift()).abs(),
+            ],
+            axis=1,
         ).max(axis=1)
 
         df["amplitude"] = df["high"] - df["low"]
@@ -45,7 +55,6 @@ class ATRBreakout:
         df["ATR_breakout"] = (df["close"] > (df["rolling_high"] + 1.1 * df["ATR"])) & (
             df["breakout_strength"] > 0.05
         )
-
         self.df = df
 
     async def reverse_atr_breakout(
@@ -148,11 +157,13 @@ class ATRBreakout:
             - Current price: {close_price}
             - Strategy: {cls.bot_strategy.value}
             - BTC correlation: {round_numbers(cls.btc_correlation)}
+            - Autotrade?: {"No"}
             - <a href='https://www.binance.com/en/trade/{cls.symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
+                autotrade=False,
                 current_price=close_price,
                 msg=msg,
                 symbol=cls.symbol,

@@ -7,7 +7,7 @@ import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import KafkaTopics, Strategy
+from shared.enums import KafkaTopics, Strategy, MarketDominance
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -242,6 +242,7 @@ class SpikeHunter:
             - self.ti.market_breadth_data["adp"][-3]
         )
         algo = "spike_hunter"
+        autotrade = False
 
         if self.match_loser(self.ti.symbol):
             algo = "top_loser_spike_hunter"
@@ -276,31 +277,40 @@ class SpikeHunter:
                 )
             return
 
-        msg = f"""
-        - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-        - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
-        - 📈 Price: +{last_spike["price_change_pct"]}
-        - 📊 Volume: {last_spike["volume_ratio"]}x above average
-        - 🏷️ Type: {last_spike["spike_type"]}
-        - ⚡ Strength: {last_spike["signal_strength"]/10:.1f}
-        - 📉 RSI: {last_spike["rsi"]:.1f}
-        - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
-        - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
-        """
+        if spike_found and (
+            (
+                self.current_market_dominance == MarketDominance.LOSERS
+                and adp_diff > 0
+                and adp_diff_prev > 0
+            )
+            or (adp_diff > 0 and adp_diff_prev > 0 and self.ti.btc_correlation < 0)
+        ):
+            msg = f"""
+            - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
+            - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
+            - 📈 Price: +{last_spike["price_change_pct"]}
+            - 📊 Volume: {last_spike["volume_ratio"]}x above average
+            - 🏷️ Type: {last_spike["spike_type"]}
+            - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
+            - 📉 RSI: {last_spike["rsi"]:.1f}
+            - Autotrade?: {"Yes" if autotrade else "No"}
+            - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
+            - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
+            """
 
-        value = SignalsConsumer(
-            autotrade=False,
-            current_price=current_price,
-            msg=msg,
-            symbol=self.ti.symbol,
-            algo=algo,
-            bot_strategy=Strategy.long,
-            bb_spreads=BollinguerSpread(
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            ),
-        )
-        await self.ti.producer.send(
-            KafkaTopics.signals.value, value=value.model_dump_json()
-        )
+            value = SignalsConsumer(
+                autotrade=autotrade,
+                current_price=current_price,
+                msg=msg,
+                symbol=self.ti.symbol,
+                algo=algo,
+                bot_strategy=Strategy.long,
+                bb_spreads=BollinguerSpread(
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
+                ),
+            )
+            await self.ti.producer.send(
+                KafkaTopics.signals.value, value=value.model_dump_json()
+            )

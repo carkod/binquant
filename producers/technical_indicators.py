@@ -365,7 +365,7 @@ class TechnicalIndicators:
                 bb_mid=bb_mid,
             )
 
-            atr = ATRBreakout(df=self.df)
+            atr = ATRBreakout(origin_df=self.df)
             await atr.atr_breakout(
                 cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
