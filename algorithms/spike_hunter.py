@@ -7,7 +7,7 @@ import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import KafkaTopics, Strategy, MarketDominance
+from shared.enums import KafkaTopics, MarketDominance, Strategy
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -277,14 +277,27 @@ class SpikeHunter:
                 )
             return
 
-        if spike_found and (
-            (
+        if spike_found:
+            algo = "spike_hunter"
+
+            if (
                 self.current_market_dominance == MarketDominance.LOSERS
                 and adp_diff > 0
                 and adp_diff_prev > 0
-            )
-            or (adp_diff > 0 and adp_diff_prev > 0 and self.ti.btc_correlation < 0)
-        ):
+            ):
+                algo += "_bullish"
+                autotrade = True
+
+            # When no bullish conditions, check for breakout spikes
+            # btc correlation avoids tightly coupled assets
+            elif self.ti.btc_correlation < 0 and current_price > bb_high:
+                algo += "_breakout"
+                autotrade = False
+
+            elif self.ti.symbol in self.ti.top_losers_day:
+                algo += "_top_loser"
+                autotrade = True
+
             msg = f"""
             - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
             - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
