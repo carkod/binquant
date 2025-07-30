@@ -64,23 +64,15 @@ class ATRBreakout:
 
         green_candle = self.df["close"] > self.df["open"]
 
-        adp_diff = (
-            cls.market_breadth_data["adp"][-1] - cls.market_breadth_data["adp"][-2]
-        )
-        adp_diff_prev = (
-            cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3]
-        )
-
         if (
-            self.df["ATR_breakout"].iloc[-1]
+            (
+                self.df["ATR_breakout"].iloc[-1]
+                or self.df["ATR_breakout"].iloc[-2]
+                or self.df["ATR_breakout"].iloc[-3]
+            )
             and green_candle.iloc[-1]
             # and volume_confirmation.iloc[-1]
             and cls.btc_correlation < 0
-            # because the potential of growth is low, market is already mature
-            # still want to get in when there is a trend (positive ADP)
-            and cls.market_breadth_data["adp"][-1] > 0
-            and adp_diff > 0
-            and adp_diff_prev > 0
         ):
             algo = "reverse_atr_breakout"
             close_price = self.df["close"].iloc[-1]
@@ -134,7 +126,11 @@ class ATRBreakout:
         )
 
         if (
-            (self.df["ATR_breakout"].iloc[-1])
+            (
+                self.df["ATR_breakout"].iloc[-1]
+                or self.df["ATR_breakout"].iloc[-2]
+                or self.df["ATR_breakout"].iloc[-3]
+            )
             and green_candle.iloc[-1]
             and volume_confirmation.iloc[-1]
             and cls.current_market_dominance == MarketDominance.LOSERS

@@ -272,7 +272,7 @@ class SpikeHunter:
                     )
                 ).total_seconds() / 60
                 print(
-                    f"💡 Last spike for {self.ti.symbol} was {minutes_ago / 60:.1f} hours ago at {last_any_spike['timestamp'].strftime('%Y-%m-%d %H:%M')}"
+                    f"💡 Last hunted spike for {self.ti.symbol} was {minutes_ago / 60:.1f} hours ago at {last_any_spike['timestamp'].strftime('%Y-%m-%d %H:%M')}"
                 )
             return
 
@@ -282,7 +282,8 @@ class SpikeHunter:
         - 📈 Price: +{last_spike["price_change_pct"]}
         - 📊 Volume: {last_spike["volume_ratio"]}x above average
         - 🏷️ Type: {last_spike["spike_type"]}
-        - ⚡ Strength: {last_spike["signal_strength"]}/10
+        - ⚡ Strength: {last_spike["signal_strength"]/10:.1f}
+        - 📉 RSI: {last_spike["rsi"]:.1f}
         - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
         - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
         """
