@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator
 
 class KlineModel(BaseModel):
     symbol: str
-    end_time: int
+    end_time: datetime
     open_time: datetime
     close_time: datetime
     open: float

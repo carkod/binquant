@@ -1,11 +1,11 @@
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from dotenv import load_dotenv
-from pymongo import DESCENDING, MongoClient
+from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.command_cursor import CommandCursor
-from pymongo.cursor import Cursor
 
 from models.klines import KlineModel, KlineProduceModel
 from shared.apis.binance_api import BinanceApi
@@ -112,71 +112,6 @@ class KafkaDB(BinanceApi):
             logging.warning(f"Failed to extract datetime from item: {item}, error: {e}")
             return None
 
-    def fill_gaps_from_binance(
-        self, symbol: str, gaps: list[tuple], interval: BinanceKlineIntervals
-    ):
-        """
-        Fill gaps by fetching data from Binance API and storing it
-        """
-        for start_time, end_time in gaps:
-            try:
-                logging.info(
-                    f"Filling gap for {symbol} from {start_time} to {end_time}"
-                )
-
-                # Convert datetime to timestamp in milliseconds
-                start_timestamp = int(start_time.timestamp() * 1000)
-                end_timestamp = int(end_time.timestamp() * 1000)
-
-                # Fetch missing data from Binance
-                raw_klines = self._get_raw_klines(
-                    pair=symbol,
-                    interval=interval.value,
-                )
-
-                if not raw_klines:
-                    logging.warning(f"No data received from Binance for {symbol}")
-                    continue
-
-                filled_count = 0
-                # Filter to only the gap period and store each kline
-                for kline_data in raw_klines:
-                    # Binance kline format: [open_time, open, high, low, close, volume, close_time, ...]
-                    if len(kline_data) < 7:
-                        continue
-
-                    kline_timestamp = kline_data[
-                        6
-                    ]  # Close time from Binance kline format
-
-                    if start_timestamp <= kline_timestamp <= end_timestamp:
-                        # Convert Binance kline format to our KlineModel format
-                        kline = {
-                            "s": symbol,  # symbol
-                            "t": kline_data[0],  # open time
-                            "T": kline_data[6],  # close time
-                            "o": kline_data[1],  # open
-                            "h": kline_data[2],  # high
-                            "l": kline_data[3],  # low
-                            "c": kline_data[4],  # close
-                            "v": kline_data[5],  # volume
-                            "x": True,  # candle closed (we only get completed candles from historical API)
-                            "i": interval.value,  # interval
-                        }
-
-                        self.store_klines(kline)
-                        filled_count += 1
-
-                logging.info(
-                    f"Filled {filled_count} klines for {symbol} gap from {start_time} to {end_time}"
-                )
-
-            except Exception as e:
-                logging.error(
-                    f"Error filling gap for {symbol} from {start_time} to {end_time}: {e}"
-                )
-                continue
-
     def get_partitions(self):
         query = self.db.kline.aggregate(
             [
@@ -207,11 +142,20 @@ class KafkaDB(BinanceApi):
             )
             return
 
+        # Add unique constraint to prevent duplicates
+        existing = self.db.kline.find_one(
+            {"symbol": kline["s"], "end_time": int(kline["T"]), "interval": kline["i"]}
+        )
+
+        if existing:
+            logging.debug(f"Kline already exists for {kline['s']} at {kline['T']}")
+            return
+
         klines = KlineModel(
-            end_time=int(kline["T"]),
+            end_time=datetime.fromtimestamp(kline["T"] / 1000, tz=UTC),
             symbol=kline["s"],
-            open_time=datetime.fromtimestamp(kline["t"] / 1000),
-            close_time=datetime.fromtimestamp(kline["T"] / 1000),
+            open_time=datetime.fromtimestamp(kline["t"] / 1000, tz=UTC),
+            close_time=datetime.fromtimestamp(kline["T"] / 1000, tz=UTC),
             open=float(kline["o"]),
             high=float(kline["h"]),
             low=float(kline["l"]),
@@ -232,7 +176,7 @@ class KafkaDB(BinanceApi):
         )
         return list(query)
 
-    def raw_klines(
+    def get_raw_klines(
         self,
         symbol,
         interval: BinanceKlineIntervals = BinanceKlineIntervals.fifteen_minutes,
@@ -245,57 +189,65 @@ class KafkaDB(BinanceApi):
         Includes gap detection and automatic filling from Binance API
 
         Returns:
-            list: 15m Klines
+            list: Klines in requested interval
         """
-        query: CommandCursor | Cursor
-        if interval == BinanceKlineIntervals.five_minutes:
-            query = self.db.kline.find(
-                {"symbol": symbol},
-                {"_id": 0, "candle_closed": 0},
-                limit=limit,
-                skip=offset,
-                sort=[("_id", DESCENDING)],
-            )
+        # First, check if we have stored data for this exact interval
+        stored_interval_query = self.db.kline.find(
+            {"symbol": symbol, "interval": interval.value},
+            {"_id": 0, "candle_closed": 0},
+            limit=limit,
+            skip=offset,
+            sort=[("close_time", DESCENDING)],
+        )
+        stored_data = list(stored_interval_query)
+
+        # If we have enough data for the exact interval, use it
+        if len(stored_data) >= limit:
+            data = stored_data
         else:
-            bin_size = interval.bin_size()
-            unit = interval.unit()
-            pipeline = [
-                {"$match": {"symbol": symbol}},
-                {"$sort": {"close_time": DESCENDING}},
-                {
-                    "$group": {
-                        "_id": {
-                            "time": {
-                                "$dateTrunc": {
-                                    "date": "$close_time",
-                                    "unit": unit,
-                                    "binSize": bin_size,
+            # Otherwise, use aggregation for intervals other than what we store
+            if interval == BinanceKlineIntervals.five_minutes:
+                query = self.db.kline.find(
+                    {"symbol": symbol},
+                    {"_id": 0, "candle_closed": 0},
+                    limit=limit,
+                    skip=offset,
+                    sort=[("close_time", DESCENDING)],
+                )
+                data = list(query)
+            else:
+                bin_size = interval.bin_size()
+                unit = interval.unit()
+                pipeline = [
+                    {"$match": {"symbol": symbol}},
+                    {
+                        "$sort": {"close_time": ASCENDING}
+                    },  # Sort ascending first for proper grouping
+                    {
+                        "$group": {
+                            "_id": {
+                                "time": {
+                                    "$dateTrunc": {
+                                        "date": "$close_time",
+                                        "unit": unit,
+                                        "binSize": bin_size,
+                                    },
                                 },
                             },
-                        },
-                        "open": {"$first": "$open"},
-                        "close": {"$last": "$close"},
-                        "high": {"$max": "$high"},
-                        "low": {"$min": "$low"},
-                        "close_time": {"$last": "$close_time"},
-                        "open_time": {"$first": "$open_time"},
-                        "volume": {"$sum": "$volume"},
-                    }
-                },
-                {"$sort": {"close_time": DESCENDING}},
-            ]
-            query = self.db.kline.aggregate(pipeline)
-
-        data = list(query)
-
-        # Detect gaps in the data
-        gaps = self.detect_gaps(data, interval)
-
-        # If gaps are found, fill them and re-query
-        if gaps:
-            logging.info(
-                f"Found {len(gaps)} gaps in {symbol} data for interval {interval.value}. Filling gaps..."
-            )
-            self.fill_gaps_from_binance(symbol, gaps, interval)
+                            "open": {"$first": "$open"},
+                            "close": {"$last": "$close"},
+                            "high": {"$max": "$high"},
+                            "low": {"$min": "$low"},
+                            "close_time": {"$last": "$close_time"},
+                            "open_time": {"$first": "$open_time"},
+                            "volume": {"$sum": "$volume"},
+                        }
+                    },
+                    {"$sort": {"close_time": DESCENDING}},
+                    {"$limit": limit},
+                    {"$skip": offset},
+                ]
+                agg_query: CommandCursor[Any] = self.db.kline.aggregate(pipeline)
+                data = list(agg_query)
 
         return data

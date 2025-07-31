@@ -260,23 +260,6 @@ class SpikeHunter:
                 spike_found = True
                 break
 
-        if not spike_found:
-            all_spikes = fresh_df[fresh_df["spike_signal"] == 1]
-            if len(all_spikes) > 0:
-                last_any_spike = all_spikes.iloc[-1]
-                minutes_ago = (
-                    pd.Timestamp.now(tz="UTC")
-                    - (
-                        last_any_spike["timestamp"].tz_localize("UTC")
-                        if last_any_spike["timestamp"].tz is None
-                        else last_any_spike["timestamp"]
-                    )
-                ).total_seconds() / 60
-                print(
-                    f"💡 Last hunted spike for {self.ti.symbol} was {minutes_ago / 60:.1f} hours ago at {last_any_spike['timestamp'].strftime('%Y-%m-%d %H:%M')}"
-                )
-            return
-
         if spike_found:
             algo = "spike_hunter"
 
@@ -290,11 +273,11 @@ class SpikeHunter:
 
             # When no bullish conditions, check for breakout spikes
             # btc correlation avoids tightly coupled assets
-            elif self.ti.btc_correlation < 0 and current_price > bb_high:
+            if self.ti.btc_correlation < 0 and current_price > bb_high:
                 algo += "_breakout"
                 autotrade = False
 
-            elif self.ti.symbol in self.ti.top_losers_day:
+            if self.ti.symbol in self.ti.top_losers_day:
                 algo += "_top_loser"
                 autotrade = True
 
@@ -306,7 +289,9 @@ class SpikeHunter:
             - 🏷️ Type: {last_spike["spike_type"]}
             - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
             - 📉 RSI: {last_spike["rsi"]:.1f}
+            - BTC Correlation: {self.ti.btc_correlation:.2f}
             - Autotrade?: {"Yes" if autotrade else "No"}
+            - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
             - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
             """
