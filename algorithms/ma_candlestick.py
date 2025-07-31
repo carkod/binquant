@@ -91,13 +91,17 @@ async def atr_breakout(cls: "TechnicalIndicators", bb_high, bb_low, bb_mid):
     )
 
     if (
-        cls.df["ATR_breakout"].iloc[-1]
+        (
+            cls.df["ATR_breakout"].iloc[-1]
+            or cls.df["ATR_breakout"].iloc[-2]
+            or cls.df["ATR_breakout"].iloc[-3]
+        )
         and green_candle.iloc[-1]
         and volume_confirmation.iloc[-1]
+        and cls.current_market_dominance == MarketDominance.LOSERS
         # check market is bullish. we don't want to trade when all assets are uptrend
         # because the potential of growth is low, market is already mature
         # still want to get in when there is a trend (positive ADP)
-        and cls.market_breadth_data["adp"][-1] < 0
         and adp_diff > 0
         and adp_diff_prev > 0
     ):
@@ -226,95 +230,5 @@ async def ma_candlestick_jump(
 
             else:
                 return
-
-    return
-
-
-async def ma_candlestick_drop(
-    cls: "TechnicalIndicators",
-    close_price,
-    open_price,
-    ma_7,
-    ma_100,
-    ma_25,
-    ma_25_prev,
-    volatility,
-    bb_high,
-    bb_mid,
-    bb_low,
-):
-    """
-    Opposite algorithm of ma_candletick_jump
-    This algorithm detects Candlesticks that are in a downard trending motion for several periods
-
-    Suitable for margin short trading (borrow - margin sell - buy back - repay)
-    """
-    volatility = round_numbers(volatility, 6)
-    if (
-        float(close_price) < float(open_price)
-        and volatility > 0.009
-        and close_price < ma_7
-        and open_price < ma_7
-        and close_price < ma_25
-        and open_price < ma_25
-        and ma_7 < ma_25_prev
-        and close_price < ma_25_prev
-        and open_price < ma_25_prev
-        and close_price < ma_100
-        and open_price < ma_100
-        # remove high standard deviation
-        # big candles. too many signals with little profitability
-        and (abs(float(close_price) - float(open_price)) / float(close_price)) > 0.02
-    ):
-        algo = "ma_candlestick_drop"
-        bot_strategy = cls.bot_strategy
-
-        if cls.market_domination_reversal:
-            if (
-                cls.market_breadth_data["adp"][-1] > 0
-                and cls.market_breadth_data["adp"][-2] > 0
-            ):
-                # market is bullish, most prices increasing,
-                # but looks like it's dropping and going bearish (reversal)
-                # candlesticks of this specific crypto are seeing a huge drop (candlstick drop algo)
-                bot_strategy = Strategy.margin_short
-                # temporarily disable margin bots
-                return
-            else:
-                # market is bearish, most prices decreasing, (LOSERS)
-                # but looks like it's picking up and going bullish (reversal)
-                # candlesticks of this specific crypto are seeing a huge drop (candlstick drop algo)
-                bot_strategy = Strategy.long
-
-                msg = f"""
-                - [{os.getenv("ENV")}] Candlestick <strong>#{algo}</strong> #{cls.symbol}
-                - Current price: {close_price}
-                - Log volatility (log SD): {volatility}
-                - Reversal? {cls.market_domination_reversal}
-                - Strategy: {bot_strategy.value}
-                - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
-                - https://www.binance.com/en/trade/{cls.symbol}
-                - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
-                """
-
-                value = SignalsConsumer(
-                    spread=None,
-                    current_price=close_price,
-                    msg=msg,
-                    symbol=cls.symbol,
-                    algo=algo,
-                    bot_strategy=bot_strategy,
-                    bb_spreads=BollinguerSpread(
-                        bb_high=bb_high,
-                        bb_mid=bb_mid,
-                        bb_low=bb_low,
-                    ),
-                )
-
-                await cls.producer.send(
-                    KafkaTopics.signals.value, value=value.model_dump_json()
-                )
-        else:
-            return
 
     return

@@ -23,8 +23,10 @@ class BinbotApi(BinanceApi):
     bb_gainers_losers = f"{bb_base_url}/account/gainers-losers"
     bb_market_domination = f"{bb_base_url}/charts/market-domination"
     bb_top_gainers = f"{bb_base_url}/charts/top-gainers"
+    bb_top_losers = f"{bb_base_url}/charts/top-losers"
     bb_btc_correlation_url = f"{bb_base_url}/charts/btc-correlation"
     bb_timeseries_url = f"{bb_base_url}/charts/timeseries"
+    bb_adr_series_url = f"{bb_base_url}/charts/adr-series"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -212,6 +214,13 @@ class BinbotApi(BinanceApi):
         response = await self.fetch(url=self.bb_top_gainers)
         return response["data"]
 
+    async def get_top_losers(self):
+        """
+        Top crypto/token/coin losers of the day
+        """
+        response = await self.fetch(url=self.bb_top_losers)
+        return response["data"]
+
     def get_btc_correlation(self, symbol) -> float:
         """
         Get BTC correlation
@@ -256,5 +265,15 @@ class BinbotApi(BinanceApi):
         response = self.request(
             url=self.bb_timeseries_url,
             params={"symbol": symbol, "interval": interval, "limit": limit},
+        )
+        return response["data"]
+
+    def get_adr_series(self, size=500):
+        """
+        Get ADR series data
+        """
+        response = self.request(
+            url=self.bb_adr_series_url,
+            params={"size": size},
         )
         return response["data"]
