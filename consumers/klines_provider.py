@@ -53,8 +53,10 @@ class KlinesProvider(KafkaDB):
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
     async def aggregate_data(self, results):
-        # Reload time-constrained data
-        if datetime.now().minute == 0:
+        current_time = datetime.now()
+
+        # Reload time-constrained data every hour
+        if current_time.minute == 0:
             self.top_gainers_day = await self.binbot_api.get_top_gainers()
             self.top_losers_day = await self.binbot_api.get_top_losers()
             self.market_breadth_data = await self.binbot_api.get_market_breadth()
@@ -63,6 +65,15 @@ class KlinesProvider(KafkaDB):
             payload = json.loads(results)
             klines = KlineProduceModel.model_validate(payload)
             symbol = klines.symbol
+
+            # Refresh klines data every 15 minutes (when minute is 0, 15, 30, or 45)
+            if current_time.minute % 15 == 0:
+                try:
+                    await self.binbot_api.refresh_klines(symbol)
+                    logging.info(f"Refreshed klines data for {symbol}")
+                except Exception as e:
+                    logging.error(f"Failed to refresh klines for {symbol}: {e}")
+
             candles: list[KlineProduceModel] = self.get_raw_klines(
                 symbol, interval=BinanceKlineIntervals.fifteen_minutes
             )
@@ -73,15 +84,35 @@ class KlinesProvider(KafkaDB):
 
             # Pre-process
             self.df = pd.DataFrame(candles)
-            self.df.resample("15Min", on="close_time").agg(self.default_aggregation)
-            # Resample to 4 hour candles for TWAP
-            self.df_4h = self.df.resample("4h", on="close_time").agg(
-                self.default_aggregation
+
+            # Ensure close_time is datetime and set as index for proper resampling
+            self.df["close_time"] = pd.to_datetime(self.df["close_time"], utc=True)
+            self.df.set_index("close_time", inplace=True)
+
+            # Create aggregation dictionary without close_time and open_time since they're now index-based
+            resample_aggregation = {
+                "open": "first",
+                "close": "last",
+                "high": "max",
+                "low": "min",
+                "volume": "sum",  # Add volume if it exists in your data
+            }
+
+            # Resample to 4 hour candles for TWAP (align to calendar hours like MongoDB)
+            self.df_4h = self.df.resample("4h", origin="epoch").agg(
+                resample_aggregation
             )
-            # Resample to 1 hour candles for Supertrend
-            self.df_1h = self.df.resample("1h", on="close_time").agg(
-                self.default_aggregation
+            # Add open_time and close_time back as columns for 4h data
+            self.df_4h["open_time"] = self.df_4h.index
+            self.df_4h["close_time"] = self.df_4h.index
+
+            # Resample to 1 hour candles for Supertrend (align to calendar hours like MongoDB)
+            self.df_1h = self.df.resample("1h", origin="epoch").agg(
+                resample_aggregation
             )
+            # Add open_time and close_time back as columns for 1h data
+            self.df_1h["open_time"] = self.df_1h.index
+            self.df_1h["close_time"] = self.df_1h.index
             # reverse the order to get the oldest data first, to dropnas and use latest date for technical indicators
             self.df = self.df[::-1].reset_index(drop=True)
             technical_indicators = TechnicalIndicators(
