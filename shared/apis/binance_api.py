@@ -90,7 +90,7 @@ class BinanceApi:
         data = self.request(url=url, payload=payload, method=method, session=session)
         return data
 
-    def _get_raw_klines(self, pair, limit=500, interval="15m"):
+    def get_ui_klines(self, pair, limit=500, interval="15m"):
         params = {"symbol": pair, "interval": interval, "limit": limit}
         data = self.request(url=self.candlestick_url, params=params)
         return data

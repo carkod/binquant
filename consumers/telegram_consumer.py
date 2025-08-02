@@ -1,8 +1,10 @@
 import json
+import logging
 import os
 
 from telegram import Bot
 from telegram.constants import ParseMode
+from telegram.error import TimedOut
 
 from models.signals import SignalsConsumer
 
@@ -28,13 +30,19 @@ class TelegramConsumer:
             )
 
     async def send_signal(self, result):
-        payload = json.loads(result)
-        data = SignalsConsumer(**payload)
-        lines = data.msg.splitlines()
-        lines = [
-            line.strip() for line in lines if line.strip()
-        ]  # Strip each line, remove empty ones
-        cleaned_message = "\n".join(lines)
-        await self.bot.send_message(
-            self.chat_id, text=cleaned_message, parse_mode=ParseMode.HTML
-        )
+        try:
+            payload = json.loads(result)
+            data = SignalsConsumer(**payload)
+            lines = data.msg.splitlines()
+            lines = [
+                line.strip() for line in lines if line.strip()
+            ]  # Strip each line, remove empty ones
+            cleaned_message = "\n".join(lines)
+
+            await self.bot.send_message(
+                self.chat_id, text=cleaned_message, parse_mode=ParseMode.HTML
+            )
+        except TimedOut:
+            logging.warning("Telegram signal timed out, skipping...")
+        except Exception as e:
+            logging.error(f"Error sending telegram signal: {e}")

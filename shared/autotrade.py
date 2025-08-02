@@ -1,6 +1,5 @@
 import logging
 import math
-from datetime import datetime
 
 from aiokafka import AIOKafkaProducer
 
@@ -36,11 +35,11 @@ class Autotrade(AsyncProducer, BinbotApi):
         """
         self.pair: str = pair
         self.decimals = self.price_precision(pair)
-        current_date = datetime.now().strftime("%Y-%m-%dT%H:%M")
         self.algorithm_name = algorithm_name
         self.default_bot = BotModel(
             pair=pair,
-            name=f"{algorithm_name}_{current_date}",
+            mode="autotrade",
+            name=algorithm_name,
             fiat=settings["fiat"],
             base_order_size=settings["base_order_size"],
             strategy=Strategy.long,

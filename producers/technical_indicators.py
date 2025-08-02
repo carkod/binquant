@@ -4,18 +4,17 @@ import pandas
 from aiokafka import AIOKafkaProducer
 from pandas import Series
 
+from algorithms.atr_breakout import ATRBreakout
 from algorithms.coinrule import (
     buy_low_sell_high,
     twap_momentum_sniper,
 )
 from algorithms.gainers_predictor import GainersPredictor
 from algorithms.ma_candlestick import (
-    atr_breakout,
-    ma_candlestick_drop,
     ma_candlestick_jump,
-    reverse_atr_breakout,
 )
 from algorithms.market_breadth import MarketBreadthAlgo
+from algorithms.spike_hunter import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
@@ -33,6 +32,7 @@ class TechnicalIndicators:
         df_1h,
         top_gainers_day,
         market_breadth_data,
+        top_losers_day,
     ) -> None:
         """
         Only variables
@@ -54,11 +54,13 @@ class TechnicalIndicators:
         self.bot_strategy: Strategy = Strategy.long
         self.top_coins_gainers: list[str] = []
         self.top_gainers_day = top_gainers_day
+        self.top_losers_day = top_losers_day
         self.market_breadth_data = market_breadth_data
         # Pre-initialize Market Breadth algorithm
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
         self.gp = GainersPredictor(cls=self)
+        self.sh = SpikeHunter(cls=self)
         self.btc_correlation: float = 0
         self.repeated_signals: dict = {}
         self.all_symbols = self.binbot_api.get_symbols()
@@ -216,37 +218,6 @@ class TechnicalIndicators:
 
         return
 
-    def set_atr(self, period: int = 14):
-        """
-        Calculate the Average True Range (ATR) indicator.
-        ATR is a measure of volatility.
-
-        Choice of window
-        Window	Behavior        When to use
-        3	    Very sensitive	Scalping, volatile coins
-        5	    Fast & balanced	Intraday breakouts (like your case)
-        10–14	Smoothed	    Swing setups, reduce noise
-        20+	    Very stable	    Long-term trends only
-        """
-        if self.df.empty:
-            return
-
-        df = self.df.copy()
-        high = df["high"]
-        low = df["low"]
-        close = df["close"]
-        prev_close = close.shift(1)
-        tr = pandas.concat(
-            [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
-        ).max(axis=1)
-
-        atr = tr.rolling(window=5, min_periods=5).mean()
-        rolling_high = df["high"].rolling(window=20).max().shift(1)
-        self.df["ATR_breakout"] = df["close"] > (rolling_high + 0.8 * atr)
-        self.df["breakout_strength"] = (df["close"] - rolling_high) / atr
-
-        return
-
     def set_supertrend(self, df, period: int = 14, multiplier: float = 3.0) -> None:
         """
         Calculate the Supertrend indicator and add it to the DataFrame.
@@ -321,7 +292,6 @@ class TechnicalIndicators:
 
             self.log_volatility()
             self.set_twap()
-            self.set_atr()
 
             # Post-processing
             self.df.dropna(inplace=True)
@@ -354,7 +324,6 @@ class TechnicalIndicators:
             ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
             ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
             ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
-            ma_25_prev = float(self.df.ma_25[len(self.df.ma_25) - 2])
             ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
 
             if self.btc_correlation == 0:
@@ -367,6 +336,9 @@ class TechnicalIndicators:
             )
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
+
+            if not self.market_breadth_data or datetime.now().minute % 30 == 0:
+                self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
             now = datetime.now()
             if (now.hour == 8 and now.minute == 30) or (
@@ -385,8 +357,19 @@ class TechnicalIndicators:
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
-            await atr_breakout(cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
-            await reverse_atr_breakout(
+            await self.sh.signal(
+                df=self.df,
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
+
+            atr = ATRBreakout(origin_df=self.df)
+            await atr.atr_breakout(
+                cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            )
+            await atr.reverse_atr_breakout(
                 cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
@@ -402,20 +385,6 @@ class TechnicalIndicators:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
-            )
-
-            await ma_candlestick_drop(
-                self,
-                close_price=close_price,
-                open_price=open_price,
-                ma_7=ma_7,
-                ma_100=ma_100,
-                ma_25=ma_25,
-                ma_25_prev=ma_25_prev,
-                volatility=volatility,
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
             )
 
             await buy_low_sell_high(
