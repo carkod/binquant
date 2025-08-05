@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from dotenv import load_dotenv
-from pymongo import ASCENDING, DESCENDING, MongoClient
+from pymongo import ASCENDING, MongoClient
 from pymongo.command_cursor import CommandCursor
 
 from models.klines import KlineModel, KlineProduceModel
@@ -105,63 +105,48 @@ class KafkaDB(BinanceApi):
         Returns:
             list: Klines in requested interval
         """
-        # First, check if we have stored data for this exact interval
-        stored_interval_query = self.db.kline.find(
-            {"symbol": symbol, "interval": interval.value},
-            {"_id": 0, "candle_closed": 0},
-            limit=limit,
-            skip=offset,
-            sort=[("close_time", DESCENDING)],
-        )
-        stored_data = list(stored_interval_query)
-
-        # If we have enough data for the exact interval, use it
-        if len(stored_data) >= limit:
-            data = stored_data
+        if interval == BinanceKlineIntervals.fifteen_minutes:
+            query = self.db.kline.find(
+                {"symbol": symbol},
+                {"_id": 0, "candle_closed": 0},
+                limit=limit,
+                skip=offset,
+                sort=[("close_time", ASCENDING)],  # Changed to ASCENDING for oldest to newest
+            )
+            data = list(query)
         else:
-            # Otherwise, use aggregation for intervals other than what we store
-            if interval == BinanceKlineIntervals.fifteen_minutes:
-                query = self.db.kline.find(
-                    {"symbol": symbol},
-                    {"_id": 0, "candle_closed": 0},
-                    limit=limit,
-                    skip=offset,
-                    sort=[("close_time", DESCENDING)],
-                )
-                data = list(query)
-            else:
-                bin_size = interval.bin_size()
-                unit = interval.unit()
-                pipeline = [
-                    {"$match": {"symbol": symbol}},
-                    {
-                        "$sort": {"close_time": ASCENDING}
-                    },  # Sort ascending first for proper grouping
-                    {
-                        "$group": {
-                            "_id": {
-                                "time": {
-                                    "$dateTrunc": {
-                                        "date": "$close_time",
-                                        "unit": unit,
-                                        "binSize": bin_size,
-                                    },
+            bin_size = interval.bin_size()
+            unit = interval.unit()
+            pipeline = [
+                {"$match": {"symbol": symbol}},
+                {
+                    "$sort": {"close_time": ASCENDING}
+                },  # Sort ascending first for proper grouping
+                {
+                    "$group": {
+                        "_id": {
+                            "time": {
+                                "$dateTrunc": {
+                                    "date": "$close_time",
+                                    "unit": unit,
+                                    "binSize": bin_size,
                                 },
                             },
-                            "open": {"$first": "$open"},
-                            "close": {"$last": "$close"},
-                            "high": {"$max": "$high"},
-                            "low": {"$min": "$low"},
-                            "close_time": {"$last": "$close_time"},
-                            "open_time": {"$first": "$open_time"},
-                            "volume": {"$sum": "$volume"},
-                        }
-                    },
-                    {"$sort": {"close_time": DESCENDING}},
-                    {"$limit": limit},
-                    {"$skip": offset},
-                ]
-                agg_query: CommandCursor[Any] = self.db.kline.aggregate(pipeline)
-                data = list(agg_query)
-
+                        },
+                        "open": {"$first": "$open"},
+                        "close": {"$last": "$close"},
+                        "high": {"$max": "$high"},
+                        "low": {"$min": "$low"},
+                        "close_time": {"$last": "$close_time"},
+                        "open_time": {"$first": "$open_time"},
+                        "volume": {"$sum": "$volume"},
+                    }
+                },
+                {"$sort": {"close_time": ASCENDING}},  # Changed to ASCENDING for oldest to newest
+                {"$limit": limit},
+                {"$skip": offset},
+            ]
+            agg_query: CommandCursor[Any] = self.db.kline.aggregate(pipeline)
+            data = list(agg_query)
+            
         return data

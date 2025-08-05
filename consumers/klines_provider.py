@@ -113,8 +113,7 @@ class KlinesProvider(KafkaDB):
             # Add open_time and close_time back as columns for 1h data
             self.df_1h["open_time"] = self.df_1h.index
             self.df_1h["close_time"] = self.df_1h.index
-            # reverse the order to get the oldest data first, to dropnas and use latest date for technical indicators
-            self.df = self.df[::-1].reset_index(drop=True)
+
             technical_indicators = TechnicalIndicators(
                 producer=self.producer,
                 binbot_api=self.binbot_api,
