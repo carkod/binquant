@@ -111,7 +111,9 @@ class KafkaDB(BinanceApi):
                 {"_id": 0, "candle_closed": 0},
                 limit=limit,
                 skip=offset,
-                sort=[("close_time", ASCENDING)],  # Changed to ASCENDING for oldest to newest
+                sort=[
+                    ("close_time", ASCENDING)
+                ],  # Changed to ASCENDING for oldest to newest
             )
             data = list(query)
         else:
@@ -142,11 +144,13 @@ class KafkaDB(BinanceApi):
                         "volume": {"$sum": "$volume"},
                     }
                 },
-                {"$sort": {"close_time": ASCENDING}},  # Changed to ASCENDING for oldest to newest
+                {
+                    "$sort": {"close_time": ASCENDING}
+                },  # Changed to ASCENDING for oldest to newest
                 {"$limit": limit},
                 {"$skip": offset},
             ]
             agg_query: CommandCursor[Any] = self.db.kline.aggregate(pipeline)
             data = list(agg_query)
-            
+
         return data
