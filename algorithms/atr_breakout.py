@@ -134,6 +134,8 @@ class ATRBreakout:
             cls.market_breadth_data["adp"][-2] - cls.market_breadth_data["adp"][-3]
         )
 
+        print(f"ATR_breakout: {self.df['ATR_breakout'].iloc[-1]}")
+
         if (
             (
                 self.df["ATR_breakout"].iloc[-1]

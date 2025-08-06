@@ -261,6 +261,7 @@ class SpikeHunter:
                 break
 
         if spike_found:
+            print(f"Spike found: {spike_found} for {self.ti.symbol}")
             algo = "spike_hunter"
 
             if (
