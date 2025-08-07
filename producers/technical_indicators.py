@@ -383,17 +383,6 @@ class TechnicalIndicators:
                 bb_mid=bb_mid,
             )
 
-            # This function calls a lot ticker24 revise it before uncommenting
-            # rally_or_pullback(
-            #     self,
-            #     close_price=close_price,
-            #     ma_25=ma_25,
-            #     ma_100=ma_100,
-            #     ma_25_prev=ma_25_prev,
-            #     ma_100_prev=ma_100_prev,
-            #     volatility=volatility,
-            # )
-
             await top_gainers_drop(
                 self,
                 close_price=close_price,
@@ -403,15 +392,6 @@ class TechnicalIndicators:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
-
-            # bad algo
-            # await supertrend_swing_reversal(
-            #     self,
-            #     close_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            # )
 
             await twap_momentum_sniper(
                 self,
