@@ -27,6 +27,7 @@ class BinbotApi(BinanceApi):
     bb_btc_correlation_url = f"{bb_base_url}/charts/btc-correlation"
     bb_timeseries_url = f"{bb_base_url}/charts/timeseries"
     bb_adr_series_url = f"{bb_base_url}/charts/adr-series"
+    bb_refresh_klines_url = f"{bb_base_url}/charts/refresh-klines"
 
     # Trade operations
     bb_buy_order_url = f"{bb_base_url}/order/buy"
@@ -277,3 +278,13 @@ class BinbotApi(BinanceApi):
             params={"size": size},
         )
         return response["data"]
+
+    async def refresh_klines(self, symbol: str):
+        """
+        Refresh klines data for a specific symbol
+        """
+        response = await self.fetch(
+            url=self.bb_refresh_klines_url,
+            params={"symbol": symbol},
+        )
+        return response

@@ -261,6 +261,7 @@ class SpikeHunter:
                 break
 
         if spike_found:
+            print(f"Spike found: {spike_found} for {self.ti.symbol}")
             algo = "spike_hunter"
 
             if (
@@ -275,7 +276,7 @@ class SpikeHunter:
             # btc correlation avoids tightly coupled assets
             if self.ti.btc_correlation < 0 and current_price > bb_high:
                 algo += "_breakout"
-                autotrade = False
+                autotrade = True
 
             if self.ti.symbol in self.ti.top_losers_day:
                 algo += "_top_loser"
