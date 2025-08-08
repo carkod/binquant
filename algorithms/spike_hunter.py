@@ -120,8 +120,6 @@ class SpikeHunter:
         self,
         df: pd.DataFrame,
         window: int = 12,
-        price_threshold: float = 0.01,
-        volume_threshold: float = 2.0,
         momentum_threshold: float = 0.02,
         rsi_oversold: float = 30.0,
     ) -> pd.DataFrame:
@@ -167,6 +165,10 @@ class SpikeHunter:
         df["spike_signal"] = 0
         df["spike_type"] = ""
         df["signal_strength"] = 0.0
+
+        # Dynamic thresholds from stats in binbot-notebooks
+        price_threshold = df["price_change"].quantile(0.95)
+        volume_threshold = df["volume_ratio"].quantile(0.90)
 
         # Main detection loop
         for i in range(effective_window, len(df)):
