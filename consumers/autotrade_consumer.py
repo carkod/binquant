@@ -1,4 +1,3 @@
-import json
 import logging
 
 from models.signals import SignalsConsumer
@@ -79,7 +78,7 @@ class AutotradeConsumer(BinbotApi):
         )
         return is_margin_allowed
 
-    async def process_autotrade_restrictions(self, result: str):
+    async def process_autotrade_restrictions(self, result: SignalsConsumer):
         """
         Refactored autotrade conditions.
         Previously part of process_kline_stream
@@ -90,8 +89,7 @@ class AutotradeConsumer(BinbotApi):
         4. Check if test algorithms (autotrade = False)
         5. Check active strategy
         """
-        payload = json.loads(result)
-        data = SignalsConsumer(**payload)
+        data = result
         symbol = data.symbol
 
         # Reload every time until fix restarting pipeline
@@ -146,4 +144,4 @@ class AutotradeConsumer(BinbotApi):
                 )
                 await autotrade.activate_autotrade(data)
 
-        return
+        pass

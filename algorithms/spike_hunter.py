@@ -325,5 +325,5 @@ class SpikeHunter:
                     bb_low=bb_low,
                 ),
             )
-            await self.ti.telegram_consumer.send_signal(value)
-            # await self.ti.at_consumer.process_autotrade_restrictions(value)
+            await self.ti.telegram_consumer.send_signal(value.model_dump_json())
+            await self.ti.at_consumer.process_autotrade_restrictions(value)

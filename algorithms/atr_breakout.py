@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.utils import round_numbers
 from shared.enums import MarketDominance
+from shared.utils import round_numbers
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -110,7 +110,7 @@ class ATRBreakout:
                 ),
             )
 
-            await self.ti.telegram_consumer.send_signal(value)
+            await self.ti.telegram_consumer.send_signal(value.model_dump_json())
             # self.ti.at_consumer.process_autotrade_restrictions(value)
 
     async def atr_breakout(self, bb_high, bb_low, bb_mid):
@@ -175,5 +175,5 @@ class ATRBreakout:
                 ),
             )
 
-            await self.ti.telegram_consumer.send_signal(value)
+            await self.ti.telegram_consumer.send_signal(value.model_dump_json())
             await self.ti.at_consumer.process_autotrade_restrictions(value)

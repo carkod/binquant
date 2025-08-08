@@ -6,9 +6,7 @@ import os
 from aiokafka import AIOKafkaConsumer
 from aiokafka.structs import TopicPartition
 
-from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
-from consumers.telegram_consumer import TelegramConsumer
 from shared.enums import KafkaTopics
 from shared.rebalance_listener import RebalanceListener
 
@@ -87,60 +85,8 @@ async def data_process_pipe() -> None:
         await consumer.stop()
 
 
-async def data_analytics_pipe() -> None:
-    consumer = AIOKafkaConsumer(
-        bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
-        value_deserializer=lambda m: json.loads(m),
-        group_id="data-analytics-group",
-        auto_offset_reset="latest",  # Always start from latest to avoid old messages
-        enable_auto_commit=True,  # Enable auto-commit for analytics pipe
-        auto_commit_interval_ms=5000,  # Commit every 5 seconds
-        session_timeout_ms=30000,
-        heartbeat_interval_ms=10_000,
-        request_timeout_ms=30000,
-    )
-
-    # Set rebalance listener
-    rebalance_listener = RebalanceListener(consumer)
-    consumer.subscribe(
-        [KafkaTopics.signals.value],
-        listener=rebalance_listener,
-    )
-    # Start dependencies before the consumer to avoid timeouts
-    telegram_consumer = TelegramConsumer()
-    at_consumer = AutotradeConsumer()
-
-    try:
-        await consumer.start()
-
-        # Consume messages and print their values
-        async for message in consumer:
-            if message.topic == KafkaTopics.signals.value:
-                try:
-                    await telegram_consumer.send_signal(message.value)
-                    await at_consumer.process_autotrade_restrictions(message.value)
-                    logging.debug(
-                        f"Successfully processed analytics message at offset {message.offset}"
-                    )
-                    # Auto-commit handles offset management
-                except Exception as e:
-                    logging.error(
-                        f"Failed to process analytics message at offset {message.offset}: {e}",
-                        exc_info=True,
-                    )
-                    # Skip failed messages - don't retry them in analytics pipeline
-                    # Auto-commit will still advance the offset to skip this message
-                    continue
-
-    finally:
-        await consumer.stop()
-
-
 async def main() -> None:
-    await asyncio.gather(
-        data_process_pipe(),
-        data_analytics_pipe(),
-    )
+    await asyncio.gather(data_process_pipe())
 
 
 if __name__ == "__main__":
