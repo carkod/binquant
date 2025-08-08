@@ -74,8 +74,8 @@ class KlinesProvider(KafkaDB):
                 except Exception as e:
                     logging.error(f"Failed to refresh klines for {symbol}: {e}")
 
-            candles: list[KlineProduceModel] = self.get_raw_klines(
-                symbol, interval=BinanceKlineIntervals.fifteen_minutes
+            candles = self.get_ui_klines(
+                symbol, interval=BinanceKlineIntervals.fifteen_minutes.value
             )
 
             if len(candles) == 0:
@@ -84,6 +84,29 @@ class KlinesProvider(KafkaDB):
 
             # Pre-process
             self.df = pd.DataFrame(candles)
+            self.df.columns = [
+                "open_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "quote_asset_volume",
+                "number_of_trades",
+                "taker_buy_base_asset_volume",
+                "taker_buy_quote_asset_volume",
+                "unused_field",
+            ]
+
+            # Drop unused columns - keep only OHLCV data needed for technical analysis
+            self.df = self.df[
+                ["open_time", "open", "high", "low", "close", "volume", "close_time"]
+            ]
+
+            # Convert price and volume columns to float
+            price_volume_columns = ["open", "high", "low", "close", "volume"]
+            self.df[price_volume_columns] = self.df[price_volume_columns].astype(float)
 
             # Ensure close_time is datetime and set as index for proper resampling
             self.df["close_time"] = pd.to_datetime(self.df["close_time"], utc=True)

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import KafkaTopics, MarketDominance, Strategy
+from shared.enums import MarketDominance, Strategy
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -124,6 +124,5 @@ class MarketBreadthAlgo:
                 ),
             )
 
-            await self.ti.producer.send(
-                KafkaTopics.signals.value, value=value.model_dump_json()
-            )
+            await self.ti.telegram_consumer.send_signal(value)
+            await self.ti.at_consumer.process_autotrade_restrictions(value)

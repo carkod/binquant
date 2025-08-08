@@ -7,9 +7,8 @@ from shared.autotrade import Autotrade
 
 
 class AutotradeConsumer(BinbotApi):
-    def __init__(self, producer) -> None:
+    def __init__(self) -> None:
         self.market_domination_reversal = False
-        self.producer = producer
         self.active_bots: list = []
         self.paper_trading_active_bots: list = []
         self.active_bot_pairs: list = []

@@ -2,8 +2,6 @@ import asyncio
 import json
 import logging
 import os
-from asyncio import Semaphore, create_task, gather
-from typing import Any
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.structs import TopicPartition
@@ -44,84 +42,48 @@ async def data_process_pipe() -> None:
     klines_provider = KlinesProvider(consumer)
     await klines_provider.load_data_on_start()
 
-    sem = Semaphore(5)  # Reduced from 10 to limit concurrent processing
     processed_messages = []
-    pending_tasks = []
 
     async def handle_message(message):
-        async with sem:
-            try:
-                await klines_provider.aggregate_data(message.value)
-                processed_messages.append(message)
-                logging.debug(
-                    f"Processed message at offset {message.offset} for {message.topic}:{message.partition}"
-                )
-            except Exception as e:
-                logging.error(f"Error processing message: {e}", exc_info=True)
-                # Do NOT mark failed messages as processed
-                # Let them be retried on next consumer restart
+        try:
+            await klines_provider.aggregate_data(message.value)
+            processed_messages.append(message)
+            logging.debug(
+                f"Processed message at offset {message.offset} for {message.topic}:{message.partition}"
+            )
+            return True
+        except Exception as e:
+            logging.error(f"Error processing message: {e}", exc_info=True)
+            # Do NOT mark failed messages as processed
+            # Let them be retried on next consumer restart
+            return False
 
     try:
         await consumer.start()
         async for message in consumer:
-            # Dispatch async task
-            task = create_task(handle_message(message))
-            pending_tasks.append(task)
+            # Process message sequentially - wait for completion before next
+            success = await handle_message(message)
 
-            if len(pending_tasks) >= 10:  # Reduced from 20 to commit more frequently
-                await gather(*pending_tasks)
-                pending_tasks.clear()
-
-                # Commit processed messages
-                if processed_messages:
-                    try:
-                        # Get the latest message from each partition
-                        latest_per_partition: dict[tuple[str, int], Any] = {}
-                        for msg in processed_messages:
-                            key = (msg.topic, msg.partition)
-                            if (
-                                key not in latest_per_partition
-                                or msg.offset > latest_per_partition[key].offset
-                            ):
-                                latest_per_partition[key] = msg
-
-                        # Commit the latest offset for each partition
-                        offsets = {
-                            TopicPartition(msg.topic, msg.partition): msg.offset + 1
-                            for msg in latest_per_partition.values()
-                        }
-                        await consumer.commit(offsets=offsets)
-                        logging.debug(f"Committed offsets: {offsets}")
-                        processed_messages.clear()  # Only clear after successful commit
-                    except Exception as e:
-                        logging.error(f"Commit failed: {e}", exc_info=True)
-                        # Don't clear processed_messages on commit failure
-                        # They will be retried in the next batch
+            if success:
+                # Commit immediately after successful processing
+                try:
+                    offsets = {
+                        TopicPartition(message.topic, message.partition): message.offset
+                        + 1
+                    }
+                    await consumer.commit(offsets=offsets)
+                    logging.debug(
+                        f"Committed offset: {message.offset + 1} for {message.topic}:{message.partition}"
+                    )
+                    processed_messages.clear()
+                except Exception as e:
+                    logging.error(f"Commit failed: {e}", exc_info=True)
+                    # Don't clear processed_messages on commit failure
+                    # Message will be retried on next consumer restart
 
     finally:
-        # Wait for remaining tasks to complete
-        if pending_tasks:
-            await gather(*pending_tasks)
-
-        # Final commit with error handling
-        if processed_messages:
-            try:
-                # Get the latest message from each partition
-                latest: dict[tuple[str, int], Any] = {}
-                for msg in processed_messages:
-                    key = (msg.topic, msg.partition)
-                    if key not in latest or msg.offset > latest[key].offset:
-                        latest[key] = msg
-
-                offsets = {
-                    TopicPartition(msg.topic, msg.partition): msg.offset + 1
-                    for msg in latest_per_partition.values()
-                }
-                await consumer.commit(offsets=offsets)
-                logging.info(f"Final commit completed: {offsets}")
-            except Exception as e:
-                logging.error(f"Final commit failed: {e}", exc_info=True)
-
+        # No pending tasks in sequential processing mode
+        # Final commit is handled per message, so no cleanup needed
         await consumer.stop()
 
 
@@ -146,7 +108,7 @@ async def data_analytics_pipe() -> None:
     )
     # Start dependencies before the consumer to avoid timeouts
     telegram_consumer = TelegramConsumer()
-    at_consumer = AutotradeConsumer(consumer)
+    at_consumer = AutotradeConsumer()
 
     try:
         await consumer.start()

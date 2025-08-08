@@ -6,8 +6,7 @@ import joblib
 import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.apis.binbot_api import BinbotApi
-from shared.enums import KafkaTopics, MarketDominance, Strategy
+from shared.enums import MarketDominance, Strategy
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -24,8 +23,8 @@ class SpikeHunter:
         rel_path = "checkpoints/spikehunter_model.pkl"
         abs_file_path = path.join(script_dir, rel_path)
         self.model = joblib.load(abs_file_path)
-        self.binbot = BinbotApi()
         self.ti = cls
+        self.df = cls.df
         self.current_market_dominance = cls.current_market_dominance
         self.feature_cols = [
             "price_change",
@@ -50,7 +49,7 @@ class SpikeHunter:
         return False
 
     def fetch_adr_series(self, size=500):
-        data = self.binbot.get_adr_series(size=size)
+        data = self.ti.binbot_api.get_adr_series(size=size)
         df_adr = pd.DataFrame(
             {
                 "timestamp": pd.to_datetime(data["timestamp"]),
@@ -129,10 +128,22 @@ class SpikeHunter:
         """Main spike detection algorithm."""
         df = df.copy()
 
+        # Check if open_time column exists, if not use alternative
+        if "open_time" not in df.columns:
+            if "timestamp" in df.columns:
+                df["open_time"] = df["timestamp"]
+            elif df.index.name == "close_time":
+                # If close_time is the index, reset it to a column
+                df = df.reset_index()
+                df["open_time"] = df["close_time"]
+            else:
+                # Create a simple timestamp if nothing else is available
+                df["open_time"] = range(len(df))
+
         # pre-processing
         df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms")
         df = df[["timestamp", "open", "high", "low", "close", "volume"]]
-        df.sort_values("timestamp").reset_index(drop=True)
+        df = df.sort_values("timestamp").reset_index(drop=True)
 
         # Basic calculations
         df["price_change"] = df["close"].pct_change()
@@ -210,21 +221,22 @@ class SpikeHunter:
     def run_analysis(self, df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         """Run complete spike analysis for a trading pair."""
         # Detect spikes
-        df = self.detect_spikes(df)
+        df_with_spikes = self.detect_spikes(df)
 
         # Generate summary
-        spikes = df[df["spike_signal"] == 1]
+        spikes = df_with_spikes[df_with_spikes["spike_signal"] == 1]
         summary = {
             "total_spikes": len(spikes),
-            "spike_rate": len(spikes) / len(df) if len(df) > 0 else 0,
-            "date_range": f"{df['timestamp'].min()} to {df['timestamp'].max()}",
+            "spike_rate": len(spikes) / len(df_with_spikes)
+            if len(df_with_spikes) > 0
+            else 0,
+            "date_range": f"{df_with_spikes['timestamp'].min()} to {df_with_spikes['timestamp'].max()}",
         }
 
-        return df, summary
+        return df_with_spikes, summary
 
     async def signal(
         self,
-        df: pd.DataFrame,
         current_price: float,
         bb_high: float,
         bb_low: float,
@@ -233,6 +245,9 @@ class SpikeHunter:
         """
         Generate a signal based on the spike prediction.
         """
+        # Use the current DataFrame from technical indicators
+        current_df = self.ti.df
+
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
             - self.ti.market_breadth_data["adp"][-2]
@@ -247,7 +262,7 @@ class SpikeHunter:
         if self.match_loser(self.ti.symbol):
             algo = "top_loser_spike_hunter"
 
-        fresh_df, _ = self.run_analysis(df)
+        fresh_df, _ = self.run_analysis(current_df)
 
         # Check for spikes in different time windows
         time_windows = [5, 15, 30]  # 5 minutes, 15 minutes, 30 minutes
@@ -310,6 +325,5 @@ class SpikeHunter:
                     bb_low=bb_low,
                 ),
             )
-            await self.ti.producer.send(
-                KafkaTopics.signals.value, value=value.model_dump_json()
-            )
+            await self.ti.telegram_consumer.send_signal(value)
+            # await self.ti.at_consumer.process_autotrade_restrictions(value)
