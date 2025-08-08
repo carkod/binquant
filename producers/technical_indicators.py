@@ -5,16 +5,12 @@ from aiokafka import AIOKafkaProducer
 from pandas import Series
 
 from algorithms.atr_breakout import ATRBreakout
-from algorithms.coinrule import (
-    buy_low_sell_high,
-    twap_momentum_sniper,
-)
-from algorithms.ma_candlestick import (
-    ma_candlestick_jump,
-)
+from algorithms.ma_candlestick import ma_candlestick_jump
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
+from consumers.autotrade_consumer import AutotradeConsumer
+from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.utils import round_numbers
@@ -59,10 +55,14 @@ class TechnicalIndicators:
         # because we don't need to load model every time
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh = SpikeHunter(cls=self)
+        self.atr = ATRBreakout(cls=self)
         self.btc_correlation: float = 0
         self.repeated_signals: dict = {}
         self.all_symbols = self.binbot_api.get_symbols()
         self.active_symbols = [s["id"] for s in self.all_symbols if s["active"]]
+
+        self.telegram_consumer = TelegramConsumer()
+        self.at_consumer = AutotradeConsumer()
 
     def days(self, secs):
         return secs * 86400
@@ -318,7 +318,6 @@ class TechnicalIndicators:
 
             close_price = float(self.df.close[len(self.df.close) - 1])
             open_price = float(self.df.open[len(self.df.open) - 1])
-            rsi = float(self.df.rsi[len(self.df.rsi) - 1])
             ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
             ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
             ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
@@ -343,19 +342,15 @@ class TechnicalIndicators:
             )
 
             await self.sh.signal(
-                df=self.df,
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
 
-            atr = ATRBreakout(origin_df=self.df)
-            await atr.atr_breakout(
-                cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
-            )
-            await atr.reverse_atr_breakout(
-                cls=self, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
+            await self.atr.reverse_atr_breakout(
+                bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
             await ma_candlestick_jump(
@@ -372,50 +367,11 @@ class TechnicalIndicators:
                 bb_mid=bb_mid,
             )
 
-            await buy_low_sell_high(
-                self,
-                close_price=close_price,
-                rsi=rsi,
-                ma_25=ma_25,
-                volatility=volatility,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
-
-            # This function calls a lot ticker24 revise it before uncommenting
-            # rally_or_pullback(
-            #     self,
-            #     close_price=close_price,
-            #     ma_25=ma_25,
-            #     ma_100=ma_100,
-            #     ma_25_prev=ma_25_prev,
-            #     ma_100_prev=ma_100_prev,
-            #     volatility=volatility,
-            # )
-
             await top_gainers_drop(
                 self,
                 close_price=close_price,
                 open_price=open_price,
                 volatility=volatility,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
-
-            # bad algo
-            # await supertrend_swing_reversal(
-            #     self,
-            #     close_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            # )
-
-            await twap_momentum_sniper(
-                self,
-                close_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
