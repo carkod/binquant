@@ -6,6 +6,7 @@ import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.utils import round_numbers
+from shared.enums import MarketDominance
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -125,9 +126,6 @@ class ATRBreakout:
             logging.error(f"ATP breakout not enough data for symbol: {self.ti.symbol}")
             return
 
-        green_candle = self.df["close"] > self.df["open"]
-        volume_confirmation = self.df["volume"] > self.df["volume"].rolling(20).mean()
-
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
             - self.ti.market_breadth_data["adp"][-2]
@@ -138,10 +136,12 @@ class ATRBreakout:
         )
 
         if (
-            (self.df["ATR_breakout"].iloc[-1] or self.df["ATR_breakout"].iloc[-2])
-            and green_candle.iloc[-1]
-            and volume_confirmation.iloc[-1]
-            # and cls.current_market_dominance == MarketDominance.LOSERS
+            (
+                bool(self.df["ATR_breakout"].iloc[-1])
+                or bool(self.df["ATR_breakout"].iloc[-2])
+                or bool(self.df["ATR_breakout"].iloc[-3])
+            )
+            and self.ti.current_market_dominance == MarketDominance.LOSERS
             # check market is bullish. we don't want to trade when all assets are uptrend
             # because the potential of growth is low, market is already mature
             # still want to get in when there is a trend (positive ADP)
