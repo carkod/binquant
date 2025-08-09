@@ -261,13 +261,10 @@ class SpikeHunter:
         algo = "spike_hunter"
         autotrade = False
 
-        if self.match_loser(self.ti.symbol):
-            algo = "top_loser_spike_hunter"
-
         fresh_df, _ = self.run_analysis(current_df)
 
         # Check for spikes in different time windows
-        time_windows = [5, 15, 30]  # 5 minutes, 15 minutes, 30 minutes
+        time_windows = [5, 15]  # 5 minutes, 15 minutes
 
         spike_found = False
         for window in time_windows:
@@ -278,9 +275,6 @@ class SpikeHunter:
                 break
 
         if spike_found:
-            print(f"Spike found: {spike_found} for {self.ti.symbol}")
-            algo = "spike_hunter"
-
             if (
                 self.current_market_dominance == MarketDominance.LOSERS
                 and adp_diff > 0
@@ -295,9 +289,9 @@ class SpikeHunter:
                 algo += "_breakout"
                 autotrade = True
 
-            if self.ti.symbol in self.ti.top_losers_day:
-                algo += "_top_loser"
-                autotrade = True
+                if self.match_loser(self.ti.symbol):
+                    algo += "_top_loser"
+                    autotrade = True
 
             msg = f"""
             - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
