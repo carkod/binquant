@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import KafkaTopics, MarketDominance, Strategy
+from shared.enums import MarketDominance, Strategy
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -50,8 +50,8 @@ class MarketBreadthAlgo:
                 # Is there a gainers reversal trend?
                 and self.market_breadth_data["adp"][-4] < 0
             ):
-                self.btc_correlation = self.ti.binbot_api.get_btc_correlation(
-                    symbol=self.ti.symbol
+                self.btc_correlation, self.btc_price = (
+                    self.ti.binbot_api.get_btc_correlation(symbol=self.ti.symbol)
                 )
 
                 if self.btc_correlation > 0 and self.btc_change_perc > 0:
@@ -66,8 +66,8 @@ class MarketBreadthAlgo:
                 and self.market_breadth_data["adp"][-3] < 0
                 and self.market_breadth_data["adp"][-4] > 0
             ):
-                self.btc_correlation = self.ti.binbot_api.get_btc_correlation(
-                    symbol=self.ti.symbol
+                self.btc_correlation, self.btc_price = (
+                    self.ti.binbot_api.get_btc_correlation(symbol=self.ti.symbol)
                 )
                 if self.btc_correlation < 0 and self.btc_change_perc < 0:
                     self.current_market_dominance = MarketDominance.LOSERS
@@ -124,6 +124,5 @@ class MarketBreadthAlgo:
                 ),
             )
 
-            await self.ti.producer.send(
-                KafkaTopics.signals.value, value=value.model_dump_json()
-            )
+            await self.ti.telegram_consumer.send_signal(value.model_dump_json())
+            await self.ti.at_consumer.process_autotrade_restrictions(value)

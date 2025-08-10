@@ -1,3 +1,4 @@
+import logging
 import os
 from os import path
 from typing import TYPE_CHECKING
@@ -6,8 +7,7 @@ import joblib
 import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.apis.binbot_api import BinbotApi
-from shared.enums import KafkaTopics, MarketDominance, Strategy
+from shared.enums import MarketDominance, Strategy
 
 if TYPE_CHECKING:
     from producers.technical_indicators import TechnicalIndicators
@@ -24,8 +24,8 @@ class SpikeHunter:
         rel_path = "checkpoints/spikehunter_model.pkl"
         abs_file_path = path.join(script_dir, rel_path)
         self.model = joblib.load(abs_file_path)
-        self.binbot = BinbotApi()
         self.ti = cls
+        self.df = cls.df
         self.current_market_dominance = cls.current_market_dominance
         self.feature_cols = [
             "price_change",
@@ -50,7 +50,7 @@ class SpikeHunter:
         return False
 
     def fetch_adr_series(self, size=500):
-        data = self.binbot.get_adr_series(size=size)
+        data = self.ti.binbot_api.get_adr_series(size=size)
         df_adr = pd.DataFrame(
             {
                 "timestamp": pd.to_datetime(data["timestamp"]),
@@ -121,18 +121,28 @@ class SpikeHunter:
         self,
         df: pd.DataFrame,
         window: int = 12,
-        price_threshold: float = 0.01,
-        volume_threshold: float = 2.0,
         momentum_threshold: float = 0.02,
         rsi_oversold: float = 30.0,
     ) -> pd.DataFrame:
         """Main spike detection algorithm."""
         df = df.copy()
 
+        # Check if open_time column exists, if not use alternative
+        if "open_time" not in df.columns:
+            if "timestamp" in df.columns:
+                df["open_time"] = df["timestamp"]
+            elif df.index.name == "close_time":
+                # If close_time is the index, reset it to a column
+                df = df.reset_index()
+                df["open_time"] = df["close_time"]
+            else:
+                # Create a simple timestamp if nothing else is available
+                df["open_time"] = range(len(df))
+
         # pre-processing
         df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms")
         df = df[["timestamp", "open", "high", "low", "close", "volume"]]
-        df.sort_values("timestamp").reset_index(drop=True)
+        df = df.sort_values("timestamp").reset_index(drop=True)
 
         # Basic calculations
         df["price_change"] = df["close"].pct_change()
@@ -156,6 +166,10 @@ class SpikeHunter:
         df["spike_signal"] = 0
         df["spike_type"] = ""
         df["signal_strength"] = 0.0
+
+        # Dynamic thresholds from stats in binbot-notebooks
+        price_threshold = df["price_change"].quantile(0.95)
+        volume_threshold = df["volume_ratio"].quantile(0.90)
 
         # Main detection loop
         for i in range(effective_window, len(df)):
@@ -210,29 +224,47 @@ class SpikeHunter:
     def run_analysis(self, df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         """Run complete spike analysis for a trading pair."""
         # Detect spikes
-        df = self.detect_spikes(df)
+        df_with_spikes = self.detect_spikes(df)
 
         # Generate summary
-        spikes = df[df["spike_signal"] == 1]
+        spikes = df_with_spikes[df_with_spikes["spike_signal"] == 1]
         summary = {
             "total_spikes": len(spikes),
-            "spike_rate": len(spikes) / len(df) if len(df) > 0 else 0,
-            "date_range": f"{df['timestamp'].min()} to {df['timestamp'].max()}",
+            "spike_rate": len(spikes) / len(df_with_spikes)
+            if len(df_with_spikes) > 0
+            else 0,
+            "date_range": f"{df_with_spikes['timestamp'].min()} to {df_with_spikes['timestamp'].max()}",
         }
 
-        return df, summary
+        return df_with_spikes, summary
 
-    async def signal(
-        self,
-        df: pd.DataFrame,
-        current_price: float,
-        bb_high: float,
-        bb_low: float,
-        bb_mid: float,
-    ):
+    async def get_spikes(self):
         """
         Generate a signal based on the spike prediction.
         """
+        # Use the current DataFrame from technical indicators
+        current_df = self.ti.df
+
+        fresh_df, _ = self.run_analysis(current_df)
+
+        # Check for spikes in different time windows
+        time_windows = [5, 15]  # 5 minutes, 15 minutes
+
+        for window in time_windows:
+            last_spike = self.get_last_spike_details(fresh_df, max_minutes_ago=window)
+
+            if last_spike:
+                break
+
+        return last_spike
+
+    async def spike_hunter_bullish(self, current_price, bb_high, bb_low, bb_mid):
+        """
+        Detect bullish spikes and send signals.
+        """
+
+        last_spike = await self.get_spikes()
+
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
             - self.ti.market_breadth_data["adp"][-2]
@@ -241,60 +273,92 @@ class SpikeHunter:
             self.ti.market_breadth_data["adp"][-2]
             - self.ti.market_breadth_data["adp"][-3]
         )
-        algo = "spike_hunter"
-        autotrade = False
 
-        if self.match_loser(self.ti.symbol):
-            algo = "top_loser_spike_hunter"
+        if (
+            self.current_market_dominance == MarketDominance.LOSERS
+            and adp_diff > 0
+            and adp_diff_prev > 0
+        ):
+            algo = "spike_hunter_bullish"
+            autotrade = True
 
-        fresh_df, _ = self.run_analysis(df)
+            msg = f"""
+                - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
+                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
+                - 📈 Price: +{last_spike["price_change_pct"]}
+                - 📊 Volume: {last_spike["volume_ratio"]}x above average
+                - 🏷️ Type: {last_spike["spike_type"]}
+                - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
+                - 📉 RSI: {last_spike["rsi"]:.1f}
+                - BTC Correlation: {self.ti.btc_correlation:.2f}
+                - Autotrade?: {"Yes" if autotrade else "No"}
+                - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
+                - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
+                - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
+                """
 
-        # Check for spikes in different time windows
-        time_windows = [5, 15, 30]  # 5 minutes, 15 minutes, 30 minutes
+            value = SignalsConsumer(
+                autotrade=autotrade,
+                current_price=current_price,
+                msg=msg,
+                symbol=self.ti.symbol,
+                algo=algo,
+                bot_strategy=Strategy.long,
+                bb_spreads=BollinguerSpread(
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
+                ),
+            )
+            await self.ti.telegram_consumer.send_signal(value.model_dump_json())
+            await self.ti.at_consumer.process_autotrade_restrictions(value)
 
-        spike_found = False
-        for window in time_windows:
-            last_spike = self.get_last_spike_details(fresh_df, max_minutes_ago=window)
+    async def spike_hunter_breakouts(
+        self,
+        current_price: float,
+        bb_high: float,
+        bb_low: float,
+        bb_mid: float,
+    ):
+        last_spike = await self.get_spikes()
 
-            if last_spike:
-                spike_found = True
-                break
+        adp_diff = (
+            self.ti.market_breadth_data["adp"][-1]
+            - self.ti.market_breadth_data["adp"][-2]
+        )
+        adp_diff_prev = (
+            self.ti.market_breadth_data["adp"][-2]
+            - self.ti.market_breadth_data["adp"][-3]
+        )
 
-        if spike_found:
-            print(f"Spike found: {spike_found} for {self.ti.symbol}")
-            algo = "spike_hunter"
+        if not last_spike:
+            logging.debug("No recent spike detected for breakout.")
+            return
 
-            if (
-                self.current_market_dominance == MarketDominance.LOSERS
-                and adp_diff > 0
-                and adp_diff_prev > 0
-            ):
-                algo += "_bullish"
-                autotrade = True
+        # When no bullish conditions, check for breakout spikes
+        # btc correlation avoids tightly coupled assets
+        # if btc price ↑ and btc is negative, we can assume prices will go up
+        if self.ti.btc_correlation < 0 and current_price > bb_high and self.ti.btc_price < 0:
+            algo = "spike_hunter_breakout"
+            autotrade = True
 
-            # When no bullish conditions, check for breakout spikes
-            # btc correlation avoids tightly coupled assets
-            if self.ti.btc_correlation < 0 and current_price > bb_high:
-                algo += "_breakout"
-                autotrade = True
-
-            if self.ti.symbol in self.ti.top_losers_day:
-                algo += "_top_loser"
+            if self.match_loser(self.ti.symbol):
+                algo = "spike_hunter_top_loser"
                 autotrade = True
 
             msg = f"""
-            - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-            - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
-            - 📈 Price: +{last_spike["price_change_pct"]}
-            - 📊 Volume: {last_spike["volume_ratio"]}x above average
-            - 🏷️ Type: {last_spike["spike_type"]}
-            - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
-            - 📉 RSI: {last_spike["rsi"]:.1f}
-            - BTC Correlation: {self.ti.btc_correlation:.2f}
-            - Autotrade?: {"Yes" if autotrade else "No"}
-            - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
-            - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
-            - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
+                - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
+                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
+                - 📈 Price: +{last_spike["price_change_pct"]}
+                - 📊 Volume: {last_spike["volume_ratio"]}x above average
+                - 🏷️ Type: {last_spike["spike_type"]}
+                - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
+                - 📉 RSI: {last_spike["rsi"]:.1f}
+                - BTC Correlation: {self.ti.btc_correlation:.2f}
+                - Autotrade?: {"Yes" if autotrade else "No"}
+                - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
+                - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
+                - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
@@ -310,6 +374,5 @@ class SpikeHunter:
                     bb_low=bb_low,
                 ),
             )
-            await self.ti.producer.send(
-                KafkaTopics.signals.value, value=value.model_dump_json()
-            )
+            await self.ti.telegram_consumer.send_signal(value.model_dump_json())
+            await self.ti.at_consumer.process_autotrade_restrictions(value)
