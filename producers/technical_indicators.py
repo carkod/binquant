@@ -5,7 +5,6 @@ from aiokafka import AIOKafkaProducer
 from pandas import Series
 
 from algorithms.atr_breakout import ATRBreakout
-from algorithms.ma_candlestick import ma_candlestick_jump
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
@@ -57,6 +56,7 @@ class TechnicalIndicators:
         self.sh = SpikeHunter(cls=self)
         self.atr = ATRBreakout(cls=self)
         self.btc_correlation: float = 0
+        self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
         self.all_symbols = self.binbot_api.get_symbols()
         self.active_symbols = [s["id"] for s in self.all_symbols if s["active"]]
@@ -323,8 +323,8 @@ class TechnicalIndicators:
             ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
             ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
 
-            if self.btc_correlation == 0:
-                self.btc_correlation = self.binbot_api.get_btc_correlation(
+            if self.btc_correlation == 0 or self.btc_price == 0:
+                self.btc_correlation, self.btc_price = self.binbot_api.get_btc_correlation(
                     symbol=self.symbol
                 )
 
@@ -351,20 +351,6 @@ class TechnicalIndicators:
             await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
             await self.atr.reverse_atr_breakout(
                 bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
-            )
-
-            await ma_candlestick_jump(
-                self,
-                close_price,
-                open_price,
-                ma_7,
-                ma_25,
-                ma_100,
-                ma_7_prev,
-                volatility,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
             )
 
             await top_gainers_drop(

@@ -1,4 +1,5 @@
 import os
+from typing import Tuple
 
 from aiohttp import ClientSession
 from dotenv import load_dotenv
@@ -222,15 +223,17 @@ class BinbotApi(BinanceApi):
         response = await self.fetch(url=self.bb_top_losers)
         return response["data"]
 
-    def get_btc_correlation(self, symbol) -> float:
+    def get_btc_correlation(self, symbol) -> Tuple[float, float]:
         """
-        Get BTC correlation
+        Get BTC correlation and 24hr price change
         """
         response = self.request(
             url=self.bb_btc_correlation_url, params={"symbol": symbol}
         )
-        data = float(response["data"])
-        return data
+        data = response["data"]
+        correlation = float(data["correlation"])
+        price_change_24hr = float(data["24hr_price_change"])
+        return correlation, price_change_24hr
 
     def price_precision(self, symbol) -> int:
         """
