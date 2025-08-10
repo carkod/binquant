@@ -322,15 +322,6 @@ class SpikeHunter:
     ):
         last_spike = await self.get_spikes()
 
-        adp_diff = (
-            self.ti.market_breadth_data["adp"][-1]
-            - self.ti.market_breadth_data["adp"][-2]
-        )
-        adp_diff_prev = (
-            self.ti.market_breadth_data["adp"][-2]
-            - self.ti.market_breadth_data["adp"][-3]
-        )
-
         if not last_spike:
             logging.debug("No recent spike detected for breakout.")
             return
@@ -356,7 +347,6 @@ class SpikeHunter:
                 - 📉 RSI: {last_spike["rsi"]:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
-                - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
             """
