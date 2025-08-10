@@ -50,8 +50,8 @@ class MarketBreadthAlgo:
                 # Is there a gainers reversal trend?
                 and self.market_breadth_data["adp"][-4] < 0
             ):
-                self.btc_correlation = self.ti.binbot_api.get_btc_correlation(
-                    symbol=self.ti.symbol
+                self.btc_correlation, self.btc_price = (
+                    self.ti.binbot_api.get_btc_correlation(symbol=self.ti.symbol)
                 )
 
                 if self.btc_correlation > 0 and self.btc_change_perc > 0:
@@ -66,8 +66,8 @@ class MarketBreadthAlgo:
                 and self.market_breadth_data["adp"][-3] < 0
                 and self.market_breadth_data["adp"][-4] > 0
             ):
-                self.btc_correlation = self.ti.binbot_api.get_btc_correlation(
-                    symbol=self.ti.symbol
+                self.btc_correlation, self.btc_price = (
+                    self.ti.binbot_api.get_btc_correlation(symbol=self.ti.symbol)
                 )
                 if self.btc_correlation < 0 and self.btc_change_perc < 0:
                     self.current_market_dominance = MarketDominance.LOSERS

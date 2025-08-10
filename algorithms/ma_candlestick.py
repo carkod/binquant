@@ -3,7 +3,7 @@ import os
 from typing import TYPE_CHECKING
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import KafkaTopics, MarketDominance, Strategy
+from shared.enums import KafkaTopics, MarketDominance
 from shared.utils import round_numbers
 
 if TYPE_CHECKING:

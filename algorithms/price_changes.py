@@ -35,10 +35,13 @@ async def price_rise_15(
         bot_strategy = Strategy.long
 
     else:
-        btc_correlation = cls.binbot_api.get_btc_correlation(symbol=cls.symbol)
+        btc_correlation, btc_price = cls.binbot_api.get_btc_correlation(
+            symbol=cls.symbol
+        )
         if (
             cls.current_market_dominance == MarketDominance.LOSERS
             and btc_correlation > 0
+            and btc_price > 0
         ):
             bot_strategy = Strategy.long
         else:

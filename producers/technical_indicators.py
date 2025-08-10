@@ -318,14 +318,10 @@ class TechnicalIndicators:
 
             close_price = float(self.df.close[len(self.df.close) - 1])
             open_price = float(self.df.open[len(self.df.open) - 1])
-            ma_7 = float(self.df.ma_7[len(self.df.ma_7) - 1])
-            ma_7_prev = float(self.df.ma_7[len(self.df.ma_7) - 2])
-            ma_25 = float(self.df.ma_25[len(self.df.ma_25) - 1])
-            ma_100 = float(self.df.ma_100[len(self.df.ma_100) - 1])
 
             if self.btc_correlation == 0 or self.btc_price == 0:
-                self.btc_correlation, self.btc_price = self.binbot_api.get_btc_correlation(
-                    symbol=self.symbol
+                self.btc_correlation, self.btc_price = (
+                    self.binbot_api.get_btc_correlation(symbol=self.symbol)
                 )
 
             volatility = float(
@@ -341,7 +337,14 @@ class TechnicalIndicators:
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
-            await self.sh.signal(
+            await self.sh.spike_hunter_bullish(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
+
+            await self.sh.spike_hunter_breakouts(
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
