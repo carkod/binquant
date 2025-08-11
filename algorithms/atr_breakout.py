@@ -111,7 +111,7 @@ class ATRBreakout:
             )
 
             await self.ti.telegram_consumer.send_signal(value.model_dump_json())
-            # self.ti.at_consumer.process_autotrade_restrictions(value)
+            await self.ti.at_consumer.process_autotrade_restrictions(value)
 
     async def atr_breakout(self, bb_high, bb_low, bb_mid):
         """
