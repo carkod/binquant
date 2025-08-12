@@ -322,6 +322,15 @@ class SpikeHunter:
     ):
         last_spike = await self.get_spikes()
 
+        adp_diff = (
+            self.ti.market_breadth_data["adp"][-1]
+            - self.ti.market_breadth_data["adp"][-2]
+        )
+        adp_diff_prev = (
+            self.ti.market_breadth_data["adp"][-2]
+            - self.ti.market_breadth_data["adp"][-3]
+        )
+
         if not last_spike:
             logging.debug("No recent spike detected for breakout.")
             return
@@ -329,13 +338,17 @@ class SpikeHunter:
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
-        if self.ti.btc_correlation < 0 and current_price > bb_high and self.ti.btc_price < 0:
+        if (
+            self.ti.btc_correlation < 0
+            and current_price > bb_high
+            and self.ti.btc_price < 0
+        ):
             algo = "spike_hunter_breakout"
             autotrade = True
 
-            if self.match_loser(self.ti.symbol):
+            if self.match_loser(self.ti.symbol) and adp_diff > 0 and adp_diff_prev > 0:
                 algo = "spike_hunter_top_loser"
-                autotrade = True
+                autotrade = False
 
             msg = f"""
                 - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
