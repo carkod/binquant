@@ -4,6 +4,7 @@ from os import path
 from typing import TYPE_CHECKING
 
 import joblib
+import numpy as np
 import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
@@ -39,6 +40,7 @@ class SpikeHunter:
             "advancers",
             "decliners",
         ]
+        self.limit = 500
 
     def match_loser(self, symbol: str):
         """
@@ -71,40 +73,36 @@ class SpikeHunter:
         rs = gain / (loss + 1e-10)  # Avoid division by zero
         return 100 - (100 / (1 + rs))
 
-    def get_last_spike_details(self, df: pd.DataFrame, max_minutes_ago=30):
-        """
-        Extract detailed information about the most recent spike detection.
-
-        Args:
-            df: DataFrame with spike analysis results
-            max_minutes_ago: Maximum minutes ago to consider a spike valid
-        Returns:
-            Dictionary with last spike details or None if no spikes found
-        """
+    def run_analysis(self, df) -> tuple[pd.DataFrame, dict]:
+        """Run complete spike analysis for a trading pair."""
+        df = self.detect_spikes(df)
         spikes = df[df["spike_signal"] == 1]
+        early = df[df["early_signal"] == 1]
+        lead_times = df.loc[df["lead_time_candles"].notna(), "lead_time_candles"]
+        summary = {
+            "total_spikes": int(len(spikes)),
+            "total_early": int(len(early)),
+            "median_lead_candles": float(lead_times.median())
+            if len(lead_times)
+            else None,
+            "spike_rate": len(spikes) / len(df) if len(df) > 0 else 0,
+            "early_rate": len(early) / len(df) if len(df) > 0 else 0,
+        }
+        return df, summary
 
+    def get_last_spike_details(self, df, symbol="CFXUSDC", max_minutes_ago=30):
+        spikes = df[df["early_signal"] == 1]
         if len(spikes) == 0:
             return None
-
-        # Get the most recent spike (last chronologically)
         last_spike = spikes.iloc[-1]
-
-        # Calculate how many minutes ago this spike occurred
-        current_time = pd.Timestamp.now(tz="UTC")
-        spike_time = last_spike["timestamp"]
-
-        # Handle timezone-naive timestamps by assuming UTC
-        if spike_time.tz is None:
-            spike_time = spike_time.tz_localize("UTC")
-
+        current_time = pd.Timestamp.now()
+        spike_time = pd.to_datetime(last_spike["close_time"])
         minutes_ago = (current_time - spike_time).total_seconds() / 60
-
-        # Only return spike if it's within the time window
         if minutes_ago > max_minutes_ago:
             return None
-
         return {
-            "timestamp": last_spike["timestamp"],
+            "symbol": symbol,
+            "timestamp": last_spike["close_time"],
             "price": last_spike["close"],
             "price_change": last_spike["price_change"],
             "price_change_pct": last_spike["price_change"] * 100,
@@ -117,32 +115,11 @@ class SpikeHunter:
             "minutes_ago": minutes_ago,
         }
 
-    def detect_spikes(
-        self,
-        df: pd.DataFrame,
-        window: int = 12,
-        momentum_threshold: float = 0.02,
-        rsi_oversold: float = 30.0,
-    ) -> pd.DataFrame:
-        """Main spike detection algorithm."""
+    def detect_spikes(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Main spike detection algorithm with early detection stage.
+        """
         df = df.copy()
-
-        # Check if open_time column exists, if not use alternative
-        if "open_time" not in df.columns:
-            if "timestamp" in df.columns:
-                df["open_time"] = df["timestamp"]
-            elif df.index.name == "close_time":
-                # If close_time is the index, reset it to a column
-                df = df.reset_index()
-                df["open_time"] = df["close_time"]
-            else:
-                # Create a simple timestamp if nothing else is available
-                df["open_time"] = range(len(df))
-
-        # pre-processing
-        df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms")
-        df = df[["timestamp", "open", "high", "low", "close", "volume"]]
-        df = df.sort_values("timestamp").reset_index(drop=True)
 
         # Basic calculations
         df["price_change"] = df["close"].pct_change()
@@ -150,6 +127,7 @@ class SpikeHunter:
         df["body_size_pct"] = df["body_size"] / df["open"]
 
         # Volume analysis with adaptive window
+        window = getattr(self, "window", 12)
         effective_window = min(window, len(df) // 4)
         if effective_window < 3:
             effective_window = 3
@@ -159,29 +137,52 @@ class SpikeHunter:
         )
         df["volume_ratio"] = df["volume"] / (df["volume_ma"] + 1e-10)
 
+        # Rolling highs for breakout precondition
+        df["rolling_high"] = df["high"].rolling(window, min_periods=2).max()
+
         # RSI calculation
         df["rsi"] = self.calculate_rsi(df["close"])
 
-        # Initialize spike signals
+        # Momentum aggregates
+        early_lookback = getattr(self, "early_lookback", 5)
+        df["cum_price_change_3"] = df["price_change"].rolling(3).sum()
+        df["cum_price_change_early"] = df["price_change"].rolling(early_lookback).sum()
+        df["volume_ratio_change"] = df["volume_ratio"].diff()
+
+        # Initialize signals
+        df["early_signal"] = 0
+        df["early_reason"] = ""
         df["spike_signal"] = 0
         df["spike_type"] = ""
         df["signal_strength"] = 0.0
+        df["lead_time_candles"] = np.nan  # how many candles between early and confirmed
 
-        # Dynamic thresholds from stats in binbot-notebooks
-        price_threshold = df["price_change"].quantile(0.95)
-        volume_threshold = df["volume_ratio"].quantile(0.90)
+        # Thresholds and params
+        price_threshold = getattr(
+            self, "price_threshold", df["price_change"].quantile(0.95)
+        )
+        volume_threshold = getattr(
+            self, "volume_threshold", df["volume_ratio"].quantile(0.90)
+        )
+        momentum_threshold = getattr(self, "momentum_threshold", 0.02)
+        rsi_oversold = getattr(self, "rsi_oversold", 30.0)
+        early_price_frac = getattr(self, "early_price_frac", 0.6)
+        early_volume_frac = getattr(self, "early_volume_frac", 0.7)
+        breakout_buffer = getattr(self, "breakout_buffer", 0.002)
+        early_momentum_frac = getattr(self, "early_momentum_frac", 0.5)
 
-        # Main detection loop
+        last_early_idx = None
+
         for i in range(effective_window, len(df)):
-            signal = 0
-            signal_type = ""
-            strength = 0.0
-
             current_price_change = df.loc[i, "price_change"]
             current_volume_ratio = df.loc[i, "volume_ratio"]
             current_rsi = df.loc[i, "rsi"]
 
-            # Method 1: Price + Volume Spike
+            # ---------- CONFIRMED SPIKE LOGIC (original) ----------
+            signal = 0
+            signal_type = ""
+            strength = 0.0
+
             if (
                 current_price_change > price_threshold
                 and current_volume_ratio > volume_threshold
@@ -189,19 +190,14 @@ class SpikeHunter:
                 signal = 1
                 signal_type = "price_volume"
                 strength = min(current_price_change * current_volume_ratio * 10, 10.0)
-
-            # Method 2: Momentum Detection
             elif i >= 5:
                 recent_changes = df.loc[i - 3 : i, "price_change"]
                 positive_moves = (recent_changes > momentum_threshold).sum()
                 total_momentum = recent_changes.sum()
-
                 if positive_moves >= 2 and total_momentum > price_threshold:
                     signal = 1
                     signal_type = "momentum"
                     strength = min(total_momentum * 20, 8.0)
-
-            # Method 3: RSI Oversold Reversal
             elif (
                 i >= 14
                 and current_rsi > rsi_oversold
@@ -215,28 +211,47 @@ class SpikeHunter:
                     6.0,
                 )
 
+            # Only look for an early signal if we did NOT confirm on this candle
+            if signal == 0 and i >= early_lookback:
+                cond_a = (
+                    current_price_change > price_threshold * early_price_frac
+                    and current_volume_ratio > volume_threshold * early_volume_frac
+                    and (
+                        df.loc[i - 1, "price_change"] > 0
+                        or df.loc[i - 2, "price_change"] > 0
+                    )
+                )
+                cond_b = (
+                    df.loc[i, "close"]
+                    > (df.loc[i, "rolling_high"] * (1 + breakout_buffer))
+                    and current_volume_ratio > 1.2
+                )
+                cond_c = (
+                    df.loc[i, "cum_price_change_early"]
+                    > price_threshold * early_momentum_frac
+                    and df.loc[i - 1, "volume_ratio_change"] > 0
+                    and current_volume_ratio > 1.0
+                )
+                if cond_a or cond_b or cond_c:
+                    if cond_a:
+                        reason = "partial_threshold"
+                    elif cond_b:
+                        reason = "breakout"
+                    else:
+                        reason = "cumulative_momentum"
+                    df.loc[i, "early_signal"] = 1
+                    df.loc[i, "early_reason"] = reason
+                    last_early_idx = i
+
+            if signal == 1 and last_early_idx is not None:
+                df.loc[i, "lead_time_candles"] = i - last_early_idx
+                last_early_idx = None
+
             df.loc[i, "spike_signal"] = signal
             df.loc[i, "spike_type"] = signal_type
             df.loc[i, "signal_strength"] = strength
 
         return df
-
-    def run_analysis(self, df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-        """Run complete spike analysis for a trading pair."""
-        # Detect spikes
-        df_with_spikes = self.detect_spikes(df)
-
-        # Generate summary
-        spikes = df_with_spikes[df_with_spikes["spike_signal"] == 1]
-        summary = {
-            "total_spikes": len(spikes),
-            "spike_rate": len(spikes) / len(df_with_spikes)
-            if len(df_with_spikes) > 0
-            else 0,
-            "date_range": f"{df_with_spikes['timestamp'].min()} to {df_with_spikes['timestamp'].max()}",
-        }
-
-        return df_with_spikes, summary
 
     async def get_spikes(self):
         """
@@ -245,7 +260,7 @@ class SpikeHunter:
         # Use the current DataFrame from technical indicators
         current_df = self.ti.df
 
-        fresh_df, _ = self.run_analysis(current_df)
+        fresh_df, summary = self.run_analysis(current_df)
 
         # Check for spikes in different time windows
         time_windows = [5, 15]  # 5 minutes, 15 minutes
@@ -256,14 +271,14 @@ class SpikeHunter:
             if last_spike:
                 break
 
-        return last_spike
+        return last_spike, summary
 
     async def spike_hunter_bullish(self, current_price, bb_high, bb_low, bb_mid):
         """
         Detect bullish spikes and send signals.
         """
 
-        last_spike = await self.get_spikes()
+        last_spike, summary = await self.get_spikes()
 
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
@@ -275,7 +290,8 @@ class SpikeHunter:
         )
 
         if (
-            self.current_market_dominance == MarketDominance.LOSERS
+            last_spike
+            and self.current_market_dominance == MarketDominance.LOSERS
             and adp_diff > 0
             and adp_diff_prev > 0
         ):
@@ -284,13 +300,12 @@ class SpikeHunter:
 
             msg = f"""
                 - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
+                - 📅 Time: {last_spike["close_time"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - 🏷️ Type: {last_spike["spike_type"]}
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
-                - 📉 RSI: {last_spike["rsi"]:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
+                - Early spikes / rate: {summary["total_early"]}/{summary["early_rate"]:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
@@ -321,7 +336,7 @@ class SpikeHunter:
         bb_low: float,
         bb_mid: float,
     ):
-        last_spike = await self.get_spikes()
+        last_spike, summary = await self.get_spikes()
 
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
@@ -353,17 +368,17 @@ class SpikeHunter:
 
             msg = f"""
                 - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
+                - 📅 Time: {last_spike["close_time"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - 🏷️ Type: {last_spike["spike_type"]}
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
-                - 📉 RSI: {last_spike["rsi"]:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
+                - Early spikes / rate: {summary["total_early"]}/{summary["early_rate"]:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
+                - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
-            """
+                """
 
             value = SignalsConsumer(
                 autotrade=autotrade,
@@ -393,7 +408,7 @@ class SpikeHunter:
         """
         Standard spike hunter algorithm that detects spikes with no confirmations.
         """
-        last_spike = await self.get_spikes()
+        last_spike, summary = await self.get_spikes()
 
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
@@ -425,17 +440,17 @@ class SpikeHunter:
 
             msg = f"""
                 - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
+                - 📅 Time: {last_spike["close_time"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - 🏷️ Type: {last_spike["spike_type"]}
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
-                - 📉 RSI: {last_spike["rsi"]:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
+                - Early spikes / rate: {summary["total_early"]}/{summary["early_rate"]:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
+                - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
-            """
+                """
 
             value = SignalsConsumer(
                 autotrade=autotrade,
