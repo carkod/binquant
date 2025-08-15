@@ -109,8 +109,8 @@ class KlinesProvider(KafkaDB):
             self.df[price_volume_columns] = self.df[price_volume_columns].astype(float)
 
             # Ensure close_time is datetime and set as index for proper resampling
-            self.df["close_time"] = pd.to_datetime(self.df["close_time"], utc=True)
-            self.df.set_index("close_time", inplace=True)
+            self.df["timestamp"] = pd.to_datetime(self.df["close_time"])
+            self.df.set_index("timestamp", inplace=True)
 
             # Create aggregation dictionary without close_time and open_time since they're now index-based
             resample_aggregation = {
@@ -119,10 +119,12 @@ class KlinesProvider(KafkaDB):
                 "high": "max",
                 "low": "min",
                 "volume": "sum",  # Add volume if it exists in your data
+                "close_time": "first",
+                "open_time": "first"
             }
 
             # Resample to 4 hour candles for TWAP (align to calendar hours like MongoDB)
-            self.df_4h = self.df.resample("4h", origin="epoch").agg(
+            self.df_4h = self.df.resample("4h").agg(
                 resample_aggregation
             )
             # Add open_time and close_time back as columns for 4h data
@@ -130,7 +132,7 @@ class KlinesProvider(KafkaDB):
             self.df_4h["close_time"] = self.df_4h.index
 
             # Resample to 1 hour candles for Supertrend (align to calendar hours like MongoDB)
-            self.df_1h = self.df.resample("1h", origin="epoch").agg(
+            self.df_1h = self.df.resample("1h").agg(
                 resample_aggregation
             )
             # Add open_time and close_time back as columns for 1h data
