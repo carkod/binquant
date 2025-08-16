@@ -6,7 +6,7 @@ from pandas import Series
 
 from algorithms.atr_breakout import ATRBreakout
 from algorithms.market_breadth import MarketBreadthAlgo
-from algorithms.spike_hunter import SpikeHunter
+from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer

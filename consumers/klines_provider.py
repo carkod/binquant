@@ -120,21 +120,17 @@ class KlinesProvider(KafkaDB):
                 "low": "min",
                 "volume": "sum",  # Add volume if it exists in your data
                 "close_time": "first",
-                "open_time": "first"
+                "open_time": "first",
             }
 
             # Resample to 4 hour candles for TWAP (align to calendar hours like MongoDB)
-            self.df_4h = self.df.resample("4h").agg(
-                resample_aggregation
-            )
+            self.df_4h = self.df.resample("4h").agg(resample_aggregation)
             # Add open_time and close_time back as columns for 4h data
             self.df_4h["open_time"] = self.df_4h.index
             self.df_4h["close_time"] = self.df_4h.index
 
             # Resample to 1 hour candles for Supertrend (align to calendar hours like MongoDB)
-            self.df_1h = self.df.resample("1h").agg(
-                resample_aggregation
-            )
+            self.df_1h = self.df.resample("1h").agg(resample_aggregation)
             # Add open_time and close_time back as columns for 1h data
             self.df_1h["open_time"] = self.df_1h.index
             self.df_1h["close_time"] = self.df_1h.index
