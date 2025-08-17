@@ -383,13 +383,9 @@ class SpikeHunter:
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
-        if (
-            self.ti.btc_correlation < 0
-            and current_price > bb_high
-            and self.ti.btc_price < 0
-        ):
+        if current_price > bb_high:
             algo = "spike_hunter_breakout"
-            autotrade = True
+            autotrade = False
 
             if self.match_loser(self.ti.symbol) and adp_diff > 0 and adp_diff_prev > 0:
                 algo = "spike_hunter_top_loser"
@@ -402,7 +398,6 @@ class SpikeHunter:
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
-                - Early spikes / rate: {summary["total_early"]}/{summary["early_rate"]:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
@@ -460,12 +455,8 @@ class SpikeHunter:
             and current_price > bb_high
             and self.ti.btc_price < 0
         ):
-            algo = "spike_hunter_breakout"
+            algo = "spike_hunter_standard"
             autotrade = True
-
-            if self.match_loser(self.ti.symbol) and adp_diff > 0 and adp_diff_prev > 0:
-                algo = "spike_hunter_top_loser"
-                autotrade = False
 
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
