@@ -5,8 +5,9 @@ from aiokafka import AIOKafkaProducer
 from pandas import Series
 
 from algorithms.atr_breakout import ATRBreakout
+from algorithms.heikin_ashi import Supertrend
 from algorithms.market_breadth import MarketBreadthAlgo
-from algorithms.spike_hunter import SpikeHunter
+from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -55,6 +56,7 @@ class TechnicalIndicators:
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh = SpikeHunter(cls=self)
         self.atr = ATRBreakout(cls=self)
+        self.st = Supertrend(cls=self)
         self.btc_correlation: float = 0
         self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
@@ -358,6 +360,13 @@ class TechnicalIndicators:
                     bb_low=bb_low,
                     bb_mid=bb_mid,
                 )
+
+            await self.st.signal(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
 
             await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
             await self.atr.reverse_atr_breakout(

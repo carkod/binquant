@@ -83,6 +83,7 @@ class ATRBreakout:
             and green_candle.iloc[-1]
             # and volume_confirmation.iloc[-1]
             and self.ti.btc_correlation < 0
+            and self.ti.current_market_dominance == MarketDominance.LOSERS
         ):
             algo = "reverse_atr_breakout"
             close_price = self.df["close"].iloc[-1]
