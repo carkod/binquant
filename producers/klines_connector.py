@@ -16,7 +16,7 @@ class KlinesConnector(BinbotApi):
         producer: KafkaProducer,
         interval: BinanceKlineIntervals = BinanceKlineIntervals.fifteen_minutes,
     ) -> None:
-        logging.info("Started Kafka producer SignalsInbound")
+        logging.debug("Started Kafka producer SignalsInbound")
         super().__init__()
         self.interval = interval
         self.client: SpotWebsocketStreamClient = self.connect_client()

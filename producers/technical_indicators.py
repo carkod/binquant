@@ -9,6 +9,7 @@ from algorithms.heikin_ashi import Supertrend
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
+from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
@@ -57,6 +58,7 @@ class TechnicalIndicators:
         self.sh = SpikeHunter(cls=self)
         self.atr = ATRBreakout(cls=self)
         self.st = Supertrend(cls=self)
+        self.ha_sh = HASpikeHunter(cls=self)
         self.btc_correlation: float = 0
         self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
@@ -371,6 +373,13 @@ class TechnicalIndicators:
             await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
             await self.atr.reverse_atr_breakout(
                 bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            )
+
+            await self.ha_sh.ha_spike_hunter_standard(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
             )
 
             await top_gainers_drop(
