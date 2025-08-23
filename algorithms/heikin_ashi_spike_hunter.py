@@ -6,9 +6,9 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import MarketDominance, Strategy
 from algorithms.heikin_ashi import HeikinAshi
+from models.signals import BollinguerSpread, SignalsConsumer
+from shared.enums import Strategy
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
