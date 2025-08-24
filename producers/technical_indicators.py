@@ -5,7 +5,9 @@ from aiokafka import AIOKafkaProducer
 from pandas import Series
 
 from algorithms.atr_breakout import ATRBreakout
+from algorithms.coinrule import Coinrule
 from algorithms.heikin_ashi import Supertrend
+from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.top_gainer_drop import top_gainers_drop
@@ -57,6 +59,8 @@ class TechnicalIndicators:
         self.sh = SpikeHunter(cls=self)
         self.atr = ATRBreakout(cls=self)
         self.st = Supertrend(cls=self)
+        self.ha_sh = HASpikeHunter(cls=self)
+        self.cr = Coinrule(cls=self)
         self.btc_correlation: float = 0
         self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
@@ -371,6 +375,30 @@ class TechnicalIndicators:
             await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
             await self.atr.reverse_atr_breakout(
                 bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            )
+
+            await self.ha_sh.ha_spike_hunter_standard(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
+
+            await self.cr.supertrend_swing_reversal(
+                close_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
+
+            await self.cr.buy_low_sell_high(
+                close_price=close_price,
+                rsi=self.df["rsi"].iloc[-1],
+                ma_25=self.df["ma_25"].iloc[-1],
+                volatility=volatility,
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
             )
 
             await top_gainers_drop(

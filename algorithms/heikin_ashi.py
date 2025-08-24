@@ -93,7 +93,6 @@ class Supertrend(HeikinAshi):
         min_body_pct=0.5,
         trend_confirm=10,
         vol_window=30,
-        min_gap=10,
         cmf_period=20,
     ) -> tuple[bool, bool]:
         """
@@ -106,9 +105,9 @@ class Supertrend(HeikinAshi):
         ha_up = ha_df["close"] > ha_df["open"]
         ha_dn = ha_df["close"] < ha_df["open"]
         # Minimum candle body size filter (as % of range)
-        body = np.abs(ha_df["close"] - ha_df["open"])
-        rng = (ha_df["high"] - ha_df["low"]).replace(0, np.nan)
-        body_pct = body / rng
+        body_pct = np.abs(ha_df["close"] - ha_df["open"]) / (
+            ha_df["high"] - ha_df["low"]
+        ).replace(0, np.nan)
         body_filter = (body_pct > min_body_pct).fillna(False)
         # Trend confirmation: require Supertrend direction to persist for N bars
         trend_up = (
@@ -144,21 +143,9 @@ class Supertrend(HeikinAshi):
             & vol_filter
             & cmf_short
         )
-        # Enforce minimum gap between signals
-        signal = np.zeros(len(ha_df), dtype=int)
-        last_signal_idx = -min_gap
-        for i in range(len(ha_df)):
-            if long.iloc[i] and (i - last_signal_idx >= min_gap):
-                signal[i] = 1
-                last_signal_idx = i
-            elif short.iloc[i] and (i - last_signal_idx >= min_gap):
-                signal[i] = -1
-                last_signal_idx = i
-
-        long_signal = bool((signal[-5:] == 1).any()) if len(signal) > 0 else False
-
-        short_signal = bool((signal[-5:] == -1).any()) if len(signal) > 0 else False
-
+        # Return signal if any of the last 5 bars match the long/short conditions
+        long_signal = bool(long[-5:].any()) if len(long) > 0 else False
+        short_signal = bool(short[-5:].any()) if len(short) > 0 else False
         return long_signal, short_signal
 
     async def signal(
