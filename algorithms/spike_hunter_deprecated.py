@@ -11,11 +11,11 @@ from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import MarketDominance, Strategy
 
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 class SpikeHunter:
-    def __init__(self, cls: "TechnicalIndicators"):
+    def __init__(self, cls: "CryptoAnalytics"):
         """
         Initialize the Isolation Forest model with a specified contamination level.
 

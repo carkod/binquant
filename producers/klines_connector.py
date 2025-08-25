@@ -14,7 +14,7 @@ class KlinesConnector(BinbotApi):
     def __init__(
         self,
         producer: KafkaProducer,
-        interval: BinanceKlineIntervals = BinanceKlineIntervals.fifteen_minutes,
+        interval: BinanceKlineIntervals = BinanceKlineIntervals.five_minutes,
     ) -> None:
         logging.debug("Started Kafka producer SignalsInbound")
         super().__init__()

@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from binquant.producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 class SpikeHunter:
@@ -31,7 +31,7 @@ class SpikeHunter:
 
     def __init__(
         self,
-        cls: "TechnicalIndicators",
+        cls: "CryptoAnalytics",
     ):
         script_dir = path.dirname(__file__)
         rel_path = "checkpoints/spikehunter_model_v1.pkl"
@@ -177,9 +177,9 @@ class SpikeHunter:
             signal = 0
             signal_type = ""
             strength = 0.0
-            current_price_change = df.loc[i, "price_change"]
-            current_volume_ratio = df.loc[i, "volume_ratio"]
-            current_rsi = df.loc[i, "rsi"]
+            current_price_change = df.iloc[i, df.columns.get_loc("price_change")]
+            current_volume_ratio = df.iloc[i, df.columns.get_loc("volume_ratio")]
+            current_rsi = df.iloc[i, df.columns.get_loc("rsi")]
             # Method 1: ML classifier
             if ml_preds[i] == 1:
                 signal = 1
@@ -195,7 +195,7 @@ class SpikeHunter:
                 strength = min(current_price_change * current_volume_ratio * 10, 10.0)
             # Method 3: Momentum Detection
             elif i >= 5:
-                recent_changes = df.loc[i - 3 : i, "price_change"]
+                recent_changes = df.iloc[i - 3 : i, df.columns.get_loc("price_change")]
                 positive_moves = (recent_changes > self.momentum_threshold).sum()
                 total_momentum = recent_changes.sum()
                 if positive_moves >= 2 and total_momentum > price_thresh:
@@ -206,7 +206,7 @@ class SpikeHunter:
             elif (
                 i >= 14
                 and current_rsi > self.rsi_oversold
-                and df.loc[i - 1, "rsi"] <= self.rsi_oversold
+                and df.iloc[i - 1, df.columns.get_loc("rsi")] <= self.rsi_oversold
                 and current_price_change > 0.008
             ):
                 signal = 1
@@ -215,9 +215,9 @@ class SpikeHunter:
                     (current_rsi - self.rsi_oversold) / 10 * current_price_change * 50,
                     6.0,
                 )
-            df.loc[i, "spike_signal"] = signal
-            df.loc[i, "spike_type"] = signal_type
-            df.loc[i, "signal_strength"] = strength
+            df.iloc[i, df.columns.get_loc("spike_signal")] = signal
+            df.iloc[i, df.columns.get_loc("spike_type")] = signal_type
+            df.iloc[i, df.columns.get_loc("signal_strength")] = strength
         return df
 
     def get_spike_summary(self, df: pd.DataFrame) -> dict:

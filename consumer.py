@@ -19,17 +19,20 @@ logging.basicConfig(
 
 
 async def data_process_pipe() -> None:
+    """
+    Milliseconds are adjusted to minimize CommitFails
+    """
     consumer = AIOKafkaConsumer(
         KafkaTopics.klines_store_topic.value,
         bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
         value_deserializer=lambda m: json.loads(m),
         group_id="data-process-group",
         enable_auto_commit=False,
-        session_timeout_ms=60000,  # Increased from 30000
-        heartbeat_interval_ms=20_000,  # Increased from 10_000
-        max_poll_records=2,  # Reduced from 5 to process fewer messages per poll
-        max_poll_interval_ms=1200_000,  # Increased from 600_000 (20 minutes)
-        request_timeout_ms=60000,  # Added explicit request timeout
+        session_timeout_ms=60000,
+        heartbeat_interval_ms=20000,
+        max_poll_records=2,
+        max_poll_interval_ms=1200000,
+        request_timeout_ms=60000,
     )
 
     rebalance_listener = RebalanceListener(consumer)
