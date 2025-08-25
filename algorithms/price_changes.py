@@ -5,11 +5,11 @@ from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics, MarketDominance, Strategy
 
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 async def price_rise_15(
-    cls: "TechnicalIndicators",
+    cls: "CryptoAnalytics",
     close_price,
     symbol,
     prev_price,

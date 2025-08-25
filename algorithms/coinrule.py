@@ -9,11 +9,11 @@ from shared.enums import KafkaTopics, Strategy
 from shared.utils import round_numbers
 
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 class Coinrule:
-    def __init__(self, cls: "TechnicalIndicators") -> None:
+    def __init__(self, cls: "CryptoAnalytics") -> None:
         self.cls = cls
 
     async def twap_momentum_sniper(self, close_price, bb_high, bb_low, bb_mid):
@@ -178,7 +178,6 @@ class Coinrule:
         close_price,
         rsi,
         ma_25,
-        volatility,
         bb_high,
         bb_mid,
         bb_low,
@@ -187,23 +186,15 @@ class Coinrule:
         Coinrule top performance rule
         https://web.coinrule.com/share-rule/Multi-Time-Frame-Buy-Low-Sell-High-Short-term-8f02df
         """
-        volatility = round_numbers(volatility, 6)
         bot_strategy = self.cls.bot_strategy
 
-        if (
-            rsi < 35
-            and close_price > ma_25
-            and volatility > 0.01
-            and self.cls.market_domination_reversal
-        ):
+        if rsi < 35 and close_price > ma_25 and self.cls.market_domination_reversal:
             algo = "coinrule_buy_low_sell_high"
-            volatility = round_numbers(volatility, 6)
 
             bot_strategy = Strategy.long
             msg = f"""
             - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{self.cls.symbol}
             - Current price: {close_price}
-            - Log volatility (log SD): {volatility}
             - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
             - Strategy: {bot_strategy.value}
             - Reversal? {"No reversal" if not self.cls.market_domination_reversal else "Positive" if self.cls.market_domination_reversal else "Negative"}
