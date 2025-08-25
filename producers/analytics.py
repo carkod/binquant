@@ -7,9 +7,9 @@ from pandas import DataFrame, to_datetime
 from algorithms.atr_breakout import ATRBreakout
 from algorithms.coinrule import Coinrule
 from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
+from algorithms.local_min_max import local_min_max
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spikehunter_v1 import SpikeHunter
-from algorithms.top_gainer_drop import top_gainers_drop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
@@ -147,6 +147,9 @@ class CryptoAnalytics:
         self.df_4h.dropna(inplace=True)
         self.df_4h.reset_index(drop=True, inplace=True)
 
+        # some algos don't need all these
+        self.raw_df = self.df.copy()
+
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh = SpikeHunter(cls=self)
         self.atr = ATRBreakout(cls=self)
@@ -173,7 +176,6 @@ class CryptoAnalytics:
             # Oscillators
             self.df = Indicators.macd(self.df)
             self.df = Indicators.rsi(df=self.df)
-            self.df_1h = Indicators.rsi(df=self.df_1h)
 
             # Advanced technicals
             self.df = Indicators.ma_spreads(self.df)
@@ -200,7 +202,6 @@ class CryptoAnalytics:
                 return
 
             close_price = float(self.df["close"].iloc[-1])
-            open_price = float(self.df["open"].iloc[-1])
 
             if self.btc_correlation == 0 or self.btc_price == 0:
                 self.btc_correlation, self.btc_price = (
@@ -266,13 +267,15 @@ class CryptoAnalytics:
                 bb_low=bb_low,
             )
 
-            await top_gainers_drop(
-                self,
-                close_price=close_price,
-                open_price=open_price,
+            await local_min_max(
+                df=self.df,
+                current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
+                symbol=self.symbol,
+                telegram=self.telegram_consumer,
+                autotrade=self.at_consumer,
             )
 
             # avoid repeating signals in short periods of time

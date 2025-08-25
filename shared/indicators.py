@@ -182,3 +182,30 @@ class Indicators:
             df["supertrend"] = supertrend
 
         return df
+
+    def atr(df: DataFrame, window: int = 30, min_periods: int = 20) -> DataFrame:
+        df["open_time"] = to_datetime(df["open_time"], unit="ms")
+        df.set_index("open_time", inplace=True)
+        df[["open", "high", "low", "close", "volume"]] = df[
+            ["open", "high", "low", "close", "volume"]
+        ].astype(float)
+
+        # ATR breakout logic
+        tr = concat(
+            [
+                df["high"] - df["low"],
+                (df["high"] - df["close"].shift()).abs(),
+                (df["low"] - df["close"].shift()).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+
+        df["amplitude"] = df["high"] - df["low"]
+
+        df["ATR"] = tr.rolling(window=window, min_periods=min_periods).mean()
+        df["rolling_high"] = df["high"].rolling(window=window).max().shift(1)
+        df["breakout_strength"] = (df["close"] - df["rolling_high"]) / df["ATR"]
+        df["ATR_breakout"] = (df["close"] > (df["rolling_high"] + 1.1 * df["ATR"])) & (
+            df["breakout_strength"] > 0.05
+        )
+        return df

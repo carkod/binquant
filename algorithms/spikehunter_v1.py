@@ -43,12 +43,12 @@ class SpikeHunter:
         self.rsi_oversold = 30
         # thresholds have to match trained model (binbot-notebooks)
         # otherwise they may overfit/underfit
-        self.price_threshold = 0.02
-        self.volume_threshold = 2.0
+        self.price_threshold = 0.025
+        self.volume_threshold = 2.5
 
         # dependencies
         self.ti = cls
-        self.df = cls.df
+        self.df = cls.raw_df.copy()
         self.current_market_dominance = cls.current_market_dominance
 
     def match_loser(self, symbol: str):
@@ -160,8 +160,7 @@ class SpikeHunter:
         if effective_window < 3:
             effective_window = 3
 
-        # Use fixed thresholds if set
-        # otherwise model can overfit
+        # Use fixed thresholds if set, otherwise fallback to dynamic (will be set in run_analysis)
         price_thresh = (
             self.price_threshold
             if self.price_threshold is not None
@@ -177,9 +176,9 @@ class SpikeHunter:
             signal = 0
             signal_type = ""
             strength = 0.0
-            current_price_change = df.iloc[i, df.columns.get_loc("price_change")]
-            current_volume_ratio = df.iloc[i, df.columns.get_loc("volume_ratio")]
-            current_rsi = df.iloc[i, df.columns.get_loc("rsi")]
+            current_price_change = df.loc[i, "price_change"]
+            current_volume_ratio = df.loc[i, "volume_ratio"]
+            current_rsi = df.loc[i, "rsi"]
             # Method 1: ML classifier
             if ml_preds[i] == 1:
                 signal = 1
@@ -195,7 +194,7 @@ class SpikeHunter:
                 strength = min(current_price_change * current_volume_ratio * 10, 10.0)
             # Method 3: Momentum Detection
             elif i >= 5:
-                recent_changes = df.iloc[i - 3 : i, df.columns.get_loc("price_change")]
+                recent_changes = df.loc[i - 3 : i, "price_change"]
                 positive_moves = (recent_changes > self.momentum_threshold).sum()
                 total_momentum = recent_changes.sum()
                 if positive_moves >= 2 and total_momentum > price_thresh:
@@ -206,7 +205,7 @@ class SpikeHunter:
             elif (
                 i >= 14
                 and current_rsi > self.rsi_oversold
-                and df.iloc[i - 1, df.columns.get_loc("rsi")] <= self.rsi_oversold
+                and df.loc[i - 1, "rsi"] <= self.rsi_oversold
                 and current_price_change > 0.008
             ):
                 signal = 1
@@ -215,9 +214,9 @@ class SpikeHunter:
                     (current_rsi - self.rsi_oversold) / 10 * current_price_change * 50,
                     6.0,
                 )
-            df.iloc[i, df.columns.get_loc("spike_signal")] = signal
-            df.iloc[i, df.columns.get_loc("spike_type")] = signal_type
-            df.iloc[i, df.columns.get_loc("signal_strength")] = strength
+            df.loc[i, "spike_signal"] = signal
+            df.loc[i, "spike_type"] = signal_type
+            df.loc[i, "signal_strength"] = strength
         return df
 
     def get_spike_summary(self, df: pd.DataFrame) -> dict:
@@ -246,18 +245,17 @@ class SpikeHunter:
             "date_range": f"{df['timestamp'].min()} to {df['timestamp'].max()}",
         }
 
-    def run_analysis(self, df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-        # If fixed thresholds are not set, set them dynamically here (for backward compatibility)
+    def run_analysis(self) -> tuple[pd.DataFrame, dict]:
         if self.price_threshold is None:
-            self.price_threshold = df["price_change"].quantile(0.95)
+            self.price_threshold = self.df["price_change"].quantile(0.95)
         if self.volume_threshold is None:
-            self.volume_threshold = df["volume_ratio"].quantile(0.90)
-        df = self.detect_spikes(df)
-        summary = self.get_spike_summary(df)
-        return df, summary
+            self.volume_threshold = self.df["volume_ratio"].quantile(0.90)
+        self.df = self.detect_spikes(self.df)
+        summary = self.get_spike_summary(self.df)
+        return self.df, summary
 
-    def get_last_spike_details(self, df, max_minutes_ago=30):
-        spikes = df[df["spike_signal"] == 1]
+    def get_last_spike_details(self, max_minutes_ago=30):
+        spikes = self.df[self.df["spike_signal"] == 1]
         if len(spikes) == 0:
             return None
         last_spike = spikes.iloc[-1]
@@ -282,32 +280,29 @@ class SpikeHunter:
             "minutes_ago": minutes_ago,
         }
 
-    async def get_spikes(self):
+    def get_spikes(self):
         """
         Generate a signal based on the spike prediction.
         """
-        # Use the current DataFrame from technical indicators
-        current_df = self.ti.df.copy()
-
-        fresh_df, summary = self.run_analysis(current_df)
+        self.run_analysis()
 
         # Check for spikes in different time windows
-        time_windows = [5, 15]  # 5 minutes, 15 minutes
+        time_windows = [5, 15, 240]  # 5 minutes, 15 minutes
 
+        last_spike = None
         for window in time_windows:
-            last_spike = self.get_last_spike_details(fresh_df, max_minutes_ago=window)
-
+            last_spike = self.get_last_spike_details(max_minutes_ago=window)
             if last_spike:
                 break
 
-        return last_spike, summary
+        return last_spike
 
     async def spike_hunter_bullish(self, current_price, bb_high, bb_low, bb_mid):
         """
         Detect bullish spikes and send signals.
         """
 
-        last_spike, summary = await self.get_spikes()
+        last_spike = self.get_spikes()
 
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
@@ -334,7 +329,6 @@ class SpikeHunter:
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
-                - Early spikes / rate: {summary["total_early"]}/{summary["early_rate"]:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
@@ -365,7 +359,7 @@ class SpikeHunter:
         bb_low: float,
         bb_mid: float,
     ):
-        last_spike, summary = await self.get_spikes()
+        last_spike = self.get_spikes()
 
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
@@ -432,7 +426,7 @@ class SpikeHunter:
         """
         Standard spike hunter algorithm that detects spikes with no confirmations.
         """
-        last_spike, summary = await self.get_spikes()
+        last_spike = self.get_spikes()
 
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
@@ -451,7 +445,8 @@ class SpikeHunter:
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
         if (
-            self.ti.btc_correlation < 0
+            last_spike
+            and self.ti.btc_correlation < 0
             and current_price > bb_high
             and self.ti.btc_price < 0
         ):
@@ -465,7 +460,6 @@ class SpikeHunter:
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
-                - Early spikes / rate: {summary["total_early"]}/{summary["early_rate"]:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
