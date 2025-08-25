@@ -1,14 +1,9 @@
-import os
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pandas as pd
 
-from models.signals import BollinguerSpread, SignalsConsumer
-from shared.utils import round_numbers
-
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    pass
 
 
 class HeikinAshi:

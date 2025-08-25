@@ -9,11 +9,11 @@ from shared.enums import MarketDominance
 from shared.utils import round_numbers
 
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 class ATRBreakout:
-    def __init__(self, cls: "TechnicalIndicators") -> None:
+    def __init__(self, cls: "CryptoAnalytics") -> None:
         """
         Calculate the Average True Range (ATR) indicator.
         ATR is a measure of volatility.

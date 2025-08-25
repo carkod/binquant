@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from binquant.producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 class SpikeHunter:
@@ -31,7 +31,7 @@ class SpikeHunter:
 
     def __init__(
         self,
-        cls: "TechnicalIndicators",
+        cls: "CryptoAnalytics",
     ):
         script_dir = path.dirname(__file__)
         rel_path = "checkpoints/spikehunter_model_v1.pkl"
