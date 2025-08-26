@@ -324,7 +324,7 @@ class SpikeHunter:
 
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - 📅 Time: {last_spike["close_time"].strftime("%Y-%m-%d %H:%M")}
+                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}

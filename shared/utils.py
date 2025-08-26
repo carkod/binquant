@@ -99,7 +99,7 @@ def handle_binance_errors(response: Response):
     # Calculate request weights and pause half of the way (1200/2=600)
     if (
         "x-mbx-used-weight-1m" in response.headers
-        and int(response.headers["x-mbx-used-weight-1m"]) > 600
+        and int(response.headers["x-mbx-used-weight-1m"]) > 1000
     ) or response.status_code == 418:
         logging.warning("Request weight limit prevention pause, waiting 1 min")
         sleep(120)

@@ -50,7 +50,7 @@ class ATRBreakout:
                 or self.df["ATR_breakout"].iloc[-2]
                 or self.df["ATR_breakout"].iloc[-3]
             )
-            and green_candle.iloc[-1]
+            and green_candle
             # and volume_confirmation.iloc[-1]
             and self.ti.btc_correlation < 0
             and self.ti.current_market_dominance == MarketDominance.LOSERS
@@ -109,7 +109,7 @@ class ATRBreakout:
                 or bool(self.df["ATR_breakout"].iloc[-2])
                 or bool(self.df["ATR_breakout"].iloc[-3])
             )
-            # and self.ti.current_market_dominance == MarketDominance.LOSERS
+            and self.ti.current_market_dominance == MarketDominance.LOSERS
             # check market is bullish. we don't want to trade when all assets are uptrend
             # because the potential of growth is low, market is already mature
             # still want to get in when there is a trend (positive ADP)
