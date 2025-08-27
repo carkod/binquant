@@ -96,13 +96,13 @@ class SpikeHunter:
             return None
         last_spike = spikes.iloc[-1]
         current_time = pd.Timestamp.now()
-        spike_time = pd.to_datetime(last_spike["close_time"])
+        spike_time = pd.to_datetime(last_spike["timestamp"])
         minutes_ago = (current_time - spike_time).total_seconds() / 60
         if minutes_ago > max_minutes_ago:
             return None
         return {
             "symbol": symbol,
-            "timestamp": last_spike["close_time"],
+            "timestamp": last_spike["timestamp"],
             "price": last_spike["close"],
             "price_change": last_spike["price_change"],
             "price_change_pct": last_spike["price_change"] * 100,
@@ -300,7 +300,7 @@ class SpikeHunter:
 
             msg = f"""
                 - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - 📅 Time: {last_spike["close_time"].strftime("%Y-%m-%d %H:%M")}
+                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
@@ -368,7 +368,7 @@ class SpikeHunter:
 
             msg = f"""
                 - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - 📅 Time: {last_spike["close_time"].strftime("%Y-%m-%d %H:%M")}
+                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
@@ -440,7 +440,7 @@ class SpikeHunter:
 
             msg = f"""
                 - 🔥 [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - 📅 Time: {last_spike["close_time"].strftime("%Y-%m-%d %H:%M")}
+                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}

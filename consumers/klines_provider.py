@@ -5,7 +5,6 @@ from datetime import datetime
 import pandas as pd
 from kafka import KafkaConsumer
 
-from database import KafkaDB
 from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
 from producers.base import AsyncProducer
@@ -13,7 +12,7 @@ from shared.apis.binbot_api import BinanceApi, BinbotApi
 from shared.enums import BinanceKlineIntervals
 
 
-class KlinesProvider(KafkaDB):
+class KlinesProvider:
     """
     Pools, processes, agregates and provides klines data
     """
@@ -69,7 +68,7 @@ class KlinesProvider(KafkaDB):
                 except Exception as e:
                     logging.error(f"Failed to refresh klines for {symbol}: {e}")
 
-            candles = self.get_ui_klines(
+            candles = self.binance_api.get_ui_klines(
                 symbol, interval=BinanceKlineIntervals.fifteen_minutes.value
             )
 
