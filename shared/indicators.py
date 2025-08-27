@@ -8,6 +8,15 @@ class Indicators:
     dependencies that causes issues in the infrastructure
     """
 
+    def post_process(df: DataFrame) -> DataFrame:
+        """
+        Post-process the DataFrame by filling missing values and
+        converting data types as needed.
+        """
+        df.dropna(inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        return df
+
     def moving_averages(df: DataFrame, period=7) -> DataFrame:
         """
         Calculate moving averages for 7, 25, 100 days

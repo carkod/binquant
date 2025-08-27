@@ -2,8 +2,11 @@ from os import getenv
 
 from pandas import DataFrame
 
+from consumers.autotrade_consumer import AutotradeConsumer
+from consumers.telegram_consumer import TelegramConsumer
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
+from shared.utils import supress_notation
 
 
 async def local_min_max(
@@ -13,8 +16,8 @@ async def local_min_max(
     bb_high: float,
     bb_mid: float,
     bb_low: float,
-    telegram,
-    autotrade,
+    telegram: TelegramConsumer,
+    ac: AutotradeConsumer,
 ) -> DataFrame:
     """
     Calculate local min and max for the closing price
@@ -27,8 +30,8 @@ async def local_min_max(
         autotrade = False
 
         msg = f"""
-            - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
-            - {symbol} has hit a new minimum {str(min_price)}!!
+            - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
+            - 🔥 {symbol} has hit a new minimum {supress_notation(min_price)}!!
             - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
@@ -47,5 +50,5 @@ async def local_min_max(
                 bb_low=bb_low,
             ),
         )
-        await telegram.send_signal(value.model_dump_json())
-        await autotrade.process_autotrade_restrictions(value)
+        await telegram.send_signal(value)
+        await ac.process_autotrade_restrictions(value)

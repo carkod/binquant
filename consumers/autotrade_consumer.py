@@ -92,9 +92,6 @@ class AutotradeConsumer(BinbotApi):
         data = result
         symbol = data.symbol
 
-        # Reload every time until fix restarting pipeline
-        self.load_data_on_start()
-
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
         if (

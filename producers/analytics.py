@@ -275,7 +275,7 @@ class CryptoAnalytics:
                 bb_mid=bb_mid,
                 symbol=self.symbol,
                 telegram=self.telegram_consumer,
-                autotrade=self.at_consumer,
+                ac=self.at_consumer,
             )
 
             # avoid repeating signals in short periods of time
