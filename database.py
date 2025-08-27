@@ -40,48 +40,6 @@ class KafkaDB(BinanceApi):
             partition_obj[item["symbol"]] = item["partition"]
         return partition_obj
 
-    def store_klines(self, kline):
-        """
-        Append metadata and store kline data in MongoDB
-        Validates timestamp order before storing
-        """
-        # Extract timestamps for validation
-        open_timestamp = kline["t"]  # open time in milliseconds
-        close_timestamp = kline["T"]  # close time in milliseconds
-
-        # Validate that open_time < close_time
-        if open_timestamp >= close_timestamp:
-            logging.error(
-                f"Invalid kline data for {kline['s']}: open_time ({open_timestamp}) >= close_time ({close_timestamp}). Skipping storage."
-            )
-            return
-
-        # Add unique constraint to prevent duplicates
-        existing = self.db.kline.find_one(
-            {"symbol": kline["s"], "end_time": int(kline["T"]), "interval": kline["i"]}
-        )
-
-        if existing:
-            logging.debug(f"Kline already exists for {kline['s']} at {kline['T']}")
-            return
-
-        klines = KlineModel(
-            end_time=datetime.fromtimestamp(kline["T"] / 1000, tz=UTC),
-            symbol=kline["s"],
-            open_time=datetime.fromtimestamp(kline["t"] / 1000, tz=UTC),
-            close_time=datetime.fromtimestamp(kline["T"] / 1000, tz=UTC),
-            open=float(kline["o"]),
-            high=float(kline["h"]),
-            low=float(kline["l"]),
-            close=float(kline["c"]),
-            volume=float(kline["v"]),
-            candle_closed=kline["x"],
-            interval=kline["i"],
-        )
-
-        data = klines.model_dump()
-        self.db.kline.insert_one(data)
-
     def get_klines(self, symbol, limit=200, offset=0):
         query = self.db.kline.find(
             {"symbol": symbol},

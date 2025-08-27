@@ -21,9 +21,6 @@ class KlinesProducer(KafkaDB):
 
     def store(self, result):
         data = result["k"]
-        # Store only if candle closed
-        self.store_klines(data)
-
         message = KlineProduceModel(
             symbol=data["s"],
             open_time=str(data["t"]),
