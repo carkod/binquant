@@ -17,7 +17,7 @@ async def local_min_max(
     bb_mid: float,
     bb_low: float,
     telegram: TelegramConsumer,
-    ac: AutotradeConsumer,
+    at_consumer: AutotradeConsumer,
 ) -> DataFrame:
     """
     Calculate local min and max for the closing price
@@ -51,4 +51,4 @@ async def local_min_max(
             ),
         )
         await telegram.send_signal(value)
-        await ac.process_autotrade_restrictions(value)
+        await at_consumer.process_autotrade_restrictions(value)

@@ -10,7 +10,6 @@ from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
 from algorithms.local_min_max import local_min_max
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spikehunter_v1 import SpikeHunter
-from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
@@ -31,6 +30,7 @@ class CryptoAnalytics:
         market_breadth_data,
         top_losers_day,
         all_symbols,
+        ac_api,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -62,7 +62,7 @@ class CryptoAnalytics:
         self.active_symbols = [s["id"] for s in self.all_symbols if s["active"]]
 
         self.telegram_consumer = TelegramConsumer()
-        self.at_consumer = AutotradeConsumer()
+        self.at_consumer = ac_api
 
     def days(self, secs):
         return secs * 86400
@@ -275,7 +275,7 @@ class CryptoAnalytics:
                 bb_mid=bb_mid,
                 symbol=self.symbol,
                 telegram=self.telegram_consumer,
-                ac=self.at_consumer,
+                at_consumer=self.at_consumer,
             )
 
             # avoid repeating signals in short periods of time

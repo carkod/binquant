@@ -87,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Start Kafka
-        uses: 280780363/kafka-action@v1.0
+        uses: confluentinc/cp-kafka:7.6.0
         with:
           kafka version: "latest"
           kafka port: ${{ env.KAFKA_PORT }}

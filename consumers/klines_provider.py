@@ -5,6 +5,7 @@ from datetime import datetime
 import pandas as pd
 from kafka import KafkaConsumer
 
+from consumers.autotrade_consumer import AutotradeConsumer
 from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
 from producers.base import AsyncProducer
@@ -38,6 +39,7 @@ class KlinesProvider:
         self.all_symbols = self.binbot_api.get_symbols()
 
     async def load_data_on_start(self):
+        # Klines API dependencies
         self.active_pairs = self.binbot_api.get_active_pairs()
         base_producer = AsyncProducer().get_producer()
         self.producer = base_producer
@@ -45,6 +47,19 @@ class KlinesProvider:
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
         self.top_losers_day = await self.binbot_api.get_top_losers()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
+
+        # Autotrade Consumer API dependencies
+        self.ac_api = AutotradeConsumer(
+            autotrade_settings=self.binbot_api.get_autotrade_settings(),
+            active_test_bots=self.binbot_api.get_active_pairs(
+                collection_name="paper_trading"
+            ),
+            all_symbols=self.binbot_api.get_symbols(),
+            # Active bot symbols substracting exchange active symbols (not blacklisted)
+            active_symbols=set({s["id"] for s in self.all_symbols if s["active"]})
+            - set(self.active_pairs),
+            test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
+        )
 
     async def aggregate_data(self, results):
         current_time = datetime.now()
@@ -59,14 +74,6 @@ class KlinesProvider:
             payload = json.loads(results)
             klines = KlineProduceModel.model_validate(payload)
             symbol = klines.symbol
-
-            # Refresh klines data every 15 minutes (when minute is 0, 15, 30, or 45)
-            if current_time.minute % 15 == 0:
-                try:
-                    await self.binbot_api.refresh_klines(symbol)
-                    logging.info(f"Refreshed klines data for {symbol}")
-                except Exception as e:
-                    logging.error(f"Failed to refresh klines for {symbol}: {e}")
 
             candles = self.binance_api.get_ui_klines(
                 symbol, interval=BinanceKlineIntervals.fifteen_minutes.value
@@ -87,5 +94,6 @@ class KlinesProvider:
                 market_breadth_data=self.market_breadth_data,
                 top_losers_day=self.top_losers_day,
                 all_symbols=self.all_symbols,
+                ac_api=self.ac_api,
             )
             await crypto_analytics.process_data(candles)

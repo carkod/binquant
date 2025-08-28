@@ -22,8 +22,10 @@ async def data_process_pipe() -> None:
     """
     Milliseconds are adjusted to minimize CommitFails
     """
+
     consumer = AIOKafkaConsumer(
         KafkaTopics.klines_store_topic.value,
+        KafkaTopics.restart_streaming.value,
         bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
         value_deserializer=lambda m: json.loads(m),
         group_id="data-process-group",
@@ -37,7 +39,8 @@ async def data_process_pipe() -> None:
 
     rebalance_listener = RebalanceListener(consumer)
     consumer.subscribe(
-        [KafkaTopics.klines_store_topic.value], listener=rebalance_listener
+        [KafkaTopics.klines_store_topic.value, KafkaTopics.restart_streaming.value],
+        listener=rebalance_listener,
     )
 
     klines_provider = KlinesProvider(consumer)
@@ -47,7 +50,14 @@ async def data_process_pipe() -> None:
 
     async def handle_message(message):
         try:
+            if message.topic == KafkaTopics.restart_streaming.value:
+                logging.info("Received restart_streaming message, reloading data...")
+                await klines_provider.load_data_on_start()
+                # don't commit message
+                return False
+
             await klines_provider.aggregate_data(message.value)
+
             processed_messages.append(message)
             logging.debug(
                 f"Processed message at offset {message.offset} for {message.topic}:{message.partition}"
