@@ -5,11 +5,11 @@ from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics
 
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 async def rally_or_pullback(
-    cls: "TechnicalIndicators",
+    cls: "CryptoAnalytics",
     close_price,
     ma_25,
     ma_100,

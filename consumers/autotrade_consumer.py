@@ -6,36 +6,30 @@ from shared.autotrade import Autotrade
 
 
 class AutotradeConsumer(BinbotApi):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        autotrade_settings,
+        active_test_bots,
+        all_symbols,
+        active_symbols,
+        test_autotrade_settings,
+    ) -> None:
         self.market_domination_reversal = False
         self.active_bots: list = []
         self.paper_trading_active_bots: list = []
         self.active_bot_pairs: list = []
         self.active_test_bots: list = []
         self.all_symbols: list[dict] = []
-        self.load_data_on_start()
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
         self.volatility = 0
-        pass
 
-    def load_data_on_start(self):
-        """
-        Load data on start and on update_required
-        """
-        logging.info(
-            "Loading controller, active bots and available symbols (not blacklisted)..."
-        )
-        self.autotrade_settings: dict = self.get_autotrade_settings()
-        self.active_bot_pairs = self.get_active_pairs()
-        self.active_test_bots = self.get_active_pairs(collection_name="paper_trading")
-        self.all_symbols = self.get_symbols()
-        # Active bot symbols substracting exchange active symbols (not blacklisted)
-        self.active_symbols = set(
-            {s["id"] for s in self.all_symbols if s["active"]}
-        ) - set(self.active_bot_pairs)
-        self.test_autotrade_settings: dict = self.get_test_autotrade_settings()
-        pass
+        # API dependencies
+        self.autotrade_settings = autotrade_settings
+        self.active_test_bots = active_test_bots
+        self.all_symbols = all_symbols
+        self.active_symbols = active_symbols
+        self.test_autotrade_settings = test_autotrade_settings
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -91,9 +85,6 @@ class AutotradeConsumer(BinbotApi):
         """
         data = result
         symbol = data.symbol
-
-        # Reload every time until fix restarting pipeline
-        self.load_data_on_start()
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled

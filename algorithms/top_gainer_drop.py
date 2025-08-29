@@ -5,14 +5,13 @@ from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import KafkaTopics
 
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 async def top_gainers_drop(
-    cls: "TechnicalIndicators",
+    cls: "CryptoAnalytics",
     close_price,
     open_price,
-    volatility,
     bb_high,
     bb_mid,
     bb_low,
@@ -29,7 +28,6 @@ async def top_gainers_drop(
         msg = f"""
         - [{os.getenv("ENV")}] Top gainers's drop <strong>#{algo} algorithm</strong> #{cls.symbol}
         - Current price: {close_price}
-        - Log volatility (log SD): {volatility}
         - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
         - Market domination trend: {cls.current_market_dominance}
@@ -39,7 +37,6 @@ async def top_gainers_drop(
         """
 
         value = SignalsConsumer(
-            spread=volatility,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,

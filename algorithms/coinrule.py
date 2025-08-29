@@ -9,11 +9,11 @@ from shared.enums import KafkaTopics, Strategy
 from shared.utils import round_numbers
 
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 class Coinrule:
-    def __init__(self, cls: "TechnicalIndicators") -> None:
+    def __init__(self, cls: "CryptoAnalytics") -> None:
         self.cls = cls
 
     async def twap_momentum_sniper(self, close_price, bb_high, bb_low, bb_mid):
@@ -70,71 +70,59 @@ class Coinrule:
         Coinrule top performance rule
         https://web.coinrule.com/rule/67c8bf4bdb949c69ab4200b3/draft
 
-        Uses 1 hour candles df_1h
+        Uses 1 hour candles df
         """
-        if self.cls.df_1h.isnull().values.any() or self.cls.df_1h.size == 0:
+        if self.cls.df.isnull().values.any() or self.cls.df.size == 0:
             logging.warning("1h candles supertrend have null values")
             return
 
-        hl2 = (self.cls.df_1h["high"] + self.cls.df_1h["low"]) / 2
+        hl2 = (self.cls.df["high"] + self.cls.df["low"]) / 2
         period = 10
         multiplier = 3.0
 
         # True Range (TR)
-        previous_close = self.cls.df_1h["close"].shift(1)
-        high_low = self.cls.df_1h["high"] - self.cls.df_1h["low"]
-        high_pc = abs(self.cls.df_1h["high"] - previous_close)
-        low_pc = abs(self.cls.df_1h["low"] - previous_close)
+        previous_close = self.cls.df["close"].shift(1)
+        high_low = self.cls.df["high"] - self.cls.df["low"]
+        high_pc = abs(self.cls.df["high"] - previous_close)
+        low_pc = abs(self.cls.df["low"] - previous_close)
         tr = pandas.concat([high_low, high_pc, low_pc], axis=1).max(axis=1)
 
         # Average True Range (ATR)
-        self.cls.df_1h["atr"] = tr.rolling(window=period).mean()
+        self.cls.df["atr"] = tr.rolling(window=period).mean()
 
         # Bands
-        self.cls.df_1h["upperband"] = hl2 + (multiplier * self.cls.df_1h["atr"])
-        self.cls.df_1h["lowerband"] = hl2 - (multiplier * self.cls.df_1h["atr"])
+        self.cls.df["upperband"] = hl2 + (multiplier * self.cls.df["atr"])
+        self.cls.df["lowerband"] = hl2 - (multiplier * self.cls.df["atr"])
 
         supertrend = []
 
-        for i in range(period, len(self.cls.df_1h)):
-            if (
-                self.cls.df_1h["close"].iloc[i - 1]
-                > self.cls.df_1h["upperband"].iloc[i - 1]
-            ):
-                self.cls.df_1h.at[i, "upperband"] = max(
-                    self.cls.df_1h["upperband"].iloc[i],
-                    self.cls.df_1h["upperband"].iloc[i - 1],
+        for i in range(period, len(self.cls.df)):
+            if self.cls.df["close"].iloc[i - 1] > self.cls.df["upperband"].iloc[i - 1]:
+                self.cls.df.at[i, "upperband"] = max(
+                    self.cls.df["upperband"].iloc[i],
+                    self.cls.df["upperband"].iloc[i - 1],
                 )
             else:
-                self.cls.df_1h.at[i, "upperband"] = self.cls.df_1h["upperband"].iloc[i]
+                self.cls.df.at[i, "upperband"] = self.cls.df["upperband"].iloc[i]
 
-            if (
-                self.cls.df_1h["close"].iloc[i - 1]
-                < self.cls.df_1h["lowerband"].iloc[i - 1]
-            ):
-                self.cls.df_1h.at[i, "lowerband"] = min(
-                    self.cls.df_1h["lowerband"].iloc[i],
-                    self.cls.df_1h["lowerband"].iloc[i - 1],
+            if self.cls.df["close"].iloc[i - 1] < self.cls.df["lowerband"].iloc[i - 1]:
+                self.cls.df.at[i, "lowerband"] = min(
+                    self.cls.df["lowerband"].iloc[i],
+                    self.cls.df["lowerband"].iloc[i - 1],
                 )
             else:
-                self.cls.df_1h.at[i, "lowerband"] = self.cls.df_1h["lowerband"].iloc[i]
+                self.cls.df.at[i, "lowerband"] = self.cls.df["lowerband"].iloc[i]
 
             # Determine trend direction
-            if (
-                self.cls.df_1h["close"].iloc[i]
-                > self.cls.df_1h["upperband"].iloc[i - 1]
-            ):
+            if self.cls.df["close"].iloc[i] > self.cls.df["upperband"].iloc[i - 1]:
                 supertrend.append(True)
-            elif (
-                self.cls.df_1h["close"].iloc[i]
-                < self.cls.df_1h["lowerband"].iloc[i - 1]
-            ):
+            elif self.cls.df["close"].iloc[i] < self.cls.df["lowerband"].iloc[i - 1]:
                 supertrend.append(False)
 
         if (
             len(supertrend) > 0
             and supertrend[-1]
-            and self.cls.df_1h["rsi"].iloc[-1] < 30
+            and self.cls.df["rsi"].iloc[-1] < 30
             # Long position bots
             and self.cls.market_breadth_data["adp"][-1] > 0
             and self.cls.market_breadth_data["adp"][-2] > 0
@@ -178,7 +166,6 @@ class Coinrule:
         close_price,
         rsi,
         ma_25,
-        volatility,
         bb_high,
         bb_mid,
         bb_low,
@@ -187,23 +174,15 @@ class Coinrule:
         Coinrule top performance rule
         https://web.coinrule.com/share-rule/Multi-Time-Frame-Buy-Low-Sell-High-Short-term-8f02df
         """
-        volatility = round_numbers(volatility, 6)
         bot_strategy = self.cls.bot_strategy
 
-        if (
-            rsi < 35
-            and close_price > ma_25
-            and volatility > 0.01
-            and self.cls.market_domination_reversal
-        ):
+        if rsi < 35 and close_price > ma_25 and self.cls.market_domination_reversal:
             algo = "coinrule_buy_low_sell_high"
-            volatility = round_numbers(volatility, 6)
 
             bot_strategy = Strategy.long
             msg = f"""
             - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{self.cls.symbol}
             - Current price: {close_price}
-            - Log volatility (log SD): {volatility}
             - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
             - Strategy: {bot_strategy.value}
             - Reversal? {"No reversal" if not self.cls.market_domination_reversal else "Positive" if self.cls.market_domination_reversal else "Negative"}

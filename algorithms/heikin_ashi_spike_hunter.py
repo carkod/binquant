@@ -9,12 +9,10 @@ import pandas as pd
 from algorithms.heikin_ashi import HeikinAshi
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from shared.indicators import Indicators
 
 if TYPE_CHECKING:
-    from binquant.producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 class HASpikeHunter(HeikinAshi):
@@ -32,7 +30,7 @@ class HASpikeHunter(HeikinAshi):
 
     def __init__(
         self,
-        cls: "TechnicalIndicators",
+        cls: "CryptoAnalytics",
     ):
         script_dir = path.dirname(__file__)
         rel_path = "checkpoints/spikehunter_model_v1.pkl"
@@ -144,7 +142,6 @@ class HASpikeHunter(HeikinAshi):
         return df[feature_cols].fillna(0)
 
     def detect_spikes(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
         df = self.add_all_features(df)
         df["spike_signal"] = 0
         df["spike_type"] = ""
@@ -178,9 +175,9 @@ class HASpikeHunter(HeikinAshi):
             signal = 0
             signal_type = ""
             strength = 0.0
-            current_price_change = df.loc[i, "price_change"]
-            current_volume_ratio = df.loc[i, "volume_ratio"]
-            current_rsi = df.loc[i, "rsi"]
+            current_price_change = df.iloc[i]["price_change"]
+            current_volume_ratio = df.iloc[i]["volume_ratio"]
+            current_rsi = df.iloc[i]["rsi"]
             # Method 1: ML classifier
             if ml_preds[i] == 1:
                 signal = 1
@@ -196,7 +193,7 @@ class HASpikeHunter(HeikinAshi):
                 strength = min(current_price_change * current_volume_ratio * 10, 10.0)
             # Method 3: Momentum Detection
             elif i >= 5:
-                recent_changes = df.loc[i - 3 : i, "price_change"]
+                recent_changes = df.iloc[i - 3 : i]["price_change"]
                 positive_moves = (recent_changes > self.momentum_threshold).sum()
                 total_momentum = recent_changes.sum()
                 if positive_moves >= 2 and total_momentum > price_thresh:
@@ -207,7 +204,7 @@ class HASpikeHunter(HeikinAshi):
             elif (
                 i >= 14
                 and current_rsi > self.rsi_oversold
-                and df.loc[i - 1, "rsi"] <= self.rsi_oversold
+                and df.iloc[i - 1]["rsi"] <= self.rsi_oversold
                 and current_price_change > 0.008
             ):
                 signal = 1
@@ -216,36 +213,10 @@ class HASpikeHunter(HeikinAshi):
                     (current_rsi - self.rsi_oversold) / 10 * current_price_change * 50,
                     6.0,
                 )
-            df.loc[i, "spike_signal"] = signal
-            df.loc[i, "spike_type"] = signal_type
-            df.loc[i, "signal_strength"] = strength
+            df.at[i, "spike_signal"] = signal
+            df.at[i, "spike_type"] = signal_type
+            df.at[i, "signal_strength"] = strength
         return df
-
-    def get_spike_summary(self, df: pd.DataFrame) -> dict:
-        spikes = df[df["spike_signal"] == 1]
-        df["timestamp"] = pd.to_datetime(df["close_time"], unit="ms")
-
-        if len(spikes) == 0:
-            return {
-                "total_spikes": 0,
-                "spike_rate": 0.0,
-                "avg_price_change": 0.0,
-                "avg_volume_ratio": 0.0,
-                "avg_signal_strength": 0.0,
-                "spike_types": {},
-            }
-        spike_types = spikes["spike_type"].value_counts().to_dict()
-        return {
-            "total_spikes": len(spikes),
-            "spike_rate": len(spikes) / len(df),
-            "avg_price_change": spikes["price_change"].mean(),
-            "avg_volume_ratio": spikes["volume_ratio"].mean(),
-            "avg_signal_strength": spikes["signal_strength"].mean(),
-            "max_price_change": spikes["price_change"].max(),
-            "max_volume_ratio": spikes["volume_ratio"].max(),
-            "spike_types": spike_types,
-            "date_range": f"{df['timestamp'].min()} to {df['timestamp'].max()}",
-        }
 
     def run_analysis(self, df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         # If fixed thresholds are not set, set them dynamically here (for backward compatibility)
@@ -254,10 +225,10 @@ class HASpikeHunter(HeikinAshi):
         if self.volume_threshold is None:
             self.volume_threshold = df["volume_ratio"].quantile(0.90)
         df = self.detect_spikes(df)
-        summary = self.get_spike_summary(df)
-        return df, summary
+        return df
 
     def get_last_spike_details(self, df, max_minutes_ago=30):
+        df = Indicators.post_process(df)
         spikes = df[df["spike_signal"] == 1]
         if len(spikes) == 0:
             return None
@@ -269,6 +240,7 @@ class HASpikeHunter(HeikinAshi):
         minutes_ago = (current_time - spike_time).total_seconds() / 60
         if minutes_ago > max_minutes_ago:
             return None
+
         return {
             "timestamp": last_spike["timestamp"],
             "price": last_spike["close"],
@@ -290,7 +262,10 @@ class HASpikeHunter(HeikinAshi):
         # Use the current DataFrame from technical indicators
         current_df = self.ti.df.copy()
 
-        fresh_df, summary = self.run_analysis(current_df)
+        fresh_df = self.run_analysis(current_df)
+
+        if fresh_df is None:
+            return None
 
         # Check for spikes in different time windows
         time_windows = [5, 15]  # 5 minutes, 15 minutes
@@ -301,7 +276,7 @@ class HASpikeHunter(HeikinAshi):
             if last_spike:
                 break
 
-        return last_spike, summary
+        return last_spike
 
     async def ha_spike_hunter_standard(
         self,
@@ -313,7 +288,7 @@ class HASpikeHunter(HeikinAshi):
         """
         Standard spike hunter algorithm that detects spikes with no confirmations.
         """
-        last_spike, summary = await self.get_spikes()
+        last_spike = await self.get_spikes()
 
         adp_diff = (
             self.ti.market_breadth_data["adp"][-1]
@@ -341,12 +316,11 @@ class HASpikeHunter(HeikinAshi):
 
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - 📅 Time: {last_spike["close_time"].strftime("%Y-%m-%d %H:%M")}
+                - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - ⚡ Strength: {last_spike["signal_strength"] / 10:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
-                - Early spikes / rate: {summary["total_early"]}/{summary["early_rate"]:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>

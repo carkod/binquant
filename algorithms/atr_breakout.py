@@ -2,18 +2,17 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-import pandas as pd
-
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import MarketDominance
+from shared.indicators import Indicators
 from shared.utils import round_numbers
 
 if TYPE_CHECKING:
-    from producers.technical_indicators import TechnicalIndicators
+    from producers.analytics import CryptoAnalytics
 
 
 class ATRBreakout:
-    def __init__(self, cls: "TechnicalIndicators") -> None:
+    def __init__(self, cls: "CryptoAnalytics") -> None:
         """
         Calculate the Average True Range (ATR) indicator.
         ATR is a measure of volatility.
@@ -26,38 +25,10 @@ class ATRBreakout:
         20+	    Very stable	    Long-term trends only
         """
         self.ti = cls
-
-    def preprocess(self, df: pd.DataFrame) -> None:
-        if df.empty:
-            return
-
-        df = df.copy()
-
-        df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
-        df.set_index("open_time", inplace=True)
-        df[["open", "high", "low", "close", "volume"]] = df[
-            ["open", "high", "low", "close", "volume"]
-        ].astype(float)
-
-        # ATR breakout logic
-        tr = pd.concat(
-            [
-                df["high"] - df["low"],
-                (df["high"] - df["close"].shift()).abs(),
-                (df["low"] - df["close"].shift()).abs(),
-            ],
-            axis=1,
-        ).max(axis=1)
-
-        df["amplitude"] = df["high"] - df["low"]
-
-        df["ATR"] = tr.rolling(window=30, min_periods=20).mean()
-        df["rolling_high"] = df["high"].rolling(window=30).max().shift(1)
-        df["breakout_strength"] = (df["close"] - df["rolling_high"]) / df["ATR"]
-        df["ATR_breakout"] = (df["close"] > (df["rolling_high"] + 1.1 * df["ATR"])) & (
-            df["breakout_strength"] > 0.05
-        )
-        self.df = df
+        # Every df should be isolated to avoid affecting the parsing of the dataframe
+        #  of other algos
+        df = cls.df.copy()
+        self.df = Indicators.atr(df=df, window=30, min_periods=20)
 
     async def reverse_atr_breakout(self, bb_high, bb_low, bb_mid):
         """
@@ -66,13 +37,12 @@ class ATRBreakout:
         assets that have a negative correlation to BTC can potentially go up
 
         """
-        self.preprocess(self.ti.df)
 
         if "ATR_breakout" not in self.df.columns:
             logging.error(f"ATP breakout not enough data for symbol: {self.ti.symbol}")
             return
 
-        green_candle = self.df["close"] > self.df["open"]
+        green_candle = self.df["close"].iloc[-1] > self.df["open"].iloc[-1]
 
         if (
             (
@@ -80,7 +50,7 @@ class ATRBreakout:
                 or self.df["ATR_breakout"].iloc[-2]
                 or self.df["ATR_breakout"].iloc[-3]
             )
-            and green_candle.iloc[-1]
+            and green_candle
             # and volume_confirmation.iloc[-1]
             and self.ti.btc_correlation < 0
             and self.ti.current_market_dominance == MarketDominance.LOSERS
@@ -120,9 +90,6 @@ class ATRBreakout:
 
         Detect breakout: price close above previous high AND ATR spike
         """
-
-        self.preprocess(self.ti.df)
-
         if "ATR_breakout" not in self.df.columns:
             logging.error(f"ATP breakout not enough data for symbol: {self.ti.symbol}")
             return
