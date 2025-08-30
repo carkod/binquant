@@ -1,7 +1,7 @@
 import logging
 import time
 
-from confluent_kafka import KafkaException, Producer
+from confluent_kafka import Producer
 
 from database import KafkaDB
 from models.klines import KlineProduceModel
@@ -58,8 +58,6 @@ class KlinesProducer(KafkaDB):
         except BufferError:
             logging.warning("Producer local buffer full. Flushing...")
             self.producer.flush(timeout=5)
-        except KafkaException as ke:
-            logging.error(f"Kafka error during produce: {ke}")
         except Exception as excp:
             logging.error(f"Unexpected error during produce: {excp}")
 
