@@ -1,9 +1,7 @@
-import json
 import logging
 import os
 
-from aiokafka import AIOKafkaProducer
-from kafka import KafkaProducer
+from confluent_kafka import Producer
 
 from database import KafkaDB
 
@@ -13,30 +11,28 @@ class BaseProducer(KafkaDB):
         super().__init__()
 
     def start_producer(self):
-        self.producer = KafkaProducer(
-            bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
-            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-            acks=1,
-            api_version=(2, 5),
-        )
+        conf = {
+            "bootstrap.servers": f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}"
+        }
+        self.producer = Producer(conf)
         return self.producer
 
-    def on_send_success(self, record_metadata):
-        logging.info(f"Produced: {record_metadata.topic}, {record_metadata.offset}")
+    def on_send_success(self, err, msg):
+        if err is not None:
+            logging.error(f"Message failed delivery: {err}")
+        else:
+            logging.info(f"Produced: {msg.topic()}, {msg.offset()}")
 
-    def on_send_error(self, excp):
-        logging.error(f"Message production failed to send: {excp}")
 
-
+# Note: confluent-kafka is not asyncio-native. AsyncProducer is now just a wrapper for compatibility.
 class AsyncProducer(KafkaDB):
     def __init__(self):
         super().__init__()
         self.producer = None
 
     def get_producer(self):
-        self.producer = AIOKafkaProducer(
-            bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
-            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-            acks=1,
-        )
+        conf = {
+            "bootstrap.servers": f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}"
+        }
+        self.producer = Producer(conf)
         return self.producer

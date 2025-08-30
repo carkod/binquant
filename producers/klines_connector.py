@@ -1,7 +1,7 @@
 import json
 import logging
 
-from kafka import KafkaProducer
+from confluent_kafka import Producer
 
 from producers.produce_klines import KlinesProducer
 from shared.apis.binbot_api import BinbotApi
@@ -15,7 +15,7 @@ class KlinesConnector(BinbotApi):
 
     def __init__(
         self,
-        producer: KafkaProducer,
+        producer: Producer,
         interval: BinanceKlineIntervals = BinanceKlineIntervals.five_minutes,
     ) -> None:
         logging.debug("Started Kafka producer SignalsInbound")
@@ -23,7 +23,7 @@ class KlinesConnector(BinbotApi):
         self.interval = interval
         self.producer = producer
         self.autotrade_settings = self.get_autotrade_settings()
-        self.clients: list = []
+        self.clients: list[SpotWebsocketStreamClient] = []
 
     def connect_client(self, on_message, on_close, on_error):
         client = SpotWebsocketStreamClient(
@@ -69,14 +69,14 @@ class KlinesConnector(BinbotApi):
         Stream Name: <symbol>@kline_<interval>
         Check BinanceKlineIntervals Enum for possible values
         Update Speed: 2000ms
+
+        Split symbols into chunks of MAX_MARKETS_PER_CLIENT
         """
         symbols = self.get_symbols()
-        # Split symbols into chunks of MAX_MARKETS_PER_CLIENT
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
             for i in range(0, len(symbols), self.MAX_MARKETS_PER_CLIENT)
         ]
-        self.clients = []
         for idx, chunk in enumerate(symbol_chunks):
             markets = [
                 f"{symbol['id'].lower()}@kline_{self.interval.value}"
@@ -102,6 +102,7 @@ class KlinesConnector(BinbotApi):
             f"{symbol['id'].lower()}@kline_{self.interval.value}" for symbol in chunk
         ]
         logging.debug(f"(Re)subscribing to markets (client {idx}): {markets}")
+
         self.clients[idx].send_message_to_server(
             markets, action=self.clients[idx].ACTION_SUBSCRIBE, id=1
         )

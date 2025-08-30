@@ -1,5 +1,5 @@
 import pytest
-from kafka import KafkaProducer
+from confluent_kafka import Producer
 
 from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector
@@ -62,7 +62,7 @@ def test_producer(klines_connector: KlinesConnector):
     base_producer = BaseProducer()
     producer = base_producer.start_producer()
     klines_connector.start_stream()
-    assert isinstance(producer, KafkaProducer)
+    assert isinstance(producer, Producer)
     klines_connector.process_kline_stream(res)
 
 

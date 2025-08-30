@@ -43,7 +43,6 @@ class KlinesProvider:
         self.active_pairs = self.binbot_api.get_active_pairs()
         base_producer = AsyncProducer().get_producer()
         self.producer = base_producer
-        await self.producer.start()
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
         self.top_losers_day = await self.binbot_api.get_top_losers()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()

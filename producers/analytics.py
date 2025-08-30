@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 import pandas
-from aiokafka import AIOKafkaProducer
+from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 
 from algorithms.atr_breakout import ATRBreakout
@@ -20,7 +20,7 @@ from shared.utils import round_numbers
 class CryptoAnalytics:
     def __init__(
         self,
-        producer: AIOKafkaProducer,
+        producer: Producer,
         binbot_api: BinbotApi,
         df: pandas.DataFrame,
         symbol,
