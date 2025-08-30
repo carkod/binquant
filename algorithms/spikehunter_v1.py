@@ -379,7 +379,7 @@ class SpikeHunter:
         # if btc price ↑ and btc is negative, we can assume prices will go up
         if current_price > bb_high:
             algo = "spike_hunter_breakout"
-            autotrade = False
+            autotrade = True
 
             if self.match_loser(self.ti.symbol) and adp_diff > 0 and adp_diff_prev > 0:
                 algo = "spike_hunter_top_loser"
