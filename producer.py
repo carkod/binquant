@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 
@@ -13,19 +12,17 @@ logging.basicConfig(
 )
 
 
-async def main():
+def main():
+    logging.info("Starting Binquant Producer with confluent-kafka...")
     base_producer = BaseProducer()
     producer = base_producer.start_producer()
     connector = KlinesConnector(producer)
     connector.start_stream()
+    logging.debug("Stream started. Waiting for messages... (Press Ctrl+C to exit)")
 
 
 if __name__ == "__main__":
-    logging.getLogger("aiokafka").setLevel(os.environ["LOG_LEVEL"])
-
     try:
-        asyncio.run(main())
+        main()
     except Exception as error:
-        logging.error(error)
-        asyncio.run(main())
-        pass
+        logging.error(f"Error in Binquant Producer: {error}", exc_info=True)

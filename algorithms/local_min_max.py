@@ -27,7 +27,7 @@ async def local_min_max(
 
     if min_price == current_price:
         algo = "local_min_max"
-        autotrade = False
+        autotrade = True
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
