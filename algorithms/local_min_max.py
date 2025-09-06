@@ -50,5 +50,5 @@ async def local_min_max(
                 bb_low=bb_low,
             ),
         )
-        await telegram.send_signal(value)
+        await telegram.send_signal(value.model_dump_json())
         await at_consumer.process_autotrade_restrictions(value)

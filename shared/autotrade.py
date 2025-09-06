@@ -43,7 +43,7 @@ class Autotrade(BaseProducer, BinbotApi):
             name=algorithm_name,
             fiat=settings["fiat"],
             fiat_order_size=settings["base_order_size"],
-            quote_asset=self.symbol_data["quoteAsset"],
+            quote_asset=self.symbol_data["quote_asset"],
             strategy=Strategy.long,
             stop_loss=settings["stop_loss"],
             take_profit=settings["take_profit"],
