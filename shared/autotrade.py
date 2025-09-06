@@ -34,6 +34,7 @@ class Autotrade(BaseProducer, BinbotApi):
         db_collection_name: Mongodb collection name ["paper_trading", "bots"]
         """
         self.pair: str = pair
+        self.symbol_data = self.get_single_symbol(self.pair)
         self.decimals = self.price_precision(pair)
         self.algorithm_name = algorithm_name
         self.default_bot = BotModel(
@@ -41,7 +42,8 @@ class Autotrade(BaseProducer, BinbotApi):
             mode="autotrade",
             name=algorithm_name,
             fiat=settings["fiat"],
-            base_order_size=settings["base_order_size"],
+            fiat_order_size=settings["base_order_size"],
+            quote_asset=self.symbol_data["quoteAsset"],
             strategy=Strategy.long,
             stop_loss=settings["stop_loss"],
             take_profit=settings["take_profit"],
@@ -126,7 +128,7 @@ class Autotrade(BaseProducer, BinbotApi):
             if self.pair.endswith(b["asset"]):
                 qty = round_numbers(b["free"], self.decimals)
                 if self.min_amount_check(self.pair, qty):
-                    self.default_bot.base_order_size = qty
+                    self.default_bot.fiat_order_size = qty
                     break
 
                 ticker = self.ticker_24_price(symbol=self.pair)
@@ -136,7 +138,7 @@ class Autotrade(BaseProducer, BinbotApi):
                 base_order_size = (
                     math.floor((float(qty) / float(rate)) * 10000000) / 10000000
                 )
-                self.default_bot.base_order_size = round_numbers(
+                self.default_bot.deal.base_order_size = round_numbers(
                     base_order_size, self.decimals
                 )
                 pass
@@ -179,7 +181,7 @@ class Autotrade(BaseProducer, BinbotApi):
                     logging.error(f"Error getting ticker price: {e}")
                     return
                 initial_price = ticker["price"]
-                estimate_qty = float(self.default_bot.base_order_size) / float(
+                estimate_qty = float(self.default_bot.fiat_order_size) / float(
                     initial_price
                 )
                 stop_loss_price_inc = float(initial_price) * (
