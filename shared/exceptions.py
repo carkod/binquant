@@ -30,3 +30,7 @@ class AutotradeError(Exception):
         self.message = message
 
     pass
+
+
+class RestartStreaming(Exception):
+    pass

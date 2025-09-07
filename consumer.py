@@ -53,7 +53,6 @@ async def data_process_pipe() -> None:
             if message.topic == KafkaTopics.restart_streaming.value:
                 logging.info("Received restart_streaming message, reloading data...")
                 await klines_provider.load_data_on_start()
-                # don't commit message
                 return False
 
             await klines_provider.aggregate_data(message.value)
