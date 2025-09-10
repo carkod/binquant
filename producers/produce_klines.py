@@ -43,7 +43,7 @@ class KlinesProducer(KafkaDB):
             self.producer.produce(
                 topic=KafkaTopics.klines_store_topic.value,
                 value=message.model_dump_json().encode("utf-8"),
-                key=str(data["t"]).encode("utf-8"),
+                key=str(data["s"]).encode("utf-8"),
                 timestamp=int(data["t"]),
                 callback=self.on_send_success,
             )
