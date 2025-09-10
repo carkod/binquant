@@ -10,6 +10,7 @@ from shared.enums import (
     DealType,
     OrderSide,
     OrderType,
+    QuoteAssets,
     Status,
     Strategy,
 )
@@ -55,6 +56,7 @@ class DealModel(BaseModel):
     so it should all be numbers (int or float)
     """
 
+    base_order_size: Amount = Field(default=0, gt=-1)
     current_price: Amount = Field(default=0)
     take_profit_price: Amount = Field(default=0)
     trailling_stop_loss_price: Amount = Field(
@@ -131,8 +133,9 @@ class BotModel(BaseModel):
 
     pair: str
     fiat: str = Field(default="USDC")
-    base_order_size: float = Field(
-        default=15, description="Min Binance 0.0001 BNB approx 15USD"
+    quote_asset: QuoteAssets = Field(default=QuoteAssets.USDC)
+    fiat_order_size: Amount = Field(
+        default=0, ge=0, description="Min Binance 0.0001 BNB approx 15USD"
     )
     candlestick_interval: BinanceKlineIntervals = Field(
         default=BinanceKlineIntervals.fifteen_minutes,

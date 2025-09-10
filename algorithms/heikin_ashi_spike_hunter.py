@@ -306,13 +306,9 @@ class HASpikeHunter(HeikinAshi):
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
-        if (
-            self.ti.btc_correlation < 0
-            and current_price > bb_high
-            and self.ti.btc_price < 0
-        ):
+        if current_price > bb_high:
             algo = "spike_hunter_standard"
-            autotrade = True
+            autotrade = False
 
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}

@@ -166,8 +166,14 @@ class BinbotApi(BinanceApi):
         data = self.request(url=f"{self.bb_liquidation_url}/{pair}", method="DELETE")
         return data
 
-    def delete_bot(self, bot_id):
-        data = self.request(url=f"{self.bb_bot_url}/{bot_id}", method="DELETE")
+    def delete_bot(self, bot_id: str | list[str]):
+        bot_ids = []
+        if isinstance(bot_id, str):
+            bot_ids.append(bot_id)
+
+        data = self.request(
+            url=f"{self.bb_bot_url}", method="DELETE", params={"id": bot_ids}
+        )
         return data
 
     def get_balances(self):

@@ -180,3 +180,15 @@ class BinanceOrderModel(BaseModel):
             return float(v)
         else:
             raise ValueError(f"{v} must be a number")
+
+
+class QuoteAssets(str, Enum):
+    """
+    Quote assets supported by Binbot orders
+    these are not fiat (which would be real currency)
+    but the different markets we trade in.
+    """
+
+    USDC = "USDC"
+    BTC = "BTC"
+    ETH = "ETH"
