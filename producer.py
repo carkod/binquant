@@ -13,7 +13,6 @@ logging.basicConfig(
 
 
 def main():
-    logging.info("Starting Binquant Producer with confluent-kafka...")
     base_producer = BaseProducer()
     producer = base_producer.start_producer()
     connector = KlinesConnector(producer)
