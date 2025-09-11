@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 
-import pandas
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 
@@ -23,7 +22,7 @@ class CryptoAnalytics:
         self,
         producer: Producer,
         binbot_api: BinbotApi,
-        df: pandas.DataFrame,
+        df: DataFrame,
         symbol,
         df_4h,
         df_1h,
@@ -60,7 +59,14 @@ class CryptoAnalytics:
         self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
-        self.active_symbols = [s["id"] for s in self.all_symbols if s["active"]]
+        self.active_symbols = []
+        self.current_symbol_data = None
+        for s in self.all_symbols:
+            if s["active"]:
+                self.active_symbols.append(s["id"])
+
+            if s["id"] == symbol:
+                self.current_symbol_data = s
 
         self.telegram_consumer = TelegramConsumer()
         self.at_consumer: AutotradeConsumer = ac_api
@@ -277,6 +283,9 @@ class CryptoAnalytics:
                 symbol=self.symbol,
                 telegram=self.telegram_consumer,
                 at_consumer=self.at_consumer,
+                precision=self.current_symbol_data["price_precision"]
+                if self.current_symbol_data
+                else 2,
             )
 
             # avoid repeating signals in short periods of time
