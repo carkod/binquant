@@ -45,7 +45,7 @@ class Indicators:
 
         return df
 
-    def rsi(df: DataFrame) -> DataFrame:
+    def rsi(df: DataFrame, window: int = 14) -> DataFrame:
         """
         Relative Strength Index (RSI) indicator
         https://www.qmr.ai/relative-strength-index-rsi-in-python/
@@ -60,13 +60,20 @@ class Indicators:
         change.equals(gain + loss)
 
         # Calculate the rolling average of average up and average down
-        avg_up = gain.rolling(14).mean()
-        avg_down = loss.rolling(14).mean().abs()
+        avg_up = gain.rolling(window).mean()
+        avg_down = loss.rolling(window).mean().abs()
 
         rsi = 100 * avg_up / (avg_up + avg_down)
         df["rsi"] = rsi
 
         return df
+
+    def standard_rsi(df: DataFrame, window: int = 14) -> DataFrame:
+        delta = df["close"].diff()
+        gain = delta.where(delta > 0, 0).rolling(window=window, min_periods=1).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=window, min_periods=1).mean()
+        rs = gain / (loss + 1e-10)
+        return 100 - (100 / (1 + rs))
 
     def ma_spreads(df: DataFrame) -> DataFrame:
         """
