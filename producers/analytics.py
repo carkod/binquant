@@ -8,8 +8,8 @@ from algorithms.coinrule import Coinrule
 from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
 from algorithms.local_min_max import local_min_max
 from algorithms.market_breadth import MarketBreadthAlgo
-from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.spike_hunter_memes import SpikeHunterMeme
+from algorithms.spikehunter_v1 import SpikeHunter
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
@@ -260,6 +260,13 @@ class CryptoAnalytics:
                 bb_mid=bb_mid,
             )
 
+            # await self.shm.spike_hunter_standard(
+            #     current_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
+
             await self.cr.supertrend_swing_reversal(
                 close_price=close_price,
                 bb_high=bb_high,
@@ -288,12 +295,6 @@ class CryptoAnalytics:
                 precision=self.current_symbol_data["price_precision"]
                 if self.current_symbol_data
                 else 2,
-            )
-            await self.shm.spike_hunter_standard(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
             )
 
             # avoid repeating signals in short periods of time
