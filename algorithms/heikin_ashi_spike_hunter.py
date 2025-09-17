@@ -307,7 +307,7 @@ class HASpikeHunter(HeikinAshi):
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
         if current_price > bb_high:
-            algo = "spike_hunter_standard"
+            algo = "ha_spike_hunter_standard"
             autotrade = False
 
             msg = f"""
