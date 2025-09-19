@@ -381,7 +381,7 @@ class SpikeHunter:
             algo = "spike_hunter_breakout"
             autotrade = True
 
-            if self.match_loser(self.ti.symbol) and adp_diff > 0 and adp_diff_prev > 0:
+            if self.match_loser(self.ti.symbol):
                 algo = "spike_hunter_top_loser"
                 autotrade = False
 

@@ -33,6 +33,8 @@ async def local_min_max(
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
             - 🔥 {symbol} has hit a new minimum {supress_notation(num=min_price, precision=precision)}!!
+            - Volume: {df['volume'].iloc[-1]}
+            - Current price: {supress_notation(num=current_price, precision=precision)}
             - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>

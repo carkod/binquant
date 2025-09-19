@@ -8,14 +8,10 @@ from aiokafka.structs import TopicPartition
 
 from consumers.klines_provider import KlinesProvider
 from shared.enums import KafkaTopics
+from shared.logging_config import configure_logging
 from shared.rebalance_listener import RebalanceListener
 
-logging.basicConfig(
-    level=os.environ["LOG_LEVEL"],
-    filename=None,
-    format="%(asctime)s.%(msecs)03d UTC %(levelname)s %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+configure_logging(force=True)
 
 
 async def data_process_pipe() -> None:

@@ -8,6 +8,7 @@ from algorithms.coinrule import Coinrule
 from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
 from algorithms.local_min_max import local_min_max
 from algorithms.market_breadth import MarketBreadthAlgo
+from algorithms.spike_hunter_memes import SpikeHunterMeme
 from algorithms.spikehunter_v1 import SpikeHunter
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -162,6 +163,7 @@ class CryptoAnalytics:
         self.atr = ATRBreakout(cls=self)
         self.ha_sh = HASpikeHunter(cls=self)
         self.cr = Coinrule(cls=self)
+        self.shm = SpikeHunterMeme(cls=self)
 
     async def process_data(self, candles):
         """
@@ -257,6 +259,13 @@ class CryptoAnalytics:
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
+
+            # await self.shm.spike_hunter_standard(
+            #     current_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             await self.cr.supertrend_swing_reversal(
                 close_price=close_price,
