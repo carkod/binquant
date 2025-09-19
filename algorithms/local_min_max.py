@@ -23,10 +23,16 @@ async def local_min_max(
     """
     Calculate local min and max for the closing price
     """
+
+    df = df.copy()
+    df.dropna(inplace=True)
+    df.reset_index(drop=True, inplace=True)
+
+
     # Detect local minima
     min_price = df["low"].min()
 
-    if min_price == current_price:
+    if min_price == current_price and float(df["volume"].iloc[-1]) > 0:
         algo = "local_min_max"
         autotrade = True
 
