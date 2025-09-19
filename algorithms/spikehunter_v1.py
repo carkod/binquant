@@ -287,7 +287,7 @@ class SpikeHunter:
         self.run_analysis()
 
         # Check for spikes in different time windows
-        time_windows = [5, 15, 240]  # 5 minutes, 15 minutes
+        time_windows = [5, 15, 30, 60]  # 5 minutes, 15 minutes
 
         last_spike = None
         for window in time_windows:
