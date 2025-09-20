@@ -2,7 +2,7 @@ import os
 from typing import TYPE_CHECKING
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import KafkaTopics, MarketDominance, Strategy
+from shared.enums import MarketDominance, Strategy
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -81,6 +81,7 @@ async def price_rise_15(
         ),
     )
 
-    await cls.producer.send(KafkaTopics.signals.value, value=value.model_dump_json())
+    await cls.telegram_consumer.send_signal(value.model_dump_json())
+    await cls.at_consumer.process_autotrade_restrictions(value)
 
     return

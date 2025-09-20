@@ -1,8 +1,7 @@
+import logging
+
 from aiokafka import AIOKafkaConsumer
 from aiokafka.abc import ConsumerRebalanceListener
-from aiokafka.structs import TopicPartition
-
-from shared.enums import KafkaTopics
 
 
 class RebalanceListener(ConsumerRebalanceListener):
@@ -15,14 +14,21 @@ class RebalanceListener(ConsumerRebalanceListener):
     """
 
     async def reset_offsets(self):
-        # Reset offsets to the end of the partitions
-        partitions = self.consumer.partitions_for_topic(
-            KafkaTopics.klines_store_topic.value
-        )
-        if partitions:
-            for partition in partitions:
-                tp = TopicPartition(KafkaTopics.klines_store_topic.value, partition)
-                await self.consumer.seek_to_end(tp)
+        """Seek all currently assigned partitions to their end and commit.
+
+        This ensures we always resume from 'now', ignoring any backlog after a rebalance.
+        """
+        assignment = list(self.consumer.assignment())
+        if not assignment:
+            return
+        try:
+            end_offsets = await self.consumer.end_offsets(assignment)
+            for tp, end_offset in end_offsets.items():
+                self.consumer.seek(tp, end_offset)
+            # end_offsets already a dict[TopicPartition, int]
+            await self.consumer.commit(end_offsets)
+        except Exception as e:
+            logging.error(f"RebalanceListener fast-forward failed: {e}")
 
     async def on_partitions_revoked(self, revoked):
         if revoked:
