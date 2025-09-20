@@ -23,17 +23,22 @@ async def local_min_max(
     """
     Calculate local min and max for the closing price
     """
+
+    df = df.copy()
+    df.dropna(inplace=True)
+    df.reset_index(drop=True, inplace=True)
+
     # Detect local minima
     min_price = df["low"].min()
 
-    if min_price == current_price:
+    if min_price == current_price and float(df["volume"].iloc[-1]) > 0:
         algo = "local_min_max"
         autotrade = True
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
             - 🔥 {symbol} has hit a new minimum {supress_notation(num=min_price, precision=precision)}!!
-            - Volume: {df['volume'].iloc[-1]}
+            - Volume: {df["volume"].iloc[-1]}
             - Current price: {supress_notation(num=current_price, precision=precision)}
             - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>

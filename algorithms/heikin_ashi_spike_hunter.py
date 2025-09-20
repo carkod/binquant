@@ -37,13 +37,13 @@ class HASpikeHunter(HeikinAshi):
         abs_file_path = path.join(script_dir, rel_path)
         self.model = joblib.load(abs_file_path)
 
-        self.momentum_threshold = 0.012
+        self.momentum_threshold = 0.015
         self.window = 12
         self.rsi_oversold = 30
         # thresholds have to match trained model (binbot-notebooks)
         # otherwise they may overfit/underfit
         self.price_threshold = 0.02
-        self.volume_threshold = 2.0
+        self.volume_threshold = 2
 
         # dependencies
         self.ti = cls
@@ -268,7 +268,7 @@ class HASpikeHunter(HeikinAshi):
             return None
 
         # Check for spikes in different time windows
-        time_windows = [5, 15]  # 5 minutes, 15 minutes
+        time_windows = [5, 15, 30, 60]  # 5 minutes, 15 minutes
 
         for window in time_windows:
             last_spike = self.get_last_spike_details(fresh_df, max_minutes_ago=window)
