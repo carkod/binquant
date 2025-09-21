@@ -21,6 +21,8 @@ class SpikeHunter:
     Unified spike detection system for cryptocurrency assets.
     Features:
     - Multiple detection algorithms (price+volume, momentum, RSI reversal, ML classifier)
+    - Per-type boolean columns (spike_ml_classifier, spike_price_volume, spike_momentum, spike_rsi_reversal)
+    - Removed legacy single spike_type / spike_types list in favor of explicit columns
     - Configurable sensitivity levels
     - Robust error handling
     - Performance optimized
@@ -54,6 +56,12 @@ class SpikeHunter:
         # Check for spikes in different time windows in mins
         # because of delays in kafka streaming, this could be up to 2 hours
         self.time_windows = [15, 30, 60, 120, 240, 300]
+        self.mechanism_cols = [
+            ("ml_classifier", "spike_ml_classifier"),
+            ("price_volume", "spike_price_volume"),
+            ("momentum", "spike_momentum"),
+            ("rsi_reversal", "spike_rsi_reversal"),
+        ]
 
     def match_loser(self, symbol: str):
         """
@@ -138,9 +146,16 @@ class SpikeHunter:
         df = df.copy()
         df = df.reset_index(drop=True)
         df = self.add_all_features(df)
+        # Initialize unified signal and strength plus per-mechanism flags
         df["spike_signal"] = 0
-        df["spike_type"] = ""
         df["signal_strength"] = 0.0
+        # Per-type boolean indicator columns
+        df["spike_ml_classifier"] = 0
+        df["spike_price_volume"] = 0
+        df["spike_momentum"] = 0
+        df["spike_rsi_reversal"] = 0
+        # Each row may have multiple mechanisms active. spike_signal=1 if any mechanism fires.
+        # signal_strength is max of contributing mechanism strengths.
 
         # ML-based spike prediction
         X = self.get_feature_matrix(df)
@@ -166,50 +181,53 @@ class SpikeHunter:
         )
 
         for i in range(effective_window, len(df)):
-            signal = 0
-            signal_type = ""
-            strength = 0.0
             current_price_change = df.loc[i, "price_change"]
             current_volume_ratio = df.loc[i, "volume_ratio"]
             current_rsi = df.loc[i, "rsi"]
+
+            strengths = []
+
             # Method 1: ML classifier
             if ml_preds[i] == 1:
-                signal = 1
-                signal_type = "ml_classifier"
-                strength = 10.0
+                df.loc[i, "spike_ml_classifier"] = 1
+                strengths.append(10.0)
+
             # Method 2: Price + Volume Spike
-            elif (
+            if (
                 current_price_change > price_thresh
                 and current_volume_ratio > volume_thresh
             ):
-                signal = 1
-                signal_type = "price_volume"
-                strength = min(current_price_change * current_volume_ratio * 10, 10.0)
+                df.loc[i, "spike_price_volume"] = 1
+                strengths.append(
+                    min(current_price_change * current_volume_ratio * 10, 10.0)
+                )
+
             # Method 3: Momentum Detection
-            elif i >= 5:
+            if i >= 5:
                 recent_changes = df.loc[i - 3 : i, "price_change"]
                 positive_moves = (recent_changes > self.momentum_threshold).sum()
                 total_momentum = recent_changes.sum()
                 if positive_moves >= 2 and total_momentum > price_thresh:
-                    signal = 1
-                    signal_type = "momentum"
-                    strength = min(total_momentum * 20, 8.0)
+                    df.loc[i, "spike_momentum"] = 1
+                    strengths.append(min(total_momentum * 20, 8.0))
+
             # Method 4: RSI Oversold Reversal
-            elif (
+            if (
                 i >= 14
                 and current_rsi > self.rsi_oversold
                 and df.loc[i - 1, "rsi"] <= self.rsi_oversold
                 and current_price_change > 0.008
             ):
-                signal = 1
-                signal_type = "rsi_reversal"
-                strength = min(
+                rsi_strength = min(
                     (current_rsi - self.rsi_oversold) / 10 * current_price_change * 50,
                     6.0,
                 )
-            df.loc[i, "spike_signal"] = signal
-            df.loc[i, "spike_type"] = signal_type
-            df.loc[i, "signal_strength"] = strength
+                df.loc[i, "spike_rsi_reversal"] = 1
+                strengths.append(rsi_strength)
+
+            if strengths:
+                df.loc[i, "spike_signal"] = 1
+                df.loc[i, "signal_strength"] = max(strengths)
         return df
 
     def run_analysis(self, max_minutes_ago=30):
@@ -224,6 +242,12 @@ class SpikeHunter:
         if len(spikes) == 0:
             return None
         last_spike = spikes.iloc[-1]
+        # Derive composite spike_type string from active mechanism columns
+
+        active_types = [
+            name for name, col in self.mechanism_cols if last_spike.get(col, 0) == 1
+        ]
+        spike_type_str = ",".join(active_types)
         current_time = pd.Timestamp.now(tz="UTC")
         spike_time = last_spike["timestamp"]
         if spike_time.tz is None:
@@ -238,7 +262,7 @@ class SpikeHunter:
             "price_change_pct": last_spike["price_change"] * 100,
             "volume": last_spike["volume"],
             "volume_ratio": last_spike["volume_ratio"],
-            "spike_type": last_spike["spike_type"],
+            "spike_type": spike_type_str,
             "signal_strength": last_spike["signal_strength"],
             "rsi": last_spike["rsi"],
             "body_size_pct": last_spike["body_size_pct"],
@@ -287,7 +311,6 @@ class SpikeHunter:
                 - $: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - 💪 Strength: {last_spike["signal_strength"]:.1f}
-                - Signal type: {last_spike["spike_type"]}
                 - ₿ Correlation: {self.ti.btc_correlation:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
@@ -350,7 +373,6 @@ class SpikeHunter:
                 - $: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - 💪 Strength: {last_spike["signal_strength"]:.1f}
-                - Signal type: {last_spike["spike_type"]}
                 - ₿ Correlation: {self.ti.btc_correlation:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
@@ -418,7 +440,6 @@ class SpikeHunter:
                 - $: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
                 - 💪 Strength: {last_spike["signal_strength"]:.1f}
-                - Signal type: {last_spike["spike_type"]}
                 - ₿ Correlation: {self.ti.btc_correlation:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})

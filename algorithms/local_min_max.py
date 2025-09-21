@@ -33,7 +33,7 @@ async def local_min_max(
 
     if min_price == current_price and float(df["volume"].iloc[-1]) > 0:
         algo = "local_min_max"
-        autotrade = True
+        autotrade = False
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
