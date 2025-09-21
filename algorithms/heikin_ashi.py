@@ -16,9 +16,6 @@ class HeikinAshi:
         for col in ["open", "high", "low", "close", "volume"]:
             df[col] = df[col].astype(float)
 
-        df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms")
-        df.set_index("timestamp", inplace=True)
-
         # -------- Heikin Ashi calculation --------
         ha_df = pd.DataFrame(index=df.index, columns=["open", "high", "low", "close"])
         ha_df["close"] = (df["open"] + df["high"] + df["low"] + df["close"]) / 4
@@ -32,4 +29,7 @@ class HeikinAshi:
         ha_df["low"] = df[["low"]].join(ha_df[["open", "close"]]).min(axis=1)
 
         ha_df["volume"] = df["volume"]
+        ha_df["close_time"] = df["close_time"]
+        ha_df["open_time"] = df["open_time"]
+
         return ha_df

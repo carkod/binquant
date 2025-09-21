@@ -116,7 +116,7 @@ class CryptoAnalytics:
         self.df[price_volume_columns] = self.df[price_volume_columns].astype(float)
 
         # Ensure close_time is datetime and set as index for proper resampling
-        self.df["timestamp"] = to_datetime(self.df["close_time"])
+        self.df["timestamp"] = to_datetime(self.df["close_time"], unit="ms")
         self.df.set_index("timestamp", inplace=True)
 
         # Create aggregation dictionary without close_time and open_time since they're now index-based
@@ -142,6 +142,10 @@ class CryptoAnalytics:
         self.df_1h["open_time"] = self.df_1h.index
         self.df_1h["close_time"] = self.df_1h.index
 
+        # Keep a copy of a clean df
+        # Some algos don't need indicators
+        self.clean_df = self.df.copy()
+
     def postprocess_data(self):
         """
         Post-process the data after all indicators have been applied.
@@ -154,9 +158,6 @@ class CryptoAnalytics:
         self.df_1h.reset_index(drop=True, inplace=True)
         self.df_4h.dropna(inplace=True)
         self.df_4h.reset_index(drop=True, inplace=True)
-
-        # some algos don't need all these
-        self.raw_df = self.df.copy()
 
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh = SpikeHunter(cls=self)
@@ -253,19 +254,19 @@ class CryptoAnalytics:
                 bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
-            await self.ha_sh.ha_spike_hunter_standard(
+            await self.ha_sh.ha_spike_hunter(
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
 
-            # await self.shm.spike_hunter_standard(
-            #     current_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            # )
+            await self.shm.signal(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
 
             await self.cr.supertrend_swing_reversal(
                 close_price=close_price,

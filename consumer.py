@@ -66,6 +66,34 @@ async def data_process_pipe() -> None:
 
     try:
         await consumer.start()
+        # Fast-forward: skip any existing backlog and start consuming only new messages
+        try:
+            # Wait briefly for assignment
+            attempts = 0
+            while not consumer.assignment() and attempts < 100:
+                await asyncio.sleep(0.05)
+                attempts += 1
+            assignment = list(consumer.assignment())
+            if assignment:
+                end_offsets = await consumer.end_offsets(assignment)
+                for tp, end_offset in end_offsets.items():
+                    consumer.seek(tp, end_offset)
+                # Commit these positions so the group offset is persisted
+                # end_offsets is already a dict[TopicPartition, int]
+                await consumer.commit(end_offsets)
+                logging.info(
+                    "Consumer fast-forwarded to latest offsets: %s",
+                    {
+                        f"{tp.topic}:{tp.partition}": off
+                        for tp, off in end_offsets.items()
+                    },
+                )
+            else:
+                logging.warning(
+                    "No assignment available to fast-forward; starting normally."
+                )
+        except Exception as e:
+            logging.error("Failed to fast-forward to end offsets: %s", e, exc_info=True)
         async for message in consumer:
             # Process message sequentially - wait for completion before next
             success = await handle_message(message)
