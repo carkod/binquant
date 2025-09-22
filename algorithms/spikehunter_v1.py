@@ -370,7 +370,6 @@ class SpikeHunter:
                 - 📊 RSI: {last_spike["rsi"]:.2f}
                 - 📏 Body Size %: {last_spike["body_size_pct"]:.4f}
                 - Number of Trades: {last_spike["number_of_trades"]}
-                - ⏱️ Minutes Ago: {last_spike["minutes_ago"]:.1f}
                 - ₿ Correlation: {self.ti.btc_correlation:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})

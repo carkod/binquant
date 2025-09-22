@@ -237,51 +237,38 @@ class CryptoAnalytics:
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
-            await self.ha_sh.ha_spike_hunter(
+            emitted = await self.ha_sh.ha_spike_hunter(
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
 
-            await self.sh.spike_hunter_bullish(
+            emitted = await self.shm.signal(
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
 
-            await self.sh.spike_hunter_breakouts(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            if not emitted:
+                await self.sh.spike_hunter_bullish(
+                    current_price=close_price,
+                    bb_high=bb_high,
+                    bb_low=bb_low,
+                    bb_mid=bb_mid,
+                )
 
-            await self.shm.signal(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+                await self.sh.spike_hunter_breakouts(
+                    current_price=close_price,
+                    bb_high=bb_high,
+                    bb_low=bb_low,
+                    bb_mid=bb_mid,
+                )
 
             await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
             await self.atr.reverse_atr_breakout(
                 bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
-            )
-
-            await self.ha_sh.ha_spike_hunter(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
-
-            await self.shm.signal(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
             )
 
             await self.cr.supertrend_swing_reversal(
