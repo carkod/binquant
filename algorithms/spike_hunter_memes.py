@@ -68,7 +68,6 @@ class SpikeHunterMeme(SpikeHunter):
                 - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - ⚡ Strength: {last_spike["signal_strength"]:.1f}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})

@@ -108,7 +108,17 @@ class CryptoAnalytics:
 
         # Drop unused columns - keep only OHLCV data needed for technical analysis
         self.df = self.df[
-            ["open_time", "open", "high", "low", "close", "volume", "close_time"]
+            [
+                "open_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "quote_asset_volume",
+                "number_of_trades",
+            ]
         ]
 
         # Convert price and volume columns to float
@@ -227,27 +237,33 @@ class CryptoAnalytics:
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
-            emitted = await self.sh.spike_hunter_bullish(
+            await self.ha_sh.ha_spike_hunter(
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
 
-            emitted = await self.sh.spike_hunter_breakouts(
+            await self.sh.spike_hunter_bullish(
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
 
-            if not emitted:
-                await self.sh.spike_hunter_standard(
-                    current_price=close_price,
-                    bb_high=bb_high,
-                    bb_low=bb_low,
-                    bb_mid=bb_mid,
-                )
+            await self.sh.spike_hunter_breakouts(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
+
+            await self.shm.signal(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
+            )
 
             await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
             await self.atr.reverse_atr_breakout(
