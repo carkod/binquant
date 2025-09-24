@@ -48,7 +48,7 @@ class HASpikeHunter(SpikeHunter):
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
-        if current_price > bb_high:
+        if current_price > bb_high and not (self.df["number_of_trades"] < 5).any():
             algo = "ha_spike_hunter"
             autotrade = False
 

@@ -60,7 +60,7 @@ class SpikeHunterMeme(SpikeHunter):
             and current_price > bb_high
             and self.ti.btc_price < 0
             # any 0 trades?
-            and (self.df["number_of_trades"] != 0).any()
+            and (self.df["number_of_trades"] > 5).all()
         ):
             algo = "memes_spike_hunter_breakout"
             autotrade = True

@@ -61,7 +61,7 @@ class CryptoAnalytics:
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
         self.active_symbols = []
-        self.current_symbol_data = None
+        self.current_symbol_data: dict | None = None
         for s in self.all_symbols:
             if s["active"]:
                 self.active_symbols.append(s["id"])
@@ -118,6 +118,8 @@ class CryptoAnalytics:
                 "close_time",
                 "quote_asset_volume",
                 "number_of_trades",
+                "taker_buy_base_asset_volume",
+                "taker_buy_quote_asset_volume",
             ]
         ]
 
