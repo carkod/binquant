@@ -1,6 +1,6 @@
 from os import getenv
 
-from pandas import DataFrame
+from pandas import DataFrame, to_datetime
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -31,14 +31,20 @@ async def local_min_max(
     # Detect local minima
     min_price = df["low"].min()
 
-    if min_price == current_price and float(df["volume"].iloc[-1]) > 0:
+    if min_price == current_price and float(df["number_of_trades"].all()) > 5:
         algo = "local_min_max"
         autotrade = False
+
+        df["timestamp"] = to_datetime(df["close_time"], unit="ms")
+        last_timestamp = df["timestamp"][-1:].dt.strftime("%Y-%m-%d %H:%M").values[0]
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
             - 🔥 {symbol} has hit a new minimum {supress_notation(num=min_price, precision=precision)}!!
+            - 📅 {last_timestamp}
+            - Number of trades: {df["number_of_trades"].iloc[-1]}
             - Volume: {df["volume"].iloc[-1]}
+            - Quote volume: {df["quote_asset_volume"].iloc[-1]}
             - Current price: {supress_notation(num=current_price, precision=precision)}
             - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
