@@ -11,6 +11,32 @@ from requests import Response
 from shared.exceptions import InvalidSymbol
 
 
+def safe_format(value, spec: str = ".2f") -> str:
+    """Safely format a value with a numeric format specification.
+
+    Attempts to coerce the input to float and apply the provided format spec.
+    If coercion fails (TypeError/ValueError), it returns the plain string
+    representation of the value to avoid raising:
+        ValueError: Unknown format code 'f' for object of type 'str'
+
+    Parameters
+    ----------
+    value : Any
+        The value to format.
+    spec : str, default '.2f'
+        The numeric format specifier (e.g. '.2f', '.4f').
+
+    Returns
+    -------
+    str
+        Formatted string or fallback string(value) when formatting fails.
+    """
+    try:
+        return format(float(value), spec)
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def round_numbers(value, decimals: int = 6) -> float:
     decimal_points = 10 ** int(decimals)
     number = float(value)
