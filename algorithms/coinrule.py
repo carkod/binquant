@@ -16,6 +16,13 @@ class Coinrule:
     def __init__(self, cls: "CryptoAnalytics") -> None:
         self.ti = cls
 
+    def pre_process(self):
+        self.ti.df.dropna(inplace=True)
+        self.ti.df.reset_index(drop=True, inplace=True)
+        self.ti.df["timestamp"] = pandas.to_datetime(
+            self.ti.df["close_time"], unit="ms"
+        )
+
     async def twap_momentum_sniper(self, close_price, bb_high, bb_low, bb_mid):
         """
         Coinrule top performance rule
@@ -75,6 +82,8 @@ class Coinrule:
             logging.warning("1h candles supertrend have null values")
             return
 
+        self.pre_process()
+
         hl2 = (self.ti.df["high"] + self.ti.df["low"]) / 2
         period = 10
         multiplier = 3.0
@@ -122,6 +131,7 @@ class Coinrule:
             len(supertrend) > 0
             and supertrend[-1]
             and self.ti.df["rsi"].iloc[-1] < 30
+            and self.ti.df["number_of_trades"].iloc[-1] > 5
             # Long position bots
             and self.ti.market_breadth_data["adp"][-1] > 0
             and self.ti.market_breadth_data["adp"][-2] > 0
@@ -130,9 +140,14 @@ class Coinrule:
             algo = "coinrule_supertrend_swing_reversal"
             bb_high, bb_mid, bb_low = self.ti.bb_spreads()
             bot_strategy = Strategy.long
+            last_timestamp = (
+                self.ti.df["timestamp"][-1:].dt.strftime("%Y-%m-%d %H:%M").values[0]
+            )
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
+            - 📅 {last_timestamp}
+            - Number of trades: {self.ti.df["number_of_trades"].iloc[-1]}
             - Current price: {close_price}
             - Strategy: {bot_strategy.value}
             - RSI smaller than 30: {self.ti.df["rsi"].iloc[-1]}
@@ -141,7 +156,7 @@ class Coinrule:
             """
 
             value = SignalsConsumer(
-                autotrade=False,
+                autotrade=True,
                 current_price=close_price,
                 msg=msg,
                 symbol=self.ti.symbol,

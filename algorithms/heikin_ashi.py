@@ -13,7 +13,17 @@ class HeikinAshi:
 
     def get_heikin_ashi(self, df: pd.DataFrame) -> pd.DataFrame:
         # Convert numeric columns
-        for col in ["open", "high", "low", "close", "volume"]:
+        for col in [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "quote_asset_volume",
+            "number_of_trades",
+            "taker_buy_base_asset_volume",
+            "taker_buy_quote_asset_volume",
+        ]:
             df[col] = df[col].astype(float)
 
         # -------- Heikin Ashi calculation --------
@@ -31,5 +41,9 @@ class HeikinAshi:
         ha_df["volume"] = df["volume"]
         ha_df["close_time"] = df["close_time"]
         ha_df["open_time"] = df["open_time"]
+        ha_df["quote_asset_volume"] = df["quote_asset_volume"]
+        ha_df["number_of_trades"] = df["number_of_trades"]
+        ha_df["taker_buy_base_asset_volume"] = df["taker_buy_base_asset_volume"]
+        ha_df["taker_buy_quote_asset_volume"] = df["taker_buy_quote_asset_volume"]
 
         return ha_df

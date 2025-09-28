@@ -8,6 +8,7 @@ import pandas as pd
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import MarketDominance, Strategy
+from shared.utils import safe_format
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ class SpikeHunter:
 
         # Check for spikes in different time windows in mins
         # because of delays in kafka streaming, this could be up to 2 hours
-        self.time_windows = [15, 30, 60, 120, 240, 300]
+        self.time_windows = [15, 30, 60, 120]
         self.mechanism_cols = [
             ("ml_classifier", "spike_ml_classifier"),
             ("price_volume", "spike_price_volume"),
@@ -79,9 +80,13 @@ class SpikeHunter:
         rs = gain / (loss + 1e-10)
         return 100 - (100 / (1 + rs))
 
-    def add_all_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def cleanup(self):
+        self.df.dropna(inplace=True)
+        self.df.reset_index(drop=True, inplace=True)
+
+    def add_all_features(self) -> pd.DataFrame:
+        df = self.df
         df["timestamp"] = pd.to_datetime(df["close_time"], unit="ms")
-        df = df.sort_values(by="timestamp").reset_index(drop=True)
         # Basic price features
         df["price_change"] = df["close"].pct_change()
         df["price_change_abs"] = df["price_change"].abs()
@@ -108,6 +113,18 @@ class SpikeHunter:
         df["volume_zscore"] = (df["volume"] - df["volume_ma"]) / (
             df["volume"].rolling(window=effective_window).std() + 1e-6
         )
+
+        # Quote asset volume features
+        df["quote_volume_ma"] = (
+            df["quote_asset_volume"].rolling(window=effective_window).mean()
+        )
+        # Vectorized ratio; avoid calling float() on entire Series (raises TypeError)
+        # Add small epsilon to denominator to avoid division by zero; result will be NaN
+        # for initial rows where rolling mean is NaN and later cleaned up by self.cleanup().
+        df["quote_volume_ratio"] = df["quote_asset_volume"] / (
+            df["quote_volume_ma"] + 1e-6
+        )
+
         # Momentum indicators
         df["momentum_3"] = df["close"].pct_change(3)
         df["momentum_5"] = df["close"].pct_change(5)
@@ -117,9 +134,10 @@ class SpikeHunter:
         df["close_to_low"] = (df["close"] - df["low"]) / (df["close"] + 1e-6)
         # RSI
         df["rsi"] = self.calculate_rsi(df["close"])
-        return df
+        self.df = df
+        return self.df
 
-    def get_feature_matrix(self, df: pd.DataFrame) -> pd.DataFrame:
+    def get_feature_matrix(self) -> pd.DataFrame:
         feature_cols = [
             "price_change",
             "price_change_abs",
@@ -136,29 +154,30 @@ class SpikeHunter:
             "range_pct",
             "close_to_high",
             "close_to_low",
+            "taker_base",
+            "taker_quote",
+            "taker_buy_ratio",
+            "quote_asset_volume",
+            "quote_volume_ratio",
         ]
         for col in feature_cols:
-            if col not in df.columns:
-                df[col] = 0.0
-        return df[feature_cols].fillna(0)
+            if col not in self.df.columns:
+                self.df[col] = 0.0
+        return self.df[feature_cols].fillna(0)
 
-    def detect_spikes(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
-        df = df.reset_index(drop=True)
-        df = self.add_all_features(df)
-        # Initialize unified signal and strength plus per-mechanism flags
-        df["spike_signal"] = 0
-        df["signal_strength"] = 0.0
-        # Per-type boolean indicator columns
+    def detect_spikes(self) -> pd.DataFrame:
+        df = self.df
+        self.cleanup()
+        df = self.add_all_features()
+        self.cleanup()
         df["spike_ml_classifier"] = 0
         df["spike_price_volume"] = 0
         df["spike_momentum"] = 0
         df["spike_rsi_reversal"] = 0
-        # Each row may have multiple mechanisms active. spike_signal=1 if any mechanism fires.
-        # signal_strength is max of contributing mechanism strengths.
+        df["spike_signal"] = 0
 
         # ML-based spike prediction
-        X = self.get_feature_matrix(df)
+        X = self.get_feature_matrix()
         try:
             ml_preds = self.model.predict(X)
         except Exception:
@@ -184,23 +203,32 @@ class SpikeHunter:
             current_price_change = df.loc[i, "price_change"]
             current_volume_ratio = df.loc[i, "volume_ratio"]
             current_rsi = df.loc[i, "rsi"]
+            is_flat_candle = (
+                float(df.loc[i, "quote_asset_volume"]) > 0
+                and df.loc[i, "number_of_trades"] > 5
+            )
+            quote_volume_ratio = (
+                df.loc[i, "quote_volume_ratio"]
+                if "quote_volume_ratio" in df.columns
+                else 0.0
+            )
+            liquidity_multiplier = 1 + min(quote_volume_ratio, 5) * 0.05
 
-            strengths = []
+            if is_flat_candle and df.loc[i, "close"] == df.loc[i, "open"]:
+                return self.df
 
             # Method 1: ML classifier
-            if ml_preds[i] == 1:
+            if ml_preds[i] == 1 and is_flat_candle:
                 df.loc[i, "spike_ml_classifier"] = 1
-                strengths.append(10.0)
+                df.loc[i, "spike_signal"] += 1
 
             # Method 2: Price + Volume Spike
             if (
                 current_price_change > price_thresh
-                and current_volume_ratio > volume_thresh
+                and liquidity_multiplier * current_volume_ratio > volume_thresh
             ):
                 df.loc[i, "spike_price_volume"] = 1
-                strengths.append(
-                    min(current_price_change * current_volume_ratio * 10, 10.0)
-                )
+                df.loc[i, "spike_signal"] += 1
 
             # Method 3: Momentum Detection
             if i >= 5:
@@ -209,7 +237,7 @@ class SpikeHunter:
                 total_momentum = recent_changes.sum()
                 if positive_moves >= 2 and total_momentum > price_thresh:
                     df.loc[i, "spike_momentum"] = 1
-                    strengths.append(min(total_momentum * 20, 8.0))
+                    df.loc[i, "spike_signal"] += 1
 
             # Method 4: RSI Oversold Reversal
             if (
@@ -218,17 +246,11 @@ class SpikeHunter:
                 and df.loc[i - 1, "rsi"] <= self.rsi_oversold
                 and current_price_change > 0.008
             ):
-                rsi_strength = min(
-                    (current_rsi - self.rsi_oversold) / 10 * current_price_change * 50,
-                    6.0,
-                )
                 df.loc[i, "spike_rsi_reversal"] = 1
-                strengths.append(rsi_strength)
+                df.loc[i, "spike_signal"] += 1
 
-            if strengths:
-                df.loc[i, "spike_signal"] = 1
-                df.loc[i, "signal_strength"] = max(strengths)
-        return df
+        self.df = df
+        return self.df
 
     def run_analysis(self, max_minutes_ago=30):
         if self.price_threshold is None:
@@ -236,9 +258,9 @@ class SpikeHunter:
         if self.volume_threshold is None:
             self.volume_threshold = self.df["volume_ratio"].quantile(0.90)
 
-        self.df = self.detect_spikes(self.df)
-        self.df.reset_index(drop=True, inplace=True)
-        spikes = self.df[self.df["spike_signal"] == 1]
+        self.df = self.detect_spikes()
+        self.df.dropna(inplace=True)
+        spikes = self.df[self.df["spike_signal"] > 0]
         if len(spikes) == 0:
             return None
         last_spike = spikes.iloc[-1]
@@ -262,11 +284,15 @@ class SpikeHunter:
             "price_change_pct": last_spike["price_change"] * 100,
             "volume": last_spike["volume"],
             "volume_ratio": last_spike["volume_ratio"],
+            "quote_asset_volume": last_spike["quote_asset_volume"],
             "spike_type": spike_type_str,
-            "signal_strength": last_spike["signal_strength"],
             "rsi": last_spike["rsi"],
             "body_size_pct": last_spike["body_size_pct"],
+            "number_of_trades": last_spike["number_of_trades"],
             "minutes_ago": minutes_ago,
+            "price_std": last_spike["price_std"],
+            "price_zscore": last_spike["price_zscore"],
+            "volume_zscore": last_spike["volume_zscore"],
         }
 
     def get_spikes(self):
@@ -310,10 +336,9 @@ class SpikeHunter:
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
                 - $: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - 💪 Strength: {last_spike["signal_strength"]:.1f}
-                - ₿ Correlation: {self.ti.btc_correlation:.2f}
+                - ₿ Correlation: {safe_format(self.ti.btc_correlation)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
-                - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
+                - ADP diff: {safe_format(adp_diff)} (prev: {safe_format(adp_diff_prev)})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
                 """
@@ -344,15 +369,6 @@ class SpikeHunter:
     ):
         last_spike = self.get_spikes()
 
-        adp_diff = (
-            self.ti.market_breadth_data["adp"][-1]
-            - self.ti.market_breadth_data["adp"][-2]
-        )
-        adp_diff_prev = (
-            self.ti.market_breadth_data["adp"][-2]
-            - self.ti.market_breadth_data["adp"][-3]
-        )
-
         if not last_spike:
             logging.debug("No recent spike detected for breakout.")
             return
@@ -362,20 +378,31 @@ class SpikeHunter:
         # if btc price ↑ and btc is negative, we can assume prices will go up
         if current_price > bb_high:
             algo = "spike_hunter_breakout"
-            autotrade = True
+            autotrade = False
 
             if self.match_loser(self.ti.symbol):
                 algo = "spike_hunter_top_loser"
                 autotrade = False
 
+            # Guard against None current_symbol_data (mypy: Optional indexing)
+            symbol_data = self.ti.current_symbol_data
+            base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
+            quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
+
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
                 - $: +{last_spike["price_change_pct"]}
-                - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - 💪 Strength: {last_spike["signal_strength"]:.1f}
-                - ₿ Correlation: {self.ti.btc_correlation:.2f}
+                - 📈 Price Change: {safe_format(last_spike["price_change"], ".4f")}
+                - Number of trades: {last_spike["number_of_trades"]}
+                - 📊 {base_asset} volume: {last_spike["volume"]:,.0f}
+                - Price z-score: {safe_format(last_spike["price_zscore"], ".2f")}
+                - Volume z-score: {safe_format(last_spike["volume_zscore"], ".2f")}
+                - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]:,.0f}
+                - 📊 RSI: {safe_format(last_spike["rsi"], ".2f")}
+                - 📏 Body Size %: {safe_format(last_spike["body_size_pct"], ".4f")}
+                - Number of Trades: {last_spike["number_of_trades"]}
+                - ₿ Correlation: {safe_format(self.ti.btc_correlation)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
-                - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
                 - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
                 """
@@ -397,68 +424,3 @@ class SpikeHunter:
             await self.ti.at_consumer.process_autotrade_restrictions(value)
 
             return True
-
-    async def spike_hunter_standard(
-        self,
-        current_price: float,
-        bb_high: float,
-        bb_low: float,
-        bb_mid: float,
-    ):
-        """
-        Standard spike hunter algorithm that detects spikes with no confirmations.
-        """
-        last_spike = self.get_spikes()
-
-        adp_diff = (
-            self.ti.market_breadth_data["adp"][-1]
-            - self.ti.market_breadth_data["adp"][-2]
-        )
-        adp_diff_prev = (
-            self.ti.market_breadth_data["adp"][-2]
-            - self.ti.market_breadth_data["adp"][-3]
-        )
-
-        if not last_spike:
-            logging.debug("No recent spike detected for breakout.")
-            return
-
-        # When no bullish conditions, check for breakout spikes
-        # btc correlation avoids tightly coupled assets
-        # if btc price ↑ and btc is negative, we can assume prices will go up
-        if (
-            last_spike
-            and self.ti.btc_correlation < 0
-            and current_price > bb_high
-            and self.ti.btc_price < 0
-        ):
-            algo = "spike_hunter_standard"
-            autotrade = True
-
-            msg = f"""
-                - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.ti.symbol}
-                - $: +{last_spike["price_change_pct"]}
-                - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - 💪 Strength: {last_spike["signal_strength"]:.1f}
-                - ₿ Correlation: {self.ti.btc_correlation:.2f}
-                - Autotrade?: {"Yes" if autotrade else "No"}
-                - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
-                - <a href='https://www.binance.com/en/trade/{self.ti.symbol}'>Binance</a>
-                - <a href='http://terminal.binbot.in/bots/new/{self.ti.symbol}'>Dashboard trade</a>
-                """
-
-            value = SignalsConsumer(
-                autotrade=autotrade,
-                current_price=current_price,
-                msg=msg,
-                symbol=self.ti.symbol,
-                algo=algo,
-                bot_strategy=Strategy.long,
-                bb_spreads=BollinguerSpread(
-                    bb_high=bb_high,
-                    bb_mid=bb_mid,
-                    bb_low=bb_low,
-                ),
-            )
-            await self.ti.telegram_consumer.send_signal(value.model_dump_json())
-            await self.ti.at_consumer.process_autotrade_restrictions(value)

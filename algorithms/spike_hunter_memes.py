@@ -59,6 +59,8 @@ class SpikeHunterMeme(SpikeHunter):
             self.ti.btc_correlation < 0
             and current_price > bb_high
             and self.ti.btc_price < 0
+            # any 0 trades?
+            and (self.df["number_of_trades"] > 5).all()
         ):
             algo = "memes_spike_hunter_breakout"
             autotrade = True
@@ -68,7 +70,10 @@ class SpikeHunterMeme(SpikeHunter):
                 - 📅 Time: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
                 - 📈 Price: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - ⚡ Strength: {last_spike["signal_strength"]:.1f}
+                - 📊 Quote volume: {last_spike["quote_asset_volume"]:,.0f}
+                - 📊 RSI: {last_spike["rsi"]:.2f}
+                - 📏 Body Size %: {last_spike["body_size_pct"]:.4f}
+                - Number of Trades: {last_spike["number_of_trades"]}
                 - BTC Correlation: {self.ti.btc_correlation:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
@@ -91,3 +96,5 @@ class SpikeHunterMeme(SpikeHunter):
             )
             await self.ti.telegram_consumer.send_signal(value.model_dump_json())
             await self.ti.at_consumer.process_autotrade_restrictions(value)
+
+            return True

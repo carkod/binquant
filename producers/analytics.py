@@ -61,7 +61,7 @@ class CryptoAnalytics:
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
         self.active_symbols = []
-        self.current_symbol_data = None
+        self.current_symbol_data: dict | None = None
         for s in self.all_symbols:
             if s["active"]:
                 self.active_symbols.append(s["id"])
@@ -108,7 +108,19 @@ class CryptoAnalytics:
 
         # Drop unused columns - keep only OHLCV data needed for technical analysis
         self.df = self.df[
-            ["open_time", "open", "high", "low", "close", "volume", "close_time"]
+            [
+                "open_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "quote_asset_volume",
+                "number_of_trades",
+                "taker_buy_base_asset_volume",
+                "taker_buy_quote_asset_volume",
+            ]
         ]
 
         # Convert price and volume columns to float
@@ -227,14 +239,14 @@ class CryptoAnalytics:
                 close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             )
 
-            emitted = await self.sh.spike_hunter_bullish(
+            emitted = await self.ha_sh.ha_spike_hunter(
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
             )
 
-            emitted = await self.sh.spike_hunter_breakouts(
+            emitted = await self.shm.signal(
                 current_price=close_price,
                 bb_high=bb_high,
                 bb_low=bb_low,
@@ -242,7 +254,14 @@ class CryptoAnalytics:
             )
 
             if not emitted:
-                await self.sh.spike_hunter_standard(
+                await self.sh.spike_hunter_bullish(
+                    current_price=close_price,
+                    bb_high=bb_high,
+                    bb_low=bb_low,
+                    bb_mid=bb_mid,
+                )
+
+                await self.sh.spike_hunter_breakouts(
                     current_price=close_price,
                     bb_high=bb_high,
                     bb_low=bb_low,
@@ -252,20 +271,6 @@ class CryptoAnalytics:
             await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
             await self.atr.reverse_atr_breakout(
                 bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
-            )
-
-            await self.ha_sh.ha_spike_hunter(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
-
-            await self.shm.signal(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
             )
 
             await self.cr.supertrend_swing_reversal(

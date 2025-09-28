@@ -48,7 +48,7 @@ class HASpikeHunter(SpikeHunter):
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
-        if current_price > bb_high:
+        if current_price > bb_high and not (self.df["number_of_trades"] < 5).any():
             algo = "ha_spike_hunter"
             autotrade = False
 
@@ -57,8 +57,8 @@ class HASpikeHunter(SpikeHunter):
                 - 📅: {last_spike["timestamp"].strftime("%Y-%m-%d %H:%M")}
                 - $: +{last_spike["price_change_pct"]}
                 - 📊 Volume: {last_spike["volume_ratio"]}x above average
-                - 💪 Strength: {last_spike["signal_strength"]:.1f}
                 - Signal type: {last_spike["spike_type"]}
+                - Number of trades: {last_spike["number_of_trades"]}
                 - ₿ Correlation: {self.ti.btc_correlation:.2f}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - ADP diff: {adp_diff:.2f} (prev: {adp_diff_prev:.2f})
@@ -81,3 +81,5 @@ class HASpikeHunter(SpikeHunter):
             )
             await self.ti.telegram_consumer.send_signal(value.model_dump_json())
             await self.ti.at_consumer.process_autotrade_restrictions(value)
+
+            return True
