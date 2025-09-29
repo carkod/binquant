@@ -127,15 +127,23 @@ class Coinrule:
             elif self.ti.df["close"].iloc[i] < self.ti.df["lowerband"].iloc[i - 1]:
                 supertrend.append(False)
 
+        adp_diff = (
+            self.ti.market_breadth_data["adp"][-1]
+            - self.ti.market_breadth_data["adp"][-2]
+        )
+        adp_diff_prev = (
+            self.ti.market_breadth_data["adp"][-2]
+            - self.ti.market_breadth_data["adp"][-3]
+        )
+
         if (
             len(supertrend) > 0
             and supertrend[-1]
             and self.ti.df["rsi"].iloc[-1] < 30
             and self.ti.df["number_of_trades"].iloc[-1] > 5
             # Long position bots
-            and self.ti.market_breadth_data["adp"][-1] > 0
-            and self.ti.market_breadth_data["adp"][-2] > 0
-            and self.ti.market_breadth_data["adp"][-3] > 0
+            and adp_diff > 0
+            and adp_diff_prev > 0
         ):
             algo = "coinrule_supertrend_swing_reversal"
             bb_high, bb_mid, bb_low = self.ti.bb_spreads()

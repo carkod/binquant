@@ -6,6 +6,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from algorithms.heikin_ashi import HeikinAshi
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import MarketDominance, Strategy
 from shared.utils import safe_format
@@ -51,7 +52,8 @@ class SpikeHunter:
 
         # dependencies
         self.ti = cls
-        self.df = cls.clean_df.copy()
+        df = cls.clean_df.copy()
+        self.df = HeikinAshi.get_heikin_ashi(df)
         self.current_market_dominance = cls.current_market_dominance
 
         # Check for spikes in different time windows in mins

@@ -7,13 +7,32 @@ if TYPE_CHECKING:
 
 
 class HeikinAshi:
-    """
-    Unlike regular candlesticks (which show raw open-high-low-close data for each period), Heikin Ashi candlesticks apply a smoothing formula to make price trends easier to spot.
+    """Heikin Ashi candle transformation.
+
+    Canonical formulas applied to OHLC data:
+        HA_Close = (O + H + L + C) / 4
+        HA_Open  = (prev_HA_Open + prev_HA_Close) / 2, seed = (O0 + C0) / 2
+        HA_High  = max(H, HA_Open, HA_Close)
+        HA_Low   = min(L, HA_Open, HA_Close)
+
+    This version:
+      * Works if a 'timestamp' column exists (sorted chronologically first).
+      * Does NOT mutate the original dataframe in-place; returns a copy.
+      * Validates required columns.
     """
 
-    def get_heikin_ashi(self, df: pd.DataFrame) -> pd.DataFrame:
-        # Convert numeric columns
-        for col in [
+    REQUIRED_COLUMNS = {"open", "high", "low", "close"}
+
+    @staticmethod
+    def get_heikin_ashi(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+
+        missing = HeikinAshi.REQUIRED_COLUMNS - set(df.columns)
+        if missing:
+            raise ValueError(f"Missing required columns for Heikin Ashi: {missing}")
+
+        numeric_cols = [
             "open",
             "high",
             "low",
@@ -21,29 +40,58 @@ class HeikinAshi:
             "volume",
             "quote_asset_volume",
             "number_of_trades",
-            "taker_buy_base_asset_volume",
-            "taker_buy_quote_asset_volume",
-        ]:
-            df[col] = df[col].astype(float)
+            "taker_base",
+            "taker_quote",
+        ]
+        for col in numeric_cols:
+            if col in df.columns and not pd.api.types.is_numeric_dtype(df[col]):
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # -------- Heikin Ashi calculation --------
-        ha_df = pd.DataFrame(index=df.index, columns=["open", "high", "low", "close"])
-        ha_df["close"] = (df["open"] + df["high"] + df["low"] + df["close"]) / 4
+        # If all quote_asset_volume become NaN after coercion, raise early
+        if (
+            "quote_asset_volume" in df.columns
+            and df["quote_asset_volume"].notna().sum() == 0
+        ):
+            raise ValueError(
+                "quote_asset_volume column is entirely non-numeric after coercion; cannot compute quote_volume_ratio"
+            )
 
-        ha_open = [(df["open"].iloc[0] + df["close"].iloc[0]) / 2]
-        for i in range(1, len(df)):
-            ha_open.append((ha_open[i - 1] + ha_df["close"].iloc[i - 1]) / 2)
-        ha_df["open"] = ha_open
+        # Work on a copy & ensure chronological order if timestamp provided.
+        if "timestamp" in df.columns:
+            work = df.sort_values("timestamp").reset_index(drop=True).copy()
+        else:
+            work = df.reset_index(drop=True).copy()
 
-        ha_df["high"] = df[["high"]].join(ha_df[["open", "close"]]).max(axis=1)
-        ha_df["low"] = df[["low"]].join(ha_df[["open", "close"]]).min(axis=1)
+        # Compute HA_Close from ORIGINAL OHLC (still intact in 'work').
+        # Ensure numeric dtypes (API feeds sometimes deliver strings)
+        ohlc_cols = ["open", "high", "low", "close"]
+        for c in ohlc_cols:
+            # Only attempt conversion if dtype is not already numeric
+            if not pd.api.types.is_numeric_dtype(work[c]):
+                work.loc[:, c] = pd.to_numeric(work[c], errors="coerce")
 
-        ha_df["volume"] = df["volume"]
-        ha_df["close_time"] = df["close_time"]
-        ha_df["open_time"] = df["open_time"]
-        ha_df["quote_asset_volume"] = df["quote_asset_volume"]
-        ha_df["number_of_trades"] = df["number_of_trades"]
-        ha_df["taker_buy_base_asset_volume"] = df["taker_buy_base_asset_volume"]
-        ha_df["taker_buy_quote_asset_volume"] = df["taker_buy_quote_asset_volume"]
+        if work[ohlc_cols].isna().any().any():
+            # Drop rows that became NaN after coercion (invalid numeric data)
+            work = work.dropna(subset=ohlc_cols).reset_index(drop=True)
+            if work.empty:
+                raise ValueError("All OHLC rows became NaN after numeric coercion.")
 
-        return ha_df
+        ha_close = (work["open"] + work["high"] + work["low"] + work["close"]) / 4.0
+
+        # Seed HA_Open with original O & C (not HA close).
+        ha_open = ha_close.copy()
+        ha_open.iloc[0] = (work["open"].iloc[0] + work["close"].iloc[0]) / 2.0
+        for i in range(1, len(work)):
+            ha_open.iloc[i] = (ha_open.iloc[i - 1] + ha_close.iloc[i - 1]) / 2.0
+
+        # High / Low derived from max/min of (raw high/low, ha_open, ha_close)
+        ha_high = pd.concat([work["high"], ha_open, ha_close], axis=1).max(axis=1)
+        ha_low = pd.concat([work["low"], ha_open, ha_close], axis=1).min(axis=1)
+
+        # Assign transformed values.
+        work.loc[:, "open"] = ha_open
+        work.loc[:, "high"] = ha_high
+        work.loc[:, "low"] = ha_low
+        work.loc[:, "close"] = ha_close
+
+        return work
