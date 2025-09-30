@@ -188,7 +188,8 @@ class SpikeHunterV2:
         rolling_count = cond.rolling(self.volume_cluster_window, min_periods=1).sum()
         flag = (rolling_count >= self.volume_cluster_min_count) & cond
         if self.volume_cluster_label_mode == "last":
-            flag = flag & (~flag.shift(-1).fillna(False))
+            next_flag = flag.shift(-1, fill_value=False)
+            flag = flag.astype(bool) & (~next_flag.astype(bool))
         self.df["volume_cluster_flag"] = flag.astype(int)
 
     def price_break_flag(self):
@@ -429,7 +430,7 @@ class SpikeHunterV2:
             last_spike["is_aug_only"] or last_spike["is_suppressed"]
         ):
             algo = "spike_hunter_v2"
-            autotrade = False
+            autotrade = True
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
             symbol_data = self.current_symbol_data
