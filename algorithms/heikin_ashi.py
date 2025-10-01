@@ -60,7 +60,8 @@ class HeikinAshi:
         if "timestamp" in df.columns:
             work = df.sort_values("timestamp").reset_index(drop=True).copy()
         else:
-            work = df.reset_index(drop=True).copy()
+            df["timestamp"] = pd.to_datetime(df["close_time"], unit="ms")
+            work = df.sort_values("timestamp").reset_index(drop=True).copy()
 
         # Compute HA_Close from ORIGINAL OHLC (still intact in 'work').
         # Ensure numeric dtypes (API feeds sometimes deliver strings)

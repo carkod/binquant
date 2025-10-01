@@ -77,45 +77,135 @@ class SpikeHunterV2:
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
         # Threshold extraction (names preserved)
-        self.volume_cluster_min_ratio = 2.0
-        self.volume_cluster_window = 8
-        self.volume_cluster_min_count = 2
-        self.volume_cluster_label_mode = "last"
-        self.price_break_base_threshold = 0.05
-        self.price_break_dynamic_q = 0.90
-        self.price_break_use_dynamic = True
-        self.price_break_auto_tune = False
-        self.price_break_target_rate = 0.02
-        self.price_break_min_quantile = 0.75
-        self.price_break_max_quantile = 0.985
-        self.price_break_smoothing = 0.5
-        self.price_break_auto_lookback = 180
-        self.early_proba_threshold = 0.45
-        self.early_proba_min_slope = 0.05
-        self.early_proba_require_volume = 1.0
-        self.require_both_patterns = False
-        self.post_spike_cooldown_bars = 0
-        self.require_bullish_spike = True
-        self.body_size_pct_min = 0.0
+        self.thresholds = self.bundle.get("thresholds", {})
+        self.models = self.bundle.get("models", {})
+        self.volume_cluster_min_ratio = self.thresholds.get(
+            "volume_cluster_min_ratio", 2.0
+        )
+        self.volume_cluster_window = self.thresholds.get("volume_cluster_window", 8)
+        self.volume_cluster_min_count = self.thresholds.get(
+            "volume_cluster_min_count", 2
+        )
+        self.volume_cluster_label_mode = self.thresholds.get(
+            "volume_cluster_label_mode", "last"
+        ).lower()  # now supports: last, all, first
+        self.price_break_base_threshold = self.thresholds.get(
+            "price_break_base_threshold", 0.05
+        )
+        self.price_break_dynamic_q = self.thresholds.get("price_break_dynamic_q", 0.90)
+        self.price_break_use_dynamic = self.thresholds.get(
+            "price_break_use_dynamic", True
+        )
+        self.price_break_auto_tune = self.thresholds.get("price_break_auto_tune", False)
+        self.price_break_target_rate = self.thresholds.get(
+            "price_break_target_rate", 0.02
+        )
+        self.price_break_min_quantile = self.thresholds.get(
+            "price_break_min_quantile", 0.75
+        )
+        self.price_break_max_quantile = self.thresholds.get(
+            "price_break_max_quantile", 0.985
+        )
+        self.price_break_smoothing = self.thresholds.get("price_break_smoothing", 0.5)
+        self.price_break_auto_lookback = self.thresholds.get(
+            "price_break_auto_lookback", 180
+        )
+        self.use_raw_price_break = self.thresholds.get("use_raw_price_break", False)
+        # New compound / acceleration thresholds
+        self.cumulative_price_window = self.thresholds.get("cumulative_price_window", 3)
+        self.cumulative_price_threshold = self.thresholds.get(
+            "cumulative_price_threshold", 0.035
+        )  # 3.5% cumulative
+        self.accel_volume_deriv_window = self.thresholds.get(
+            "accel_volume_deriv_window", 3
+        )
+        self.accel_volume_deriv_min = self.thresholds.get("accel_volume_deriv_min", 0.8)
+        self.accel_price_change_min = self.thresholds.get(
+            "accel_price_change_min", 0.02
+        )
+        # Early proba
+        self.early_proba_threshold = self.thresholds.get("early_proba_threshold", 0.45)
+        self.early_proba_min_slope = self.thresholds.get("early_proba_min_slope", 0.05)
+        self.early_proba_require_volume = self.thresholds.get(
+            "early_proba_require_volume", 1.0
+        )
+        self.require_both_patterns = self.thresholds.get("require_both_patterns", False)
+        self.post_spike_cooldown_bars = self.thresholds.get(
+            "post_spike_cooldown_bars", 0
+        )
+        self.require_bullish_spike = self.thresholds.get("require_bullish_spike", True)
+        self.body_size_pct_min = self.thresholds.get("body_size_pct_min", 0.0)
+        self.lock_thresholds = bool(self.thresholds.get("lock_thresholds", False))
         # Models
-        self.current_clf = None
-        self.early_clf = None
-        self.early_proba_augment = True
+        self.current_clf = self.models.get("current_classifier")
+        self.early_clf = self.models.get("lead_classifier")
+        self.early_proba_augment = self.bundle.get("metadata", {}).get(
+            "early_proba_augment", True
+        )
         self.early_proba_slope_lookback = 3
+        self._auto_calibrated = False
 
     def cleanup(self):
         self.df.dropna(inplace=True)
         self.df.reset_index(drop=True, inplace=True)
 
-    # -------------- Feature Engineering -------------- #
+    # -------- Auto Calibration -------- #
+    def auto_calibrate(
+        self,
+        volume_quantile: float = 0.985,
+        price_base_floor_quantile: float = 0.80,
+        min_volume_ratio: float = 1.3,
+        min_price_abs_floor: float = 0.02,
+        verbose: bool = True,
+    ):
+        if self._auto_calibrated:
+            if verbose:
+                print("[AutoCalibrate] Already calibrated; skipping.")
+            return
+        if len(self.df) < 60:
+            if verbose:
+                print(
+                    "[AutoCalibrate] Not enough data (<60 rows); skipping calibration."
+                )
+            return
+        vols = self.df.get("volume_ratio", pd.Series(dtype=float)).dropna()
+        pcs = self.df.get("price_change_abs", pd.Series(dtype=float)).dropna()
+        if vols.empty or pcs.empty:
+            if verbose:
+                print("[AutoCalibrate] Missing distribution data; skipping.")
+            return
+        old_vol_thr = self.volume_cluster_min_ratio
+        old_price_floor = self.price_break_base_threshold
+        new_vol_thr = float(max(min_volume_ratio, np.quantile(vols, volume_quantile)))
+        new_price_floor = float(
+            max(min_price_abs_floor, np.quantile(pcs, price_base_floor_quantile))
+        )
+        self.volume_cluster_min_ratio = new_vol_thr
+        self.price_break_base_threshold = max(old_price_floor, new_price_floor)
+        self._auto_calibrated = True
+        if verbose:
+            print(
+                f"[AutoCalibrate] volume_cluster_min_ratio {old_vol_thr:.3f} -> {self.volume_cluster_min_ratio:.3f} (q={volume_quantile})"
+            )
+            print(
+                f"[AutoCalibrate] price_break_base_threshold {old_price_floor:.4f} -> {self.price_break_base_threshold:.4f} (q={price_base_floor_quantile})"
+            )
+            if self.price_break_use_dynamic:
+                print(
+                    "[AutoCalibrate] Dynamic price quantile logic will adapt above calibrated floor."
+                )
+
+    # -------- Features -------- #
     def compute_base_features(self, window: int = 12):
         if self.df.empty:
             return
-        self.cleanup()
-        df = self.df
+        df = self.df.sort_values("timestamp").reset_index(drop=True).copy()
         eff = window
         df["price_change"] = df["close"].pct_change()
         df["price_change_abs"] = df["price_change"].abs()
+        if "raw_close" in df.columns:
+            df["raw_price_change"] = df["raw_close"].pct_change()
+            df["raw_price_change_abs"] = df["raw_price_change"].abs()
         df["body_size"] = (df["close"] - df["open"]).abs()
         df["body_size_pct"] = df["body_size"] / (df["open"] + 1e-6)
         df["upper_wick"] = df["high"] - df[["close", "open"]].max(axis=1)
@@ -181,26 +271,32 @@ class SpikeHunterV2:
         ).astype(int)
         self.df = df
 
-    # -------------- Rule Components -------------- #
+    # -------- Rule Components -------- #
     def volume_cluster_flag(self):
         df = self.df
         cond = df["volume_ratio"] >= self.volume_cluster_min_ratio
         rolling_count = cond.rolling(self.volume_cluster_window, min_periods=1).sum()
-        flag = (rolling_count >= self.volume_cluster_min_count) & cond
+        base_flag = (rolling_count >= self.volume_cluster_min_count) & cond
         if self.volume_cluster_label_mode == "last":
-            next_flag = flag.shift(-1, fill_value=False)
-            flag = flag.astype(bool) & (~next_flag.astype(bool))
+            flag = base_flag & (~base_flag.shift(-1).fillna(False))
+        elif self.volume_cluster_label_mode == "first":
+            flag = base_flag & (~base_flag.shift(1).fillna(False))
+        else:
+            flag = base_flag
         self.df["volume_cluster_flag"] = flag.astype(int)
 
     def price_break_flag(self):
         df = self.df
+        price_abs_series = (
+            df["raw_price_change_abs"]
+            if (self.use_raw_price_break and "raw_price_change_abs" in df.columns)
+            else df["price_change_abs"]
+        )
         if not self.price_break_use_dynamic:
             thr_series = pd.Series(self.price_break_base_threshold, index=df.index)
         else:
-            base_dyn = (
-                df["price_change_abs"]
-                .rolling(60, min_periods=20)
-                .quantile(self.price_break_dynamic_q)
+            base_dyn = price_abs_series.rolling(60, min_periods=20).quantile(
+                self.price_break_dynamic_q
             )
             if self.price_break_auto_tune:
                 q_recent = 1.0 - self.price_break_target_rate
@@ -209,11 +305,9 @@ class SpikeHunterV2:
                     self.price_break_min_quantile,
                     self.price_break_max_quantile,
                 )
-                adaptive = (
-                    df["price_change_abs"]
-                    .rolling(self.price_break_auto_lookback, min_periods=40)
-                    .apply(lambda x: np.quantile(x, q_recent), raw=False)
-                )
+                adaptive = price_abs_series.rolling(
+                    self.price_break_auto_lookback, min_periods=40
+                ).apply(lambda x: np.quantile(x, q_recent), raw=False)
                 dyn = (
                     self.price_break_smoothing * base_dyn
                     + (1 - self.price_break_smoothing) * adaptive
@@ -223,20 +317,58 @@ class SpikeHunterV2:
             thr_series = pd.Series(
                 np.maximum(self.price_break_base_threshold, dyn), index=df.index
             ).ffill()
-        self.df["price_break_flag"] = (df["price_change_abs"] >= thr_series).astype(int)
+        self.df["price_break_flag"] = (price_abs_series >= thr_series).astype(int)
+        self.df["price_break_threshold_series"] = thr_series
+
+    def cumulative_price_break_flag(self):
+        df = self.df
+        w = self.cumulative_price_window
+        if w <= 1:
+            self.df["cumulative_price_break_flag"] = 0
+            return
+        pos_pc = df["price_change"].clip(lower=0)
+        cum_pos = pos_pc.rolling(w).sum()
+        vol_cond = (
+            (df["volume_ratio"] >= (self.volume_cluster_min_ratio * 0.8))
+            .rolling(w)
+            .max()
+            .astype(bool)
+        )
+        flag = (cum_pos >= self.cumulative_price_threshold) & vol_cond
+        self.df["cumulative_price_break_flag"] = flag.astype(int)
+
+    def acceleration_flag(self):
+        df = self.df
+        w = self.accel_volume_deriv_window
+        vol_deriv = df["volume_ratio"] - df["volume_ratio"].shift(w)
+        price_abs_now = (
+            df["price_change_abs"]
+            if not self.use_raw_price_break
+            else df.get("raw_price_change_abs", df["price_change_abs"])
+        )
+        flag = (
+            (vol_deriv >= self.accel_volume_deriv_min)
+            & (price_abs_now >= self.accel_price_change_min)
+            & (df["price_change"] > 0)
+        )
+        self.df["accel_spike_flag"] = flag.fillna(False).astype(int)
 
     def apply_preliminary_label(self):
         self.volume_cluster_flag()
         self.price_break_flag()
+        self.cumulative_price_break_flag()
+        self.acceleration_flag()
         df = self.df
         if self.require_both_patterns:
-            label_pre = (
+            base_combo = (
                 (df["volume_cluster_flag"] == 1) & (df["price_break_flag"] == 1)
             ).astype(int)
         else:
-            label_pre = (
+            base_combo = (
                 (df["volume_cluster_flag"] == 1) | (df["price_break_flag"] == 1)
             ).astype(int)
+        aux = (df["cumulative_price_break_flag"] == 1) | (df["accel_spike_flag"] == 1)
+        label_pre = (base_combo | aux).astype(int)
         if self.require_bullish_spike:
             label_pre = label_pre & (df["is_bullish"] == 1)
         if self.body_size_pct_min > 0:
@@ -303,14 +435,16 @@ class SpikeHunterV2:
     # -------------- Public API -------------- #
     def detect(self) -> pd.DataFrame:
         if self.df.empty:
-            raise RuntimeError("No data loaded; set df or call refresh().")
+            return
+        if not self._auto_calibrated and not self.lock_thresholds:
+            self.auto_calibrate(verbose=True)
         self.compute_base_features()
         self.apply_preliminary_label()
         self.compute_early_proba()
         self.apply_cooldown()
         return self.df
 
-    def update_with_df(self, new_df: pd.DataFrame):
+    def update_with_df(self, new_df: pd.DataFrame, recalibrate: bool = False):
         if self.df.empty:
             self.df = new_df.copy()
         else:
@@ -320,55 +454,13 @@ class SpikeHunterV2:
                 .sort_values("timestamp")
                 .reset_index(drop=True)
             )
-        if len(self.df) > 1000:
-            self.df = self.df.iloc[-1000:].reset_index(drop=True)
+        if len(self.df) > 1200:
+            self.df = self.df.iloc[-1200:].reset_index(drop=True)
+        self.compute_base_features()
+        if recalibrate and not self.lock_thresholds:
+            self._auto_calibrated = False
+            self.auto_calibrate(verbose=True)
         return self.detect()
-
-    def debug_signal_breakdown(self) -> dict:
-        needed = {"volume_cluster_flag", "price_break_flag", "label_pre"}
-        if not needed.issubset(self.df.columns):
-            print("[Debug] Run detect() first.")
-            return {}
-        d = self.df
-        base_or = (
-            (d["volume_cluster_flag"] == 1) | (d["price_break_flag"] == 1)
-        ).astype(int)
-        base_and = (
-            (d["volume_cluster_flag"] == 1) & (d["price_break_flag"] == 1)
-        ).astype(int)
-        chosen = base_and if self.require_both_patterns else base_or
-        after_bull = (
-            chosen
-            if not self.require_bullish_spike
-            else (chosen & (d["is_bullish"] == 1)).astype(int)
-        )
-        after_body = (
-            after_bull
-            if self.body_size_pct_min <= 0
-            else (after_bull & (d["body_size_pct"] >= self.body_size_pct_min)).astype(
-                int
-            )
-        )
-        out = {
-            "rows": len(d),
-            "volume_cluster_flag": int(d["volume_cluster_flag"].sum()),
-            "price_break_flag": int(d["price_break_flag"].sum()),
-            "base_or": int(base_or.sum()),
-            "base_and": int(base_and.sum()),
-            "chosen": int(chosen.sum()),
-            "after_bull": int(after_bull.sum()),
-            "after_body": int(after_body.sum()),
-            "pre": int(d["label_pre"].sum()),
-            "aug": int(
-                d.get("early_proba_aug_flag", pd.Series(0, index=d.index)).sum()
-            ),
-            "final": int(d["label"].sum()),
-            "suppressed": int(
-                d.get("suppressed_label", pd.Series(0, index=d.index)).sum()
-            ),
-        }
-        print("[Production Debug]", out)
-        return out
 
     def latest_signal(self, run_detect: bool = False) -> dict:
         """Return classification of the most recent bar.
