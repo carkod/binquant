@@ -8,7 +8,7 @@ from time import sleep
 from aiohttp import ClientResponse
 from requests import Response
 
-from shared.exceptions import InvalidSymbol
+from shared.exceptions import BinbotError, InvalidSymbol
 
 
 def safe_format(value, spec: str = ".2f") -> str:
@@ -138,6 +138,9 @@ def handle_binance_errors(response: Response):
 
         if content["code"] == -1121:
             raise InvalidSymbol("Binance error, invalid symbol")
+
+    elif "error" in content and content["error"] == 1:
+        raise BinbotError(f"Binbot internal error: {content['message']}")
 
     else:
         return content

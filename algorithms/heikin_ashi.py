@@ -1,13 +1,11 @@
-from typing import TYPE_CHECKING
-
 import pandas as pd
 
-if TYPE_CHECKING:
-    pass
+from shared.ohlc import OHLCDataFrame
 
 
 class HeikinAshi:
-    """Heikin Ashi candle transformation.
+    """
+    Heikin Ashi candle transformation.
 
     Canonical formulas applied to OHLC data:
         HA_Close = (O + H + L + C) / 4
@@ -21,47 +19,14 @@ class HeikinAshi:
       * Validates required columns.
     """
 
-    REQUIRED_COLUMNS = {"open", "high", "low", "close"}
-
     @staticmethod
     def get_heikin_ashi(df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df
 
-        missing = HeikinAshi.REQUIRED_COLUMNS - set(df.columns)
-        if missing:
-            raise ValueError(f"Missing required columns for Heikin Ashi: {missing}")
-
-        numeric_cols = [
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "quote_asset_volume",
-            "number_of_trades",
-            "taker_base",
-            "taker_quote",
-        ]
-        for col in numeric_cols:
-            if col in df.columns and not pd.api.types.is_numeric_dtype(df[col]):
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        # If all quote_asset_volume become NaN after coercion, raise early
-        if (
-            "quote_asset_volume" in df.columns
-            and df["quote_asset_volume"].notna().sum() == 0
-        ):
-            raise ValueError(
-                "quote_asset_volume column is entirely non-numeric after coercion; cannot compute quote_volume_ratio"
-            )
-
-        # Work on a copy & ensure chronological order if timestamp provided.
-        if "timestamp" in df.columns:
-            work = df.sort_values("timestamp").reset_index(drop=True).copy()
-        else:
-            df["timestamp"] = pd.to_datetime(df["close_time"], unit="ms")
-            work = df.sort_values("timestamp").reset_index(drop=True).copy()
+        # Validate & coerce using the new type guard helper.
+        df = OHLCDataFrame.ensure_ohlc(df)
+        work = df.reset_index(drop=True).copy()
 
         # Compute HA_Close from ORIGINAL OHLC (still intact in 'work').
         # Ensure numeric dtypes (API feeds sometimes deliver strings)

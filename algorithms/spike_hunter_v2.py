@@ -199,7 +199,7 @@ class SpikeHunterV2:
     def compute_base_features(self, window: int = 12):
         if self.df.empty:
             return
-        df = self.df.sort_values("timestamp").reset_index(drop=True).copy()
+        df = self.df
         eff = window
         df["price_change"] = df["close"].pct_change()
         df["price_change_abs"] = df["price_change"].abs()
@@ -278,9 +278,12 @@ class SpikeHunterV2:
         rolling_count = cond.rolling(self.volume_cluster_window, min_periods=1).sum()
         base_flag = (rolling_count >= self.volume_cluster_min_count) & cond
         if self.volume_cluster_label_mode == "last":
-            flag = base_flag & (~base_flag.shift(-1).fillna(False))
+            # Mark last element of each contiguous True run. Using comparison avoids
+            # fillna on an object-dtype boolean series (prevents FutureWarning).
+            flag = base_flag & (~(base_flag.shift(-1) == True))  # noqa: E712
         elif self.volume_cluster_label_mode == "first":
-            flag = base_flag & (~base_flag.shift(1).fillna(False))
+            # Mark first element of each contiguous True run.
+            flag = base_flag & (~(base_flag.shift(1) == True))  # noqa: E712
         else:
             flag = base_flag
         self.df["volume_cluster_flag"] = flag.astype(int)
@@ -443,24 +446,6 @@ class SpikeHunterV2:
         self.compute_early_proba()
         self.apply_cooldown()
         return self.df
-
-    def update_with_df(self, new_df: pd.DataFrame, recalibrate: bool = False):
-        if self.df.empty:
-            self.df = new_df.copy()
-        else:
-            self.df = (
-                pd.concat([self.df, new_df])
-                .drop_duplicates("timestamp")
-                .sort_values("timestamp")
-                .reset_index(drop=True)
-            )
-        if len(self.df) > 1200:
-            self.df = self.df.iloc[-1200:].reset_index(drop=True)
-        self.compute_base_features()
-        if recalibrate and not self.lock_thresholds:
-            self._auto_calibrated = False
-            self.auto_calibrate(verbose=True)
-        return self.detect()
 
     def latest_signal(self, run_detect: bool = False) -> dict:
         """Return classification of the most recent bar.

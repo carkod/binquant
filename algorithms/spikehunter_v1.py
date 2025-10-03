@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 from os import getenv, path
 from typing import TYPE_CHECKING
 
@@ -88,7 +89,6 @@ class SpikeHunter:
 
     def add_all_features(self) -> pd.DataFrame:
         df = self.df
-        df["timestamp"] = pd.to_datetime(df["close_time"], unit="ms")
         # Basic price features
         df["price_change"] = df["close"].pct_change()
         df["price_change_abs"] = df["price_change"].abs()
@@ -272,15 +272,19 @@ class SpikeHunter:
             name for name, col in self.mechanism_cols if last_spike.get(col, 0) == 1
         ]
         spike_type_str = ",".join(active_types)
-        current_time = pd.Timestamp.now(tz="UTC")
-        spike_time = last_spike["timestamp"]
-        if spike_time.tz is None:
-            spike_time = spike_time.tz_localize("UTC")
-        minutes_ago = (current_time - spike_time).total_seconds() / 60
-        if minutes_ago > max_minutes_ago:
-            return None
+        # Convert close_time (ms) to human-readable UTC timestamp (kept under key 'timestamp')
+        close_time_val = last_spike.get("close_time", None)
+        timestamp_str = None
+        if close_time_val is not None:
+            close_ms = int(close_time_val)
+            timestamp_str = datetime.fromtimestamp(
+                close_ms / 1000, tz=UTC
+            ).strftime("%Y-%m-%d %H:%M")
+        else:
+            timestamp_str = ""
+
         return {
-            "timestamp": last_spike["timestamp"],
+            "timestamp": timestamp_str,
             "price": last_spike["close"],
             "price_change": last_spike["price_change"],
             "price_change_pct": last_spike["price_change"] * 100,
@@ -291,7 +295,6 @@ class SpikeHunter:
             "rsi": last_spike["rsi"],
             "body_size_pct": last_spike["body_size_pct"],
             "number_of_trades": last_spike["number_of_trades"],
-            "minutes_ago": minutes_ago,
             "price_std": last_spike["price_std"],
             "price_zscore": last_spike["price_zscore"],
             "volume_zscore": last_spike["volume_zscore"],
