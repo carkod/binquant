@@ -152,51 +152,49 @@ class Indicators:
     def set_supertrend(
         df: DataFrame, period: int = 14, multiplier: float = 3.0
     ) -> DataFrame:
+        """Compute Supertrend indicator.
+
+        Adds columns: 'atr', 'upperband', 'lowerband', 'supertrend'.
+        'supertrend' is a boolean (or None before initialization) indicating
+        bullish (True) or bearish (False) trend.
         """
-        Calculate the Supertrend indicator and add it to the DataFrame.
-        """
+        if len(df) == 0:
+            return df
 
-        hl2 = (df["high"] + df["low"]) / 2
+        hl2 = (df["high"] + df["low"]) / 2.0
+        prev_close = df["close"].shift(1)
+        tr = concat(
+            [
+                (df["high"] - df["low"]),
+                (df["high"] - prev_close).abs(),
+                (df["low"] - prev_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
 
-        # True Range (TR)
-        previous_close = df["close"].shift(1)
-        high_low = df["high"] - df["low"]
-        high_pc = abs(df["high"] - previous_close)
-        low_pc = abs(df["low"] - previous_close)
-        tr = concat([high_low, high_pc, low_pc], axis=1).max(axis=1)
-
-        # Average True Range (ATR)
         df["atr"] = tr.rolling(window=period).mean()
+        upperband = hl2 + multiplier * df["atr"]
+        lowerband = hl2 - multiplier * df["atr"]
 
-        # Bands
-        df["upperband"] = hl2 + (multiplier * df["atr"])
-        df["lowerband"] = hl2 - (multiplier * df["atr"])
-
-        supertrend = []
-
+        # Smooth bands
         for i in range(period, len(df)):
-            if df["close"].iloc[i - 1] > df["upperband"].iloc[i - 1]:
-                df.at[i, "upperband"] = max(
-                    df["upperband"].iloc[i], df["upperband"].iloc[i - 1]
-                )
+            if df["close"].iloc[i - 1] > upperband.iloc[i - 1]:
+                upperband.iloc[i] = max(upperband.iloc[i], upperband.iloc[i - 1])
+            if df["close"].iloc[i - 1] < lowerband.iloc[i - 1]:
+                lowerband.iloc[i] = min(lowerband.iloc[i], lowerband.iloc[i - 1])
+
+        direction: list[bool | None] = [None] * len(df)
+        for i in range(period, len(df)):
+            if df["close"].iloc[i] > upperband.iloc[i - 1]:
+                direction[i] = True
+            elif df["close"].iloc[i] < lowerband.iloc[i - 1]:
+                direction[i] = False
             else:
-                df.at[i, "upperband"] = df["upperband"].iloc[i]
+                direction[i] = direction[i - 1]
 
-            if df["close"].iloc[i - 1] < df["lowerband"].iloc[i - 1]:
-                df.at[i, "lowerband"] = min(
-                    df["lowerband"].iloc[i], df["lowerband"].iloc[i - 1]
-                )
-            else:
-                df.at[i, "lowerband"] = df["lowerband"].iloc[i]
-
-            # Determine trend direction
-            if df["close"].iloc[i] > df["upperband"].iloc[i - 1]:
-                supertrend.append(True)
-            elif df["close"].iloc[i] < df["lowerband"].iloc[i - 1]:
-                supertrend.append(False)
-
-            df["supertrend"] = supertrend
-
+        df["upperband"] = upperband
+        df["lowerband"] = lowerband
+        df["supertrend"] = direction
         return df
 
     def atr(df: DataFrame, window: int = 30, min_periods: int = 20) -> DataFrame:

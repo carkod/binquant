@@ -35,8 +35,9 @@ async def local_min_max(
         algo = "local_min_max"
         autotrade = False
 
-        df["timestamp"] = to_datetime(df["close_time"], unit="ms")
-        last_timestamp = df["timestamp"][-1:].dt.strftime("%Y-%m-%d %H:%M").values[0]
+        last_timestamp = to_datetime(df["close_time"][-1:]).dt.strftime(
+            "%Y-%m-%d %H:%M"
+        )
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
