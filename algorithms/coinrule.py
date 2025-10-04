@@ -6,6 +6,7 @@ from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
 from shared.indicators import Indicators
 from shared.utils import round_numbers
+from pandas import to_datetime
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -103,7 +104,9 @@ class Coinrule:
             bb_high, bb_mid, bb_low = self.ti.bb_spreads()
             bot_strategy = Strategy.long
             last_timestamp = (
-                self.ti.df["close_time"][-1:].dt.strftime("%Y-%m-%d %H:%M").values[0]
+                to_datetime(self.ti.df["close_time"][-1:], unit="ms")
+                .dt.strftime("%Y-%m-%d %H:%M")
+                .iloc[0]
             )
 
             msg = f"""
