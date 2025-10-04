@@ -56,12 +56,14 @@ def test_ensure_ohlc_missing_columns():
 
 def test_ensure_ohlc_coercion():
     # Provide numeric columns as strings (should be coerced)
-    df = make_base_df().astype({
-        "open": "string",
-        "high": "string",
-        "low": "string",
-        "close": "string",
-    })
+    df = make_base_df().astype(
+        {
+            "open": "string",
+            "high": "string",
+            "low": "string",
+            "close": "string",
+        }
+    )
     validated = OHLCDataFrame.ensure_ohlc(df)
     for col in ["open", "high", "low", "close"]:
         assert pd.api.types.is_numeric_dtype(validated[col])
