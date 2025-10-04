@@ -277,9 +277,9 @@ class SpikeHunter:
         timestamp_str = None
         if close_time_val is not None:
             close_ms = int(close_time_val)
-            timestamp_str = datetime.fromtimestamp(
-                close_ms / 1000, tz=UTC
-            ).strftime("%Y-%m-%d %H:%M")
+            timestamp_str = datetime.fromtimestamp(close_ms / 1000, tz=UTC).strftime(
+                "%Y-%m-%d %H:%M"
+            )
         else:
             timestamp_str = ""
 

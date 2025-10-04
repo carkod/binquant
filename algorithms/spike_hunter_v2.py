@@ -439,23 +439,28 @@ class SpikeHunterV2:
     def detect(self) -> pd.DataFrame:
         if self.df.empty:
             return
+        self.compute_base_features()
         if not self._auto_calibrated and not self.lock_thresholds:
             self.auto_calibrate(verbose=True)
-        self.compute_base_features()
         self.apply_preliminary_label()
         self.compute_early_proba()
         self.apply_cooldown()
         return self.df
 
     def latest_signal(self, run_detect: bool = False) -> dict:
-        """Return classification of the most recent bar.
+        """
+        Return a rich classification summary for the most recent bar.
         Parameters:
             run_detect: when True, force a fresh detect() pass before reading.
         Returns:
-            dict with keys:
+            dict including (existing keys preserved + new component flags):
                 timestamp, close, label, label_pre, early_proba_aug_flag,
-                is_final_spike, is_aug_only, is_suppressed, signal_type
-        signal_type values: 'FinalSpike', 'AugOnly', 'Suppressed', 'None'
+                volume_cluster_flag, price_break_flag,
+                cumulative_price_break_flag, accel_spike_flag,
+                is_final_spike, is_aug_only, is_suppressed, signal_type, signals
+                signal_type values: 'FinalSpike', 'AugOnly', 'Suppressed', or None.
+                signals: ordered list of active component signals for this bar
+                  (e.g. ['Cumulative', 'Accel', 'FinalSpike']).
         """
         if self.df.empty:
             raise RuntimeError("No data available.")
@@ -475,16 +480,40 @@ class SpikeHunterV2:
             signal_type = "Suppressed"
         else:
             signal_type = None
+
+        # Assemble component signals list (kept consistent with notebook version)
+        signals = []
+        if row.get("cumulative_price_break_flag", 0) == 1:
+            signals.append("Cumulative")
+        if row.get("accel_spike_flag", 0) == 1:
+            signals.append("Accel")
+        if row.get("price_break_flag", 0) == 1:
+            signals.append("PriceBreak")
+        if row.get("volume_cluster_flag", 0) == 1:
+            signals.append("VolumeCluster")
+        if is_final:
+            signals.append("FinalSpike")
+
         return {
             "timestamp": row.get("timestamp"),
             "close": float(row.get("close", np.nan)),
             "label": int(row.get("label", 0)),
             "label_pre": int(row.get("label_pre", 0)),
             "early_proba_aug_flag": int(row.get("early_proba_aug_flag", 0)),
+            # Component flags exposed for richer downstream logic / telemetry
+            # Converted to native Python bools for clearer downstream consumption
+            "volume_cluster_flag": bool(row.get("volume_cluster_flag", 0) == 1),
+            "price_break_flag": bool(row.get("price_break_flag", 0) == 1),
+            "cumulative_price_break_flag": bool(
+                row.get("cumulative_price_break_flag", 0) == 1
+            ),
+            "accel_spike_flag": bool(row.get("accel_spike_flag", 0) == 1),
+            # Classification meta
             "is_final_spike": is_final,
             "is_aug_only": is_aug_only,
             "is_suppressed": is_supp,
             "signal_type": signal_type,
+            "signals": signals,
         }
 
     async def signal(
@@ -503,10 +532,16 @@ class SpikeHunterV2:
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
-        if current_price > bb_high and (
-            last_spike["is_aug_only"] or last_spike["is_suppressed"]
+        if (
+            last_spike["cumulative_price_break_flag"]
+            or last_spike["is_suppressed"]
+            or last_spike["volume_cluster_flag"]
+            or last_spike["is_final_spike"]
+            or last_spike["early_proba_aug_flag"]
+            or last_spike["price_break_flag"]
+            or last_spike["accel_spike_flag"]
         ):
-            algo = "spike_hunter_v2"
+            algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             autotrade = True
 
             # Guard against None current_symbol_data (mypy: Optional indexing)

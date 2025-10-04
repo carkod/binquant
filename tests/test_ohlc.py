@@ -16,8 +16,9 @@ def make_base_df():
             "volume": [10, 20, 30],
             "quote_asset_volume": [100, 200, 300],
             "number_of_trades": [1, 2, 3],
-            "taker_base": [5, 10, 15],
-            "taker_quote": [50, 100, 150],
+            # Updated required taker buy volume columns
+            "taker_buy_base_asset_volume": [5, 10, 15],
+            "taker_buy_quote_asset_volume": [50, 100, 150],
         }
     )
 
@@ -45,9 +46,8 @@ def test_ensure_ohlc_success():
 
 
 def test_ensure_ohlc_missing_columns():
-    df = make_base_df().drop(
-        columns=["volume", "taker_buy_base_asset_volume"]
-    )  # remove two
+    # Remove two required columns to trigger validation error
+    df = make_base_df().drop(columns=["volume", "taker_buy_base_asset_volume"])
     with pytest.raises(ValueError) as exc:
         OHLCDataFrame.ensure_ohlc(df)
     msg = str(exc.value)
@@ -56,14 +56,12 @@ def test_ensure_ohlc_missing_columns():
 
 def test_ensure_ohlc_coercion():
     # Provide numeric columns as strings (should be coerced)
-    df = make_base_df().astype(
-        {
-            "open": "string",
-            "high": "string",
-            "low": "string",
-            "close": "string",
-        }
-    )
+    df = make_base_df().astype({
+        "open": "string",
+        "high": "string",
+        "low": "string",
+        "close": "string",
+    })
     validated = OHLCDataFrame.ensure_ohlc(df)
     for col in ["open", "high", "low", "close"]:
         assert pd.api.types.is_numeric_dtype(validated[col])
