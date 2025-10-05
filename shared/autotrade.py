@@ -155,6 +155,7 @@ class Autotrade(BaseProducer, BinbotApi):
             create_func = self.create_paper_bot
             activate_func = self.activate_paper_bot
             errors_func = self.submit_paper_trading_event_logs
+            delete_func = self.delete_paper_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
                 self.set_margin_short_values(data)
@@ -173,6 +174,7 @@ class Autotrade(BaseProducer, BinbotApi):
             create_func = self.create_bot
             activate_func = self.activate_bot
             errors_func = self.submit_bot_event_logs
+            delete_func = self.delete_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
                 try:
@@ -220,7 +222,7 @@ class Autotrade(BaseProducer, BinbotApi):
             errors_func(bot_id, message)
             if self.default_bot.strategy == Strategy.margin_short:
                 self.clean_margin_short(self.default_bot.pair)
-            self.delete_bot(bot_id)
+            delete_func(bot_id)
             raise AutotradeError(message)
 
         else:

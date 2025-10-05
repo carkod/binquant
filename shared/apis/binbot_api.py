@@ -196,6 +196,16 @@ class BinbotApi(BinanceApi):
         data = self.request(url=f"{self.bb_activate_test_bot_url}/{bot_id}")
         return data
 
+    def delete_paper_bot(self, bot_id):
+        bot_ids = []
+        if isinstance(bot_id, str):
+            bot_ids.append(bot_id)
+
+        data = self.request(
+            url=f"{self.bb_test_bot_url}", method="DELETE", data={"id": bot_ids}
+        )
+        return data
+
     def get_active_pairs(self, collection_name="bots"):
         """
         Get distinct (non-repeating) bots by status active

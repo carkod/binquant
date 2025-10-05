@@ -2,10 +2,11 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-import pandas
+from pandas import to_datetime
 
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
+from shared.indicators import Indicators
 from shared.utils import round_numbers
 
 if TYPE_CHECKING:
@@ -19,9 +20,6 @@ class Coinrule:
     def pre_process(self):
         self.ti.df.dropna(inplace=True)
         self.ti.df.reset_index(drop=True, inplace=True)
-        self.ti.df["timestamp"] = pandas.to_datetime(
-            self.ti.df["close_time"], unit="ms"
-        )
 
     async def twap_momentum_sniper(self, close_price, bb_high, bb_low, bb_mid):
         """
@@ -84,64 +82,32 @@ class Coinrule:
 
         self.pre_process()
 
-        hl2 = (self.ti.df["high"] + self.ti.df["low"]) / 2
-        period = 10
-        multiplier = 3.0
+        # Reuse shared Supertrend (period adjusted to 10 to match strategy)
+        Indicators.set_supertrend(self.ti.df, period=10, multiplier=3.0)
 
-        # True Range (TR)
-        previous_close = self.ti.df["close"].shift(1)
-        high_low = self.ti.df["high"] - self.ti.df["low"]
-        high_pc = abs(self.ti.df["high"] - previous_close)
-        low_pc = abs(self.ti.df["low"] - previous_close)
-        tr = pandas.concat([high_low, high_pc, low_pc], axis=1).max(axis=1)
-
-        # Average True Range (ATR)
-        self.ti.df["atr"] = tr.rolling(window=period).mean()
-
-        # Bands
-        self.ti.df["upperband"] = hl2 + (multiplier * self.ti.df["atr"])
-        self.ti.df["lowerband"] = hl2 - (multiplier * self.ti.df["atr"])
-
-        supertrend = []
-
-        for i in range(period, len(self.ti.df)):
-            if self.ti.df["close"].iloc[i - 1] > self.ti.df["upperband"].iloc[i - 1]:
-                self.ti.df.at[i, "upperband"] = max(
-                    self.ti.df["upperband"].iloc[i],
-                    self.ti.df["upperband"].iloc[i - 1],
-                )
-            else:
-                self.ti.df.at[i, "upperband"] = self.ti.df["upperband"].iloc[i]
-
-            if self.ti.df["close"].iloc[i - 1] < self.ti.df["lowerband"].iloc[i - 1]:
-                self.ti.df.at[i, "lowerband"] = min(
-                    self.ti.df["lowerband"].iloc[i],
-                    self.ti.df["lowerband"].iloc[i - 1],
-                )
-            else:
-                self.ti.df.at[i, "lowerband"] = self.ti.df["lowerband"].iloc[i]
-
-            # Determine trend direction
-            if self.ti.df["close"].iloc[i] > self.ti.df["upperband"].iloc[i - 1]:
-                supertrend.append(True)
-            elif self.ti.df["close"].iloc[i] < self.ti.df["lowerband"].iloc[i - 1]:
-                supertrend.append(False)
+        adp_diff = (
+            self.ti.market_breadth_data["adp"][-1]
+            - self.ti.market_breadth_data["adp"][-2]
+        )
+        adp_diff_prev = (
+            self.ti.market_breadth_data["adp"][-2]
+            - self.ti.market_breadth_data["adp"][-3]
+        )
 
         if (
-            len(supertrend) > 0
-            and supertrend[-1]
+            bool(self.ti.df["supertrend"].iloc[-1])
             and self.ti.df["rsi"].iloc[-1] < 30
             and self.ti.df["number_of_trades"].iloc[-1] > 5
-            # Long position bots
-            and self.ti.market_breadth_data["adp"][-1] > 0
-            and self.ti.market_breadth_data["adp"][-2] > 0
-            and self.ti.market_breadth_data["adp"][-3] > 0
+            and adp_diff > 0
+            and adp_diff_prev > 0
         ):
             algo = "coinrule_supertrend_swing_reversal"
             bb_high, bb_mid, bb_low = self.ti.bb_spreads()
             bot_strategy = Strategy.long
             last_timestamp = (
-                self.ti.df["timestamp"][-1:].dt.strftime("%Y-%m-%d %H:%M").values[0]
+                to_datetime(self.ti.df["close_time"][-1:], unit="ms")
+                .dt.strftime("%Y-%m-%d %H:%M")
+                .iloc[0]
             )
 
             msg = f"""
