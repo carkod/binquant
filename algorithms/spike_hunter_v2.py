@@ -59,16 +59,12 @@ class SpikeHunterV2:
     def __init__(
         self,
         cls: "CryptoAnalytics",
-        interval: str = "15m",
-        limit: int = 500,
     ):
         self.symbol = cls.symbol
         script_dir = path.dirname(__file__)
         rel_path = "checkpoints/spikehunter_model_v2.pkl"
         abs_file_path = path.join(script_dir, rel_path)
         self.bundle = joblib.load(abs_file_path)
-        self.interval = interval
-        self.limit = limit
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
@@ -564,7 +560,6 @@ class SpikeHunterV2:
                 - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]:,.0f}
                 - 📊 RSI: {safe_format(last_spike["rsi"], ".2f")}
                 - 📏 Body Size %: {safe_format(last_spike["body_size_pct"], ".4f")}
-                - Number of Trades: {last_spike["number_of_trades"]}
                 - ₿ Correlation: {safe_format(self.btc_correlation)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>

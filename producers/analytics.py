@@ -11,6 +11,7 @@ from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_memes import SpikeHunterMeme
 from algorithms.spike_hunter_v2 import SpikeHunterV2
 from algorithms.spikehunter_v1 import SpikeHunter
+from algorithms.whale_signals import WhaleSignals
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
@@ -179,6 +180,7 @@ class CryptoAnalytics:
         self.cr = Coinrule(cls=self)
         self.shm = SpikeHunterMeme(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
+        self.whale = WhaleSignals(cls=self)
 
     async def process_data(self, candles):
         """
@@ -310,6 +312,13 @@ class CryptoAnalytics:
                 precision=self.current_symbol_data["price_precision"]
                 if self.current_symbol_data
                 else 2,
+            )
+
+            await self.whale.signal(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
             )
 
             # avoid repeating signals in short periods of time
