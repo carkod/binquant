@@ -314,12 +314,12 @@ class CryptoAnalytics:
                 else 2,
             )
 
-            await self.whale.signal(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # await self.whale.signal(
+            #     current_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             # avoid repeating signals in short periods of time
             self.repeated_signals[self.symbol] = datetime.now()

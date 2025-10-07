@@ -139,7 +139,6 @@ class SpikeHunterV2:
             "early_proba_augment", True
         )
         self.early_proba_slope_lookback = 3
-        self._auto_calibrated = False
 
     def cleanup(self):
         self.df.dropna(inplace=True)
@@ -152,25 +151,12 @@ class SpikeHunterV2:
         price_base_floor_quantile: float = 0.80,
         min_volume_ratio: float = 1.3,
         min_price_abs_floor: float = 0.02,
-        verbose: bool = True,
     ):
-        if self._auto_calibrated:
-            if verbose:
-                print("[AutoCalibrate] Already calibrated; skipping.")
-            return
-        if len(self.df) < 60:
-            if verbose:
-                print(
-                    "[AutoCalibrate] Not enough data (<60 rows); skipping calibration."
-                )
-            return
         vols = self.df.get("volume_ratio", pd.Series(dtype=float)).dropna()
         pcs = self.df.get("price_change_abs", pd.Series(dtype=float)).dropna()
         if vols.empty or pcs.empty:
-            if verbose:
-                print("[AutoCalibrate] Missing distribution data; skipping.")
+            print("[AutoCalibrate] Missing distribution data; skipping.")
             return
-        old_vol_thr = self.volume_cluster_min_ratio
         old_price_floor = self.price_break_base_threshold
         new_vol_thr = float(max(min_volume_ratio, np.quantile(vols, volume_quantile)))
         new_price_floor = float(
@@ -178,18 +164,10 @@ class SpikeHunterV2:
         )
         self.volume_cluster_min_ratio = new_vol_thr
         self.price_break_base_threshold = max(old_price_floor, new_price_floor)
-        self._auto_calibrated = True
-        if verbose:
+        if self.price_break_use_dynamic:
             print(
-                f"[AutoCalibrate] volume_cluster_min_ratio {old_vol_thr:.3f} -> {self.volume_cluster_min_ratio:.3f} (q={volume_quantile})"
+                "[AutoCalibrate] Dynamic price quantile logic will adapt above calibrated floor."
             )
-            print(
-                f"[AutoCalibrate] price_break_base_threshold {old_price_floor:.4f} -> {self.price_break_base_threshold:.4f} (q={price_base_floor_quantile})"
-            )
-            if self.price_break_use_dynamic:
-                print(
-                    "[AutoCalibrate] Dynamic price quantile logic will adapt above calibrated floor."
-                )
 
     # -------- Features -------- #
     def compute_base_features(self, window: int = 12):
@@ -436,14 +414,13 @@ class SpikeHunterV2:
         if self.df.empty:
             return
         self.compute_base_features()
-        if not self._auto_calibrated and not self.lock_thresholds:
-            self.auto_calibrate(verbose=True)
+        self.auto_calibrate()
         self.apply_preliminary_label()
         self.compute_early_proba()
         self.apply_cooldown()
         return self.df
 
-    def latest_signal(self, run_detect: bool = False) -> dict:
+    def latest_signal(self) -> dict | None:
         """
         Return a rich classification summary for the most recent bar.
         Parameters:
@@ -460,8 +437,10 @@ class SpikeHunterV2:
         """
         if self.df.empty:
             raise RuntimeError("No data available.")
-        if run_detect or "label" not in self.df.columns:
-            self.detect()
+        is_detected = self.detect()
+        if is_detected is None or self.df.empty:
+            return None
+
         row = self.df.iloc[-1]
         is_final = bool(row.get("label", 0) == 1)
         is_aug_only = bool(
