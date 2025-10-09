@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from os import getenv, path
 from typing import TYPE_CHECKING
 
@@ -144,7 +145,6 @@ class SpikeHunterV2:
         self.df.dropna(inplace=True)
         self.df.reset_index(drop=True, inplace=True)
 
-    # -------- Auto Calibration -------- #
     def auto_calibrate(
         self,
         volume_quantile: float = 0.985,
@@ -415,6 +415,8 @@ class SpikeHunterV2:
             return
         self.compute_base_features()
         self.auto_calibrate()
+        # Recompute base each pass to keep derivative series consistent
+        self.compute_base_features()
         self.apply_preliminary_label()
         self.compute_early_proba()
         self.apply_cooldown()
@@ -469,12 +471,16 @@ class SpikeHunterV2:
         if is_final:
             signals.append("FinalSpike")
 
+        timestamp = datetime.fromtimestamp(row.get("close_time", 0) / 1000).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
         return {
-            "timestamp": row.get("timestamp"),
-            "close": float(row.get("close", np.nan)),
-            "label": int(row.get("label", 0)),
-            "label_pre": int(row.get("label_pre", 0)),
-            "early_proba_aug_flag": int(row.get("early_proba_aug_flag", 0)),
+            "timestamp": timestamp,
+            "close": float(row.get("close", 0)),
+            "label": int(row.get("label", 0) == 1),
+            "label_pre": int(row.get("label_pre", 0) == 1),
+            "early_proba_aug_flag": int(row.get("early_proba_aug_flag", 0) == 1),
             # Component flags exposed for richer downstream logic / telemetry
             # Converted to native Python bools for clearer downstream consumption
             "volume_cluster_flag": bool(row.get("volume_cluster_flag", 0) == 1),

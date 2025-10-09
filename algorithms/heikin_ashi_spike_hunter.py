@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from algorithms.heikin_ashi import HeikinAshi
 from algorithms.spikehunter_v1 import SpikeHunter
-from binquant.algorithms.whale_signals import WhaleSignals
+from algorithms.whale_signals import WhaleSignals
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
 
