@@ -474,6 +474,17 @@ class SpikeHunterV2:
         timestamp = datetime.fromtimestamp(row.get("close_time", 0) / 1000).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
+        number_trades_thr = self.df["number_of_trades"].quantile(0.75)
+
+        volume = self.df["volume"].iloc[-1] if "volume" in self.df else 0
+        quote_asset_volume = (
+            self.df["quote_asset_volume"].iloc[-1]
+            if "quote_asset_volume" in self.df
+            else 0
+        )
+        number_of_trades = (
+            self.df["number_of_trades"].iloc[-1] if "number_of_trades" in self.df else 0
+        )
 
         return {
             "timestamp": timestamp,
@@ -495,6 +506,10 @@ class SpikeHunterV2:
             "is_suppressed": is_supp,
             "signal_type": signal_type,
             "signals": signals,
+            "number_of_trades": int(number_of_trades),
+            "number_of_trades_thr": float(number_trades_thr),
+            "volume": float(volume),
+            "quote_asset_volume": float(quote_asset_volume),
         }
 
     async def signal(
@@ -521,7 +536,8 @@ class SpikeHunterV2:
             or last_spike["early_proba_aug_flag"]
             or last_spike["price_break_flag"]
             or last_spike["accel_spike_flag"]
-        ):
+        ) and last_spike["number_of_trades"] > 8:
+
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             autotrade = True
 
@@ -530,21 +546,12 @@ class SpikeHunterV2:
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
 
-            volume = self.df["volume"].iloc[-1] if "volume" in self.df else 0
-            number_of_trades = (
-                self.df["number_of_trades"].iloc[-1]
-                if "number_of_trades" in self.df
-                else 0
-            )
-
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
-                - $: +{last_spike["price_change_pct"]}
-                - Number of trades: {number_of_trades}
-                - 📊 {base_asset} volume: {volume}
-                - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]:,.0f}
-                - 📊 RSI: {safe_format(last_spike["rsi"], ".2f")}
-                - 📏 Body Size %: {safe_format(last_spike["body_size_pct"], ".4f")}
+                - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
+                - $: +{current_price:,.4f}
+                - 📊 {base_asset} volume: {last_spike["volume"]}
+                - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]}
                 - ₿ Correlation: {safe_format(self.btc_correlation)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
@@ -566,5 +573,3 @@ class SpikeHunterV2:
             )
             await self.telegram_consumer.send_signal(value.model_dump_json())
             await self.at_consumer.process_autotrade_restrictions(value)
-
-            return True
