@@ -537,7 +537,6 @@ class SpikeHunterV2:
             or last_spike["price_break_flag"]
             or last_spike["accel_spike_flag"]
         ) and last_spike["number_of_trades"] > 8:
-
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             autotrade = True
 
@@ -545,9 +544,13 @@ class SpikeHunterV2:
             symbol_data = self.current_symbol_data
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
+            timestamp = datetime.fromtimestamp(
+                self.df["close_time"].iloc[-1] / 1000
+            ).strftime("%Y-%m-%d %H:%M:%S")
 
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+                - ⏰ {timestamp}
                 - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
                 - $: +{current_price:,.4f}
                 - 📊 {base_asset} volume: {last_spike["volume"]}
