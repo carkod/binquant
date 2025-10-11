@@ -537,6 +537,7 @@ class SpikeHunterV2:
             or last_spike["price_break_flag"]
             or last_spike["accel_spike_flag"]
         ) and last_spike["number_of_trades"] > 8:
+
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             autotrade = True
 
