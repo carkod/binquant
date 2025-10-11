@@ -1,13 +1,13 @@
 import logging
 import math
+import os
 import re
 from datetime import datetime
 from decimal import Decimal
 from time import sleep
-
 from aiohttp import ClientResponse
 from requests import Response
-
+from zoneinfo import ZoneInfo
 from shared.exceptions import BinbotError, InvalidSymbol
 
 
@@ -146,9 +146,14 @@ def handle_binance_errors(response: Response):
         return content
 
 
-def timestamp_to_datetime(timestamp: str | int) -> str:
+def timestamp_to_datetime(timestamp: str | int, force_local: bool = False) -> str:
     format = "%Y-%m-%d %H:%M:%S"
     timestamp = int(round_numbers_ceiling(int(timestamp) / 1000, 0))
+    if force_local:
+        local_tz = os.getenv("LOCAL_TIMEZONE", "UTC")
+        tzinfo = ZoneInfo(local_tz)
+        return datetime.fromtimestamp(timestamp, tz=tzinfo).strftime(format)
+
     return datetime.fromtimestamp(timestamp).strftime(format)
 
 
