@@ -451,25 +451,24 @@ class SpikeHunterV2:
             and row.get("early_proba_aug_flag", 0) == 1
         )
         is_supp = bool(row.get("suppressed_label", 0) == 1)
+
+        signal_type: str = ""
+
         if is_final:
             signal_type = "AugOnly" if is_aug_only else "FinalSpike"
-        elif is_supp:
+        if is_supp:
             signal_type = "Suppressed"
-        else:
-            signal_type = None
 
         # Assemble component signals list (kept consistent with notebook version)
-        signals = []
         if row.get("cumulative_price_break_flag", 0) == 1:
-            signals.append("Cumulative")
+            signal_type = "Cumulative"
         if row.get("accel_spike_flag", 0) == 1:
-            signals.append("Accel")
+            signal_type = "Acceleration"
         if row.get("price_break_flag", 0) == 1:
-            signals.append("PriceBreak")
+            signal_type = "PriceBreak"
         if row.get("volume_cluster_flag", 0) == 1:
-            signals.append("VolumeCluster")
-        if is_final:
-            signals.append("FinalSpike")
+            signal_type = "VolumeCluster"
+
 
         timestamp = datetime.fromtimestamp(row.get("close_time", 0) / 1000).strftime(
             "%Y-%m-%d %H:%M:%S"
@@ -505,7 +504,6 @@ class SpikeHunterV2:
             "is_aug_only": is_aug_only,
             "is_suppressed": is_supp,
             "signal_type": signal_type,
-            "signals": signals,
             "number_of_trades": int(number_of_trades),
             "number_of_trades_thr": float(number_trades_thr),
             "volume": float(volume),
@@ -532,9 +530,7 @@ class SpikeHunterV2:
             last_spike["cumulative_price_break_flag"]
             or last_spike["is_suppressed"]
             or last_spike["volume_cluster_flag"]
-            or last_spike["is_final_spike"]
             or last_spike["early_proba_aug_flag"]
-            or last_spike["price_break_flag"]
             or last_spike["accel_spike_flag"]
         ) and last_spike["number_of_trades"] > 8:
 
