@@ -9,7 +9,7 @@ from producers.base import BaseProducer
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import CloseConditions, Strategy
 from shared.exceptions import AutotradeError
-from shared.utils import round_numbers, supress_notation
+from shared.utils import round_numbers, suppress_notation
 
 
 class Autotrade(BaseProducer, BinbotApi):
@@ -133,7 +133,7 @@ class Autotrade(BaseProducer, BinbotApi):
 
                 ticker = self.ticker_24_price(symbol=self.pair)
                 rate = ticker["price"]
-                qty = supress_notation(b["free"], self.decimals)
+                qty = suppress_notation(b["free"], self.decimals)
                 # Round down to 6 numbers to avoid not enough funds
                 base_order_size = (
                     math.floor((float(qty) / float(rate)) * 10000000) / 10000000
