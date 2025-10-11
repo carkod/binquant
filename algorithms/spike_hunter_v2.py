@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 from os import getenv, path
 from typing import TYPE_CHECKING
@@ -10,7 +11,7 @@ import pandas as pd
 from algorithms.heikin_ashi import HeikinAshi
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
-from shared.utils import safe_format
+from shared.utils import safe_format, timestamp_to_datetime
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -451,29 +452,31 @@ class SpikeHunterV2:
             and row.get("early_proba_aug_flag", 0) == 1
         )
         is_supp = bool(row.get("suppressed_label", 0) == 1)
+
+        signal_type: str = ""
+
         if is_final:
             signal_type = "AugOnly" if is_aug_only else "FinalSpike"
-        elif is_supp:
+        if is_supp:
             signal_type = "Suppressed"
-        else:
-            signal_type = None
 
         # Assemble component signals list (kept consistent with notebook version)
-        signals = []
         if row.get("cumulative_price_break_flag", 0) == 1:
-            signals.append("Cumulative")
+            signal_type = "Cumulative"
         if row.get("accel_spike_flag", 0) == 1:
-            signals.append("Accel")
+            signal_type = "Acceleration"
         if row.get("price_break_flag", 0) == 1:
-            signals.append("PriceBreak")
+            signal_type = "PriceBreak"
         if row.get("volume_cluster_flag", 0) == 1:
-            signals.append("VolumeCluster")
-        if is_final:
-            signals.append("FinalSpike")
+            signal_type = "VolumeCluster"
 
-        timestamp = datetime.fromtimestamp(row.get("close_time", 0) / 1000).strftime(
-            "%Y-%m-%d %H:%M:%S"
+        timestamp = (
+            timestamp_to_datetime(row.get("close_time"), force_local=True)
+            if row.get("close_time", None)
+            else timestamp_to_datetime(int(datetime.now().timestamp() * 1000))
         )
+
+        # threshold below which we may want to consider not trading
         number_trades_thr = self.df["number_of_trades"].quantile(0.75)
 
         volume = self.df["volume"].iloc[-1] if "volume" in self.df else 0
@@ -505,7 +508,6 @@ class SpikeHunterV2:
             "is_aug_only": is_aug_only,
             "is_suppressed": is_supp,
             "signal_type": signal_type,
-            "signals": signals,
             "number_of_trades": int(number_of_trades),
             "number_of_trades_thr": float(number_trades_thr),
             "volume": float(volume),
@@ -529,14 +531,16 @@ class SpikeHunterV2:
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
         if (
-            last_spike["cumulative_price_break_flag"]
-            or last_spike["is_suppressed"]
-            or last_spike["volume_cluster_flag"]
-            or last_spike["is_final_spike"]
-            or last_spike["early_proba_aug_flag"]
-            or last_spike["price_break_flag"]
-            or last_spike["accel_spike_flag"]
-        ) and last_spike["number_of_trades"] > 8:
+            (
+                last_spike["cumulative_price_break_flag"]
+                or last_spike["is_suppressed"]
+                or last_spike["volume_cluster_flag"]
+                or last_spike["early_proba_aug_flag"]
+                or last_spike["accel_spike_flag"]
+            )
+            and last_spike["number_of_trades"] > 12
+            and last_spike["number_of_trades_thr"] > 0
+        ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             autotrade = True
 
@@ -544,13 +548,10 @@ class SpikeHunterV2:
             symbol_data = self.current_symbol_data
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
-            timestamp = datetime.fromtimestamp(
-                self.df["close_time"].iloc[-1] / 1000
-            ).strftime("%Y-%m-%d %H:%M:%S")
 
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
-                - ⏰ {timestamp}
+                - ⏰ {last_spike["timestamp"]} ({os.getenv("LOCAL_TIMEZONE", "")})
                 - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
                 - $: +{current_price:,.4f}
                 - 📊 {base_asset} volume: {last_spike["volume"]}
