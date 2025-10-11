@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from os import getenv, path
 from typing import TYPE_CHECKING
 
@@ -59,16 +60,12 @@ class SpikeHunterV2:
     def __init__(
         self,
         cls: "CryptoAnalytics",
-        interval: str = "15m",
-        limit: int = 500,
     ):
         self.symbol = cls.symbol
         script_dir = path.dirname(__file__)
         rel_path = "checkpoints/spikehunter_model_v2.pkl"
         abs_file_path = path.join(script_dir, rel_path)
         self.bundle = joblib.load(abs_file_path)
-        self.interval = interval
-        self.limit = limit
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
@@ -143,38 +140,23 @@ class SpikeHunterV2:
             "early_proba_augment", True
         )
         self.early_proba_slope_lookback = 3
-        self._auto_calibrated = False
 
     def cleanup(self):
         self.df.dropna(inplace=True)
         self.df.reset_index(drop=True, inplace=True)
 
-    # -------- Auto Calibration -------- #
     def auto_calibrate(
         self,
         volume_quantile: float = 0.985,
         price_base_floor_quantile: float = 0.80,
         min_volume_ratio: float = 1.3,
         min_price_abs_floor: float = 0.02,
-        verbose: bool = True,
     ):
-        if self._auto_calibrated:
-            if verbose:
-                print("[AutoCalibrate] Already calibrated; skipping.")
-            return
-        if len(self.df) < 60:
-            if verbose:
-                print(
-                    "[AutoCalibrate] Not enough data (<60 rows); skipping calibration."
-                )
-            return
         vols = self.df.get("volume_ratio", pd.Series(dtype=float)).dropna()
         pcs = self.df.get("price_change_abs", pd.Series(dtype=float)).dropna()
         if vols.empty or pcs.empty:
-            if verbose:
-                print("[AutoCalibrate] Missing distribution data; skipping.")
+            print("[AutoCalibrate] Missing distribution data; skipping.")
             return
-        old_vol_thr = self.volume_cluster_min_ratio
         old_price_floor = self.price_break_base_threshold
         new_vol_thr = float(max(min_volume_ratio, np.quantile(vols, volume_quantile)))
         new_price_floor = float(
@@ -182,18 +164,10 @@ class SpikeHunterV2:
         )
         self.volume_cluster_min_ratio = new_vol_thr
         self.price_break_base_threshold = max(old_price_floor, new_price_floor)
-        self._auto_calibrated = True
-        if verbose:
+        if self.price_break_use_dynamic:
             print(
-                f"[AutoCalibrate] volume_cluster_min_ratio {old_vol_thr:.3f} -> {self.volume_cluster_min_ratio:.3f} (q={volume_quantile})"
+                "[AutoCalibrate] Dynamic price quantile logic will adapt above calibrated floor."
             )
-            print(
-                f"[AutoCalibrate] price_break_base_threshold {old_price_floor:.4f} -> {self.price_break_base_threshold:.4f} (q={price_base_floor_quantile})"
-            )
-            if self.price_break_use_dynamic:
-                print(
-                    "[AutoCalibrate] Dynamic price quantile logic will adapt above calibrated floor."
-                )
 
     # -------- Features -------- #
     def compute_base_features(self, window: int = 12):
@@ -440,14 +414,15 @@ class SpikeHunterV2:
         if self.df.empty:
             return
         self.compute_base_features()
-        if not self._auto_calibrated and not self.lock_thresholds:
-            self.auto_calibrate(verbose=True)
+        self.auto_calibrate()
+        # Recompute base each pass to keep derivative series consistent
+        self.compute_base_features()
         self.apply_preliminary_label()
         self.compute_early_proba()
         self.apply_cooldown()
         return self.df
 
-    def latest_signal(self, run_detect: bool = False) -> dict:
+    def latest_signal(self) -> dict | None:
         """
         Return a rich classification summary for the most recent bar.
         Parameters:
@@ -464,8 +439,10 @@ class SpikeHunterV2:
         """
         if self.df.empty:
             raise RuntimeError("No data available.")
-        if run_detect or "label" not in self.df.columns:
-            self.detect()
+        is_detected = self.detect()
+        if is_detected is None or self.df.empty:
+            return None
+
         row = self.df.iloc[-1]
         is_final = bool(row.get("label", 0) == 1)
         is_aug_only = bool(
@@ -494,12 +471,27 @@ class SpikeHunterV2:
         if is_final:
             signals.append("FinalSpike")
 
+        timestamp = datetime.fromtimestamp(row.get("close_time", 0) / 1000).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        number_trades_thr = self.df["number_of_trades"].quantile(0.75)
+
+        volume = self.df["volume"].iloc[-1] if "volume" in self.df else 0
+        quote_asset_volume = (
+            self.df["quote_asset_volume"].iloc[-1]
+            if "quote_asset_volume" in self.df
+            else 0
+        )
+        number_of_trades = (
+            self.df["number_of_trades"].iloc[-1] if "number_of_trades" in self.df else 0
+        )
+
         return {
-            "timestamp": row.get("timestamp"),
-            "close": float(row.get("close", np.nan)),
-            "label": int(row.get("label", 0)),
-            "label_pre": int(row.get("label_pre", 0)),
-            "early_proba_aug_flag": int(row.get("early_proba_aug_flag", 0)),
+            "timestamp": timestamp,
+            "close": float(row.get("close", 0)),
+            "label": int(row.get("label", 0) == 1),
+            "label_pre": int(row.get("label_pre", 0) == 1),
+            "early_proba_aug_flag": int(row.get("early_proba_aug_flag", 0) == 1),
             # Component flags exposed for richer downstream logic / telemetry
             # Converted to native Python bools for clearer downstream consumption
             "volume_cluster_flag": bool(row.get("volume_cluster_flag", 0) == 1),
@@ -514,6 +506,10 @@ class SpikeHunterV2:
             "is_suppressed": is_supp,
             "signal_type": signal_type,
             "signals": signals,
+            "number_of_trades": int(number_of_trades),
+            "number_of_trades_thr": float(number_trades_thr),
+            "volume": float(volume),
+            "quote_asset_volume": float(quote_asset_volume),
         }
 
     async def signal(
@@ -540,7 +536,7 @@ class SpikeHunterV2:
             or last_spike["early_proba_aug_flag"]
             or last_spike["price_break_flag"]
             or last_spike["accel_spike_flag"]
-        ):
+        ) and last_spike["number_of_trades"] > 8:
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             autotrade = True
 
@@ -548,23 +544,17 @@ class SpikeHunterV2:
             symbol_data = self.current_symbol_data
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
-
-            volume = self.df["volume"].iloc[-1] if "volume" in self.df else 0
-            number_of_trades = (
-                self.df["number_of_trades"].iloc[-1]
-                if "number_of_trades" in self.df
-                else 0
-            )
+            timestamp = datetime.fromtimestamp(
+                self.df["close_time"].iloc[-1] / 1000
+            ).strftime("%Y-%m-%d %H:%M:%S")
 
             msg = f"""
                 - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
-                - $: +{last_spike["price_change_pct"]}
-                - Number of trades: {number_of_trades}
-                - 📊 {base_asset} volume: {volume}
-                - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]:,.0f}
-                - 📊 RSI: {safe_format(last_spike["rsi"], ".2f")}
-                - 📏 Body Size %: {safe_format(last_spike["body_size_pct"], ".4f")}
-                - Number of Trades: {last_spike["number_of_trades"]}
+                - ⏰ {timestamp}
+                - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
+                - $: +{current_price:,.4f}
+                - 📊 {base_asset} volume: {last_spike["volume"]}
+                - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]}
                 - ₿ Correlation: {safe_format(self.btc_correlation)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
@@ -586,5 +576,3 @@ class SpikeHunterV2:
             )
             await self.telegram_consumer.send_signal(value.model_dump_json())
             await self.at_consumer.process_autotrade_restrictions(value)
-
-            return True

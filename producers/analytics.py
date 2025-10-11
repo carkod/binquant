@@ -6,11 +6,11 @@ from pandas import DataFrame, to_datetime
 from algorithms.atr_breakout import ATRBreakout
 from algorithms.coinrule import Coinrule
 from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
-from algorithms.local_min_max import local_min_max
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_memes import SpikeHunterMeme
 from algorithms.spike_hunter_v2 import SpikeHunterV2
 from algorithms.spikehunter_v1 import SpikeHunter
+from algorithms.whale_signals import WhaleSignals
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
@@ -179,6 +179,7 @@ class CryptoAnalytics:
         self.cr = Coinrule(cls=self)
         self.shm = SpikeHunterMeme(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
+        self.whale = WhaleSignals(cls=self)
 
     async def process_data(self, candles):
         """
@@ -237,38 +238,38 @@ class CryptoAnalytics:
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
-            await self.mda.signal(
-                close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
-            )
+            # await self.mda.signal(
+            #     close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
+            # )
 
-            emitted = await self.ha_sh.ha_spike_hunter(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # emitted = await self.ha_sh.ha_spike_hunter(
+            #     current_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
-            emitted = await self.shm.signal(
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # emitted = await self.shm.signal(
+            #     current_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
-            if not emitted:
-                await self.sh.spike_hunter_bullish(
-                    current_price=close_price,
-                    bb_high=bb_high,
-                    bb_low=bb_low,
-                    bb_mid=bb_mid,
-                )
+            # if not emitted:
+            #     await self.sh.spike_hunter_bullish(
+            #         current_price=close_price,
+            #         bb_high=bb_high,
+            #         bb_low=bb_low,
+            #         bb_mid=bb_mid,
+            #     )
 
-                await self.sh.spike_hunter_breakouts(
-                    current_price=close_price,
-                    bb_high=bb_high,
-                    bb_low=bb_low,
-                    bb_mid=bb_mid,
-                )
+            #     await self.sh.spike_hunter_breakouts(
+            #         current_price=close_price,
+            #         bb_high=bb_high,
+            #         bb_low=bb_low,
+            #         bb_mid=bb_mid,
+            #     )
 
             await self.sh2.signal(
                 current_price=close_price,
@@ -277,40 +278,42 @@ class CryptoAnalytics:
                 bb_mid=bb_mid,
             )
 
-            await self.atr.atr_breakout(bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid)
-            await self.atr.reverse_atr_breakout(
-                bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
-            )
+            # await self.cr.supertrend_swing_reversal(
+            #     close_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
-            await self.cr.supertrend_swing_reversal(
-                close_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-            )
+            # await self.cr.buy_low_sell_high(
+            #     close_price=close_price,
+            #     rsi=self.df["rsi"].iloc[-1],
+            #     ma_25=self.df["ma_25"].iloc[-1],
+            #     bb_high=bb_high,
+            #     bb_mid=bb_mid,
+            #     bb_low=bb_low,
+            # )
 
-            await self.cr.buy_low_sell_high(
-                close_price=close_price,
-                rsi=self.df["rsi"].iloc[-1],
-                ma_25=self.df["ma_25"].iloc[-1],
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            )
+            # await local_min_max(
+            #     df=self.df,
+            #     current_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            #     symbol=self.symbol,
+            #     telegram=self.telegram_consumer,
+            #     at_consumer=self.at_consumer,
+            #     precision=self.current_symbol_data["price_precision"]
+            #     if self.current_symbol_data
+            #     else 2,
+            # )
 
-            await local_min_max(
-                df=self.df,
-                current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-                symbol=self.symbol,
-                telegram=self.telegram_consumer,
-                at_consumer=self.at_consumer,
-                precision=self.current_symbol_data["price_precision"]
-                if self.current_symbol_data
-                else 2,
-            )
+            # await self.whale.signal(
+            #     current_price=close_price,
+            #     bb_high=bb_high,
+            #     bb_low=bb_low,
+            #     bb_mid=bb_mid,
+            # )
 
             # avoid repeating signals in short periods of time
             self.repeated_signals[self.symbol] = datetime.now()

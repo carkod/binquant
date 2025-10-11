@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from pandas import to_datetime
 
 from models.signals import BollinguerSpread, SignalsConsumer
-from shared.enums import Strategy
+from shared.enums import MarketDominance, Strategy
 from shared.indicators import Indicators
 from shared.utils import round_numbers
 
@@ -100,6 +100,7 @@ class Coinrule:
             and self.ti.df["number_of_trades"].iloc[-1] > 5
             and adp_diff > 0
             and adp_diff_prev > 0
+            and self.ti.current_market_dominance == MarketDominance.LOSERS
         ):
             algo = "coinrule_supertrend_swing_reversal"
             bb_high, bb_mid, bb_low = self.ti.bb_spreads()
