@@ -5,9 +5,11 @@ import re
 from datetime import datetime
 from decimal import Decimal
 from time import sleep
+from zoneinfo import ZoneInfo
+
 from aiohttp import ClientResponse
 from requests import Response
-from zoneinfo import ZoneInfo
+
 from shared.exceptions import BinbotError, InvalidSymbol
 
 
@@ -147,6 +149,19 @@ def handle_binance_errors(response: Response):
 
 
 def timestamp_to_datetime(timestamp: str | int, force_local: bool = False) -> str:
+    """
+    Convert a timestamp in milliseconds to seconds
+    to match expection of datetime
+    Then convert to a human readable format.
+
+    Parameters
+    ----------
+    timestamp : str | int
+        The timestamp in milliseconds.
+    force_local : bool, default False
+        If True, convert to local timezone specified by LOCAL_TIMEZONE (London).
+        If False, convert to UTC.
+    """
     format = "%Y-%m-%d %H:%M:%S"
     timestamp = int(round_numbers_ceiling(int(timestamp) / 1000, 0))
     if force_local:

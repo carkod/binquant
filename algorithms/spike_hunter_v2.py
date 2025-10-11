@@ -1,7 +1,7 @@
 import logging
+import os
 from datetime import datetime
 from os import getenv, path
-import os
 from typing import TYPE_CHECKING
 
 import joblib
@@ -471,11 +471,12 @@ class SpikeHunterV2:
             signal_type = "VolumeCluster"
 
         timestamp = (
-            timestamp_to_datetime(row.get("close_time") / 1000, force_local=True)
+            timestamp_to_datetime(row.get("close_time"), force_local=True)
             if row.get("close_time", None)
-            else timestamp_to_datetime(datetime.now())
+            else timestamp_to_datetime(int(datetime.now().timestamp() * 1000))
         )
 
+        # threshold below which we may want to consider not trading
         number_trades_thr = self.df["number_of_trades"].quantile(0.75)
 
         volume = self.df["volume"].iloc[-1] if "volume" in self.df else 0
@@ -530,12 +531,16 @@ class SpikeHunterV2:
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
         if (
-            last_spike["cumulative_price_break_flag"]
-            or last_spike["is_suppressed"]
-            or last_spike["volume_cluster_flag"]
-            or last_spike["early_proba_aug_flag"]
-            or last_spike["accel_spike_flag"]
-        ) and last_spike["number_of_trades"] > 8:
+            (
+                last_spike["cumulative_price_break_flag"]
+                or last_spike["is_suppressed"]
+                or last_spike["volume_cluster_flag"]
+                or last_spike["early_proba_aug_flag"]
+                or last_spike["accel_spike_flag"]
+            )
+            and last_spike["number_of_trades"] > 12
+            and last_spike["number_of_trades_thr"] > 0
+        ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             autotrade = True
 
