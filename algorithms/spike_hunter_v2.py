@@ -410,6 +410,21 @@ class SpikeHunterV2:
         if suppressed:
             print(f"[Cooldown] Suppressed {suppressed} labels")
 
+    def detect_streaks(self, streak_length: int = 3):
+        """
+        Detect upward and downward spikes based on consecutive green/red candles.
+        Returns boolean Series for upward and downward streak spikes.
+        """
+        green_candles = (self.df["close"] > self.df["open"]).astype(int)
+        up_streak = green_candles.rolling(window=streak_length).sum()
+        upward_streak = up_streak >= streak_length
+
+        red_candles = (self.df["close"] < self.df["open"]).astype(int)
+        down_streak = red_candles.rolling(window=streak_length).sum()
+        downward_streak = down_streak >= streak_length
+        self.df["upward"] = upward_streak.astype(int)
+        self.df["downward"] = downward_streak.astype(int)
+
     # -------------- Public API -------------- #
     def detect(self) -> pd.DataFrame:
         if self.df.empty:
@@ -421,6 +436,7 @@ class SpikeHunterV2:
         self.apply_preliminary_label()
         self.compute_early_proba()
         self.apply_cooldown()
+        self.detect_streaks()
         return self.df
 
     def latest_signal(self) -> dict | None:
@@ -445,18 +461,16 @@ class SpikeHunterV2:
             return None
 
         row = self.df.iloc[-1]
-        is_final = bool(row.get("label", 0) == 1)
+        signal_type: str = ""
         is_aug_only = bool(
-            is_final
+            row.get("label", 0) == 1
             and row.get("label_pre", 0) == 0
             and row.get("early_proba_aug_flag", 0) == 1
         )
         is_supp = bool(row.get("suppressed_label", 0) == 1)
 
-        signal_type: str = ""
-
-        if is_final:
-            signal_type = "AugOnly" if is_aug_only else "FinalSpike"
+        if is_aug_only:
+            signal_type = "AugOnly"
         if is_supp:
             signal_type = "Suppressed"
 
@@ -504,7 +518,6 @@ class SpikeHunterV2:
             ),
             "accel_spike_flag": bool(row.get("accel_spike_flag", 0) == 1),
             # Classification meta
-            "is_final_spike": is_final,
             "is_aug_only": is_aug_only,
             "is_suppressed": is_supp,
             "signal_type": signal_type,
@@ -512,6 +525,8 @@ class SpikeHunterV2:
             "number_of_trades_thr": float(number_trades_thr),
             "volume": float(volume),
             "quote_asset_volume": float(quote_asset_volume),
+            "upward": bool(row.get("upward", 0) == 1),
+            "downward": bool(row.get("downward", 0) == 1),
         }
 
     async def signal(
@@ -542,15 +557,20 @@ class SpikeHunterV2:
             and last_spike["number_of_trades_thr"] > 0
         ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
+            bot_strategy = Strategy.long
+            if last_spike["downward"]:
+                bot_strategy = Strategy.margin_short
+
             autotrade = True
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
             symbol_data = self.current_symbol_data
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
+            streak = "📈" if last_spike["upward"] else "📉"
 
             msg = f"""
-                - 🔥 [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+                - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol} ()
                 - ⏰ {last_spike["timestamp"]} ({os.getenv("LOCAL_TIMEZONE", "")})
                 - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
                 - $: +{current_price:,.4f}
@@ -568,7 +588,7 @@ class SpikeHunterV2:
                 msg=msg,
                 symbol=self.symbol,
                 algo=algo,
-                bot_strategy=Strategy.long,
+                bot_strategy=bot_strategy,
                 bb_spreads=BollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
