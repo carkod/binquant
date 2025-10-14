@@ -560,6 +560,7 @@ class SpikeHunterV2:
             bot_strategy = Strategy.long
             if last_spike["downward"]:
                 bot_strategy = Strategy.margin_short
+                autotrade = False
 
             autotrade = True
 
@@ -570,8 +571,8 @@ class SpikeHunterV2:
             streak = "📈" if last_spike["upward"] else "📉"
 
             msg = f"""
-                - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol} ()
-                - ⏰ {last_spike["timestamp"]} ({os.getenv("LOCAL_TIMEZONE", "")})
+                - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+                - ⏰ {last_spike["timestamp"]}
                 - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
                 - $: +{current_price:,.4f}
                 - 📊 {base_asset} volume: {last_spike["volume"]}
