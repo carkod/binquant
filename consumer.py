@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.structs import TopicPartition
@@ -19,12 +20,18 @@ async def data_process_pipe() -> None:
     Milliseconds are adjusted to minimize CommitFails
     """
 
+    # Generate a unique consumer group id each run so we always start fresh at latest offsets
+    # (no resuming previous committed offsets)
+    random_group_id = f"data-process-{uuid.uuid4()}"
+
     consumer = AIOKafkaConsumer(
         KafkaTopics.klines_store_topic.value,
         KafkaTopics.restart_streaming.value,
         bootstrap_servers=f"{os.environ['KAFKA_HOST']}:{os.environ['KAFKA_PORT']}",
         value_deserializer=lambda m: json.loads(m),
-        group_id="data-process-group",
+        group_id=random_group_id,
+        # With a brand new group we can just start at latest; keep manual commit logic for explicit control
+        auto_offset_reset="latest",
         enable_auto_commit=False,
         session_timeout_ms=60000,
         heartbeat_interval_ms=20000,
@@ -66,34 +73,10 @@ async def data_process_pipe() -> None:
 
     try:
         await consumer.start()
-        # Fast-forward: skip any existing backlog and start consuming only new messages
-        try:
-            # Wait briefly for assignment
-            attempts = 0
-            while not consumer.assignment() and attempts < 100:
-                await asyncio.sleep(0.05)
-                attempts += 1
-            assignment = list(consumer.assignment())
-            if assignment:
-                end_offsets = await consumer.end_offsets(assignment)
-                for tp, end_offset in end_offsets.items():
-                    consumer.seek(tp, end_offset)
-                # Commit these positions so the group offset is persisted
-                # end_offsets is already a dict[TopicPartition, int]
-                await consumer.commit(end_offsets)
-                logging.info(
-                    "Consumer fast-forwarded to latest offsets: %s",
-                    {
-                        f"{tp.topic}:{tp.partition}": off
-                        for tp, off in end_offsets.items()
-                    },
-                )
-            else:
-                logging.warning(
-                    "No assignment available to fast-forward; starting normally."
-                )
-        except Exception as e:
-            logging.error("Failed to fast-forward to end offsets: %s", e, exc_info=True)
+        logging.info(
+            "Started consumer with fresh group id %s (auto_offset_reset=latest)",
+            random_group_id,
+        )
         async for message in consumer:
             # Process message sequentially - wait for completion before next
             success = await handle_message(message)
