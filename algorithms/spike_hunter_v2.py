@@ -1,5 +1,4 @@
 import logging
-import os
 from datetime import datetime
 from os import getenv, path
 from typing import TYPE_CHECKING
@@ -572,7 +571,8 @@ class SpikeHunterV2:
 
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
-                - ⏰ {last_spike["timestamp"]}
+                - Last close timestamp: {last_spike["timestamp"]}
+                - Current time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
                 - $: +{current_price:,.4f}
                 - 📊 {base_asset} volume: {last_spike["volume"]}
