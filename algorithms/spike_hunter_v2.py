@@ -557,17 +557,22 @@ class SpikeHunterV2:
         ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             bot_strategy = Strategy.long
-            if last_spike["downward"]:
+            autotrade = True
+
+            if last_spike["upward"]:
+                streak = "📈"
+            elif last_spike["downward"]:
+                streak = "📉"
                 bot_strategy = Strategy.margin_short
                 autotrade = False
-
-            autotrade = True
+            else:
+                streak = "N/A"
+                autotrade = False
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
             symbol_data = self.current_symbol_data
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
-            streak = "📈" if last_spike["upward"] else "📉"
 
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
