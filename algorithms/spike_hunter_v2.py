@@ -562,19 +562,25 @@ class SpikeHunterV2:
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             bot_strategy = Strategy.long
             autotrade = True
+            symbol_data = self.current_symbol_data
 
             if last_spike["upward"]:
                 streak = "📈"
             elif last_spike["downward"]:
+                if symbol_data and not symbol_data["is_margin_trading_allowed"]:
+                    logging.info(
+                        f"Skipping downward spike for {self.symbol}: margin trading not allowed."
+                    )
+                    return
                 streak = "📉"
                 bot_strategy = Strategy.margin_short
                 autotrade = False
             else:
                 streak = "N/A"
                 autotrade = False
+                return
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
-            symbol_data = self.current_symbol_data
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
 
