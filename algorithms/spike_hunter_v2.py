@@ -577,7 +577,6 @@ class SpikeHunterV2:
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
                 - Last close timestamp: {last_spike["timestamp"]}
-                - Current time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
                 - $: +{current_price:,.4f}
                 - 📊 {base_asset} volume: {last_spike["volume"]}
