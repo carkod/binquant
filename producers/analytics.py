@@ -16,7 +16,6 @@ from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.indicators import Indicators
-from shared.ohlc import OHLCDataFrame
 from shared.utils import round_numbers
 
 
@@ -25,10 +24,7 @@ class CryptoAnalytics:
         self,
         producer: Producer,
         binbot_api: BinbotApi,
-        df: DataFrame,
         symbol,
-        df_4h,
-        df_1h,
         top_gainers_day,
         market_breadth_data,
         top_losers_day,
@@ -45,10 +41,10 @@ class CryptoAnalytics:
         self.producer = producer
         self.binbot_api = binbot_api
         self.symbol = symbol
-        self.ha_df: OHLCDataFrame = HeikinAshi.get_heikin_ashi(df.copy())
-        self.df = df
-        self.df_4h = df_4h
-        self.df_1h = df_1h
+        self.df = DataFrame()
+        self.df_4h = DataFrame()
+        self.df_1h = DataFrame()
+        self.ha_df = DataFrame()
         self.interval = BinanceKlineIntervals.fifteen_minutes.value
         # describes current USDC market: gainers vs losers
         self.current_market_dominance: MarketDominance = MarketDominance.NEUTRAL
@@ -143,6 +139,9 @@ class CryptoAnalytics:
         price_volume_columns = ["open", "high", "low", "close", "volume"]
         self.df[price_volume_columns] = self.df[price_volume_columns].astype(float)
 
+        # Generate Heikin Ashi DataFrame once processed and cleaned
+        self.ha_df = HeikinAshi.get_heikin_ashi(self.df.copy())
+
         # Ensure close_time is datetime and set as index for proper resampling
         self.df["timestamp"] = to_datetime(self.df["close_time"], unit="ms")
         self.df.set_index("timestamp", inplace=True)
@@ -203,6 +202,7 @@ class CryptoAnalytics:
 
         self.preprocess_data(candles)
 
+        # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
         if self.df.empty is False and self.df.close.size > 0:
             # Basic technical indicators
             # This would be an ideal process to spark.parallelize

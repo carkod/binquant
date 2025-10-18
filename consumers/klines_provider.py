@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime
 
-import pandas as pd
 from kafka import KafkaConsumer
 
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -32,9 +31,6 @@ class KlinesProvider:
             "close_time": "last",
             "open_time": "first",
         }
-        self.df = pd.DataFrame()
-        self.df_4h = pd.DataFrame()
-        self.df_1h = pd.DataFrame()
         self.all_symbols = self.binbot_api.get_symbols()
 
     async def load_data_on_start(self):
@@ -83,10 +79,7 @@ class KlinesProvider:
             crypto_analytics = CryptoAnalytics(
                 producer=self.producer,
                 binbot_api=self.binbot_api,
-                df=self.df,
                 symbol=symbol,
-                df_4h=self.df_4h,
-                df_1h=self.df_1h,
                 top_gainers_day=self.top_gainers_day,
                 market_breadth_data=self.market_breadth_data,
                 top_losers_day=self.top_losers_day,

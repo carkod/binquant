@@ -10,7 +10,7 @@ import pandas as pd
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
 from shared.heikin_ashi import HeikinAshi
-from shared.utils import safe_format, timestamp_to_datetime
+from shared.utils import round_numbers, timestamp_to_datetime
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -69,6 +69,7 @@ class SpikeHunterV2:
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
+        self.price_precision = cls.binbot_api.price_precision(symbol=cls.symbol)
         self.current_symbol_data = cls.current_symbol_data
         self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer
@@ -579,20 +580,20 @@ class SpikeHunterV2:
 
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+                - Current price: {round_numbers(current_price, decimals=self.price_precision)}
                 - Last close timestamp: {last_spike["timestamp"]}
-                - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
-                - $: +{current_price:,.4f}
-                - 📊 {base_asset} volume: {last_spike["volume"]}
-                - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]}
+                - Number of trades: {last_spike["number_of_trades"]} (thr: {round_numbers(last_spike["number_of_trades_thr"], decimals=self.price_precision)})
+                - 📊 {base_asset} volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)}
+                - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
                 - Heikin Ashi BB:
-                    - High: {safe_format(ha_bb_high)}
-                    - Mid: {safe_format(ha_bb_mid)}
-                    - Low: {safe_format(ha_bb_low)}
+                    - High: {round_numbers(ha_bb_high, decimals=self.price_precision)}
+                    - Mid: {round_numbers(ha_bb_mid, decimals=self.price_precision)}
+                    - Low: {round_numbers(ha_bb_low, decimals=self.price_precision)}
                 - Bollinguer BB:
-                    - High: {safe_format(bb_high)}
-                    - Mid: {safe_format(bb_mid)}
-                    - Low: {safe_format(bb_low)}
-                - ₿ Correlation: {safe_format(self.btc_correlation)}
+                    - High: {round_numbers(bb_high, decimals=self.price_precision)}
+                    - Mid: {round_numbers(bb_mid, decimals=self.price_precision)}
+                    - Low: {round_numbers(bb_low, decimals=self.price_precision)}
+                - ₿ Correlation: {round_numbers(self.btc_correlation, decimals=self.price_precision)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
