@@ -1,10 +1,8 @@
 from datetime import datetime, timedelta
 
-from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 
-from algorithms.atr_breakout import ATRBreakout
 from algorithms.coinrule import Coinrule
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_memes import SpikeHunterMeme
@@ -191,8 +189,6 @@ class CryptoAnalytics:
 
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh = SpikeHunter(cls=self)
-        self.atr = ATRBreakout(cls=self)
-        self.ha_sh = HASpikeHunter(cls=self)
         self.cr = Coinrule(cls=self)
         self.shm = SpikeHunterMeme(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
@@ -263,13 +259,6 @@ class CryptoAnalytics:
             #     close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
             # )
 
-            # emitted = await self.ha_sh.ha_spike_hunter(
-            #     current_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            # )
-
             # emitted = await self.shm.signal(
             #     current_price=close_price,
             #     bb_high=bb_high,
@@ -307,15 +296,6 @@ class CryptoAnalytics:
             #     bb_high=bb_high,
             #     bb_low=bb_low,
             #     bb_mid=bb_mid,
-            # )
-
-            # await self.cr.buy_low_sell_high(
-            #     close_price=close_price,
-            #     rsi=self.df["rsi"].iloc[-1],
-            #     ma_25=self.df["ma_25"].iloc[-1],
-            #     bb_high=bb_high,
-            #     bb_mid=bb_mid,
-            #     bb_low=bb_low,
             # )
 
             # await local_min_max(
