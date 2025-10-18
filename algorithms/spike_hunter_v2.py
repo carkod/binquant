@@ -7,9 +7,9 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from shared.heikin_ashi import HeikinAshi
-from models.signals import BollinguerSpread, SignalsConsumer, HABollinguerSpread
+from models.signals import BollinguerSpread, HABollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
+from shared.heikin_ashi import HeikinAshi
 from shared.utils import safe_format, timestamp_to_datetime
 
 if TYPE_CHECKING:

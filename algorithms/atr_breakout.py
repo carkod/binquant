@@ -1,12 +1,14 @@
 # prevent annotations causing circular imports (they are delayed)
 from __future__ import annotations
+
 import logging
 import os
+
 from models.signals import BollinguerSpread, SignalsConsumer
+from producers.analytics import CryptoAnalytics
 from shared.enums import MarketDominance
 from shared.indicators import Indicators
 from shared.utils import round_numbers
-from producers.analytics import CryptoAnalytics
 
 
 class ATRBreakout:

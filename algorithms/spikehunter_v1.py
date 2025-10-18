@@ -7,9 +7,9 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from shared.heikin_ashi import HeikinAshi
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import MarketDominance, Strategy
+from shared.heikin_ashi import HeikinAshi
 from shared.utils import safe_format
 
 logging.basicConfig(level=logging.INFO)
