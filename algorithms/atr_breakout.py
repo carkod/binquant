@@ -1,18 +1,16 @@
+# prevent annotations causing circular imports (they are delayed)
+from __future__ import annotations
 import logging
 import os
-from typing import TYPE_CHECKING
-
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import MarketDominance
 from shared.indicators import Indicators
 from shared.utils import round_numbers
-
-if TYPE_CHECKING:
-    from producers.analytics import CryptoAnalytics
+from producers.analytics import CryptoAnalytics
 
 
 class ATRBreakout:
-    def __init__(self, cls: "CryptoAnalytics") -> None:
+    def __init__(self, cls: CryptoAnalytics) -> None:
         """
         Calculate the Average True Range (ATR) indicator.
         ATR is a measure of volatility.

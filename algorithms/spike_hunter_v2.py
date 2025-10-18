@@ -7,8 +7,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from algorithms.heikin_ashi import HeikinAshi
-from models.signals import BollinguerSpread, SignalsConsumer
+from shared.heikin_ashi import HeikinAshi
+from models.signals import BollinguerSpread, SignalsConsumer, HABollinguerSpread
 from shared.enums import Strategy
 from shared.utils import safe_format, timestamp_to_datetime
 
@@ -598,6 +598,11 @@ class SpikeHunterV2:
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,
+                ),
+                bb_spreads_ha=HABollinguerSpread(
+                    ha_bb_high=bb_high,
+                    ha_bb_mid=bb_mid,
+                    ha_bb_low=bb_low,
                 ),
             )
             await self.telegram_consumer.send_signal(value.model_dump_json())

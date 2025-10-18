@@ -11,6 +11,9 @@ from algorithms.spike_hunter_memes import SpikeHunterMeme
 from algorithms.spike_hunter_v2 import SpikeHunterV2
 from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.whale_signals import WhaleSignals
+from shared.ohlc import OHLCDataFrame
+from models.signals import HABollinguerSpread
+from shared.heikin_ashi import HeikinAshi
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
@@ -44,6 +47,7 @@ class CryptoAnalytics:
         self.producer = producer
         self.binbot_api = binbot_api
         self.symbol = symbol
+        self.ha_df: OHLCDataFrame = HeikinAshi.get_heikin_ashi(df.copy())
         self.df = df
         self.df_4h = df_4h
         self.df_1h = df_1h
@@ -87,6 +91,19 @@ class CryptoAnalytics:
             round_numbers(bb_high, 6),
             round_numbers(bb_mid, 6),
             round_numbers(bb_low, 6),
+        )
+
+    def ha_bb_spreads(self) -> HABollinguerSpread:
+        """
+        Calculate Heikin Ashi Bollinguer bands spreads for trailling strategies
+        """
+        ha_bb_high = float(self.ha_df.bb_upper.iloc[-1])
+        ha_bb_mid = float(self.ha_df.bb_mid.iloc[-1])
+        ha_bb_low = float(self.ha_df.bb_lower.iloc[-1])
+        return HABollinguerSpread(
+            ha_bb_high=round_numbers(ha_bb_high, 6),
+            ha_bb_mid=round_numbers(ha_bb_mid, 6),
+            ha_bb_low=round_numbers(ha_bb_low, 6),
         )
 
     def preprocess_data(self, candles):
@@ -207,6 +224,9 @@ class CryptoAnalytics:
             self.df = Indicators.bollinguer_spreads(self.df)
             self.df = Indicators.set_twap(self.df)
 
+            # Heikin Ashi technicals
+            self.ha_df = Indicators.bollinguer_spreads(self.ha_df)
+
             self.postprocess_data()
 
             # Avoid repeated signals in short periods of time
@@ -234,6 +254,7 @@ class CryptoAnalytics:
                 )
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
+            ha_spreads = self.ha_bb_spreads()
 
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
@@ -276,6 +297,7 @@ class CryptoAnalytics:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
+                ha_spreads=ha_spreads,
             )
 
             # await self.cr.supertrend_swing_reversal(

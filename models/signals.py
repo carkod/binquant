@@ -14,6 +14,17 @@ class BollinguerSpread(BaseModel):
     bb_low: float
 
 
+class HABollinguerSpread(BaseModel):
+    """
+    Pydantic model for the Heikin Ashi Bollinguer spread.
+    (optional)
+    """
+
+    ha_bb_high: float
+    ha_bb_mid: float
+    ha_bb_low: float
+
+
 class SignalsConsumer(BaseModel):
     """
     Pydantic model for the signals consumer.
