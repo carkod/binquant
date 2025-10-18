@@ -95,7 +95,9 @@ class BinbotApi(BinanceApi):
         response = await self.fetch(
             url=f"{self.bb_base_url}/charts/adr-series", params={"size": size}
         )
-        return response["data"]
+        if "data" in response:
+            return response["data"]
+        return None
 
     def get_latest_btc_price(self):
         # Get 24hr last BTCUSDC
