@@ -7,7 +7,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from models.signals import BollinguerSpread, HABollinguerSpread, SignalsConsumer
+from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import safe_format, timestamp_to_datetime
@@ -534,6 +534,9 @@ class SpikeHunterV2:
         bb_high: float,
         bb_low: float,
         bb_mid: float,
+        ha_bb_high: float,
+        ha_bb_low: float,
+        ha_bb_mid: float,
     ):
         last_spike = self.latest_signal()
 
@@ -581,6 +584,14 @@ class SpikeHunterV2:
                 - $: +{current_price:,.4f}
                 - 📊 {base_asset} volume: {last_spike["volume"]}
                 - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]}
+                - Heikin Ashi BB:
+                    - High: {safe_format(ha_bb_high)}
+                    - Mid: {safe_format(ha_bb_mid)}
+                    - Low: {safe_format(ha_bb_low)}
+                - Bollinguer BB:
+                    - High: {safe_format(bb_high)}
+                    - Mid: {safe_format(bb_mid)}
+                    - Low: {safe_format(bb_low)}
                 - ₿ Correlation: {safe_format(self.btc_correlation)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
@@ -598,11 +609,6 @@ class SpikeHunterV2:
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,
-                ),
-                bb_spreads_ha=HABollinguerSpread(
-                    ha_bb_high=bb_high,
-                    ha_bb_mid=bb_mid,
-                    ha_bb_low=bb_low,
                 ),
             )
             await self.telegram_consumer.send_signal(value.model_dump_json())

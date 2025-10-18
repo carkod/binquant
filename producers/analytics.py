@@ -297,7 +297,9 @@ class CryptoAnalytics:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
-                ha_spreads=ha_spreads,
+                ha_bb_high=ha_spreads.ha_bb_high,
+                ha_bb_mid=ha_spreads.ha_bb_mid,
+                ha_bb_low=ha_spreads.ha_bb_low,
             )
 
             # await self.cr.supertrend_swing_reversal(
