@@ -1,5 +1,4 @@
 import logging
-import os
 from datetime import datetime
 from os import getenv, path
 from typing import TYPE_CHECKING
@@ -558,20 +557,27 @@ class SpikeHunterV2:
         ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             bot_strategy = Strategy.long
-            if last_spike["downward"]:
-                bot_strategy = Strategy.margin_short
-
             autotrade = True
+
+            if last_spike["upward"]:
+                streak = "📈"
+            elif last_spike["downward"]:
+                streak = "📉"
+                bot_strategy = Strategy.margin_short
+                autotrade = False
+            else:
+                streak = "N/A"
+                autotrade = False
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
             symbol_data = self.current_symbol_data
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
-            streak = "📈" if last_spike["upward"] else "📉"
 
             msg = f"""
-                - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol} ()
-                - ⏰ {last_spike["timestamp"]} ({os.getenv("LOCAL_TIMEZONE", "")})
+                - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+                - Last close timestamp: {last_spike["timestamp"]}
+                - Current time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
                 - $: +{current_price:,.4f}
                 - 📊 {base_asset} volume: {last_spike["volume"]}
