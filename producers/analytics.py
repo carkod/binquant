@@ -3,9 +3,7 @@ from datetime import datetime, timedelta
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 
-from algorithms.atr_breakout import ATRBreakout
 from algorithms.coinrule import Coinrule
-from algorithms.heikin_ashi_spike_hunter import HASpikeHunter
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_memes import SpikeHunterMeme
 from algorithms.spike_hunter_v2 import SpikeHunterV2
@@ -13,8 +11,10 @@ from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.whale_signals import WhaleSignals
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
+from models.signals import HABollinguerSpread
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
+from shared.heikin_ashi import HeikinAshi
 from shared.indicators import Indicators
 from shared.utils import round_numbers
 
@@ -24,10 +24,7 @@ class CryptoAnalytics:
         self,
         producer: Producer,
         binbot_api: BinbotApi,
-        df: DataFrame,
         symbol,
-        df_4h,
-        df_1h,
         top_gainers_day,
         market_breadth_data,
         top_losers_day,
@@ -44,9 +41,10 @@ class CryptoAnalytics:
         self.producer = producer
         self.binbot_api = binbot_api
         self.symbol = symbol
-        self.df = df
-        self.df_4h = df_4h
-        self.df_1h = df_1h
+        self.df = DataFrame()
+        self.df_4h = DataFrame()
+        self.df_1h = DataFrame()
+        self.ha_df = DataFrame()
         self.interval = BinanceKlineIntervals.fifteen_minutes.value
         # describes current USDC market: gainers vs losers
         self.current_market_dominance: MarketDominance = MarketDominance.NEUTRAL
@@ -89,6 +87,19 @@ class CryptoAnalytics:
             round_numbers(bb_low, 6),
         )
 
+    def ha_bb_spreads(self) -> HABollinguerSpread:
+        """
+        Calculate Heikin Ashi Bollinguer bands spreads for trailling strategies
+        """
+        ha_bb_high = float(self.ha_df.bb_upper.iloc[-1])
+        ha_bb_mid = float(self.ha_df.bb_mid.iloc[-1])
+        ha_bb_low = float(self.ha_df.bb_lower.iloc[-1])
+        return HABollinguerSpread(
+            ha_bb_high=round_numbers(ha_bb_high, 6),
+            ha_bb_mid=round_numbers(ha_bb_mid, 6),
+            ha_bb_low=round_numbers(ha_bb_low, 6),
+        )
+
     def preprocess_data(self, candles):
         # Pre-process
         self.df = DataFrame(candles)
@@ -127,6 +138,9 @@ class CryptoAnalytics:
         # Convert price and volume columns to float
         price_volume_columns = ["open", "high", "low", "close", "volume"]
         self.df[price_volume_columns] = self.df[price_volume_columns].astype(float)
+
+        # Generate Heikin Ashi DataFrame once processed and cleaned
+        self.ha_df = HeikinAshi.get_heikin_ashi(self.df.copy())
 
         # Ensure close_time is datetime and set as index for proper resampling
         self.df["timestamp"] = to_datetime(self.df["close_time"], unit="ms")
@@ -174,8 +188,6 @@ class CryptoAnalytics:
 
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh = SpikeHunter(cls=self)
-        self.atr = ATRBreakout(cls=self)
-        self.ha_sh = HASpikeHunter(cls=self)
         self.cr = Coinrule(cls=self)
         self.shm = SpikeHunterMeme(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
@@ -190,6 +202,7 @@ class CryptoAnalytics:
 
         self.preprocess_data(candles)
 
+        # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
         if self.df.empty is False and self.df.close.size > 0:
             # Basic technical indicators
             # This would be an ideal process to spark.parallelize
@@ -206,6 +219,9 @@ class CryptoAnalytics:
             self.df = Indicators.ma_spreads(self.df)
             self.df = Indicators.bollinguer_spreads(self.df)
             self.df = Indicators.set_twap(self.df)
+
+            # Heikin Ashi technicals
+            self.ha_df = Indicators.bollinguer_spreads(self.ha_df)
 
             self.postprocess_data()
 
@@ -234,19 +250,13 @@ class CryptoAnalytics:
                 )
 
             bb_high, bb_mid, bb_low = self.bb_spreads()
+            ha_spreads = self.ha_bb_spreads()
 
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
             # await self.mda.signal(
             #     close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
-            # )
-
-            # emitted = await self.ha_sh.ha_spike_hunter(
-            #     current_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
             # )
 
             # emitted = await self.shm.signal(
@@ -276,6 +286,9 @@ class CryptoAnalytics:
                 bb_high=bb_high,
                 bb_low=bb_low,
                 bb_mid=bb_mid,
+                ha_bb_high=ha_spreads.ha_bb_high,
+                ha_bb_mid=ha_spreads.ha_bb_mid,
+                ha_bb_low=ha_spreads.ha_bb_low,
             )
 
             # await self.cr.supertrend_swing_reversal(
@@ -283,15 +296,6 @@ class CryptoAnalytics:
             #     bb_high=bb_high,
             #     bb_low=bb_low,
             #     bb_mid=bb_mid,
-            # )
-
-            # await self.cr.buy_low_sell_high(
-            #     close_price=close_price,
-            #     rsi=self.df["rsi"].iloc[-1],
-            #     ma_25=self.df["ma_25"].iloc[-1],
-            #     bb_high=bb_high,
-            #     bb_mid=bb_mid,
-            #     bb_low=bb_low,
             # )
 
             # await local_min_max(

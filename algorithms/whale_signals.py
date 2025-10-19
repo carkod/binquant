@@ -6,9 +6,9 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from algorithms.heikin_ashi import HeikinAshi
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
+from shared.heikin_ashi import HeikinAshi
 from shared.utils import safe_format
 
 if TYPE_CHECKING:

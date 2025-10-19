@@ -7,10 +7,10 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from algorithms.heikin_ashi import HeikinAshi
 from models.signals import BollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
-from shared.utils import safe_format, timestamp_to_datetime
+from shared.heikin_ashi import HeikinAshi
+from shared.utils import round_numbers, timestamp_to_datetime
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -69,6 +69,7 @@ class SpikeHunterV2:
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
+        self.price_precision = cls.binbot_api.price_precision(symbol=cls.symbol)
         self.current_symbol_data = cls.current_symbol_data
         self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer
@@ -534,6 +535,9 @@ class SpikeHunterV2:
         bb_high: float,
         bb_low: float,
         bb_mid: float,
+        ha_bb_high: float,
+        ha_bb_low: float,
+        ha_bb_mid: float,
     ):
         last_spike = self.latest_signal()
 
@@ -558,31 +562,44 @@ class SpikeHunterV2:
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             bot_strategy = Strategy.long
             autotrade = True
+            symbol_data = self.current_symbol_data
 
             if last_spike["upward"]:
                 streak = "📈"
             elif last_spike["downward"]:
+                if symbol_data and not symbol_data["is_margin_trading_allowed"]:
+                    logging.info(
+                        f"Skipping downward spike for {self.symbol}: margin trading not allowed."
+                    )
+                    return
                 streak = "📉"
                 bot_strategy = Strategy.margin_short
                 autotrade = False
             else:
                 streak = "N/A"
                 autotrade = False
+                return
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
-            symbol_data = self.current_symbol_data
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
 
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+                - Current price: {round_numbers(current_price, decimals=self.price_precision)}
                 - Last close timestamp: {last_spike["timestamp"]}
-                - Current time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-                - Number of trades: {last_spike["number_of_trades"]} (thr: {safe_format(last_spike["number_of_trades_thr"])})
-                - $: +{current_price:,.4f}
-                - 📊 {base_asset} volume: {last_spike["volume"]}
-                - 📊 {quote_asset} volume: {last_spike["quote_asset_volume"]}
-                - ₿ Correlation: {safe_format(self.btc_correlation)}
+                - Number of trades: {last_spike["number_of_trades"]} (thr: {round_numbers(last_spike["number_of_trades_thr"], decimals=self.price_precision)})
+                - 📊 {base_asset} volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)}
+                - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
+                - Heikin Ashi BB:
+                    - High: {round_numbers(ha_bb_high, decimals=self.price_precision)}
+                    - Mid: {round_numbers(ha_bb_mid, decimals=self.price_precision)}
+                    - Low: {round_numbers(ha_bb_low, decimals=self.price_precision)}
+                - Bollinguer BB:
+                    - High: {round_numbers(bb_high, decimals=self.price_precision)}
+                    - Mid: {round_numbers(bb_mid, decimals=self.price_precision)}
+                    - Low: {round_numbers(bb_low, decimals=self.price_precision)}
+                - ₿ Correlation: {round_numbers(self.btc_correlation, decimals=self.price_precision)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
                 - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
