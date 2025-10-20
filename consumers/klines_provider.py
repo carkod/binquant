@@ -6,10 +6,9 @@ from kafka import KafkaConsumer
 from consumers.autotrade_consumer import AutotradeConsumer
 from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
-from producers.base import BaseProducer
 from shared.apis.binbot_api import BinanceApi, BinbotApi
 from shared.enums import BinanceKlineIntervals
-
+from shared.streaming.async_producer import AsyncProducer
 
 class KlinesProvider:
     """
@@ -32,12 +31,11 @@ class KlinesProvider:
             "open_time": "first",
         }
         self.all_symbols = self.binbot_api.get_symbols()
+        self.producer = AsyncProducer.initialize()
 
     async def load_data_on_start(self):
         # Klines API dependencies
         self.active_pairs = self.binbot_api.get_active_pairs()
-        base_producer = BaseProducer().start_producer()
-        self.producer = base_producer
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
         self.top_losers_day = await self.binbot_api.get_top_losers()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()

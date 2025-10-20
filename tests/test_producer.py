@@ -1,5 +1,4 @@
 import pytest
-from confluent_kafka import Producer
 
 from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector
@@ -34,7 +33,7 @@ def klines_connector(monkeypatch):
     return KlinesConnector
 
 
-def test_producer(klines_connector: KlinesConnector):
+async def test_producer(klines_connector: KlinesConnector):
     res = {
         "e": "kline",
         "E": 1631598140000,
@@ -59,14 +58,11 @@ def test_producer(klines_connector: KlinesConnector):
             "B": "0",
         },
     }
-    base_producer = BaseProducer()
-    producer = base_producer.start_producer()
-    klines_connector.start_stream()
-    assert isinstance(producer, Producer)
-    klines_connector.process_kline_stream(res)
+    await klines_connector.start_stream()
+    await klines_connector.process_kline_stream(res)
 
 
-def test_producer_error(klines_connector: KlinesConnector):
+async def test_producer_error(klines_connector: KlinesConnector):
     res = {
         "e": "kline",
         "E": 1631598140000,
@@ -77,8 +73,8 @@ def test_producer_error(klines_connector: KlinesConnector):
     base_producer.start_producer()
 
     try:
-        klines_connector.start_stream()
-        klines_connector.process_kline_stream(res)
+        await klines_connector.start_stream()
+        await klines_connector.process_kline_stream(res)
         assert AssertionError()
     except KeyError:
         assert True
