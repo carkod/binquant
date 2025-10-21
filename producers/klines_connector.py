@@ -1,67 +1,83 @@
 import json
 import logging
-
-from confluent_kafka import Producer
-
-from producers.produce_klines import KlinesProducer
+import asyncio
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import BinanceKlineIntervals
-from shared.exceptions import WebSocketError
-from shared.streaming.socket_client import SpotWebsocketStreamClient
+from shared.enums import BinanceKlineIntervals, KafkaTopics
+from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
+from shared.streaming.async_producer import AsyncProducer
+from models.klines import KlineProduceModel
 
 
 class KlinesConnector(BinbotApi):
+    """
+    Klines/Candlestick Streams
+
+    Uses 5m interval data to produce data for analytics
+    which eventually create signals.
+    It's the interface between Binance websocket streams and Kafka producer.
+    """
+
     MAX_MARKETS_PER_CLIENT = 400
 
     def __init__(
         self,
-        producer: Producer,
         interval: BinanceKlineIntervals = BinanceKlineIntervals.five_minutes,
     ) -> None:
         logging.debug("Started Kafka producer SignalsInbound")
         super().__init__()
         self.interval = interval
-        self.producer = producer
+        # Async Kafka producer wrapper (AIOKafkaProducer) – start in start_stream
+        self.producer = AsyncProducer()
         self.autotrade_settings = self.get_autotrade_settings()
-        self.clients: list[SpotWebsocketStreamClient] = []
+        self.clients: list[AsyncSpotWebsocketStreamClient] = []
 
-    def connect_client(self, on_message, on_close, on_error):
-        client = SpotWebsocketStreamClient(
+    async def connect_client(self, on_message, on_close, on_error):
+        """Instantiate and start an async websocket client."""
+        client = AsyncSpotWebsocketStreamClient(
             on_message=on_message,
             on_close=on_close,
             on_error=on_error,
+            reconnect=True,  # enable resilient reconnects
+            heartbeat_interval=30,
         )
+        await client.start()
         return client
 
-    def handle_close(self, idx, message):
-        logging.info(f"Closing research signals for client {idx}: {message}")
-        # Reconnect the client and restart its stream
-        self.clients[idx] = self.connect_client(
-            lambda ws, msg: self.on_message(idx, ws, msg),
-            lambda msg: self.handle_close(idx, msg),
-            lambda ws, msg: self.handle_error(idx, ws, msg),
+    async def handle_close(self, idx, code):
+        logging.info(f"WebSocket closed (client {idx}) code={code}; attempting restart")
+        # Reconnect and resubscribe
+        self.clients[idx] = await self.connect_client(
+            lambda c, raw, _idx=idx: asyncio.create_task(self.on_message(_idx, c, raw)),
+            lambda ccode, _idx=idx: asyncio.create_task(
+                self.handle_close(_idx, ccode)
+            ),  # on_close passes code
+            lambda c, err, _idx=idx: self.handle_error(_idx, c, err),
         )
-        self.start_stream_for_client(idx)
+        await self.start_stream_for_client(idx)
 
-    def handle_error(self, idx, socket, message):
-        logging.error(f"Error research signals for client {idx}: {message}")
-        raise WebSocketError(message)
+    def handle_error(self, idx, socket, error):
+        logging.error(f"WebSocket error (client {idx}): {error}")
+        # Decide whether to raise; raising propagates to on_error callback and may trigger reconnect attempts.
+        # For now just log; if severe errors occur frequently escalate.
+        return
 
-    def on_message(self, idx, ws, message):
+    async def on_message(self, idx, ws, raw):
+        """Handle an incoming websocket message."""
         try:
-            res = json.loads(message)
+            res = json.loads(raw)
         except Exception as e:
             logging.error(
-                f"Failed to decode message (client {idx}): {e}, raw: {message}"
+                f"Failed to decode message (client {idx}): {e}; raw length={len(str(raw))}"
             )
             return
-        if "e" in res and res["e"] == "kline":
-            logging.debug(f"Kline event received (client {idx}): {res}")
-            self.process_kline_stream(res)
+        event_type = res.get("e")
+        if event_type == "kline":
+            await self.process_kline_stream(res)
         else:
-            logging.debug(f"Non-kline event received (client {idx}): {res}")
+            # Reduce noise by keeping as debug
+            logging.debug(f"Non-kline event received (client {idx}): {event_type}")
 
-    def start_stream(self) -> None:
+    async def start_stream(self) -> None:
         """
         Kline/Candlestick Streams
 
@@ -72,6 +88,8 @@ class KlinesConnector(BinbotApi):
 
         Split symbols into chunks of MAX_MARKETS_PER_CLIENT
         """
+        # Initialize async Kafka producer (AIOKafkaProducer)
+        await self.producer.start()
         symbols = self.get_symbols()
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
@@ -82,16 +100,25 @@ class KlinesConnector(BinbotApi):
                 f"{symbol['id'].lower()}@kline_{self.interval.value}"
                 for symbol in chunk
             ]
-            logging.debug(f"Subscribing to markets (client {idx}): {markets}")
-            client = self.connect_client(
-                lambda ws, msg, idx=idx: self.on_message(idx, ws, msg),
-                lambda msg, idx=idx: self.handle_close(idx, msg),
-                lambda ws, msg, idx=idx: self.handle_error(idx, ws, msg),
+            logging.debug(
+                f"Preparing subscription (client {idx}) markets={len(markets)}"
+            )
+
+            # Create started client
+            client = await self.connect_client(
+                lambda c, raw, _idx=idx: asyncio.create_task(
+                    self.on_message(_idx, c, raw)
+                ),
+                lambda code, _idx=idx: asyncio.create_task(
+                    self.handle_close(_idx, code)
+                ),
+                lambda c, err, _idx=idx: self.handle_error(_idx, c, err),
             )
             self.clients.append(client)
-            self.start_stream_for_client(idx)
+            await self.start_stream_for_client(idx)
 
-    def start_stream_for_client(self, idx):
+    async def start_stream_for_client(self, idx: int) -> None:
+        """Send subscription message for a specific client."""
         symbols = self.get_symbols()
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
@@ -101,21 +128,33 @@ class KlinesConnector(BinbotApi):
         markets = [
             f"{symbol['id'].lower()}@kline_{self.interval.value}" for symbol in chunk
         ]
-        logging.debug(f"(Re)subscribing to markets (client {idx}): {markets}")
-
-        self.clients[idx].send_message_to_server(
-            markets, action=self.clients[idx].ACTION_SUBSCRIBE, id=1
+        await self.clients[idx].send_message_to_server(
+            markets,
+            action=self.clients[idx].ACTION_SUBSCRIBE,
+            id=1,
         )
-        logging.debug(
-            f"Subscription message sent for markets (client {idx}): {markets}"
-        )
+        logging.info(f"Subscribed client {idx} to {len(markets)} markets")
 
-    def process_kline_stream(self, result):
-        """
-        Updates market data in DB for research
-        """
-        symbol = result["k"]["s"]
-        if symbol and "k" in result and result["k"]["x"]:
-            klines_producer = KlinesProducer(self.producer, symbol)
-            klines_producer.store(result)
-        pass
+    async def process_kline_stream(self, result):
+        """Updates market data in DB for research."""
+        symbol = result["k"].get("s")
+        # closed candle
+        if symbol and result["k"].get("x"):
+            data = result["k"]
+            message = KlineProduceModel(
+                symbol=data["s"],
+                open_time=str(data["t"]),
+                close_time=str(data["T"]),
+                open_price=str(data["o"]),
+                high_price=str(data["h"]),
+                low_price=str(data["l"]),
+                close_price=str(data["c"]),
+                volume=str(data["v"]),
+            )
+            await self.producer.send(
+                topic=KafkaTopics.klines_store_topic.value,
+                value=message.model_dump_json(),
+                key=data["s"],
+                timestamp=int(data["t"]),
+            )
+        return

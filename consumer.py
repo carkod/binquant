@@ -33,11 +33,19 @@ async def data_process_pipe() -> None:
         # With a brand new group we can just start at latest; keep manual commit logic for explicit control
         auto_offset_reset="latest",
         enable_auto_commit=False,
-        session_timeout_ms=60000,
-        heartbeat_interval_ms=20000,
-        max_poll_records=2,
+        # Session/heartbeat tuned slightly lower for faster failure detection
+        session_timeout_ms=45000,
+        heartbeat_interval_ms=15000,
+        # Process one message at a time to minimize per-message latency (sacrifices throughput)
+        max_poll_records=1,
+        # Allow long processing but we stay sequential; keep generous interval
         max_poll_interval_ms=1200000,
         request_timeout_ms=60000,
+        # Fetch settings for low latency: small batches, short wait
+        fetch_min_bytes=1,
+        fetch_max_wait_ms=25,
+        # Limit bytes per partition to avoid large accumulations before poll returns
+        max_partition_fetch_bytes=64 * 1024,
     )
 
     rebalance_listener = RebalanceListener(consumer)
@@ -50,6 +58,39 @@ async def data_process_pipe() -> None:
     await klines_provider.load_data_on_start()
 
     processed_messages = []
+    latest_committed = {}
+    pending_commit = None
+    commit_lock = asyncio.Lock()
+    COMMIT_DEBOUNCE_MS = 15  # tiny delay to allow potential next message; keep latency low
+
+    async def schedule_commit(message):
+        """Schedule a near-immediate asynchronous commit with tiny debounce.
+        Multiple rapid messages within COMMIT_DEBOUNCE_MS window will coalesce into one commit.
+        """
+        nonlocal pending_commit
+        tp = TopicPartition(message.topic, message.partition)
+        # Store next offset (message.offset + 1) so we commit after this message
+        latest_committed[tp] = message.offset + 1
+
+        async def do_commit():
+            await asyncio.sleep(COMMIT_DEBOUNCE_MS / 1000)
+            async with commit_lock:
+                offsets = {tp: off for tp, off in latest_committed.items()}
+                try:
+                    await consumer.commit(offsets=offsets)
+                    logging.debug(
+                        "Committed offsets: %s", {f"{p.topic}:{p.partition}": o for p, o in offsets.items()}
+                    )
+                except Exception as e:
+                    logging.error(f"Commit failed: {e}", exc_info=True)
+                finally:
+                    # Clear pending task reference AFTER commit
+                    nonlocal pending_commit
+                    pending_commit = None
+
+        # If a commit task is already pending, we let it run; offsets map will be updated before execution
+        if pending_commit is None:
+            pending_commit = asyncio.create_task(do_commit())
 
     async def handle_message(message):
         try:
@@ -61,8 +102,9 @@ async def data_process_pipe() -> None:
             await klines_provider.aggregate_data(message.value)
 
             processed_messages.append(message)
+            # Debug logging kept minimal; consider lowering to trace if too chatty
             logging.debug(
-                f"Processed message at offset {message.offset} for {message.topic}:{message.partition}"
+                "Processed offset %s for %s:%s", message.offset, message.topic, message.partition
             )
             return True
         except Exception as e:
@@ -82,21 +124,9 @@ async def data_process_pipe() -> None:
             success = await handle_message(message)
 
             if success:
-                # Commit immediately after successful processing
-                try:
-                    offsets = {
-                        TopicPartition(message.topic, message.partition): message.offset
-                        + 1
-                    }
-                    await consumer.commit(offsets=offsets)
-                    logging.debug(
-                        f"Committed offset: {message.offset + 1} for {message.topic}:{message.partition}"
-                    )
-                    processed_messages.clear()
-                except Exception as e:
-                    logging.error(f"Commit failed: {e}", exc_info=True)
-                    # Don't clear processed_messages on commit failure
-                    # Message will be retried on next consumer restart
+                # Schedule asynchronous commit with tiny debounce to reduce end-to-end latency
+                await schedule_commit(message)
+                processed_messages.clear()
 
     finally:
         # No pending tasks in sequential processing mode

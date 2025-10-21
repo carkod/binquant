@@ -5,14 +5,13 @@ from aiokafka import AIOKafkaProducer
 
 from models.bot import BotModel
 from models.signals import SignalsConsumer
-from producers.base import BaseProducer
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import CloseConditions, Strategy
 from shared.exceptions import AutotradeError
 from shared.utils import round_numbers, suppress_notation
 
 
-class Autotrade(BaseProducer, BinbotApi):
+class Autotrade(BinbotApi):
     def __init__(
         self,
         pair,
@@ -57,7 +56,6 @@ class Autotrade(BaseProducer, BinbotApi):
         self.db_collection_name = db_collection_name
         # restart streams after bot activation
         super().__init__()
-        self.producer: AIOKafkaProducer
 
     def _set_bollinguer_spreads(self, data: SignalsConsumer):
         bb_spreads = data.bb_spreads
