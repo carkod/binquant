@@ -1,8 +1,9 @@
+import json
 import logging
 import os
-import json
-from typing import Any, Optional
+
 from aiokafka import AIOKafkaProducer
+
 from database import KafkaDB
 
 logger = logging.getLogger(__name__)
@@ -17,14 +18,16 @@ class AsyncProducer(KafkaDB):
 
     def __init__(self) -> None:
         super().__init__()
-        self._producer: Optional[AIOKafkaProducer] = None
+        self._producer: AIOKafkaProducer | None = None
         self._started = False
 
     async def start(self) -> AIOKafkaProducer:
         if self._started:
             assert self._producer is not None
             return self._producer
-        bootstrap = f"{os.getenv('KAFKA_HOST', 'localhost')}:{os.getenv('KAFKA_PORT', '29092')}"
+        bootstrap = (
+            f"{os.getenv('KAFKA_HOST', 'localhost')}:{os.getenv('KAFKA_PORT', '29092')}"
+        )
         self._producer = AIOKafkaProducer(
             bootstrap_servers=bootstrap,
             linger_ms=5,
@@ -40,7 +43,9 @@ class AsyncProducer(KafkaDB):
         logger.debug("AIOKafkaProducer started (bootstrap=%s)", bootstrap)
         return self._producer
 
-    async def send(self, topic: str, value: str, key: str, timestamp: int | None = None) -> None:
+    async def send(
+        self, topic: str, value: str, key: str, timestamp: int | None = None
+    ) -> None:
         if not self._started or not self._producer:
             raise RuntimeError("Producer not started. Call await start() first.")
         await self._producer.send_and_wait(

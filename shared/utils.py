@@ -164,11 +164,6 @@ def timestamp_to_datetime(timestamp: str | int, force_local: bool = False) -> st
     """
     format = "%Y-%m-%d %H:%M:%S"
     timestamp = int(round_numbers_ceiling(int(timestamp) / 1000, 0))
-    if force_local:
-        local_tz = os.getenv("LOCAL_TIMEZONE", "UTC")
-        tzinfo = ZoneInfo(local_tz)
-        return datetime.fromtimestamp(timestamp, tz=tzinfo).strftime(format)
-
     return datetime.fromtimestamp(timestamp).strftime(format)
 
 

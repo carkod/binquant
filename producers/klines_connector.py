@@ -1,11 +1,12 @@
+import asyncio
 import json
 import logging
-import asyncio
+
+from models.klines import KlineProduceModel
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import BinanceKlineIntervals, KafkaTopics
-from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
 from shared.streaming.async_producer import AsyncProducer
-from models.klines import KlineProduceModel
+from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
 
 
 class KlinesConnector(BinbotApi):

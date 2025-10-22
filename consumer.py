@@ -57,41 +57,6 @@ async def data_process_pipe() -> None:
     klines_provider = KlinesProvider(consumer)
     await klines_provider.load_data_on_start()
 
-    processed_messages = []
-    latest_committed = {}
-    pending_commit = None
-    commit_lock = asyncio.Lock()
-    COMMIT_DEBOUNCE_MS = 15  # tiny delay to allow potential next message; keep latency low
-
-    async def schedule_commit(message):
-        """Schedule a near-immediate asynchronous commit with tiny debounce.
-        Multiple rapid messages within COMMIT_DEBOUNCE_MS window will coalesce into one commit.
-        """
-        nonlocal pending_commit
-        tp = TopicPartition(message.topic, message.partition)
-        # Store next offset (message.offset + 1) so we commit after this message
-        latest_committed[tp] = message.offset + 1
-
-        async def do_commit():
-            await asyncio.sleep(COMMIT_DEBOUNCE_MS / 1000)
-            async with commit_lock:
-                offsets = {tp: off for tp, off in latest_committed.items()}
-                try:
-                    await consumer.commit(offsets=offsets)
-                    logging.debug(
-                        "Committed offsets: %s", {f"{p.topic}:{p.partition}": o for p, o in offsets.items()}
-                    )
-                except Exception as e:
-                    logging.error(f"Commit failed: {e}", exc_info=True)
-                finally:
-                    # Clear pending task reference AFTER commit
-                    nonlocal pending_commit
-                    pending_commit = None
-
-        # If a commit task is already pending, we let it run; offsets map will be updated before execution
-        if pending_commit is None:
-            pending_commit = asyncio.create_task(do_commit())
-
     async def handle_message(message):
         try:
             if message.topic == KafkaTopics.restart_streaming.value:
@@ -101,10 +66,13 @@ async def data_process_pipe() -> None:
 
             await klines_provider.aggregate_data(message.value)
 
-            processed_messages.append(message)
+            # No batching, commit immediately after processing
             # Debug logging kept minimal; consider lowering to trace if too chatty
             logging.debug(
-                "Processed offset %s for %s:%s", message.offset, message.topic, message.partition
+                "Processed offset %s for %s:%s",
+                message.offset,
+                message.topic,
+                message.partition,
             )
             return True
         except Exception as e:
@@ -124,9 +92,21 @@ async def data_process_pipe() -> None:
             success = await handle_message(message)
 
             if success:
-                # Schedule asynchronous commit with tiny debounce to reduce end-to-end latency
-                await schedule_commit(message)
-                processed_messages.clear()
+                # Commit immediately after successful processing for lowest latency
+                try:
+                    offsets = {
+                        TopicPartition(message.topic, message.partition): message.offset
+                        + 1
+                    }
+                    await consumer.commit(offsets=offsets)
+                    logging.debug(
+                        "Committed offset: %s for %s:%s",
+                        message.offset + 1,
+                        message.topic,
+                        message.partition,
+                    )
+                except Exception as e:
+                    logging.error(f"Commit failed: {e}", exc_info=True)
 
     finally:
         # No pending tasks in sequential processing mode

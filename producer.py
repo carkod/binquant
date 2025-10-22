@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+
 from producers.klines_connector import KlinesConnector
 
 logging.basicConfig(

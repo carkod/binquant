@@ -1,9 +1,10 @@
 import asyncio
 import json
 import logging
-import time
 import random
-from typing import Any, Awaitable, Callable, Optional
+import time
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import aiohttp
 from aiohttp import ClientWebSocketResponse, WSMsgType
@@ -40,21 +41,21 @@ class AsyncBinanceWebsocketClient:
     def __init__(
         self,
         stream_url: str = "wss://stream.binance.com:443/ws",
-        on_message: Optional[CallbackType | AsyncCallbackType] = None,
-        on_open: Optional[CallbackType | AsyncCallbackType] = None,
-        on_close: Optional[CallbackType | AsyncCallbackType] = None,
-        on_error: Optional[CallbackType | AsyncCallbackType] = None,
-        on_ping: Optional[CallbackType | AsyncCallbackType] = None,
-        on_pong: Optional[CallbackType | AsyncCallbackType] = None,
+        on_message: CallbackType | AsyncCallbackType | None = None,
+        on_open: CallbackType | AsyncCallbackType | None = None,
+        on_close: CallbackType | AsyncCallbackType | None = None,
+        on_error: CallbackType | AsyncCallbackType | None = None,
+        on_ping: CallbackType | AsyncCallbackType | None = None,
+        on_pong: CallbackType | AsyncCallbackType | None = None,
         reconnect: bool = True,
         max_retries: int = 12,
         backoff_base: float = 0.75,
         heartbeat_interval: int = 30,
     ) -> None:
         self._stream_url = stream_url
-        self._session: Optional[aiohttp.ClientSession] = None
-        self._ws: Optional[ClientWebSocketResponse] = None
-        self._read_task: Optional[asyncio.Task] = None
+        self._session: aiohttp.ClientSession | None = None
+        self._ws: ClientWebSocketResponse | None = None
+        self._read_task: asyncio.Task | None = None
         self._stopped = False
         self._subscriptions: set[str] = set()
         self._reconnect_enabled = reconnect
@@ -80,7 +81,11 @@ class AsyncBinanceWebsocketClient:
         retry = 0
         while True:
             try:
-                logger.debug("Connecting to Binance WebSocket: %s (retry=%s)", self._stream_url, retry)
+                logger.debug(
+                    "Connecting to Binance WebSocket: %s (retry=%s)",
+                    self._stream_url,
+                    retry,
+                )
                 assert self._session is not None
                 self._ws = await self._session.ws_connect(
                     self._stream_url,
@@ -100,7 +105,7 @@ class AsyncBinanceWebsocketClient:
                 logger.error("WebSocket connect failed: %s", e, exc_info=True)
                 if not self._reconnect_enabled or retry >= self._max_retries:
                     raise
-                delay = self._backoff_base * (2 ** retry)
+                delay = self._backoff_base * (2**retry)
                 jitter = random.uniform(0, self._backoff_base)
                 wait_for = min(delay + jitter, 60)
                 logger.warning("Retrying websocket connection in %.2fs", wait_for)
@@ -128,7 +133,7 @@ class AsyncBinanceWebsocketClient:
                         "WebSocket closing (type=%s, code=%s, message=%s)",
                         msg.type,
                         ws.close_code,
-                        getattr(ws, 'close_message', None),
+                        getattr(ws, "close_message", None),
                     )
                     await self._dispatch(self.on_close, ws.close_code)
                     break
@@ -153,7 +158,7 @@ class AsyncBinanceWebsocketClient:
         """Block until the websocket stops. Useful replacement for thread.join()."""
         stop_event = asyncio.Event()
 
-        async def on_close_wrapper(client, *args):  # type: ignore
+        async def on_close_wrapper(client, *args):
             try:
                 if self.on_close and self.on_close is not on_close_wrapper:
                     if asyncio.iscoroutinefunction(self.on_close):
@@ -170,7 +175,9 @@ class AsyncBinanceWebsocketClient:
         finally:
             self.on_close = original_on_close
 
-    async def _dispatch(self, callback: Optional[CallbackType | AsyncCallbackType], *args) -> None:
+    async def _dispatch(
+        self, callback: CallbackType | AsyncCallbackType | None, *args
+    ) -> None:
         if not callback:
             return
         try:
@@ -199,7 +206,9 @@ class AsyncBinanceWebsocketClient:
         await self._ws.send_str(data)
         logger.debug("Sent message: %s", data)
 
-    async def send_message_to_server(self, message, action: Optional[str] = None, id: Optional[int] = None) -> None:
+    async def send_message_to_server(
+        self, message, action: str | None = None, id: int | None = None
+    ) -> None:
         if not id:
             id = self.get_timestamp()
         if action != self.ACTION_UNSUBSCRIBE:
@@ -207,7 +216,7 @@ class AsyncBinanceWebsocketClient:
         else:
             await self.unsubscribe(message, id=id)
 
-    async def subscribe(self, stream: str | list[str], id: Optional[int] = None) -> None:
+    async def subscribe(self, stream: str | list[str], id: int | None = None) -> None:
         if not id:
             id = self.get_timestamp()
         if isinstance(stream, str):
@@ -221,7 +230,7 @@ class AsyncBinanceWebsocketClient:
             self._subscriptions.add(s)
         await self.send({"method": "SUBSCRIBE", "params": params, "id": id})
 
-    async def unsubscribe(self, stream: str, id: Optional[int] = None) -> None:
+    async def unsubscribe(self, stream: str, id: int | None = None) -> None:
         if not id:
             id = self.get_timestamp()
         if not isinstance(stream, str):
@@ -229,7 +238,7 @@ class AsyncBinanceWebsocketClient:
         self._subscriptions.discard(stream)
         await self.send({"method": "UNSUBSCRIBE", "params": [stream], "id": id})
 
-    async def list_subscribe(self, id: Optional[int] = None) -> None:
+    async def list_subscribe(self, id: int | None = None) -> None:
         if not id:
             id = self.get_timestamp()
         await self.send({"method": "LIST_SUBSCRIPTIONS", "id": id})
@@ -265,12 +274,12 @@ class AsyncSpotWebsocketStreamClient(AsyncBinanceWebsocketClient):
     def __init__(
         self,
         stream_url: str = "wss://stream.binance.com:443",
-        on_message: Optional[CallbackType | AsyncCallbackType] = None,
-        on_open: Optional[CallbackType | AsyncCallbackType] = None,
-        on_close: Optional[CallbackType | AsyncCallbackType] = None,
-        on_error: Optional[CallbackType | AsyncCallbackType] = None,
-        on_ping: Optional[CallbackType | AsyncCallbackType] = None,
-        on_pong: Optional[CallbackType | AsyncCallbackType] = None,
+        on_message: CallbackType | AsyncCallbackType | None = None,
+        on_open: CallbackType | AsyncCallbackType | None = None,
+        on_close: CallbackType | AsyncCallbackType | None = None,
+        on_error: CallbackType | AsyncCallbackType | None = None,
+        on_ping: CallbackType | AsyncCallbackType | None = None,
+        on_pong: CallbackType | AsyncCallbackType | None = None,
         is_combined: bool = False,
         **kwargs,
     ) -> None:
@@ -289,7 +298,13 @@ class AsyncSpotWebsocketStreamClient(AsyncBinanceWebsocketClient):
             **kwargs,
         )
 
-    async def klines(self, markets: list[str], interval: str, id: Optional[int] = None, action: Optional[str] = None) -> None:
+    async def klines(
+        self,
+        markets: list[str],
+        interval: str,
+        id: int | None = None,
+        action: str | None = None,
+    ) -> None:
         """Convenience method to subscribe/unsubscribe kline streams.
 
         If markets is empty, subscribes to a dummy stream to keep connection active.

@@ -11,6 +11,7 @@ from shared.apis.binbot_api import BinanceApi, BinbotApi
 from shared.enums import BinanceKlineIntervals
 from shared.streaming.async_producer import AsyncProducer
 
+
 class KlinesProvider:
     """
     Pools, processes, agregates and provides klines data

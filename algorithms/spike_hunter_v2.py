@@ -485,7 +485,7 @@ class SpikeHunterV2:
             signal_type = "VolumeCluster"
 
         timestamp = (
-            timestamp_to_datetime(row.get("close_time"), force_local=True)
+            timestamp_to_datetime(row.get("close_time"))
             if row.get("close_time", None)
             else timestamp_to_datetime(int(datetime.now().timestamp() * 1000))
         )
@@ -549,16 +549,15 @@ class SpikeHunterV2:
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
         if (
-            True
-            # (
-            #     last_spike["cumulative_price_break_flag"]
-            #     or last_spike["is_suppressed"]
-            #     or last_spike["volume_cluster_flag"]
-            #     or last_spike["early_proba_aug_flag"]
-            #     or last_spike["accel_spike_flag"]
-            # )
-            # and last_spike["number_of_trades"] > 12
-            # and last_spike["number_of_trades_thr"] > 0
+            (
+                last_spike["cumulative_price_break_flag"]
+                or last_spike["is_suppressed"]
+                or last_spike["volume_cluster_flag"]
+                or last_spike["early_proba_aug_flag"]
+                or last_spike["accel_spike_flag"]
+            )
+            and last_spike["number_of_trades"] > 12
+            and last_spike["number_of_trades_thr"] > 0
         ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             bot_strategy = Strategy.long
@@ -579,7 +578,7 @@ class SpikeHunterV2:
             else:
                 streak = "N/A"
                 autotrade = False
-                # return
+                return
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"

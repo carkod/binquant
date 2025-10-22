@@ -1,8 +1,6 @@
 import logging
 import math
 
-from aiokafka import AIOKafkaProducer
-
 from models.bot import BotModel
 from models.signals import SignalsConsumer
 from shared.apis.binbot_api import BinbotApi

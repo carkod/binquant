@@ -1,4 +1,5 @@
 import pytest
+
 from producers.klines_connector import KlinesConnector
 
 
@@ -31,7 +32,7 @@ def klines_connector(monkeypatch):
     return KlinesConnector
 
 
-def test_producer(klines_connector: KlinesConnector):
+async def test_producer(klines_connector: KlinesConnector):
     res = {
         "e": "kline",
         "E": 1631598140000,
@@ -56,23 +57,20 @@ def test_producer(klines_connector: KlinesConnector):
             "B": "0",
         },
     }
-    klines_connector.start_stream()
+    await klines_connector.start_stream()
     klines_connector.process_kline_stream(res)
 
 
-def test_producer_error(klines_connector: KlinesConnector):
+async def test_producer_error(klines_connector: KlinesConnector):
     res = {
         "e": "kline",
         "E": 1631598140000,
         "s": "BTCUSDC",
     }
     # Arrange
-    base_producer = BaseProducer()
-    base_producer.start_producer()
-
     try:
-        klines_connector.start_stream()
-        klines_connector.process_kline_stream(res)
+        await klines_connector.start_stream()
+        await klines_connector.process_kline_stream(res)
         assert AssertionError()
     except KeyError:
         assert True
