@@ -148,7 +148,7 @@ def handle_binance_errors(response: Response):
         return content
 
 
-def timestamp_to_datetime(timestamp: str | int, force_local: bool = False) -> str:
+def timestamp_to_datetime(timestamp: str | int) -> str:
     """
     Convert a timestamp in milliseconds to seconds
     to match expectation of datetime
@@ -157,14 +157,15 @@ def timestamp_to_datetime(timestamp: str | int, force_local: bool = False) -> st
     Parameters
     ----------
     timestamp : str | int
-        The timestamp in milliseconds.
-    force_local : bool, default False
-        If True, convert to local timezone specified by LOCAL_TIMEZONE (London).
-        If False, convert to UTC.
+        The timestamp in milliseconds. Always in London timezone
+        to avoid inconsistencies across environments (Github, prod, local)
     """
     format = "%Y-%m-%d %H:%M:%S"
     timestamp = int(round_numbers_ceiling(int(timestamp) / 1000, 0))
-    return datetime.fromtimestamp(timestamp).strftime(format)
+    dt = datetime.fromtimestamp(
+        timestamp, tz=ZoneInfo(os.getenv("TZ", "Europe/London"))
+    )
+    return dt.strftime(format)
 
 
 async def aio_response_handler(response: ClientResponse):

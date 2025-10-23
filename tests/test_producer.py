@@ -25,13 +25,17 @@ def klines_connector(monkeypatch):
         self.autotrade_settings = {"fiat": "USDC"}
         self.exchange_info = {"symbols": []}
 
+    async def async_noop(*args, **kwargs):  # noqa: ARG001
+        return None
+
     monkeypatch.setattr(KlinesConnector, "__init__", new_init)
-    monkeypatch.setattr(KlinesConnector, "start_stream", lambda: None)
-    monkeypatch.setattr(KlinesConnector, "process_kline_stream", lambda a: None)
+    monkeypatch.setattr(KlinesConnector, "start_stream", async_noop)
+    monkeypatch.setattr(KlinesConnector, "process_kline_stream", async_noop)
 
     return KlinesConnector
 
 
+@pytest.mark.asyncio
 async def test_producer(klines_connector: KlinesConnector):
     res = {
         "e": "kline",
@@ -58,9 +62,10 @@ async def test_producer(klines_connector: KlinesConnector):
         },
     }
     await klines_connector.start_stream()
-    klines_connector.process_kline_stream(res)
+    await klines_connector.process_kline_stream(res)
 
 
+@pytest.mark.asyncio
 async def test_producer_error(klines_connector: KlinesConnector):
     res = {
         "e": "kline",

@@ -178,9 +178,8 @@ class BotModel(BaseModel):
     orders: list[OrderModel] = Field(default=[])
 
     model_config = {
+        "from_attributes": True,
         "use_enum_values": True,
-        "arbitrary_types_allowed": True,
-        "json_encoders": {UUID: str},
         "json_schema_extra": {
             "description": "Most fields are optional. Deal field is generated internally, orders are filled up by Exchange",
             "examples": [
@@ -198,7 +197,7 @@ class BotModel(BaseModel):
                     "status": "inactive",
                     "stop_loss": 0,
                     "take_profit": 2.3,
-                    "trailling": "true",
+                    "trailling": True,
                     "trailling_deviation": 0.63,
                     "trailling_profit": 2.3,
                     "strategy": "long",
