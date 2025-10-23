@@ -556,7 +556,7 @@ class SpikeHunterV2:
                 or last_spike["early_proba_aug_flag"]
                 or last_spike["accel_spike_flag"]
             )
-            and last_spike["number_of_trades"] > 12
+            and last_spike["number_of_trades"] > 20
             and last_spike["number_of_trades_thr"] > 0
         ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
