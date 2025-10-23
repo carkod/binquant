@@ -1,7 +1,7 @@
+import asyncio
 import logging
 import os
 
-from producers.base import BaseProducer
 from producers.klines_connector import KlinesConnector
 
 logging.basicConfig(
@@ -12,16 +12,15 @@ logging.basicConfig(
 )
 
 
-def main():
-    base_producer = BaseProducer()
-    producer = base_producer.start_producer()
-    connector = KlinesConnector(producer)
-    connector.start_stream()
-    logging.debug("Stream started. Waiting for messages... (Press Ctrl+C to exit)")
+async def main():
+    connector = KlinesConnector()
+    await connector.start_stream()
+    logging.debug("Stream started. Waiting for messages...")
+    await asyncio.gather(*(c.run_forever() for c in connector.clients))
 
 
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(main())
     except Exception as error:
         logging.error(f"Error in Binquant Producer: {error}", exc_info=True)
