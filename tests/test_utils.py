@@ -107,15 +107,8 @@ def test_handle_binance_errors_other():
 
 
 def test_timestamp_to_datetime_utc():
-    # 1633046400000 ms = 2021-10-01 00:00:00 UTC
-    assert timestamp_to_datetime(1633046400000) == "2021-10-01 00:00:00"
-
-
-def test_timestamp_to_datetime_local(monkeypatch):
-    monkeypatch.setenv("LOCAL_TIMEZONE", "UTC")
-    assert (
-        timestamp_to_datetime(1633046400000, force_local=True) == "2021-10-01 00:00:00"
-    )
+    # 1633046400000 ms = 2021-10-01 01:00:00 in Europe/London (BST)
+    assert timestamp_to_datetime(1633046400000) == "2021-10-01 01:00:00"
 
 
 def make_aio_response(json_data):

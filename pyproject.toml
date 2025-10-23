@@ -68,3 +68,8 @@ packages = []
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.2.0",
+]

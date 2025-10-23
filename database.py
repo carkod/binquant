@@ -18,4 +18,4 @@ class KafkaDB(BinanceApi):
             username=os.getenv("MONGO_AUTH_USERNAME"),
             password=os.getenv("MONGO_AUTH_PASSWORD"),
         )
-        self.db = client[os.environ["MONGO_KAFKA_DATABASE"]]
+        self.db = client[os.getenv("MONGO_KAFKA_DATABASE", "kafka_db")]
