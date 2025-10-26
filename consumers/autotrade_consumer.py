@@ -126,7 +126,6 @@ class AutotradeConsumer(BinbotApi):
                 )
             else:
                 # temporarily disable margin trading
-                # if self.is_margin_available(symbol=symbol):
                 autotrade = Autotrade(
                     pair=symbol,
                     settings=self.autotrade_settings,
