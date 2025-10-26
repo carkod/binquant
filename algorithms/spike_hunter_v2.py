@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from os import getenv, path
+from random import random
 from typing import TYPE_CHECKING
 
 import joblib
@@ -545,6 +546,9 @@ class SpikeHunterV2:
             logging.debug("No recent spike detected for breakout.")
             return
 
+        # Introduce randomness to spread probability of big spikes
+        got_lucky = random() < 0.5
+
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
@@ -558,6 +562,7 @@ class SpikeHunterV2:
             )
             and last_spike["number_of_trades"] > 20
             and last_spike["number_of_trades_thr"] > 0
+            and got_lucky
         ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             bot_strategy = Strategy.long
