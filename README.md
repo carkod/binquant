@@ -6,14 +6,7 @@ Performs technical, statistical, AI analysis and feeds it to the signal and tele
 
 Potential replacement of binbot-research, but using Kafka, which hopefully will solve memory and EOL issues that currently are present using websockets polling. It also stores klines (candlestick chart data into Kafka topics).
 
-## Architecture
-
-![image](https://github.com/carkod/binbot/assets/14939793/fbfde06b-1dba-4183-9c4e-26e68a48fa10)
-
-### TODO:
-
-- Support for Spark structured streaming using Spark streaming dataframes
-- Integration with TimeGPT and Uni
+<img width="2067" height="1885" alt="Binbot architecture-2025-10-26-144727" src="https://github.com/user-attachments/assets/cd3b76a4-0653-421c-b8e0-24685b7d6dd8" />
 
 ## Development
 

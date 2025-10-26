@@ -562,7 +562,6 @@ class SpikeHunterV2:
             )
             and last_spike["number_of_trades"] > 20
             and last_spike["number_of_trades_thr"] > 0
-            and got_lucky
         ):
             algo = f"spike_hunter_v2_{last_spike['signal_type']}"
             bot_strategy = Strategy.long
@@ -584,6 +583,9 @@ class SpikeHunterV2:
                 streak = "N/A"
                 autotrade = False
                 return
+
+            if not got_lucky:
+                autotrade = False
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
