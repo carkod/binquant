@@ -113,7 +113,9 @@ class AsyncBinanceWebsocketClient:
                 retry += 1
 
     async def _read_loop(self) -> None:
-        """Continuously consume websocket messages until stopped or closed."""
+        """
+        Continuously consume websocket messages until stopped or closed.
+        """
         assert self._ws is not None
         ws = self._ws
         try:

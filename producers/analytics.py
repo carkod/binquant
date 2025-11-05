@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 
+from algorithms.binance_report_ai import BinanceAIReport
 from algorithms.coinrule import Coinrule
 from algorithms.market_breadth import MarketBreadthAlgo
-from algorithms.spike_hunter_memes import SpikeHunterMeme
 from algorithms.spike_hunter_v2 import SpikeHunterV2
 from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.whale_signals import WhaleSignals
@@ -189,7 +189,7 @@ class CryptoAnalytics:
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh = SpikeHunter(cls=self)
         self.cr = Coinrule(cls=self)
-        self.shm = SpikeHunterMeme(cls=self)
+        self.bar = BinanceAIReport(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
         self.whale = WhaleSignals(cls=self)
 
@@ -289,6 +289,13 @@ class CryptoAnalytics:
                 ha_bb_high=ha_spreads.ha_bb_high,
                 ha_bb_mid=ha_spreads.ha_bb_mid,
                 ha_bb_low=ha_spreads.ha_bb_low,
+            )
+
+            await self.bar.signal(
+                current_price=close_price,
+                bb_high=bb_high,
+                bb_low=bb_low,
+                bb_mid=bb_mid,
             )
 
             # await self.cr.supertrend_swing_reversal(
