@@ -4,7 +4,7 @@ from pandas import DataFrame, to_datetime
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
-from models.signals import BollinguerSpread, SignalsConsumer
+from models.signals import HABollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
 from shared.utils import suppress_notation
 
@@ -59,7 +59,7 @@ async def local_min_max(
             symbol=symbol,
             algo=algo,
             bot_strategy=Strategy.long,
-            bb_spreads=BollinguerSpread(
+            bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
                 bb_low=bb_low,

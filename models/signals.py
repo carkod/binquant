@@ -3,26 +3,17 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from shared.enums import Strategy
 
 
-class BollinguerSpread(BaseModel):
+class HABollinguerSpread(BaseModel):
     """
-    Pydantic model for the Bollinguer spread.
+    Pydantic model for the Heikin Ashi Bollinguer spread.
     (optional)
+    Replaces original HABollinguerSpread
+    permanently using Heikin Ashi candles.
     """
 
     bb_high: float
     bb_mid: float
     bb_low: float
-
-
-class HABollinguerSpread(BaseModel):
-    """
-    Pydantic model for the Heikin Ashi Bollinguer spread.
-    (optional)
-    """
-
-    ha_bb_high: float
-    ha_bb_mid: float
-    ha_bb_low: float
 
 
 class SignalsConsumer(BaseModel):
@@ -37,7 +28,7 @@ class SignalsConsumer(BaseModel):
     symbol: str
     algo: str
     bot_strategy: Strategy = Field(default=Strategy.long)
-    bb_spreads: BollinguerSpread | None
+    bb_spreads: HABollinguerSpread | None
     autotrade: bool = Field(default=True, description="False is paper_trading")
 
     model_config = ConfigDict(

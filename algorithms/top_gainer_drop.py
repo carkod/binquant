@@ -1,7 +1,7 @@
 import os
 from typing import TYPE_CHECKING
 
-from models.signals import BollinguerSpread, SignalsConsumer
+from models.signals import HABollinguerSpread, SignalsConsumer
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -41,7 +41,7 @@ async def top_gainers_drop(
             symbol=cls.symbol,
             algo=algo,
             bot_strategy=cls.bot_strategy,
-            bb_spreads=BollinguerSpread(
+            bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
                 bb_low=bb_low,

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 import requests
 
-from models.signals import BollinguerSpread, SignalsConsumer
+from models.signals import HABollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import round_numbers
@@ -294,7 +294,7 @@ class BinanceAIReport:
                 symbol=self.symbol,
                 algo=algo_name,
                 bot_strategy=bot_strategy,
-                bb_spreads=BollinguerSpread(
+                bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,

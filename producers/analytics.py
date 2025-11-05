@@ -74,19 +74,6 @@ class CryptoAnalytics:
     def days(self, secs):
         return secs * 86400
 
-    def bb_spreads(self) -> tuple[float, float, float]:
-        """
-        Calculate Bollinguer bands spreads for trailling strategies
-        """
-        bb_high = float(self.df.bb_upper.iloc[-1])
-        bb_mid = float(self.df.bb_mid.iloc[-1])
-        bb_low = float(self.df.bb_lower.iloc[-1])
-        return (
-            round_numbers(bb_high, 6),
-            round_numbers(bb_mid, 6),
-            round_numbers(bb_low, 6),
-        )
-
     def ha_bb_spreads(self) -> HABollinguerSpread:
         """
         Calculate Heikin Ashi Bollinguer bands spreads for trailling strategies
@@ -95,9 +82,9 @@ class CryptoAnalytics:
         ha_bb_mid = float(self.ha_df.bb_mid.iloc[-1])
         ha_bb_low = float(self.ha_df.bb_lower.iloc[-1])
         return HABollinguerSpread(
-            ha_bb_high=round_numbers(ha_bb_high, 6),
-            ha_bb_mid=round_numbers(ha_bb_mid, 6),
-            ha_bb_low=round_numbers(ha_bb_low, 6),
+            bb_high=round_numbers(ha_bb_high, 6),
+            bb_mid=round_numbers(ha_bb_mid, 6),
+            bb_low=round_numbers(ha_bb_low, 6),
         )
 
     def preprocess_data(self, candles):
@@ -249,78 +236,27 @@ class CryptoAnalytics:
                     self.binbot_api.get_btc_correlation(symbol=self.symbol)
                 )
 
-            bb_high, bb_mid, bb_low = self.bb_spreads()
             ha_spreads = self.ha_bb_spreads()
 
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
-            # await self.mda.signal(
-            #     close_price=close_price, bb_high=bb_high, bb_low=bb_low, bb_mid=bb_mid
-            # )
-
-            # emitted = await self.shm.signal(
-            #     current_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            # )
-
-            # if not emitted:
-            #     await self.sh.spike_hunter_bullish(
-            #         current_price=close_price,
-            #         bb_high=bb_high,
-            #         bb_low=bb_low,
-            #         bb_mid=bb_mid,
-            #     )
-
-            #     await self.sh.spike_hunter_breakouts(
-            #         current_price=close_price,
-            #         bb_high=bb_high,
-            #         bb_low=bb_low,
-            #         bb_mid=bb_mid,
-            #     )
-
             await self.sh2.signal(
                 current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
-                ha_bb_high=ha_spreads.ha_bb_high,
-                ha_bb_mid=ha_spreads.ha_bb_mid,
-                ha_bb_low=ha_spreads.ha_bb_low,
+                bb_high=ha_spreads.bb_high,
+                bb_mid=ha_spreads.bb_mid,
+                bb_low=ha_spreads.bb_low,
             )
 
             await self.bar.signal(
                 current_price=close_price,
-                bb_high=bb_high,
-                bb_low=bb_low,
-                bb_mid=bb_mid,
+                bb_high=ha_spreads.bb_high,
+                bb_mid=ha_spreads.bb_mid,
+                bb_low=ha_spreads.bb_low,
             )
 
             # await self.cr.supertrend_swing_reversal(
             #     close_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            # )
-
-            # await local_min_max(
-            #     df=self.df,
-            #     current_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            #     symbol=self.symbol,
-            #     telegram=self.telegram_consumer,
-            #     at_consumer=self.at_consumer,
-            #     precision=self.current_symbol_data["price_precision"]
-            #     if self.current_symbol_data
-            #     else 2,
-            # )
-
-            # await self.whale.signal(
-            #     current_price=close_price,
             #     bb_high=bb_high,
             #     bb_low=bb_low,
             #     bb_mid=bb_mid,

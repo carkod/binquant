@@ -8,7 +8,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from models.signals import BollinguerSpread, SignalsConsumer
+from models.signals import HABollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import round_numbers, timestamp_to_datetime
@@ -536,9 +536,6 @@ class SpikeHunterV2:
         bb_high: float,
         bb_low: float,
         bb_mid: float,
-        ha_bb_high: float,
-        ha_bb_low: float,
-        ha_bb_mid: float,
     ):
         last_spike = self.latest_signal()
 
@@ -611,7 +608,7 @@ class SpikeHunterV2:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
-                bb_spreads=BollinguerSpread(
+                bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,

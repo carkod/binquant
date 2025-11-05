@@ -7,7 +7,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from models.signals import BollinguerSpread, SignalsConsumer
+from models.signals import HABollinguerSpread, SignalsConsumer
 from shared.enums import MarketDominance, Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import safe_format
@@ -355,7 +355,7 @@ class SpikeHunter:
                 symbol=self.ti.symbol,
                 algo=algo,
                 bot_strategy=Strategy.long,
-                bb_spreads=BollinguerSpread(
+                bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,
@@ -433,7 +433,7 @@ class SpikeHunter:
                 symbol=self.ti.symbol,
                 algo=algo,
                 bot_strategy=Strategy.long,
-                bb_spreads=BollinguerSpread(
+                bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,
