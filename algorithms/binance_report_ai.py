@@ -176,28 +176,32 @@ class BinanceAIReport:
         # Directional criteria (heuristic – tune thresholds in runtime if needed)
 
         if features.get("external_bias_normalized", 0) > bias_thr:
-            signal_type.append("external_bias_normalized")
+            signal_type.append(
+                {"external_bias_normalized": features.get("external_bias_normalized")}
+            )
 
         if features.get("opp_risk_ratio", 1):
-            signal_type.append("opp_risk_ratio")
+            signal_type.append({"opp_risk_ratio": features.get("opp_risk_ratio")})
 
         if features.get("net_signal_score", 0) > net_score_thr:
-            signal_type.append("net_signal_score")
+            signal_type.append({"net_signal_score": features.get("net_signal_score")})
 
         if features.get("macd_bullish_flag", 0) == 1:
-            signal_type.append("macd_bullish_flag")
+            signal_type.append({"macd_bullish_flag": features.get("macd_bullish_flag")})
 
         if features.get("external_bias_normalized", 0) < -bias_thr:
-            signal_type.append("external_bias_normalized_bearish")
+            signal_type.append(
+                {"external_bias_normalized": features.get("external_bias_normalized")}
+            )
 
         if features.get("opp_risk_ratio", 1) < 1:
-            signal_type.append("opp_risk_ratio_bearish")
+            signal_type.append({"opp_risk_ratio": features.get("opp_risk_ratio")})
 
         if features.get("net_signal_score", 0) < -net_score_thr:
-            signal_type.append("net_signal_score_bearish")
+            signal_type.append({"net_signal_score": features.get("net_signal_score")})
 
         if features.get("ema_bearish_flag", 0) == 1:
-            signal_type.append("ema_bearish_flag")
+            signal_type.append({"ema_bearish_flag": features.get("ema_bearish_flag")})
 
         signal = (
             features.get("external_bias_normalized", 0) > bias_thr
@@ -230,17 +234,29 @@ class BinanceAIReport:
         features = self.extract_features()
         signal_type = []
 
-        if features.get("large_discussion_flag", 0) == 1:
-            signal_type.append("large_discussion_flag")
+        if features.get("large_discussion_flag", 0) > 0:
+            signal_type.append(
+                {"large_discussion_flag": features.get("large_discussion_flag")}
+            )
 
-        if features.get("community_post_count", 0) >= min_posts:
-            signal_type.append("community_post_count")
+        if features.get("community_post_count", 0) >= 2:
+            signal_type.append(
+                {"community_post_count": features.get("community_post_count")}
+            )
 
-        if features.get("sentiment_mixed_flag", 0) == 1:
-            signal_type.append("sentiment_mixed_flag")
+        if features.get("sentiment_mixed_flag", 0) > 0:
+            signal_type.append(
+                {"sentiment_mixed_flag": features.get("sentiment_mixed_flag")}
+            )
 
-        if features.get("coinbase_premium_weak_flag", 0) == 1:
-            signal_type.append("coinbase_premium_weak_flag")
+        if features.get("coinbase_premium_weak_flag", 0) > 1:
+            signal_type.append(
+                {
+                    "coinbase_premium_weak_flag": features.get(
+                        "coinbase_premium_weak_flag"
+                    )
+                }
+            )
 
         signal = (
             features.get("large_discussion_flag", 0) == 1
@@ -269,11 +285,15 @@ class BinanceAIReport:
 
         if report_signal and len(report_signal) > 0:
             algo_name = "binance_ai_report"
-            description = ", ".join(report_signal)
+            description = ", ".join(
+                f"{list(d.keys())[0]} ({list(d.values())[0]})" for d in report_signal
+            )
 
         if social_signal and len(social_signal) > 0:
             algo_name = "binance_ai_report_social"
-            description = ", ".join(social_signal)
+            description = ", ".join(
+                f"{list(d.keys())[0]} ({list(d.values())[0]})" for d in social_signal
+            )
 
             bot_strategy = Strategy.long
             autotrade = False

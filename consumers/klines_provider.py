@@ -39,7 +39,8 @@ class KlinesProvider:
         """
         all symbols that are active, not blacklisted
         minus active bots
-        minus all symbols that match quote asset of these active bots
+        minus all symbols that match base asset of these active bots
+        i.e. BTC in BTCUSDC
         """
         active_pairs = self.binbot_api.get_active_pairs()
         active_symbols = set(
