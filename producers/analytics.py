@@ -248,12 +248,12 @@ class CryptoAnalytics:
                 bb_low=ha_spreads.bb_low,
             )
 
-            await self.bar.signal(
-                current_price=close_price,
-                bb_high=ha_spreads.bb_high,
-                bb_mid=ha_spreads.bb_mid,
-                bb_low=ha_spreads.bb_low,
-            )
+            # await self.bar.signal(
+            #     current_price=close_price,
+            #     bb_high=ha_spreads.bb_high,
+            #     bb_mid=ha_spreads.bb_mid,
+            #     bb_low=ha_spreads.bb_low,
+            # )
 
             # await self.cr.supertrend_swing_reversal(
             #     close_price=close_price,
