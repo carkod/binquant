@@ -92,7 +92,7 @@ class BinbotApi(BinanceApi):
         """
         Get market breadth data
         """
-        response = await self.fetch(url=self.bb_adr_series_url, payload={"size": size})
+        response = await self.fetch(url=self.bb_adr_series_url, params={"size": size})
         if "data" in response:
             return response["data"]
         return None

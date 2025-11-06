@@ -35,6 +35,35 @@ class KlinesProvider:
         self.all_symbols = self.binbot_api.get_symbols()
         self.producer = AsyncProducer()
 
+    def get_filtered_active_symbols(self) -> list[str]:
+        """
+        all symbols that are active, not blacklisted
+        minus active bots
+        minus all symbols that match quote asset of these active bots
+        """
+        active_pairs = self.binbot_api.get_active_pairs()
+        active_symbols = set(
+            {
+                s["id"]
+                for s in self.all_symbols
+                if s["active"] and s["id"] not in active_pairs
+            }
+        )
+        quote_assets = set(
+            {
+                symbol["base_asset"]
+                for symbol in self.all_symbols
+                if symbol["id"] in active_pairs
+            }
+        )
+        # Remove all symbols that match quote assets of active bots
+        filtered_active_symbols = [
+            symbol
+            for symbol in active_symbols
+            if not any(symbol.startswith(asset) for asset in quote_assets)
+        ]
+        return filtered_active_symbols
+
     async def load_data_on_start(self):
         self.producer = await self.producer.start()
         # Klines API dependencies
@@ -42,6 +71,7 @@ class KlinesProvider:
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
         self.top_losers_day = await self.binbot_api.get_top_losers()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
+        active_symbols = self.get_filtered_active_symbols()
 
         # Autotrade Consumer API dependencies
         self.ac_api = AutotradeConsumer(
@@ -51,8 +81,7 @@ class KlinesProvider:
             ),
             all_symbols=self.binbot_api.get_symbols(),
             # Active bot symbols substracting exchange active symbols (not blacklisted)
-            active_symbols=set({s["id"] for s in self.all_symbols if s["active"]})
-            - set(self.active_pairs),
+            active_symbols=active_symbols,
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
         )
 
