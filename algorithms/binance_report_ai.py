@@ -1,16 +1,11 @@
-import logging
 import time
 from math import tanh
-from os import getenv
 from typing import TYPE_CHECKING
 
 import pandas as pd
 import requests
 
-from models.signals import HABollinguerSpread, SignalsConsumer
-from shared.enums import Strategy
 from shared.heikin_ashi import HeikinAshi
-from shared.utils import round_numbers
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -73,11 +68,12 @@ class BinanceAIReport:
 
     def extract_features(
         self, max_fresh_minutes: int = 8 * 60, normalize: bool = True
-    ) -> dict:
+    ) -> dict | None:
         """Extract heuristic external feature vector from raw report JSON."""
         report_json = self.fetch_report()
         if not report_json:
-            return {"external_available": 0}
+            return None
+
         data = report_json.get("data", {})
         original = (
             data.get("report", {}).get("original", {})
@@ -171,6 +167,8 @@ class BinanceAIReport:
         (Social features are exposed via separate social_features_flag()).
         """
         features = self.extract_features()
+        if not features:
+            return None
         signal_type = []
 
         # Directional criteria (heuristic – tune thresholds in runtime if needed)
@@ -219,7 +217,8 @@ class BinanceAIReport:
         return None
 
     def social_features_flag(self, min_posts: int = 10) -> list | None:
-        """Aggregate social-/community-related external flags into a single boolean.
+        """
+        Aggregate social-/community-related external flags into a single boolean.
 
         Returns True if ANY of these are present:
         - large_discussion_flag (community_post_count >= 10 in extract_features)
@@ -233,6 +232,9 @@ class BinanceAIReport:
         """
         features = self.extract_features()
         signal_type = []
+
+        if not features:
+            return None
 
         if features.get("large_discussion_flag", 0) > 0:
             signal_type.append(
@@ -268,57 +270,3 @@ class BinanceAIReport:
             return signal_type
 
         return None
-
-    async def signal(
-        self,
-        current_price: float,
-        bb_high: float,
-        bb_low: float,
-        bb_mid: float,
-    ):
-        report_signal = self.ai_report_signal()
-        social_signal = self.social_features_flag()
-
-        if not report_signal and not social_signal:
-            logging.debug("No recent signals detected.")
-            return
-
-        if report_signal and len(report_signal) > 0:
-            algo_name = "binance_ai_report"
-            description = ", ".join(
-                f"{list(d.keys())[0]} ({list(d.values())[0]})" for d in report_signal
-            )
-
-        if social_signal and len(social_signal) > 0:
-            algo_name = "binance_ai_report_social"
-            description = ", ".join(
-                f"{list(d.keys())[0]} ({list(d.values())[0]})" for d in social_signal
-            )
-
-            bot_strategy = Strategy.long
-            autotrade = False
-
-            msg = f"""
-                - [{getenv("ENV")}] <strong>#{algo_name} algorithm</strong> #{self.symbol}
-                - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-                - Description: {description}
-                - Autotrade?: {"Yes" if autotrade else "No"}
-                - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
-                - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
-                """
-
-            value = SignalsConsumer(
-                autotrade=autotrade,
-                current_price=current_price,
-                msg=msg,
-                symbol=self.symbol,
-                algo=algo_name,
-                bot_strategy=bot_strategy,
-                bb_spreads=HABollinguerSpread(
-                    bb_high=bb_high,
-                    bb_mid=bb_mid,
-                    bb_low=bb_low,
-                ),
-            )
-            await self.telegram_consumer.send_signal(value.model_dump_json())
-            # await self.at_consumer.process_autotrade_restrictions(value)
