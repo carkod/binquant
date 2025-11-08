@@ -92,9 +92,7 @@ class BinbotApi(BinanceApi):
         """
         Get market breadth data
         """
-        response = await self.fetch(
-            url=f"{self.bb_base_url}/charts/adr-series", params={"size": size}
-        )
+        response = await self.fetch(url=self.bb_adr_series_url, params={"size": size})
         if "data" in response:
             return response["data"]
         return None
@@ -285,15 +283,5 @@ class BinbotApi(BinanceApi):
         response = self.request(
             url=self.bb_timeseries_url,
             params={"symbol": symbol, "interval": interval, "limit": limit},
-        )
-        return response["data"]
-
-    def get_adr_series(self, size=500):
-        """
-        Get ADR series data
-        """
-        response = self.request(
-            url=self.bb_adr_series_url,
-            params={"size": size},
         )
         return response["data"]

@@ -1,14 +1,13 @@
 import logging
 from datetime import datetime
 from os import getenv, path
-from random import random
 from typing import TYPE_CHECKING
 
 import joblib
 import numpy as np
 import pandas as pd
 
-from models.signals import BollinguerSpread, SignalsConsumer
+from models.signals import HABollinguerSpread, SignalsConsumer
 from shared.enums import Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import round_numbers, timestamp_to_datetime
@@ -157,7 +156,7 @@ class SpikeHunterV2:
         vols = self.df.get("volume_ratio", pd.Series(dtype=float)).dropna()
         pcs = self.df.get("price_change_abs", pd.Series(dtype=float)).dropna()
         if vols.empty or pcs.empty:
-            print("[AutoCalibrate] Missing distribution data; skipping.")
+            logging.info("[AutoCalibrate] Missing distribution data; skipping.")
             return
         old_price_floor = self.price_break_base_threshold
         new_vol_thr = float(max(min_volume_ratio, np.quantile(vols, volume_quantile)))
@@ -167,7 +166,7 @@ class SpikeHunterV2:
         self.volume_cluster_min_ratio = new_vol_thr
         self.price_break_base_threshold = max(old_price_floor, new_price_floor)
         if self.price_break_use_dynamic:
-            print(
+            logging.info(
                 "[AutoCalibrate] Dynamic price quantile logic will adapt above calibrated floor."
             )
 
@@ -409,7 +408,7 @@ class SpikeHunterV2:
                 else:
                     last_idx = i
         if suppressed:
-            print(f"[Cooldown] Suppressed {suppressed} labels")
+            logging.info(f"[Cooldown] Suppressed {suppressed} labels")
 
     def detect_streaks(self, streak_length: int = 3):
         """
@@ -536,18 +535,15 @@ class SpikeHunterV2:
         bb_high: float,
         bb_low: float,
         bb_mid: float,
-        ha_bb_high: float,
-        ha_bb_low: float,
-        ha_bb_mid: float,
     ):
         last_spike = self.latest_signal()
 
         if not last_spike:
-            logging.debug("No recent spike detected for breakout.")
+            logging.info("No recent spike detected for breakout.")
             return
 
         # Introduce randomness to spread probability of big spikes
-        got_lucky = random() < 0.5
+        # got_lucky = random() < 0.5
 
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
@@ -584,8 +580,8 @@ class SpikeHunterV2:
                 autotrade = False
                 return
 
-            if not got_lucky:
-                autotrade = False
+            # if not got_lucky:
+            #     autotrade = False
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
@@ -611,7 +607,7 @@ class SpikeHunterV2:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
-                bb_spreads=BollinguerSpread(
+                bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,

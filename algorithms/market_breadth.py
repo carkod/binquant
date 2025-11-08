@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from models.signals import BollinguerSpread, SignalsConsumer
+from models.signals import HABollinguerSpread, SignalsConsumer
 from shared.enums import MarketDominance, Strategy
 
 if TYPE_CHECKING:
@@ -117,7 +117,7 @@ class MarketBreadthAlgo:
                 symbol=self.ti.symbol,
                 algo=algo,
                 bot_strategy=self.bot_strategy,
-                bb_spreads=BollinguerSpread(
+                bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,

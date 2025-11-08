@@ -94,7 +94,7 @@ class AutotradeConsumer(BinbotApi):
             and not data.autotrade
         ):
             if self.reached_max_active_autobots("paper_trading"):
-                logging.error(
+                logging.info(
                     "Reached maximum number of paper_trading active bots set in controller settings"
                 )
             else:
