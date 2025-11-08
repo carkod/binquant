@@ -58,22 +58,21 @@ async def data_process_pipe() -> None:
     await klines_provider.load_data_on_start()
 
     async def handle_message(message):
+        restart_streaming_checkpoint = False
         try:
-            if message.topic == KafkaTopics.restart_streaming.value:
+            if (
+                message.topic == KafkaTopics.restart_streaming.value
+                and not restart_streaming_checkpoint
+            ):
                 logging.info("Received restart_streaming message, reloading data...")
                 await klines_provider.load_data_on_start()
+                restart_streaming_checkpoint = True
                 return False
 
-            await klines_provider.aggregate_data(message.value)
+            if message.topic == KafkaTopics.klines_store_topic.value:
+                await klines_provider.aggregate_data(message.value)
+                restart_streaming_checkpoint = False
 
-            # No batching, commit immediately after processing
-            # Debug logging kept minimal; consider lowering to trace if too chatty
-            logging.debug(
-                "Processed offset %s for %s:%s",
-                message.offset,
-                message.topic,
-                message.partition,
-            )
             return True
         except Exception as e:
             logging.error(f"Error processing message: {e}", exc_info=True)
@@ -99,7 +98,7 @@ async def data_process_pipe() -> None:
                         + 1
                     }
                     await consumer.commit(offsets=offsets)
-                    logging.debug(
+                    logging.info(
                         "Committed offset: %s for %s:%s",
                         message.offset + 1,
                         message.topic,
