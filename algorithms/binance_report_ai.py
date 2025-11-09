@@ -238,9 +238,6 @@ class BinanceAIReport:
         if not features:
             return None
 
-        if not features:
-            return None
-
         if features.get("large_discussion_flag", 0) > 0:
             signal_type["large_discussion_flag"] = features.get("large_discussion_flag")
         if features.get("community_post_count", 0) >= 2:
