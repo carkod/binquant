@@ -58,20 +58,16 @@ async def data_process_pipe() -> None:
     await klines_provider.load_data_on_start()
 
     async def handle_message(message):
-        restart_streaming_checkpoint = False
         try:
             if (
                 message.topic == KafkaTopics.restart_streaming.value
-                and not restart_streaming_checkpoint
             ):
                 logging.info("Received restart_streaming message, reloading data...")
                 await klines_provider.load_data_on_start()
-                restart_streaming_checkpoint = True
                 return False
 
             if message.topic == KafkaTopics.klines_store_topic.value:
                 await klines_provider.aggregate_data(message.value)
-                restart_streaming_checkpoint = False
 
             return True
         except Exception as e:
