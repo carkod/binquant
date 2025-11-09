@@ -556,15 +556,15 @@ class SpikeHunterV3:
         social_features = self.binance_ai_report.social_features_flag()
         if social_features:
             social_features_string = ", ".join(
-                f"{list(d.keys())[0]} ({list(d.values())[0]})" for d in social_features
+                f"{key} ({value})" for key, value in social_features.items()
             )
             social_description = f"Social Sentiment: {social_features_string}"
 
-        features = self.binance_ai_report.extract_features()
+        features = self.binance_ai_report.ai_report_signal()
 
         if features:
             features_string = ", ".join(
-                f"{list(d.keys())[0]} ({list(d.values())[0]})" for d in features
+                f"{key} ({value})" for key, value in features.items()
             )
             features_description = f"Features: {features_string}"
 

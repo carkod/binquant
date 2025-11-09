@@ -159,7 +159,7 @@ class BinanceAIReport:
 
     def ai_report_signal(
         self, bias_thr: float = 0.5, opp_risk_thr: float = 1.2, net_score_thr: int = 1
-    ) -> list | None:
+    ) -> dict | None:
         """Return a directional AI report signal.
 
         1  bullish, -1 bearish, 0 neutral.
@@ -169,37 +169,38 @@ class BinanceAIReport:
         features = self.extract_features()
         if not features:
             return None
-        signal_type = []
+
+        signal_type = {}
 
         # Directional criteria (heuristic – tune thresholds in runtime if needed)
 
         if features.get("external_bias_normalized", 0) > bias_thr:
-            signal_type.append(
-                {"external_bias_normalized": features.get("external_bias_normalized")}
+            signal_type["external_bias_normalized"] = features.get(
+                "external_bias_normalized"
             )
 
         if features.get("opp_risk_ratio", 1):
-            signal_type.append({"opp_risk_ratio": features.get("opp_risk_ratio")})
+            signal_type["opp_risk_ratio"] = features.get("opp_risk_ratio")
 
         if features.get("net_signal_score", 0) > net_score_thr:
-            signal_type.append({"net_signal_score": features.get("net_signal_score")})
+            signal_type["net_signal_score"] = features.get("net_signal_score")
 
         if features.get("macd_bullish_flag", 0) == 1:
-            signal_type.append({"macd_bullish_flag": features.get("macd_bullish_flag")})
+            signal_type["macd_bullish_flag"] = features.get("macd_bullish_flag")
 
         if features.get("external_bias_normalized", 0) < -bias_thr:
-            signal_type.append(
-                {"external_bias_normalized": features.get("external_bias_normalized")}
+            signal_type["external_bias_normalized"] = features.get(
+                "external_bias_normalized"
             )
 
         if features.get("opp_risk_ratio", 1) < 1:
-            signal_type.append({"opp_risk_ratio": features.get("opp_risk_ratio")})
+            signal_type["opp_risk_ratio"] = features.get("opp_risk_ratio")
 
         if features.get("net_signal_score", 0) < -net_score_thr:
-            signal_type.append({"net_signal_score": features.get("net_signal_score")})
+            signal_type["net_signal_score"] = features.get("net_signal_score")
 
         if features.get("ema_bearish_flag", 0) == 1:
-            signal_type.append({"ema_bearish_flag": features.get("ema_bearish_flag")})
+            signal_type["ema_bearish_flag"] = features.get("ema_bearish_flag")
 
         signal = (
             features.get("external_bias_normalized", 0) > bias_thr
@@ -216,7 +217,7 @@ class BinanceAIReport:
 
         return None
 
-    def social_features_flag(self, min_posts: int = 10) -> list | None:
+    def social_features_flag(self) -> dict | None:
         """
         Aggregate social-/community-related external flags into a single boolean.
 
@@ -230,41 +231,29 @@ class BinanceAIReport:
         bullishness; the intent here is to surface ANY notable social/contextual
         condition, not strictly positive ones. Caller can interpret polarity.
         """
+        # min_posts: int = 10
         features = self.extract_features()
-        signal_type = []
+        signal_type = {}
 
         if not features:
             return None
 
         if features.get("large_discussion_flag", 0) > 0:
-            signal_type.append(
-                {"large_discussion_flag": features.get("large_discussion_flag")}
-            )
-
+            signal_type["large_discussion_flag"] = features.get("large_discussion_flag")
         if features.get("community_post_count", 0) >= 2:
-            signal_type.append(
-                {"community_post_count": features.get("community_post_count")}
-            )
-
+            signal_type["community_post_count"] = features.get("community_post_count")
         if features.get("sentiment_mixed_flag", 0) > 0:
-            signal_type.append(
-                {"sentiment_mixed_flag": features.get("sentiment_mixed_flag")}
-            )
-
+            signal_type["sentiment_mixed_flag"] = features.get("sentiment_mixed_flag")
         if features.get("coinbase_premium_weak_flag", 0) > 1:
-            signal_type.append(
-                {
-                    "coinbase_premium_weak_flag": features.get(
-                        "coinbase_premium_weak_flag"
-                    )
-                }
+            signal_type["coinbase_premium_weak_flag"] = features.get(
+                "coinbase_premium_weak_flag"
             )
 
         signal = (
-            features.get("large_discussion_flag", 0) == 1
-            or features.get("community_post_count", 0) >= min_posts
-            or features.get("sentiment_mixed_flag", 0) == 1
-            or features.get("coinbase_premium_weak_flag", 0) == 1
+            features.get("large_discussion_flag", 0) > 1
+            or features.get("community_post_count", 0) > 1
+            or features.get("sentiment_mixed_flag", 0) > 1
+            or features.get("coinbase_premium_weak_flag", 0) > 1
         )
         if signal:
             return signal_type
