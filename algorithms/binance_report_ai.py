@@ -69,7 +69,9 @@ class BinanceAIReport:
     def extract_features(
         self, max_fresh_minutes: int = 8 * 60, normalize: bool = True
     ) -> dict | None:
-        """Extract heuristic external feature vector from raw report JSON."""
+        """
+        Extract heuristic external feature vector from raw report JSON.
+        """
         report_json = self.fetch_report()
         if not report_json:
             return None
@@ -80,6 +82,8 @@ class BinanceAIReport:
             if "report" in data
             else report_json.get("data", {}).get("original", {})
         )
+        if not original:
+            return None
         report_meta = original.get("reportMeta", {})
         modules = original.get("modules", []) or []
         update_ms = int(report_meta.get("updateAt", 0))
@@ -259,3 +263,27 @@ class BinanceAIReport:
             return signal_type
 
         return None
+
+    def final_report(
+        self, bias_thr: float = 0.5, opp_risk_thr: float = 1.2, net_score_thr: int = 1
+    ):
+        features = self.extract_features()
+        if not features or not features.get("external_available", 0):
+            return 0
+        bullish = (
+            features.get("external_bias_normalized", 0) > bias_thr
+            and features.get("opp_risk_ratio", 1) > opp_risk_thr
+            and features.get("net_signal_score", 0) > net_score_thr
+            and features.get("macd_bullish_flag", 0) == 1
+        )
+        bearish = (
+            features.get("external_bias_normalized", 0) < -bias_thr
+            and features.get("opp_risk_ratio", 1) < 1
+            and features.get("net_signal_score", 0) < -net_score_thr
+            and features.get("ema_bearish_flag", 0) == 1
+        )
+        if bullish:
+            return 1
+        if bearish:
+            return -1
+        return 0

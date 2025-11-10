@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta
-
+import asyncio
+from datetime import datetime
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 
@@ -212,17 +212,11 @@ class CryptoAnalytics:
 
             self.postprocess_data()
 
-            # Avoid repeated signals in short periods of time
-            is_lapsed = self.symbol in self.repeated_signals and self.repeated_signals[
-                self.symbol
-            ] < datetime.now() - timedelta(minutes=30)
-
             # Dropped NaN values may end up with empty dataframe
             if (
                 self.df["ma_7"].size < 7
                 or self.df["ma_25"].size < 25
                 or self.df["ma_100"].size < 100
-                and not is_lapsed
             ):
                 return
 
@@ -241,28 +235,22 @@ class CryptoAnalytics:
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
-            # await self.sh2.signal(
-            #     current_price=close_price,
-            #     bb_high=ha_spreads.bb_high,
-            #     bb_mid=ha_spreads.bb_mid,
-            #     bb_low=ha_spreads.bb_low,
-            # )
-
-            await self.sh3.signal(
-                current_price=close_price,
-                bb_high=ha_spreads.bb_high,
-                bb_mid=ha_spreads.bb_mid,
-                bb_low=ha_spreads.bb_low,
+            # Run signals concurrently
+            # this allows errors to not block each other
+            # and signals to be sent whenever they are ready
+            await asyncio.gather(
+                self.sh2.signal(
+                    current_price=close_price,
+                    bb_high=ha_spreads.bb_high,
+                    bb_mid=ha_spreads.bb_mid,
+                    bb_low=ha_spreads.bb_low,
+                ),
+                self.sh3.signal(
+                    current_price=close_price,
+                    bb_high=ha_spreads.bb_high,
+                    bb_mid=ha_spreads.bb_mid,
+                    bb_low=ha_spreads.bb_low,
+                ),
             )
-
-            # await self.cr.supertrend_swing_reversal(
-            #     close_price=close_price,
-            #     bb_high=bb_high,
-            #     bb_low=bb_low,
-            #     bb_mid=bb_mid,
-            # )
-
-            # avoid repeating signals in short periods of time
-            self.repeated_signals[self.symbol] = datetime.now()
 
         return
