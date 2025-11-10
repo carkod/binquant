@@ -59,9 +59,7 @@ async def data_process_pipe() -> None:
 
     async def handle_message(message):
         try:
-            if (
-                message.topic == KafkaTopics.restart_streaming.value
-            ):
+            if message.topic == KafkaTopics.restart_streaming.value:
                 logging.info("Received restart_streaming message, reloading data...")
                 await klines_provider.load_data_on_start()
                 return False
