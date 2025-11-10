@@ -3,10 +3,10 @@ from datetime import datetime, timedelta
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 
-from algorithms.binance_report_ai import BinanceAIReport
 from algorithms.coinrule import Coinrule
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_v2 import SpikeHunterV2
+from algorithms.spike_hunter_v3 import SpikeHunterV3
 from algorithms.spikehunter_v1 import SpikeHunter
 from algorithms.whale_signals import WhaleSignals
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -176,8 +176,8 @@ class CryptoAnalytics:
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh = SpikeHunter(cls=self)
         self.cr = Coinrule(cls=self)
-        self.bar = BinanceAIReport(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
+        self.sh3 = SpikeHunterV3(cls=self)
         self.whale = WhaleSignals(cls=self)
 
     async def process_data(self, candles):
@@ -241,19 +241,19 @@ class CryptoAnalytics:
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
-            await self.sh2.signal(
-                current_price=close_price,
-                bb_high=ha_spreads.bb_high,
-                bb_mid=ha_spreads.bb_mid,
-                bb_low=ha_spreads.bb_low,
-            )
-
-            # await self.bar.signal(
+            # await self.sh2.signal(
             #     current_price=close_price,
             #     bb_high=ha_spreads.bb_high,
             #     bb_mid=ha_spreads.bb_mid,
             #     bb_low=ha_spreads.bb_low,
             # )
+
+            await self.sh3.signal(
+                current_price=close_price,
+                bb_high=ha_spreads.bb_high,
+                bb_mid=ha_spreads.bb_mid,
+                bb_low=ha_spreads.bb_low,
+            )
 
             # await self.cr.supertrend_swing_reversal(
             #     close_price=close_price,

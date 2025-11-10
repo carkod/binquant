@@ -146,9 +146,15 @@ class Autotrade(BinbotApi):
     async def activate_autotrade(self, data: SignalsConsumer):
         """
         Run autotrade
+        1. Make sure we are not duplicating bots get_filtered_active_symbols
         2. Create bot with given parameters from research_controller
         3. Activate bot
         """
+        active_symbols = self.get_filtered_active_symbols()
+        if self.pair in active_symbols:
+            logging.info(f"Autotrade already active for {self.pair}, skipping...")
+            return
+
         self.default_bot.strategy = data.bot_strategy
         if self.db_collection_name == "paper_trading":
             # Dynamic switch to real bot URLs

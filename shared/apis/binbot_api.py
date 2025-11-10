@@ -223,6 +223,37 @@ class BinbotApi(BinanceApi):
 
         return res["data"]
 
+    def get_filtered_active_symbols(self) -> list[str]:
+        """
+        all symbols that are active, not blacklisted
+        minus active bots
+        minus all symbols that match base asset of these active bots
+        i.e. BTC in BTCUSDC
+        """
+        active_pairs = self.get_active_pairs()
+        all_symbols = self.get_symbols()
+        active_symbols = set(
+            {
+                s["id"]
+                for s in all_symbols
+                if s["active"] and s["id"] not in active_pairs
+            }
+        )
+        quote_assets = set(
+            {
+                symbol["base_asset"]
+                for symbol in all_symbols
+                if symbol["id"] in active_pairs
+            }
+        )
+        # Remove all symbols that match quote assets of active bots
+        filtered_active_symbols = [
+            symbol
+            for symbol in active_symbols
+            if not any(symbol.startswith(asset) for asset in quote_assets)
+        ]
+        return filtered_active_symbols
+
     async def get_top_gainers(self):
         """
         Top crypto/token/coin gainers of the day
