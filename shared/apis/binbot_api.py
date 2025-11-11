@@ -232,26 +232,20 @@ class BinbotApi(BinanceApi):
         """
         active_pairs = self.get_active_pairs()
         all_symbols = self.get_symbols()
-        active_symbols = set(
-            {
-                s["id"]
-                for s in all_symbols
-                if s["active"] and s["id"] not in active_pairs
-            }
-        )
-        quote_assets = set(
-            {
-                symbol["base_asset"]
-                for symbol in all_symbols
-                if symbol["id"] in active_pairs
-            }
-        )
-        # Remove all symbols that match quote assets of active bots
-        filtered_active_symbols = [
-            symbol
-            for symbol in active_symbols
-            if not any(symbol.startswith(asset) for asset in quote_assets)
-        ]
+        active_symbols = []
+        filtered_active_symbols = []
+
+        for s in all_symbols:
+            if s["active"] and s["id"] in active_pairs:
+                active_symbols.append(s["id"])
+
+        for ac_sym in active_symbols:
+            if any(ac_sym.startswith(sym["base_asset"]) for sym in all_symbols):
+                continue
+            else:
+                # Remove all symbols that match base asset of active bots
+                filtered_active_symbols.append(ac_sym)
+
         return filtered_active_symbols
 
     async def get_top_gainers(self):

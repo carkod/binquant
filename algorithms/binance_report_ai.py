@@ -15,7 +15,6 @@ class BinanceAIReport:
     # Helper to derive base token from a trading symbol (simple heuristic)
     QUOTE_ASSETS = ["USDT", "USDC", "BUSD", "TRY", "EUR", "BTC", "ETH"]
     BINANCE_AI_ENDPOINT = "https://www.binance.com/bapi/bigdata/v3/friendly/bigdata/search/ai-report/report"
-    QUOTE_ASSETS_INLINE = ["USDT", "USDC", "BUSD", "TRY", "EUR", "BTC", "ETH"]
 
     def __init__(
         self,
@@ -31,14 +30,6 @@ class BinanceAIReport:
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
 
-    def base_token_from_symbol(self) -> str:
-        """Infer base token by stripping common quote asset suffixes."""
-        for q in self.QUOTE_ASSETS_INLINE:
-            if self.symbol.endswith(q):
-                base = self.symbol[: -len(q)]
-                return base if base else self.symbol
-        return self.symbol
-
     @staticmethod
     def count_points(mod_list):
         return sum(len(m.get("points", []) or []) for m in mod_list)
@@ -48,12 +39,15 @@ class BinanceAIReport:
         """Fetch raw Binance AI report JSON for a given base token using POST request.
         Returns raw dictionary or None if network/scheme failure.
         """
-        token = self.base_token_from_symbol()
+        if not self.current_symbol_data:
+            return None
+
+        token = self.current_symbol_data["base_asset"]
         try:
             timestamp = int(time.time() * 1000)
             payload = {
                 "lang": "en",
-                "token": token.upper(),
+                "token": token,
                 "symbol": self.symbol.upper(),
                 "product": "web-spot",
                 "timestamp": str(timestamp),

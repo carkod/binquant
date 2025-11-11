@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime
 
 from confluent_kafka import Producer
@@ -236,22 +235,11 @@ class CryptoAnalytics:
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
-            # Run signals concurrently
-            # this allows errors to not block each other
-            # and signals to be sent whenever they are ready
-            await asyncio.gather(
-                self.sh2.signal(
-                    current_price=close_price,
-                    bb_high=ha_spreads.bb_high,
-                    bb_mid=ha_spreads.bb_mid,
-                    bb_low=ha_spreads.bb_low,
-                ),
-                self.sh3.signal(
-                    current_price=close_price,
-                    bb_high=ha_spreads.bb_high,
-                    bb_mid=ha_spreads.bb_mid,
-                    bb_low=ha_spreads.bb_low,
-                ),
+            await self.sh2.signal(
+                current_price=close_price,
+                bb_high=ha_spreads.bb_high,
+                bb_mid=ha_spreads.bb_mid,
+                bb_low=ha_spreads.bb_low,
             )
 
         return

@@ -117,7 +117,6 @@ class AutotradeConsumer(BinbotApi):
         """
         if (
             self.autotrade_settings["autotrade"]
-            and symbol in self.active_symbols
             and data.autotrade
         ):
             if self.reached_max_active_autobots("bots"):
@@ -125,7 +124,6 @@ class AutotradeConsumer(BinbotApi):
                     "Reached maximum number of active bots set in controller settings"
                 )
             else:
-                # temporarily disable margin trading
                 autotrade = Autotrade(
                     pair=symbol,
                     settings=self.autotrade_settings,
