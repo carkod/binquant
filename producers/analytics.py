@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 

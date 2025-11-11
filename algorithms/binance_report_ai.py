@@ -83,6 +83,7 @@ class BinanceAIReport:
             else report_json.get("data", {}).get("original", {})
         )
         if not original:
+            print("Original not found. Symbol: ", self.symbol)
             return None
         report_meta = original.get("reportMeta", {})
         modules = original.get("modules", []) or []
