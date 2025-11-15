@@ -553,20 +553,7 @@ class SpikeHunterV3:
             return
 
         # Compose social and risk features from BinanceAIReport
-        social_features = self.binance_ai_report.social_features_flag()
-        if social_features:
-            social_features_string = ", ".join(
-                f"{key} ({value})" for key, value in social_features.items()
-            )
-            social_description = f"Social Sentiment: {social_features_string}"
-
-        features = self.binance_ai_report.ai_report_signal()
-
-        if features:
-            features_string = ", ".join(
-                f"{key} ({value})" for key, value in features.items()
-            )
-            features_description = f"Features: {features_string}"
+        final_report = self.binance_ai_report.final_report()
 
         if (
             (
@@ -578,10 +565,10 @@ class SpikeHunterV3:
             )
             and last_spike["number_of_trades"] > 20
             and last_spike["number_of_trades_thr"] > 0
+            and final_report == 1
         ):
-            algo = f"spike_hunter_v3_{last_spike['signal_type']}"
+            algo = "spike_hunter_v3"
             bot_strategy = Strategy.long
-            autotrade = True
             symbol_data = self.current_symbol_data
 
             if last_spike["upward"]:
@@ -594,10 +581,8 @@ class SpikeHunterV3:
                     return
                 streak = "📉"
                 bot_strategy = Strategy.margin_short
-                autotrade = False
             else:
                 streak = "N/A"
-                autotrade = False
                 return
 
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
@@ -610,16 +595,14 @@ class SpikeHunterV3:
                 - Number of trades: {last_spike["number_of_trades"]} (thr: {round_numbers(last_spike["number_of_trades_thr"], decimals=self.price_precision)})
                 - 📊 {base_asset} volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)}
                 - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
-                {"- " + social_description if social_description else ""}
-                {"- " + features_description if features_description else ""}
                 - ₿ Correlation: {round_numbers(self.btc_correlation, decimals=self.price_precision)}
-                - Autotrade?: {"Yes" if autotrade else "No"}
+                - Autotrade?: {"Yes" if False else "No"}
                 - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
                 """
 
             value = SignalsConsumer(
-                autotrade=autotrade,
+                autotrade=False,
                 current_price=current_price,
                 msg=msg,
                 symbol=self.symbol,
