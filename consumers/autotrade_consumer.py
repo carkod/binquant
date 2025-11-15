@@ -11,7 +11,6 @@ class AutotradeConsumer(BinbotApi):
         autotrade_settings,
         active_test_bots,
         all_symbols,
-        active_symbols,
         test_autotrade_settings,
     ) -> None:
         self.market_domination_reversal = False
@@ -28,7 +27,6 @@ class AutotradeConsumer(BinbotApi):
         self.autotrade_settings = autotrade_settings
         self.active_test_bots = active_test_bots
         self.all_symbols = all_symbols
-        self.active_symbols = active_symbols
         self.test_autotrade_settings = test_autotrade_settings
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
