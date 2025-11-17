@@ -113,10 +113,7 @@ class AutotradeConsumer(BinbotApi):
         """
         Real autotrade starts
         """
-        if (
-            self.autotrade_settings["autotrade"]
-            and data.autotrade
-        ):
+        if self.autotrade_settings["autotrade"] and data.autotrade:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"

@@ -59,7 +59,9 @@ class CryptoAnalytics:
         self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
-        self.current_symbol_data: dict | None = next((s for s in all_symbols if s["id"] == symbol), None)
+        self.current_symbol_data: dict | None = next(
+            (s for s in all_symbols if s["id"] == symbol), None
+        )
         self.telegram_consumer = TelegramConsumer()
         self.at_consumer: AutotradeConsumer = ac_api
 

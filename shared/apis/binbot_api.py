@@ -237,7 +237,9 @@ class BinbotApi(BinanceApi):
 
         for s in all_symbols:
             for ap in active_pairs:
-                if (ap.startswith(s["base_asset"]) and s["id"] not in exclusion_list) or (not s["active"]):
+                if (
+                    ap.startswith(s["base_asset"]) and s["id"] not in exclusion_list
+                ) or (not s["active"]):
                     exclusion_list.append(s["id"])
 
         return exclusion_list

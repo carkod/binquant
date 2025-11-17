@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from os import getenv, path
+from random import random
 from typing import TYPE_CHECKING
 
 import joblib
@@ -542,6 +543,8 @@ class SpikeHunterV2:
             logging.info("No recent spike detected for breakout.")
             return
 
+        got_lucky = random() < 0.5
+
         # When no bullish conditions, check for breakout spikes
         # btc correlation avoids tightly coupled assets
         # if btc price ↑ and btc is negative, we can assume prices will go up
@@ -576,6 +579,9 @@ class SpikeHunterV2:
                 streak = "N/A"
                 autotrade = False
                 return
+
+            if not got_lucky:
+                autotrade = False
 
             # Guard against None current_symbol_data (mypy: Optional indexing)
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"

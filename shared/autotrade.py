@@ -152,7 +152,9 @@ class Autotrade(BinbotApi):
         """
         excluded_symbols = self.filter_excluded_symbols()
         if self.pair in excluded_symbols:
-            logging.info(f"Autotrade already active or in exclusion list for {self.pair}, skipping...")
+            logging.info(
+                f"Autotrade already active or in exclusion list for {self.pair}, skipping..."
+            )
             return
 
         self.default_bot.strategy = data.bot_strategy
