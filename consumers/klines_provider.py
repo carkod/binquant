@@ -42,7 +42,6 @@ class KlinesProvider:
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
         self.top_losers_day = await self.binbot_api.get_top_losers()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
-        active_symbols = self.binbot_api.get_filtered_active_symbols()
 
         # Autotrade Consumer API dependencies
         self.ac_api = AutotradeConsumer(
@@ -52,7 +51,6 @@ class KlinesProvider:
             ),
             all_symbols=self.binbot_api.get_symbols(),
             # Active bot symbols substracting exchange active symbols (not blacklisted)
-            active_symbols=active_symbols,
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
         )
 

@@ -15,7 +15,6 @@ class BinanceAIReport:
     # Helper to derive base token from a trading symbol (simple heuristic)
     QUOTE_ASSETS = ["USDT", "USDC", "BUSD", "TRY", "EUR", "BTC", "ETH"]
     BINANCE_AI_ENDPOINT = "https://www.binance.com/bapi/bigdata/v3/friendly/bigdata/search/ai-report/report"
-    QUOTE_ASSETS_INLINE = ["USDT", "USDC", "BUSD", "TRY", "EUR", "BTC", "ETH"]
 
     def __init__(
         self,
@@ -31,14 +30,6 @@ class BinanceAIReport:
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
 
-    def base_token_from_symbol(self) -> str:
-        """Infer base token by stripping common quote asset suffixes."""
-        for q in self.QUOTE_ASSETS_INLINE:
-            if self.symbol.endswith(q):
-                base = self.symbol[: -len(q)]
-                return base if base else self.symbol
-        return self.symbol
-
     @staticmethod
     def count_points(mod_list):
         return sum(len(m.get("points", []) or []) for m in mod_list)
@@ -48,12 +39,15 @@ class BinanceAIReport:
         """Fetch raw Binance AI report JSON for a given base token using POST request.
         Returns raw dictionary or None if network/scheme failure.
         """
-        token = self.base_token_from_symbol()
+        if not self.current_symbol_data:
+            return None
+
+        token = self.current_symbol_data["base_asset"]
         try:
             timestamp = int(time.time() * 1000)
             payload = {
                 "lang": "en",
-                "token": token.upper(),
+                "token": token,
                 "symbol": self.symbol.upper(),
                 "product": "web-spot",
                 "timestamp": str(timestamp),
@@ -69,7 +63,9 @@ class BinanceAIReport:
     def extract_features(
         self, max_fresh_minutes: int = 8 * 60, normalize: bool = True
     ) -> dict | None:
-        """Extract heuristic external feature vector from raw report JSON."""
+        """
+        Extract heuristic external feature vector from raw report JSON.
+        """
         report_json = self.fetch_report()
         if not report_json:
             return None
@@ -80,6 +76,9 @@ class BinanceAIReport:
             if "report" in data
             else report_json.get("data", {}).get("original", {})
         )
+        if not original:
+            print("Original not found. Symbol: ", self.symbol)
+            return None
         report_meta = original.get("reportMeta", {})
         modules = original.get("modules", []) or []
         update_ms = int(report_meta.get("updateAt", 0))
@@ -259,3 +258,27 @@ class BinanceAIReport:
             return signal_type
 
         return None
+
+    def final_report(
+        self, bias_thr: float = 0.5, opp_risk_thr: float = 1.2, net_score_thr: int = 1
+    ):
+        features = self.extract_features()
+        if not features or not features.get("external_available", 0):
+            return 0
+        bullish = (
+            features.get("external_bias_normalized", 0) > bias_thr
+            and features.get("opp_risk_ratio", 1) > opp_risk_thr
+            and features.get("net_signal_score", 0) > net_score_thr
+            and features.get("macd_bullish_flag", 0) == 1
+        )
+        bearish = (
+            features.get("external_bias_normalized", 0) < -bias_thr
+            and features.get("opp_risk_ratio", 1) < 1
+            and features.get("net_signal_score", 0) < -net_score_thr
+            and features.get("ema_bearish_flag", 0) == 1
+        )
+        if bullish:
+            return 1
+        if bearish:
+            return -1
+        return 0
