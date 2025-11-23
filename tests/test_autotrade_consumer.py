@@ -9,7 +9,6 @@ class TestAutotradeConsumer:
             autotrade_settings=self.settings,
             active_test_bots=[1],
             all_symbols=[],
-            active_symbols=[],
             test_autotrade_settings=self.test_settings,
         )
         self.consumer.active_bots = [1, 2]

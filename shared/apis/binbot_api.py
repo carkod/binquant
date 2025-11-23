@@ -223,7 +223,7 @@ class BinbotApi(BinanceApi):
 
         return res["data"]
 
-    def get_filtered_active_symbols(self) -> list[str]:
+    def filter_excluded_symbols(self) -> list[str]:
         """
         all symbols that are active, not blacklisted
         minus active bots
@@ -232,27 +232,17 @@ class BinbotApi(BinanceApi):
         """
         active_pairs = self.get_active_pairs()
         all_symbols = self.get_symbols()
-        active_symbols = set(
-            {
-                s["id"]
-                for s in all_symbols
-                if s["active"] and s["id"] not in active_pairs
-            }
-        )
-        quote_assets = set(
-            {
-                symbol["base_asset"]
-                for symbol in all_symbols
-                if symbol["id"] in active_pairs
-            }
-        )
-        # Remove all symbols that match quote assets of active bots
-        filtered_active_symbols = [
-            symbol
-            for symbol in active_symbols
-            if not any(symbol.startswith(asset) for asset in quote_assets)
-        ]
-        return filtered_active_symbols
+        exclusion_list = []
+        exclusion_list.extend(active_pairs)
+
+        for s in all_symbols:
+            for ap in active_pairs:
+                if (
+                    ap.startswith(s["base_asset"]) and s["id"] not in exclusion_list
+                ) or (not s["active"]):
+                    exclusion_list.append(s["id"])
+
+        return exclusion_list
 
     async def get_top_gainers(self):
         """
