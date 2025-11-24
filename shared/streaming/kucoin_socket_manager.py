@@ -98,7 +98,7 @@ class KucoinSocketManager(threading.Thread):
 
     def close(self):
         if not self.ws.connected:
-            self.logger.warn("Kucoin websocket already closed")
+            self.logger.warning("Kucoin websocket already closed")
         else:
             self.ws.send_close()
         return
