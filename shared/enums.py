@@ -3,6 +3,13 @@ from enum import Enum
 from pydantic import BaseModel, field_validator
 
 
+class Exchange(str, Enum):
+    """Supported cryptocurrency exchanges"""
+
+    binance = "binance"
+    kucoin = "kucoin"
+
+
 class EnumDefinitions:
     """
     Enums established by Binance API
