@@ -3,11 +3,11 @@ from enum import Enum
 from pydantic import BaseModel, field_validator
 
 
-class Exchange(str, Enum):
+class ExchangeId(str, Enum):
     """Supported cryptocurrency exchanges"""
 
-    binance = "binance"
-    kucoin = "kucoin"
+    BINANCE = "binance"
+    KUCOIN = "kucoin"
 
 
 class EnumDefinitions:
