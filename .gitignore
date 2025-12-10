@@ -24,3 +24,4 @@ mongo_db
 db.dump
 __pycache__
 .pytest_cache
+binquant.egg-info/

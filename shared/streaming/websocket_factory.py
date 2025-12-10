@@ -5,18 +5,17 @@ for different exchanges (Binance, Kucoin) without changing existing code.
 """
 
 import logging
+import os
 
 from shared.enums import Exchange
 from shared.streaming.async_socket_client import (
     AsyncBinanceWebsocketClient,
     AsyncSpotWebsocketStreamClient,
 )
-from shared.streaming.kucoin_async_socket_client import (
+from shared.streaming.kucoin_websocket_sdk import (
     AsyncKucoinSpotWebsocketStreamClient,
     AsyncKucoinWebsocketClient,
 )
-from shared.streaming.kucoin_socket_client import KucoinSpotWebsocketStreamClient
-from shared.streaming.kucoin_socket_manager import KucoinWebsocketClient
 from shared.streaming.socket_client import SpotWebsocketStreamClient
 from shared.streaming.socket_manager import BinanceWebsocketClient
 
@@ -28,13 +27,13 @@ class WebsocketClientFactory:
 
     Usage:
         # Create a Binance client
-        client = WebsocketClientFactory.create_client(
+        client = WebsocketClientFactory.create_async_spot_client(
             Exchange.binance,
             on_message=my_handler
         )
 
         # Create a Kucoin client
-        client = WebsocketClientFactory.create_client(
+        client = WebsocketClientFactory.create_async_spot_client(
             Exchange.kucoin,
             on_message=my_handler
         )
@@ -51,8 +50,11 @@ class WebsocketClientFactory:
         on_pong=None,
         logger=None,
         **kwargs,
-    ) -> BinanceWebsocketClient | KucoinWebsocketClient:
+    ):
         """Create a synchronous websocket client for the specified exchange.
+
+        Note: Synchronous client not supported for Kucoin (SDK doesn't provide sync API).
+        Use create_async_client instead.
 
         Args:
             exchange: Exchange enum (binance or kucoin)
@@ -81,16 +83,9 @@ class WebsocketClientFactory:
                 logger=logger,
             )
         elif exchange == Exchange.kucoin:
-            stream_url = kwargs.get("stream_url", "wss://ws-api-spot.kucoin.com/")
-            return KucoinWebsocketClient(
-                stream_url=stream_url,
-                on_message=on_message,
-                on_open=on_open,
-                on_close=on_close,
-                on_error=on_error,
-                on_ping=on_ping,
-                on_pong=on_pong,
-                logger=logger,
+            raise NotImplementedError(
+                "Synchronous client not available for Kucoin. "
+                "Please use create_async_client instead."
             )
         else:
             raise ValueError(f"Unsupported exchange: {exchange}")
@@ -106,7 +101,7 @@ class WebsocketClientFactory:
         on_ping=None,
         on_pong=None,
         **kwargs,
-    ) -> AsyncBinanceWebsocketClient | AsyncKucoinWebsocketClient:
+    ):
         """Create an async websocket client for the specified exchange.
 
         Args:
@@ -137,17 +132,23 @@ class WebsocketClientFactory:
                 **kwargs,
             )
         elif exchange == Exchange.kucoin:
-            if stream_url is None:
-                stream_url = "wss://ws-api-spot.kucoin.com/"
+            # Get KuCoin credentials from environment variables
+            api_key = kwargs.get("api_key", os.getenv("KUCOIN_KEY", ""))
+            api_secret = kwargs.get("api_secret", os.getenv("KUCOIN_SECRET", ""))
+            api_passphrase = kwargs.get(
+                "api_passphrase", os.getenv("KUCOIN_PASSPHRASE", "")
+            )
+            reconnect = kwargs.get("reconnect", True)
+
             return AsyncKucoinWebsocketClient(
-                stream_url=stream_url,
+                api_key=api_key,
+                api_secret=api_secret,
+                api_passphrase=api_passphrase,
                 on_message=on_message,
                 on_open=on_open,
                 on_close=on_close,
                 on_error=on_error,
-                on_ping=on_ping,
-                on_pong=on_pong,
-                **kwargs,
+                reconnect=reconnect,
             )
         else:
             raise ValueError(f"Unsupported exchange: {exchange}")
@@ -162,8 +163,10 @@ class WebsocketClientFactory:
         on_ping=None,
         on_pong=None,
         **kwargs,
-    ) -> SpotWebsocketStreamClient | KucoinSpotWebsocketStreamClient:
+    ):
         """Create a synchronous spot websocket client for the specified exchange.
+
+        Note: Synchronous client not supported for Kucoin.
 
         Args:
             exchange: Exchange enum (binance or kucoin)
@@ -192,15 +195,9 @@ class WebsocketClientFactory:
                 is_combined=is_combined,
             )
         elif exchange == Exchange.kucoin:
-            stream_url = kwargs.get("stream_url", "wss://ws-api-spot.kucoin.com/")
-            return KucoinSpotWebsocketStreamClient(
-                stream_url=stream_url,
-                on_message=on_message,
-                on_open=on_open,
-                on_close=on_close,
-                on_error=on_error,
-                on_ping=on_ping,
-                on_pong=on_pong,
+            raise NotImplementedError(
+                "Synchronous spot client not available for Kucoin. "
+                "Please use create_async_spot_client instead."
             )
         else:
             raise ValueError(f"Unsupported exchange: {exchange}")
@@ -216,7 +213,7 @@ class WebsocketClientFactory:
         on_ping=None,
         on_pong=None,
         **kwargs,
-    ) -> AsyncSpotWebsocketStreamClient | AsyncKucoinSpotWebsocketStreamClient:
+    ):
         """Create an async spot websocket client for the specified exchange.
 
         Args:
@@ -249,17 +246,23 @@ class WebsocketClientFactory:
                 **kwargs,
             )
         elif exchange == Exchange.kucoin:
-            if stream_url is None:
-                stream_url = "wss://ws-api-spot.kucoin.com/"
+            # Get KuCoin credentials from environment variables
+            api_key = kwargs.get("api_key", os.getenv("KUCOIN_KEY", ""))
+            api_secret = kwargs.get("api_secret", os.getenv("KUCOIN_SECRET", ""))
+            api_passphrase = kwargs.get(
+                "api_passphrase", os.getenv("KUCOIN_PASSPHRASE", "")
+            )
+            reconnect = kwargs.get("reconnect", True)
+
             return AsyncKucoinSpotWebsocketStreamClient(
-                stream_url=stream_url,
+                api_key=api_key,
+                api_secret=api_secret,
+                api_passphrase=api_passphrase,
                 on_message=on_message,
                 on_open=on_open,
                 on_close=on_close,
                 on_error=on_error,
-                on_ping=on_ping,
-                on_pong=on_pong,
-                **kwargs,
+                reconnect=reconnect,
             )
         else:
             raise ValueError(f"Unsupported exchange: {exchange}")
