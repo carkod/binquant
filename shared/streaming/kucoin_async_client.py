@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -129,6 +130,34 @@ class AsyncKucoinWebsocketClient:
                 else:
                     self.on_close(self)
             logger.info("Async KuCoin WebSocket client stopped")
+
+    async def send_message_to_server(
+        self, message, action: str | None = None, id: int | None = None
+    ):
+        """
+        Send a subscription/unsubscription message to the server.
+
+        Compatible with the Binance client interface. Converts stream format
+        to KuCoin topic format if needed.
+
+        Args:
+            message: Stream string(s) or topic string(s)
+            action: Action to perform (subscribe/unsubscribe)
+            id: Optional subscription ID
+        """
+        if not id:
+            id = int(time.time() * 1000)
+
+        if action == self.ACTION_UNSUBSCRIBE:
+            # Handle unsubscribe
+            if isinstance(message, str):
+                await self.unsubscribe(message, id=id)
+            elif isinstance(message, list):
+                for msg in message:
+                    await self.unsubscribe(msg, id=id)
+        else:
+            # Handle subscribe (default action)
+            await self.subscribe(message, id=id)
 
     async def subscribe(self, topic: str | list[str], id: int | None = None):
         """
