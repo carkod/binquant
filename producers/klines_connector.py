@@ -4,9 +4,9 @@ import logging
 
 from models.klines import KlineProduceModel
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import BinanceKlineIntervals, KafkaTopics
+from shared.enums import BinanceKlineIntervals, ExchangeId, KafkaTopics
 from shared.streaming.async_producer import AsyncProducer
-from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
+from shared.streaming.websocket_factory import WebsocketClientFactory
 
 
 class KlinesConnector(BinbotApi):
@@ -15,7 +15,8 @@ class KlinesConnector(BinbotApi):
 
     Uses 5m interval data to produce data for analytics
     which eventually create signals.
-    It's the interface between Binance websocket streams and Kafka producer.
+    It's the interface between exchange websocket streams and Kafka producer.
+    Supports both Binance and KuCoin exchanges via factory pattern.
     """
 
     MAX_MARKETS_PER_CLIENT = 400
@@ -23,18 +24,21 @@ class KlinesConnector(BinbotApi):
     def __init__(
         self,
         interval: BinanceKlineIntervals = BinanceKlineIntervals.five_minutes,
+        exchange: ExchangeId = ExchangeId.BINANCE,
     ) -> None:
-        logging.debug("Started Kafka producer SignalsInbound")
+        logging.debug(f"Started Kafka producer SignalsInbound for {exchange.value}")
         super().__init__()
         self.interval = interval
+        self.exchange = exchange
         # Async Kafka producer wrapper (AIOKafkaProducer) – start in start_stream
         self.producer = AsyncProducer()
         self.autotrade_settings = self.get_autotrade_settings()
-        self.clients: list[AsyncSpotWebsocketStreamClient] = []
+        self.clients = []
 
     async def connect_client(self, on_message, on_close, on_error):
-        """Instantiate and start an async websocket client."""
-        client = AsyncSpotWebsocketStreamClient(
+        """Instantiate and start an async websocket client using factory."""
+        client = WebsocketClientFactory.create_async_spot_client(
+            self.exchange,
             on_message=on_message,
             on_close=on_close,
             on_error=on_error,
