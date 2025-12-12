@@ -8,9 +8,10 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
 from shared.apis.binbot_api import BinanceApi, BinbotApi
+from shared.apis.kucoin_api import KucoinApi
+from shared.apis.types import CombinedApis
 from shared.enums import BinanceKlineIntervals, ExchangeId, KucoinKlineIntervals
 from shared.streaming.async_producer import AsyncProducer
-from shared.apis.kucoin_api import KucoinApi
 
 
 class KlinesProvider:
@@ -23,6 +24,7 @@ class KlinesProvider:
         # If we don't instantiate separately, almost no messages are received
         self.binbot_api = BinbotApi()
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
+        self.api: CombinedApis
         if self.autotrade_settings["exchange_id"] == "kucoin":
             self.exchange = ExchangeId.KUCOIN
             self.api = KucoinApi()
@@ -86,7 +88,7 @@ class KlinesProvider:
 
             crypto_analytics = CryptoAnalytics(
                 producer=self.producer,
-                binbot_api=self.binbot_api,
+                api=self.api,
                 symbol=symbol,
                 top_gainers_day=self.top_gainers_day,
                 market_breadth_data=self.market_breadth_data,

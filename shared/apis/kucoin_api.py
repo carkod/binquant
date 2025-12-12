@@ -1,77 +1,32 @@
 import os
-from time import time
-import random
 import uuid
+
 from kucoin_universal_sdk.api import DefaultClient
-from kucoin_universal_sdk.generate.spot.market import (
-    GetPartOrderBookReqBuilder,
-    GetAllSymbolsReqBuilder,
-    GetFullOrderBookReqBuilder,
-    GetKlinesReqBuilder,
-)
 from kucoin_universal_sdk.generate.account.account import (
-    GetSpotAccountListReqBuilder,
     GetIsolatedMarginAccountReqBuilder,
+    GetSpotAccountListReqBuilder,
 )
-from kucoin_universal_sdk.model import ClientOptionBuilder
-from kucoin_universal_sdk.model import (
-    GLOBAL_API_ENDPOINT,
-)
-from kucoin_universal_sdk.model import TransportOptionBuilder
 from kucoin_universal_sdk.generate.account.account.model_get_isolated_margin_account_resp import (
     GetIsolatedMarginAccountResp,
 )
-from kucoin_universal_sdk.generate.spot.order.model_add_order_sync_resp import (
-    AddOrderSyncResp,
-)
-from kucoin_universal_sdk.generate.spot.order.model_add_order_sync_req import (
-    AddOrderSyncReq,
-    AddOrderSyncReqBuilder,
-)
-from kucoin_universal_sdk.generate.spot.order.model_batch_add_orders_sync_req import (
-    BatchAddOrdersSyncReqBuilder,
-)
-from kucoin_universal_sdk.generate.spot.order.model_batch_add_orders_sync_order_list import (
-    BatchAddOrdersSyncOrderList,
-)
-from kucoin_universal_sdk.generate.spot.order.model_cancel_order_by_order_id_sync_req import (
-    CancelOrderByOrderIdSyncReqBuilder,
-)
-from kucoin_universal_sdk.generate.spot.order.model_get_order_by_order_id_req import (
-    GetOrderByOrderIdReqBuilder,
-)
-from kucoin_universal_sdk.generate.spot.order.model_get_open_orders_req import (
-    GetOpenOrdersReqBuilder,
-)
-from kucoin_universal_sdk.generate.margin.order.model_add_order_req import (
-    AddOrderReq,
-    AddOrderReqBuilder,
-)
-from kucoin_universal_sdk.generate.margin.order.model_cancel_order_by_order_id_req import (
-    CancelOrderByOrderIdReqBuilder,
-)
-from kucoin_universal_sdk.generate.margin.order.model_get_order_by_order_id_resp import (
-    GetOrderByOrderIdResp,
-)
-from kucoin_universal_sdk.generate.margin.debit.model_repay_req import (
-    RepayReqBuilder,
-)
-from kucoin_universal_sdk.generate.margin.debit.model_repay_resp import (
-    RepayResp,
-)
-from kucoin_universal_sdk.generate.margin.debit.model_borrow_req import (
-    BorrowReqBuilder,
-)
-from kucoin_universal_sdk.generate.margin.debit.model_borrow_resp import (
-    BorrowResp,
-)
 from kucoin_universal_sdk.generate.account.transfer.model_flex_transfer_req import (
-    FlexTransferReqBuilder,
     FlexTransferReq,
+    FlexTransferReqBuilder,
 )
 from kucoin_universal_sdk.generate.account.transfer.model_flex_transfer_resp import (
     FlexTransferResp,
 )
+from kucoin_universal_sdk.generate.spot.market import (
+    GetAllSymbolsReqBuilder,
+    GetKlinesReqBuilder,
+    GetPartOrderBookReqBuilder,
+)
+from kucoin_universal_sdk.model import (
+    GLOBAL_API_ENDPOINT,
+    ClientOptionBuilder,
+    TransportOptionBuilder,
+)
+
 from shared.enums import KucoinKlineIntervals
 
 
@@ -149,7 +104,7 @@ class KucoinApi:
         """
         spot_request = GetSpotAccountListReqBuilder().build()
         all_accounts = self.account_api.get_spot_account_list(spot_request)
-        balance_items = dict()
+        balance_items = {}
         for item in all_accounts.data:
             if float(item.balance) > 0:
                 balance_items[item.currency] = {
@@ -321,29 +276,27 @@ class KucoinApi:
 
         interval_ms = KucoinKlineIntervals.get_interval_ms(interval)
 
-        # Convert Kucoin format to Binance-compatible format
-        # Kucoin returns: [time, open, close, high, low, volume, turnover]
-        # Binance format: [open_time, open, high, low, close, volume, close_time, quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume, unused_field]
         klines = []
         if response.data:
+            # Map Kucoin kline data to Binance-like format
+            # Kucoin does not provide taker_buy_quote_asset_volume, taker_buy_base_asset_volume, number_of_trades
             for k in response.data[:limit]:
-                # k format: [timestamp(seconds), open, close, high, low, volume, turnover]
-                open_time = int(k[0]) * 1000  # Convert to milliseconds
-                close_time = open_time + interval_ms  # Calculate proper close time
+                open_time = int(k[0]) * 1000
+                close_time = open_time + interval_ms
                 klines.append(
                     [
-                        open_time,  # 0: open_time in milliseconds
-                        k[1],  # 1: open
-                        k[3],  # 2: high
-                        k[4],  # 3: low
-                        k[2],  # 4: close
-                        k[5],  # 5: volume (base asset)
-                        close_time,  # 6: close_time properly calculated
-                        k[6],  # 7: quote_asset_volume (turnover)
-                        "0",  # 8: number_of_trades (not available in KuCoin)
-                        "0",  # 9: taker_buy_base_asset_volume (not available)
-                        "0",  # 10: taker_buy_quote_asset_volume (not available)
-                        "0",  # 11: unused_field
+                        open_time,
+                        k[1],
+                        k[3],
+                        k[4],
+                        k[2],
+                        k[5],
+                        close_time,
+                        k[6],
+                        "0",
+                        "0",
+                        "0",
+                        "0",
                     ]
                 )
 

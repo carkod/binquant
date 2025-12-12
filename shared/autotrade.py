@@ -3,6 +3,7 @@ import math
 
 from models.bot import BotModel
 from models.signals import SignalsConsumer
+from shared.apis.binance_api import BinanceApi
 from shared.apis.binbot_api import BinbotApi
 from shared.enums import CloseConditions, Strategy
 from shared.exceptions import AutotradeError
@@ -52,6 +53,8 @@ class Autotrade(BinbotApi):
             dynamic_trailling=True,  # not added to settings yet
         )
         self.db_collection_name = db_collection_name
+        self.binbot_api = BinbotApi()
+        self.binance_api = BinanceApi()
         # restart streams after bot activation
         super().__init__()
 
@@ -131,7 +134,7 @@ class Autotrade(BinbotApi):
                     self.default_bot.fiat_order_size = qty
                     break
 
-                ticker = self.ticker_24_price(symbol=self.pair)
+                ticker = self.binance_api.ticker_24_price(symbol=self.pair)
                 rate = ticker["price"]
                 qty = suppress_notation(b["free"], self.decimals)
                 # Round down to 6 numbers to avoid not enough funds
@@ -186,7 +189,7 @@ class Autotrade(BinbotApi):
 
             if self.default_bot.strategy == Strategy.margin_short:
                 try:
-                    ticker = self.ticker_24_price(self.default_bot.pair)
+                    ticker = self.binance_api.ticker_24_price(self.default_bot.pair)
                 except Exception as e:
                     logging.error(f"Error getting ticker price: {e}")
                     return

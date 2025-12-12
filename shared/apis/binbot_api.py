@@ -2,15 +2,16 @@ import os
 
 from aiohttp import ClientSession
 from dotenv import load_dotenv
+from requests import Session
 
 from shared.apis.binance_api import BinanceApi
 from shared.enums import Status
-from shared.utils import aio_response_handler
+from shared.utils import aio_response_handler, handle_binance_errors
 
 load_dotenv()
 
 
-class BinbotApi(BinanceApi):
+class BinbotApi:
     """
     API endpoints on this project itself
     includes Binance Api
@@ -65,6 +66,11 @@ class BinbotApi(BinanceApi):
     bb_test_autotrade_url = f"{bb_base_url}/autotrade-settings/paper-trading"
     bb_test_active_pairs = f"{bb_base_url}/paper-trading/active-pairs"
 
+    def request(self, url, method="GET", session: Session = Session(), **kwargs):
+        res = session.request(url=url, method=method, **kwargs)
+        data = handle_binance_errors(res)
+        return data
+
     """
     Async HTTP client/server for asyncio
     that replaces requests library
@@ -98,8 +104,9 @@ class BinbotApi(BinanceApi):
         return None
 
     def get_latest_btc_price(self):
+        binance_api = BinanceApi()
         # Get 24hr last BTCUSDC
-        btc_ticker_24 = self.ticker_24("BTCUSDC")
+        btc_ticker_24 = binance_api.ticker_24("BTCUSDC")
         self.btc_change_perc = float(btc_ticker_24["priceChangePercent"])
         return self.btc_change_perc
 

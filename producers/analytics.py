@@ -13,6 +13,7 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from models.signals import HABollinguerSpread
 from shared.apis.binbot_api import BinbotApi
+from shared.apis.types import CombinedApis
 from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.indicators import Indicators
@@ -23,7 +24,7 @@ class CryptoAnalytics:
     def __init__(
         self,
         producer: Producer,
-        binbot_api: BinbotApi,
+        api: CombinedApis,
         symbol,
         top_gainers_day,
         market_breadth_data,
@@ -39,8 +40,12 @@ class CryptoAnalytics:
         should be on klines_provider instance
         """
         self.producer = producer
-        self.binbot_api = binbot_api
+        self.api = api
+        self.binbot_api = BinbotApi()
         self.symbol = symbol
+        self.price_precision = self.binbot_api.price_precision(
+            symbol=symbol.replace("-", "")
+        )
         self.df = DataFrame()
         self.df_4h = DataFrame()
         self.df_1h = DataFrame()
@@ -220,8 +225,9 @@ class CryptoAnalytics:
             close_price = float(self.df["close"].iloc[-1])
 
             if self.btc_correlation == 0 or self.btc_price == 0:
+                symbol = self.symbol.replace("-", "")
                 self.btc_correlation, self.btc_price = (
-                    self.binbot_api.get_btc_correlation(symbol=self.symbol)
+                    self.binbot_api.get_btc_correlation(symbol=symbol)
                 )
 
             ha_spreads = self.ha_bb_spreads()

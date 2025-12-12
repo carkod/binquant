@@ -4,6 +4,7 @@ Provides a factory pattern implementation to create websocket clients
 for different exchanges (Binance, Kucoin) without changing existing code.
 """
 
+import asyncio
 import logging
 
 from producers.klines_connector import KlinesConnector
@@ -33,6 +34,11 @@ class WebsocketClientFactory:
         await self.producer.start()
         symbols = self.binbot_api.get_symbols()
         client = AsyncKucoinWebsocketClient(producer=self.producer)
+        # Bind the client's scheduler to the current running loop
+        try:
+            client._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            client._loop = None
         for s in symbols:
             symbol_name = s["base_asset"] + "-" + s["quote_asset"]
             await client.subscribe_klines(symbol_name, interval="1min")

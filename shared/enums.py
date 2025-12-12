@@ -148,6 +148,7 @@ class BinanceKlineIntervals(str, Enum):
         elif self.value[-1:] == "M":
             return "month"
 
+
 class KucoinKlineIntervals(str, Enum):
     ONE_MINUTE = "1min"
     THREE_MINUTES = "3min"
@@ -182,6 +183,7 @@ class KucoinKlineIntervals(str, Enum):
             "1week": 7 * 24 * 60 * 60 * 1000,
         }
         return interval_map.get(interval_str, 60 * 1000)  # Default to 1 minute
+
 
 class DealType(str, Enum):
     base_order = "base_order"
