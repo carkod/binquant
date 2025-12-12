@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 
-from producers.klines_connector import KlinesConnector
+from shared.streaming.websocket_factory import WebsocketClientFactory
 
 logging.basicConfig(
     level=os.environ["LOG_LEVEL"],
@@ -13,10 +13,9 @@ logging.basicConfig(
 
 
 async def main():
-    connector = KlinesConnector()
-    await connector.start_stream()
-    logging.debug("Stream started. Waiting for messages...")
-    await asyncio.gather(*(c.run_forever() for c in connector.clients))
+    connector = await WebsocketClientFactory().create_connector()
+
+    await asyncio.gather(*(c.run_forever() for c in connector))
 
 
 if __name__ == "__main__":

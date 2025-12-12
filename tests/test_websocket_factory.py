@@ -3,11 +3,7 @@
 import pytest
 
 from shared.enums import ExchangeId
-from shared.streaming.async_socket_client import (
-    AsyncSpotWebsocketStreamClient,
-)
 from shared.streaming.kucoin_async_client import (
-    AsyncKucoinSpotWebsocketStreamClient,
     AsyncKucoinWebsocketClient,
 )
 from shared.streaming.websocket_factory import WebsocketClientFactory
@@ -25,17 +21,9 @@ class TestWebsocketFactory:
         # Verify factory logic works for Binance
         assert ExchangeId.BINANCE == ExchangeId.BINANCE
 
-    def test_create_kucoin_sync_raises_error(self):
-        """Test that creating sync Kucoin client raises NotImplementedError."""
-        with pytest.raises(NotImplementedError):
-            WebsocketClientFactory.create_client(
-                ExchangeId.KUCOIN, on_message=lambda c, m: None
-            )
-
-        with pytest.raises(NotImplementedError):
-            WebsocketClientFactory.create_spot_client(
-                ExchangeId.KUCOIN, on_message=lambda c, m: None
-            )
+    def test_factory_has_async_connector(self):
+        """Factory exposes create_connector for async clients."""
+        assert hasattr(WebsocketClientFactory, "create_connector")
 
     def test_create_async_binance_client(self):
         """Test creating an async Binance websocket client."""
@@ -70,25 +58,22 @@ class TestKucoinWebsocketSDK:
         assert AsyncKucoinWebsocketClient.ACTION_SUBSCRIBE == "subscribe"
         assert AsyncKucoinWebsocketClient.ACTION_UNSUBSCRIBE == "unsubscribe"
 
-    def test_kucoin_spot_client_constants(self):
-        """Test Kucoin spot client constants."""
-        assert AsyncKucoinSpotWebsocketStreamClient.ACTION_SUBSCRIBE == "subscribe"
-        assert AsyncKucoinSpotWebsocketStreamClient.ACTION_UNSUBSCRIBE == "unsubscribe"
-
     def test_kucoin_client_initialization(self):
-        """Test that Kucoin client can be initialized."""
-        client = AsyncKucoinWebsocketClient(
-            api_key="test_key", api_secret="test_secret", api_passphrase="test_pass"
-        )
+        """Test that Kucoin client can be initialized with a producer."""
+        from shared.streaming.async_producer import AsyncProducer
+
+        producer = AsyncProducer()
+        client = AsyncKucoinWebsocketClient(producer=producer)
         assert client is not None
         assert client._started is False
 
     @pytest.mark.asyncio
     async def test_kucoin_spot_client_initialization(self):
-        """Test that Kucoin spot client can be initialized."""
-        client = AsyncKucoinSpotWebsocketStreamClient(
-            api_key="", api_secret="", api_passphrase=""
-        )
+        """Test that Kucoin spot client can be initialized with a producer."""
+        from shared.streaming.async_producer import AsyncProducer
+
+        producer = AsyncProducer()
+        client = AsyncKucoinWebsocketClient(producer=producer)
         assert client is not None
         assert client._started is False
 
@@ -106,25 +91,3 @@ class TestExchangeEnum:
         assert ExchangeId.BINANCE != ExchangeId.KUCOIN
         assert ExchangeId.BINANCE == ExchangeId.BINANCE
         assert ExchangeId.KUCOIN == ExchangeId.KUCOIN
-
-
-class TestFactoryIntegration:
-    """Test factory integration with SDK."""
-
-    def test_factory_creates_binance_async_client(self):
-        """Test factory creates correct type for Binance async client."""
-        client = WebsocketClientFactory.create_async_spot_client(
-            ExchangeId.BINANCE, on_message=lambda c, m: None
-        )
-        assert isinstance(client, AsyncSpotWebsocketStreamClient)
-
-    def test_factory_creates_kucoin_async_client(self):
-        """Test factory creates correct type for Kucoin async client."""
-        client = WebsocketClientFactory.create_async_spot_client(
-            ExchangeId.KUCOIN,
-            on_message=lambda c, m: None,
-            api_key="",
-            api_secret="",
-            api_passphrase="",
-        )
-        assert isinstance(client, AsyncKucoinSpotWebsocketStreamClient)

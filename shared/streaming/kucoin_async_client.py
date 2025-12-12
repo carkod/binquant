@@ -1,11 +1,14 @@
 import asyncio
 import logging
-import time
-from collections.abc import Callable
+import os
+from collections.abc import Coroutine
+from concurrent.futures import Future as ConcurrencyFuture
 from typing import Any
 
 from kucoin_universal_sdk.api import DefaultClient
-from kucoin_universal_sdk.generate.spot.spot_public.ws_spot_public import SpotPublicWS
+from kucoin_universal_sdk.generate.spot.spot_public.model_klines_event import (
+    KlinesEvent,
+)
 from kucoin_universal_sdk.model.client_option import ClientOptionBuilder
 from kucoin_universal_sdk.model.constants import (
     GLOBAL_API_ENDPOINT,
@@ -14,6 +17,10 @@ from kucoin_universal_sdk.model.constants import (
 )
 from kucoin_universal_sdk.model.transport_option import TransportOptionBuilder
 from kucoin_universal_sdk.model.websocket_option import WebSocketClientOptionBuilder
+
+from models.klines import KlineProduceModel
+from shared.enums import KafkaTopics
+from shared.streaming.async_producer import AsyncProducer
 
 logger = logging.getLogger(__name__)
 
@@ -31,28 +38,17 @@ class AsyncKucoinWebsocketClient:
 
     def __init__(
         self,
-        api_key: str = "",
-        api_secret: str = "",
-        api_passphrase: str = "",
-        on_message: Callable | None = None,
-        on_open: Callable | None = None,
-        on_close: Callable | None = None,
-        on_error: Callable | None = None,
-        reconnect: bool = True,
+        producer: AsyncProducer,
     ):
         """
         Initialize async Kucoin WebSocket client using the official SDK.
 
         Args:
-            api_key: KuCoin API key (optional for public channels)
-            api_secret: KuCoin API secret (optional for public channels)
-            api_passphrase: KuCoin API passphrase (optional for public channels)
-            on_message: Async callback for messages
-            on_open: Async callback for connection open
-            on_close: Async callback for connection close
-            on_error: Async callback for errors
-            reconnect: Enable automatic reconnection (SDK handles this internally)
+            producer: Optional async producer to send messages to Kafka
         """
+        self.api_key = os.getenv("KUCOIN_API_KEY", "")
+        self.api_secret = os.getenv("KUCOIN_API_SECRET", "")
+        self.api_passphrase = os.getenv("KUCOIN_API_PASSPHRASE", "")
         # Build client options
         transport_option = (
             TransportOptionBuilder()
@@ -64,17 +60,17 @@ class AsyncKucoinWebsocketClient:
 
         websocket_option = (
             WebSocketClientOptionBuilder()
-            .with_reconnect(reconnect)
-            .with_reconnect_attempts(-1 if reconnect else 0)
+            .with_reconnect(self._reconnect)
+            .with_reconnect_attempts(-1)
             .with_reconnect_interval(5)
             .build()
         )
 
         client_option = (
             ClientOptionBuilder()
-            .set_key(api_key)
-            .set_secret(api_secret)
-            .set_passphrase(api_passphrase)
+            .set_key(self.api_key)
+            .set_secret(self.api_secret)
+            .set_passphrase(self.api_passphrase)
             .set_spot_endpoint(GLOBAL_API_ENDPOINT)
             .set_futures_endpoint(GLOBAL_FUTURES_API_ENDPOINT)
             .set_broker_endpoint(GLOBAL_BROKER_API_ENDPOINT)
@@ -85,102 +81,112 @@ class AsyncKucoinWebsocketClient:
 
         # Create default client
         self._client = DefaultClient(client_option)
-        self._ws_service = self._client.ws_service()
-        self._spot_public_ws: SpotPublicWS | None = None
-
-        # Store callbacks
-        self.on_message = on_message
-        self.on_open = on_open
-        self.on_close = on_close
-        self.on_error = on_error
-        self._reconnect = reconnect
+        self.ws_service = self._client.ws_service()
+        # Create a SpotPublicWS instance for public market subscriptions
+        self.spot_public_ws = self.ws_service.new_spot_public_ws()
 
         # Track subscriptions
-        self._subscriptions: dict[str, str] = {}
+        self.subscriptions: dict[str, str] = {}
         self._started = False
+        self.producer = producer
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    async def process_kline_stream(self, payload: KlinesEvent) -> None:
+        """
+        Process KuCoin candlestick (kline) stream message and send to Kafka.
+        """
+        symbol = payload.symbol
+        candles = payload.candles
+
+        if not candles or len(candles) < 6:
+            logger.warning("Malformed KuCoin kline data")
+            return
+
+        # Map KuCoin candle fields to your KlineProduceModel
+        # candles: [time, open, close, high, low, volume, turnover]
+        kline = KlineProduceModel(
+            symbol=symbol,
+            open_time=str(int(candles[0]) * 1000),  # seconds to ms
+            close_time=str(
+                (int(candles[0]) + 60) * 1000
+            ),  # 1min interval, adjust as needed
+            open_price=str(candles[1]),
+            close_price=str(candles[2]),
+            high_price=str(candles[3]),
+            low_price=str(candles[4]),
+            volume=str(candles[5]),
+        )
+        await self.producer.send(
+            topic=KafkaTopics.klines_store_topic.value,
+            value=kline.model_dump_json(),
+            key=symbol,
+            timestamp=int(candles[0]) * 1000,
+        )
+
+    async def on_close(self, ws=None):
+        logger.warning("KuCoin WebSocket closed. Attempting to reconnect...")
+        await self._reconnect()
+
+    async def _reconnect(self):
+        try:
+            await self.run_forever()
+            logger.info("KuCoin WebSocket reconnected.")
+        except Exception as e:
+            logger.error(f"Failed to reconnect KuCoin WebSocket: {e}")
+
+    async def on_open(self, ws=None):
+        logger.info("KuCoin WebSocket connection opened.")
 
     async def start(self):
-        """Start the WebSocket connection."""
+        """Start the SpotPublicWS connection before subscribing."""
         if not self._started:
-            # Run SDK start in thread pool since it's synchronous
-            await asyncio.get_event_loop().run_in_executor(None, self._start_sync)
-            if self.on_open:
-                if asyncio.iscoroutinefunction(self.on_open):
-                    await self.on_open(self)
-                else:
-                    self.on_open(self)
-            logger.info("Async KuCoin WebSocket client started")
-
-    def _start_sync(self):
-        """Synchronous start helper."""
-        self._spot_public_ws = self._ws_service.new_spot_public_ws()
-        self._spot_public_ws.start()
-        self._started = True
+            # capture the running loop to schedule callbacks from SDK threads
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = None
+            await asyncio.get_event_loop().run_in_executor(
+                None, self.spot_public_ws.start
+            )
+            self._started = True
+            await self.on_open()
+            logger.info("KuCoin SpotPublicWS started")
 
     async def stop(self):
         """Stop the WebSocket connection."""
-        if self._spot_public_ws:
+        if self.spot_public_ws:
             await asyncio.get_event_loop().run_in_executor(
-                None, self._spot_public_ws.stop
+                None, self.spot_public_ws.stop
             )
             self._started = False
-            if self.on_close:
-                if asyncio.iscoroutinefunction(self.on_close):
-                    await self.on_close(self)
-                else:
-                    self.on_close(self)
+            await self.on_close()
             logger.info("Async KuCoin WebSocket client stopped")
 
-    async def send_message_to_server(
-        self, message, action: str | None = None, id: int | None = None
-    ):
-        """
-        Send a subscription/unsubscription message to the server.
+    def _callback(self, topic: str, subject: str, event: KlinesEvent) -> None:
+        """Internal callback that routes messages to the async handler."""
+        if subject == "trade.candles.update":
+            self._schedule(self.process_kline_stream(event))
 
-        Compatible with the Binance client interface. Converts stream format
-        to KuCoin topic format if needed.
+    def _schedule(self, coro: Coroutine[Any, Any, Any]) -> None:
+        """Schedule a coroutine from any thread, logging exceptions."""
+        if self._loop and self._loop.is_running():
+            fut: ConcurrencyFuture[Any] = asyncio.run_coroutine_threadsafe(
+                coro, self._loop
+            )
 
-        Args:
-            message: Stream string(s) or topic string(s)
-            action: Action to perform (subscribe/unsubscribe)
-            id: Optional subscription ID
-        """
-        if not id:
-            id = int(time.time() * 1000)
+            def _log_future(f: ConcurrencyFuture[Any]) -> None:
+                try:
+                    f.result()
+                except Exception as exc:
+                    logger.error("Scheduled task failed: %s", exc, exc_info=True)
 
-        if action == self.ACTION_UNSUBSCRIBE:
-            # Handle unsubscribe
-            if isinstance(message, str):
-                await self.unsubscribe(message, id=id)
-            elif isinstance(message, list):
-                for msg in message:
-                    await self.unsubscribe(msg, id=id)
+            fut.add_done_callback(_log_future)
         else:
-            # Handle subscribe (default action)
-            await self.subscribe(message, id=id)
-
-    async def subscribe(self, topic: str | list[str], id: int | None = None):
-        """
-        Subscribe to topic(s).
-
-        Args:
-            topic: Topic string or list of topics
-            id: Optional subscription ID (not used by SDK)
-        """
-        topics = [topic] if isinstance(topic, str) else topic
-
-        for t in topics:
-            # Parse topic to determine subscription type
-            # Expected formats: "/market/candles:BTC-USDT_1min" or similar
-            if "/market/candles:" in t:
-                parts = t.split(":")
-                if len(parts) == 2:
-                    symbol_interval = parts[1]
-                    symbol, interval = symbol_interval.rsplit("_", 1)
-                    await self.subscribe_klines(symbol, interval)
-            elif "/market/ticker:" in t:
-                symbol = t.split(":")[1] if ":" in t else t
-                await self.subscribe_ticker([symbol])
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(coro)
+            except RuntimeError:
+                logger.error("No running event loop to schedule coroutine")
 
     async def subscribe_klines(self, symbol: str, interval: str):
         """
@@ -190,37 +196,15 @@ class AsyncKucoinWebsocketClient:
             symbol: Trading pair (e.g., "BTC-USDT")
             interval: Interval string (e.g., "1min", "5min", "1hour")
         """
-        if not self._spot_public_ws:
-            raise RuntimeError("WebSocket not started. Call start() first.")
+        # Ensure websocket is started before subscribing
+        if not self._started:
+            await self.start()
 
-        def callback(topic: str, subject: str, event: Any):
-            """Internal callback that wraps the user's async callback."""
-            if self.on_message:
-                message_data = {
-                    "type": "message",
-                    "topic": topic,
-                    "subject": subject,
-                    "data": event.__dict__ if hasattr(event, "__dict__") else event,
-                }
-                # Schedule the async callback
-                if asyncio.iscoroutinefunction(self.on_message):
-                    asyncio.create_task(self.on_message(self, message_data))
-                else:
-                    self.on_message(self, message_data)
-
-        try:
-            sub_id = await asyncio.get_event_loop().run_in_executor(
-                None, self._spot_public_ws.klines, symbol, interval, callback
-            )
-            self._subscriptions[f"{symbol}:{interval}"] = sub_id
-            logger.info(f"Subscribed to klines: {symbol} @ {interval}")
-        except Exception as e:
-            logger.error(f"Error subscribing to klines: {e}")
-            if self.on_error:
-                if asyncio.iscoroutinefunction(self.on_error):
-                    await self.on_error(self, e)
-                else:
-                    self.on_error(self, e)
+        sub_id = await asyncio.get_event_loop().run_in_executor(
+            None, self.spot_public_ws.klines, symbol, interval, self._callback
+        )
+        self.subscriptions[f"{symbol}:{interval}"] = sub_id
+        logger.info(f"Subscribed to klines: {symbol} @ {interval}")
 
     async def subscribe_ticker(self, symbols: list[str]):
         """
@@ -229,37 +213,17 @@ class AsyncKucoinWebsocketClient:
         Args:
             symbols: List of trading pairs (e.g., ["BTC-USDT", "ETH-USDT"])
         """
-        if not self._spot_public_ws:
-            raise RuntimeError("WebSocket not started. Call start() first.")
-
-        def callback(topic: str, subject: str, event: Any):
-            """Internal callback that wraps the user's async callback."""
-            if self.on_message:
-                message_data = {
-                    "type": "message",
-                    "topic": topic,
-                    "subject": subject,
-                    "data": event.__dict__ if hasattr(event, "__dict__") else event,
-                }
-                # Schedule the async callback
-                if asyncio.iscoroutinefunction(self.on_message):
-                    asyncio.create_task(self.on_message(self, message_data))
-                else:
-                    self.on_message(self, message_data)
+        if not self._started:
+            await self.start()
 
         try:
             sub_id = await asyncio.get_event_loop().run_in_executor(
-                None, self._spot_public_ws.ticker, symbols, callback
+                None, self.spot_public_ws.ticker, symbols, self._callback
             )
-            self._subscriptions[f"ticker:{','.join(symbols)}"] = sub_id
+            self.subscriptions[f"ticker:{','.join(symbols)}"] = sub_id
             logger.info(f"Subscribed to ticker: {symbols}")
         except Exception as e:
             logger.error(f"Error subscribing to ticker: {e}")
-            if self.on_error:
-                if asyncio.iscoroutinefunction(self.on_error):
-                    await self.on_error(self, e)
-                else:
-                    self.on_error(self, e)
 
     async def unsubscribe(self, subscription_key: str, id: int | None = None):
         """
@@ -269,57 +233,32 @@ class AsyncKucoinWebsocketClient:
             subscription_key: The key used when subscribing
             id: Optional subscription ID (not used)
         """
-        if not self._spot_public_ws:
+        if not self.spot_public_ws:
             return
 
-        if subscription_key in self._subscriptions:
-            sub_id = self._subscriptions[subscription_key]
+        if subscription_key in self.subscriptions:
+            sub_id = self.subscriptions[subscription_key]
             try:
                 await asyncio.get_event_loop().run_in_executor(
-                    None, self._spot_public_ws.unsubscribe, sub_id
+                    None, self.spot_public_ws.unsubscribe, sub_id
                 )
-                del self._subscriptions[subscription_key]
+                del self.subscriptions[subscription_key]
                 logger.info(f"Unsubscribed from: {subscription_key}")
             except Exception as e:
                 logger.error(f"Error unsubscribing: {e}")
-                if self.on_error:
-                    if asyncio.iscoroutinefunction(self.on_error):
-                        await self.on_error(self, e)
-                    else:
-                        self.on_error(self, e)
 
     async def run_forever(self):
-        """Keep the connection alive until stopped."""
-        while self._started:
-            await asyncio.sleep(1)
-
-
-class AsyncKucoinSpotWebsocketStreamClient(AsyncKucoinWebsocketClient):
-    """
-    Async Kucoin spot WebSocket stream client.
-
-    Provides convenience methods for spot market subscriptions.
-    """
-
-    async def klines(
-        self,
-        markets: list[str],
-        interval: str,
-        id: int | None = None,
-        action: str | None = None,
-    ):
         """
-        Subscribe to klines for multiple markets.
-
-        Args:
-            markets: List of trading pairs (e.g., ["BTC-USDT", "ETH-USDT"])
-            interval: Interval string (e.g., "1min", "5min", "1hour")
-            id: Optional subscription ID
-            action: Action (subscribe/unsubscribe)
+        Keep the connection alive, auto-reconnect on disconnect or error.
         """
-        if action == self.ACTION_UNSUBSCRIBE:
-            for market in markets:
-                await self.unsubscribe(f"{market}:{interval}")
-        else:
-            for market in markets:
-                await self.subscribe_klines(market, interval)
+        while True:
+            try:
+                # If not started yet, just idle until subscriptions mark started
+                if not self._started:
+                    await asyncio.sleep(1)
+                else:
+                    # Wait for disconnect or error
+                    await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"run_forever encountered error: {e}", exc_info=True)
+                await asyncio.sleep(5)
