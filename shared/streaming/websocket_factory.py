@@ -33,10 +33,9 @@ class WebsocketClientFactory:
         await self.producer.start()
         symbols = self.binbot_api.get_symbols()
         client = AsyncKucoinWebsocketClient(producer=self.producer)
-        for symbol in symbols:
-            symbol_name = symbol["base_asset"] + "-" + symbol["quote_asset"]
-            # Subscribe using symbol and interval per SDK signature
-            await client.subscribe_klines(symbol_name, interval="5min")
+        for s in symbols:
+            symbol_name = s["base_asset"] + "-" + s["quote_asset"]
+            await client.subscribe_klines(symbol_name, interval="1min")
 
         return [client]
 

@@ -144,6 +144,7 @@ class AsyncKucoinWebsocketClient:
             try:
                 self._loop = asyncio.get_running_loop()
             except RuntimeError:
+                # Will be set on first callback schedule if needed
                 self._loop = None
             await asyncio.get_event_loop().run_in_executor(
                 None, self.spot_public_ws.start
@@ -169,10 +170,24 @@ class AsyncKucoinWebsocketClient:
 
     def _schedule(self, coro: Coroutine[Any, Any, Any]) -> None:
         """Schedule a coroutine from any thread, logging exceptions."""
-        if self._loop and self._loop.is_running():
-            fut: ConcurrencyFuture[Any] = asyncio.run_coroutine_threadsafe(
-                coro, self._loop
-            )
+        # Prefer a captured loop; if missing, try to get one and remember it
+        loop = self._loop
+        if loop is None:
+            try:
+                loop = asyncio.get_running_loop()
+                self._loop = loop
+            except RuntimeError:
+                # Fallback to the default loop policy and schedule thread-safely
+                try:
+                    loop = asyncio.get_event_loop_policy().get_event_loop()
+                    self._loop = loop
+                except Exception:
+                    logger.error("No running event loop to schedule coroutine")
+                    return
+
+        if loop.is_running():
+            # Schedule from any thread
+            fut: ConcurrencyFuture[Any] = asyncio.run_coroutine_threadsafe(coro, loop)
 
             def _log_future(f: ConcurrencyFuture[Any]) -> None:
                 try:
@@ -182,11 +197,11 @@ class AsyncKucoinWebsocketClient:
 
             fut.add_done_callback(_log_future)
         else:
+            # Loop exists but not running; queue via call_soon_threadsafe
             try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(coro)
-            except RuntimeError:
-                logger.error("No running event loop to schedule coroutine")
+                loop.call_soon_threadsafe(lambda: loop.create_task(coro))
+            except Exception:
+                logger.error("Failed to queue task on event loop")
 
     async def subscribe_klines(self, symbol: str, interval: str):
         """
