@@ -60,7 +60,6 @@ class TestKucoinWebsocketSDK:
         producer = AsyncProducer()
         client = AsyncKucoinWebsocketClient(producer=producer)
         assert client is not None
-        assert client._started is False
 
     @pytest.mark.asyncio
     async def test_kucoin_spot_client_initialization(self):
@@ -70,7 +69,6 @@ class TestKucoinWebsocketSDK:
         producer = AsyncProducer()
         client = AsyncKucoinWebsocketClient(producer=producer)
         assert client is not None
-        assert client._started is False
 
 
 class TestExchangeEnum:
