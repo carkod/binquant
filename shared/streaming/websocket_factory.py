@@ -4,6 +4,7 @@ Provides a factory pattern implementation to create websocket clients
 for different exchanges (Binance, Kucoin) without changing existing code.
 """
 
+import asyncio
 import logging
 
 from producers.klines_connector import KlinesConnector
@@ -32,12 +33,32 @@ class WebsocketClientFactory:
     async def start_stream(self) -> list[AsyncKucoinWebsocketClient]:
         await self.producer.start()
         symbols = self.binbot_api.get_symbols()
-        client = AsyncKucoinWebsocketClient(producer=self.producer)
-        for s in symbols:
-            symbol_name = s["base_asset"] + "-" + s["quote_asset"]
-            await client.subscribe_klines(symbol_name, interval="5min")
+        total = len(symbols)
+        clients: list[AsyncKucoinWebsocketClient] = []
+        max_per_client = 300
 
-        return [client]
+        # Create multiple clients, each subscribing to a chunk of symbols
+        for i in range(0, total, max_per_client):
+            chunk = symbols[i : i + max_per_client]
+            client = AsyncKucoinWebsocketClient(producer=self.producer)
+            # Give the websocket a moment to be ready before subscribing
+            await asyncio.sleep(0.5)
+
+            for s in chunk:
+                symbol_name = s["base_asset"] + "-" + s["quote_asset"]
+                await client.subscribe_klines(symbol_name, interval="5min")
+
+            clients.append(client)
+            logger.info(
+                "Client %d subscribed to %d symbols (range %d-%d)",
+                len(clients),
+                len(chunk),
+                i,
+                min(i + max_per_client, total),
+            )
+
+        logger.info("Created %d KuCoin clients for %d symbols", len(clients), total)
+        return clients
 
     async def create_connector(
         self,
@@ -51,5 +72,4 @@ class WebsocketClientFactory:
         else:
             connector = KlinesConnector()
             await connector.start_stream()
-            logging.debug("Stream started. Waiting for messages...")
             return connector.clients

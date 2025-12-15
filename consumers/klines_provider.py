@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime
 
@@ -76,7 +75,7 @@ class KlinesProvider:
             self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
         if payload:
-            data = json.loads(payload)
+            data = payload
             klines = KlineProduceModel.model_validate(data)
             symbol = klines.symbol
 

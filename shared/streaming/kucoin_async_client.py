@@ -27,8 +27,9 @@ class AsyncKucoinWebsocketClient:
 
     def __init__(self, producer: AsyncProducer):
         self.producer = producer
-
-        self.producer = producer
+        self.message_queue: asyncio.Queue = asyncio.Queue()
+        self._ws_started = False
+        self._queue_processor_task: asyncio.Task | None = None
         client_option = (
             ClientOptionBuilder()
             .set_key(os.getenv("KUCOIN_API_KEY", ""))
@@ -43,18 +44,54 @@ class AsyncKucoinWebsocketClient:
         ws_service = self.client.ws_service()
         self.spot_ws = ws_service.new_spot_public_ws()
 
-    async def subscribe_klines(self, symbol: str, interval: str):
-        logger.info("Starting websocket…")
+        # Start websocket connection immediately
+        logger.info("Starting KuCoin websocket connection…")
         self.spot_ws.start()
+        self._ws_started = True
+        logger.info("KuCoin websocket started, ready for subscriptions")
 
-        logger.info("Subscribing to klines…")
+    async def subscribe_klines(self, symbol: str, interval: str):
+        """Subscribe to klines for a symbol. Connection must already be started."""
+        # Add small delay to ensure connection is ready
+        await asyncio.sleep(0.1)
         self.spot_ws.klines(
             symbol=symbol,
             type=interval,
             callback=self.on_kline,
         )
+        logger.info(f"Subscribed to {symbol}")
 
-        logger.info("KuCoin TCP connection established")
+    async def _process_message_queue(self) -> None:
+        """Process messages from the queue and send to Kafka."""
+        logger.info("Queue processor started")
+        try:
+            while True:
+                # Wait for messages from the queue
+                kline_data = await self.message_queue.get()
+
+                try:
+                    logger.debug(
+                        f"Processing queued message for {kline_data['symbol']}"
+                    )
+                    await self.producer.send(
+                        topic=KafkaTopics.klines_store_topic.value,
+                        value=kline_data[
+                            "json"
+                        ],  # Already a JSON string, serializer will encode to bytes
+                        key=kline_data["symbol"],
+                        timestamp=kline_data["timestamp"],
+                    )
+                    logger.debug(f"Successfully sent {kline_data['symbol']} to Kafka")
+                except Exception as e:
+                    logger.error(f"Failed to send message to Kafka: {e}", exc_info=True)
+                finally:
+                    self.message_queue.task_done()
+        except asyncio.CancelledError:
+            logger.info("Queue processor cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Queue processor error: {e}", exc_info=True)
+            raise
 
     async def run_forever(self) -> None:
         """
@@ -62,26 +99,52 @@ class AsyncKucoinWebsocketClient:
         The WS thread is already running via spot_ws.start().
         Incoming events will trigger callbacks automatically.
         """
-        logger.info("Reconnecting loop started (WS already running)")
-        while True:
-            await asyncio.sleep(1)
+        logger.info("run_forever() started, starting queue processor")
+
+        # Start the queue processor task
+        self._queue_processor_task = asyncio.create_task(self._process_message_queue())
+
+        try:
+            iteration = 0
+            while True:
+                await asyncio.sleep(1)  # Keep event loop alive
+                iteration += 1
+                if iteration % 30 == 0:
+                    queue_size = self.message_queue.qsize()
+                    logger.info(
+                        f"run_forever alive: iteration {iteration}, queue_size={queue_size}"
+                    )
+        except asyncio.CancelledError:
+            logger.warning("run_forever: CancelledError - shutting down")
+            if self._queue_processor_task:
+                self._queue_processor_task.cancel()
+                try:
+                    await self._queue_processor_task
+                except asyncio.CancelledError:
+                    pass
+            raise
+        except Exception as e:
+            logger.error(f"run_forever: Unexpected error: {e}", exc_info=True)
+            raise
+        finally:
+            logger.critical("run_forever() EXITING!")
 
     def on_kline(self, topic, subject, event: KlinesEvent):
-        if topic.startswith("/market/candles:"):
-            self.process_kline_stream(symbol=event.symbol, candles=event.candles)
+        try:
+            if topic.startswith("/market/candles:"):
+                self.process_kline_stream(symbol=event.symbol, candles=event.candles)
+        except Exception as e:
+            logger.error(f"Error processing kline event: {e}", exc_info=True)
 
     def process_kline_stream(self, symbol: str, candles: list[str]) -> None:
         """
-        Universal SDK subscription is synchronous
-        so producer can't be async.
-
-        But because the producer we use is async,
-        we need to create an asyncio task here to send the message asynchronously.
+        Universal SDK subscription is synchronous, runs in a separate thread.
+        Push messages to an asyncio.Queue for the main event loop to process.
         """
         if not candles or len(candles) < 6:
             return
 
-        logging.debug(f"Received kline for {symbol}: {candles}")
+        logger.debug(f"Received kline for {symbol}: {candles}")
 
         ts = int(candles[0])
 
@@ -96,11 +159,19 @@ class AsyncKucoinWebsocketClient:
             volume=str(candles[5]),
         )
 
-        asyncio.create_task(
-            self.producer.send(
-                topic=KafkaTopics.klines_store_topic.value,
-                value=kline.model_dump_json(),
-                key=symbol,
-                timestamp=ts * 1000,
+        try:
+            # Put message in queue (thread-safe)
+            message_data = {
+                "symbol": symbol,
+                "json": kline.model_dump_json(),
+                "timestamp": ts * 1000,
+            }
+            # Queue.put_nowait is thread-safe
+            self.message_queue.put_nowait(message_data)
+            logger.debug(
+                f"Queued message for {symbol}, queue_size={self.message_queue.qsize()}"
             )
-        )
+        except asyncio.QueueFull:
+            logger.error(f"Queue is full! Dropping message for {symbol}")
+        except Exception as e:
+            logger.error(f"Failed to queue message for {symbol}: {e}", exc_info=True)
