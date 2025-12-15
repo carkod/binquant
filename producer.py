@@ -14,7 +14,6 @@ logging.basicConfig(
 
 async def main():
     connector = await WebsocketClientFactory().create_connector()
-
     await asyncio.gather(*(c.run_forever() for c in connector))
 
 

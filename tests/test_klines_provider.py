@@ -6,13 +6,17 @@ from consumers.klines_provider import KlinesProvider
 
 
 class TestKlinesProvider:
+    @patch(
+        "consumers.klines_provider.BinbotApi.get_autotrade_settings",
+        return_value={"exchange_id": "binance"},
+    )
     @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
-    def test_init(self, mock_get_symbols):
+    def test_init(self, mock_get_symbols, mock_get_settings):
         consumer = MagicMock()
         provider = KlinesProvider(consumer)
         assert provider.consumer == consumer
         assert hasattr(provider, "binbot_api")
-        assert hasattr(provider, "binance_api")
+        assert hasattr(provider, "api")
         assert hasattr(provider, "producer")
 
     @pytest.mark.asyncio

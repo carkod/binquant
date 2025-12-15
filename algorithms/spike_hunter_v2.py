@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from models.signals import HABollinguerSpread, SignalsConsumer
+from shared.apis.binbot_api import BinbotApi
 from shared.enums import Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import round_numbers, timestamp_to_datetime
@@ -69,8 +70,9 @@ class SpikeHunterV2:
         self.bundle = joblib.load(abs_file_path)
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
-        self.binbot_api = cls.binbot_api
-        self.price_precision = cls.binbot_api.price_precision(symbol=cls.symbol)
+        self.api = cls.api
+        self.binbot_api = BinbotApi()
+        self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
         self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 import requests
 
+from shared.apis.binbot_api import BinbotApi
 from shared.heikin_ashi import HeikinAshi
 
 if TYPE_CHECKING:
@@ -23,8 +24,8 @@ class BinanceAIReport:
         self.symbol = cls.symbol
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
-        self.binbot_api = cls.binbot_api
-        self.price_precision = cls.binbot_api.price_precision(symbol=cls.symbol)
+        self.binbot_api = BinbotApi()
+        self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
         self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer

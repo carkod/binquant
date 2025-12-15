@@ -27,7 +27,7 @@ class WhaleSignals:
         self.bundle = joblib.load(abs_file_path)
         df = cls.clean_df.copy()
         self.df = HeikinAshi.get_heikin_ashi(df)
-        self.binbot_api = cls.binbot_api
+        self.api = cls.api
         self.current_symbol_data = cls.current_symbol_data
         self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer

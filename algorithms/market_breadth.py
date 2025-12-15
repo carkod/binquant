@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from models.signals import HABollinguerSpread, SignalsConsumer
+from shared.apis.binbot_api import BinbotApi
 from shared.enums import MarketDominance, Strategy
 
 if TYPE_CHECKING:
@@ -12,6 +13,8 @@ if TYPE_CHECKING:
 class MarketBreadthAlgo:
     def __init__(self, cls: "CryptoAnalytics") -> None:
         self.ti = cls
+        self.api = cls.api
+        self.binbot_api = BinbotApi()
         self.current_market_dominance = MarketDominance.NEUTRAL
         self.btc_change_perc = 0
         self.autotrade = True
@@ -41,7 +44,7 @@ class MarketBreadthAlgo:
             if (
                 datetime.now().minute % 10 == 0 and datetime.now().second == 0
             ) or self.btc_change_perc == 0:
-                self.btc_change_perc = self.ti.binbot_api.get_latest_btc_price()
+                self.btc_change_perc = self.binbot_api.get_latest_btc_price()
 
             if (
                 self.market_breadth_data["adp"][-1] > 0
@@ -51,7 +54,7 @@ class MarketBreadthAlgo:
                 and self.market_breadth_data["adp"][-4] < 0
             ):
                 self.btc_correlation, self.btc_price = (
-                    self.ti.binbot_api.get_btc_correlation(symbol=self.ti.symbol)
+                    self.binbot_api.get_btc_correlation(symbol=self.ti.symbol)
                 )
 
                 if self.btc_correlation > 0 and self.btc_change_perc > 0:
@@ -67,7 +70,7 @@ class MarketBreadthAlgo:
                 and self.market_breadth_data["adp"][-4] > 0
             ):
                 self.btc_correlation, self.btc_price = (
-                    self.ti.binbot_api.get_btc_correlation(symbol=self.ti.symbol)
+                    self.binbot_api.get_btc_correlation(symbol=self.ti.symbol)
                 )
                 if self.btc_correlation < 0 and self.btc_change_perc < 0:
                     self.current_market_dominance = MarketDominance.LOSERS

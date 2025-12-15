@@ -4,6 +4,7 @@ Provides a factory pattern implementation to create websocket clients
 for different exchanges (Binance, Kucoin) without changing existing code.
 """
 
+import asyncio
 import logging
 
 from producers.klines_connector import KlinesConnector
@@ -29,16 +30,35 @@ class WebsocketClientFactory:
         self.exchange = ExchangeId(self.autotrade_settings["exchange_id"])
         self.producer = AsyncProducer()
 
-    async def start_kucoin_streams(self) -> list[AsyncKucoinWebsocketClient]:
+    async def start_stream(self) -> list[AsyncKucoinWebsocketClient]:
         await self.producer.start()
         symbols = self.binbot_api.get_symbols()
-        client = AsyncKucoinWebsocketClient(producer=self.producer)
-        for symbol in symbols:
-            symbol_name = symbol["base_asset"] + "-" + symbol["quote_asset"]
-            # Subscribe using symbol and interval per SDK signature
-            await client.subscribe_klines(symbol_name, interval="5min")
+        total = len(symbols)
+        clients: list[AsyncKucoinWebsocketClient] = []
+        max_per_client = 300
 
-        return [client]
+        # Create multiple clients, each subscribing to a chunk of symbols
+        for i in range(0, total, max_per_client):
+            chunk = symbols[i : i + max_per_client]
+            client = AsyncKucoinWebsocketClient(producer=self.producer)
+            # Give the websocket a moment to be ready before subscribing
+            await asyncio.sleep(0.5)
+
+            for s in chunk:
+                symbol_name = s["base_asset"] + "-" + s["quote_asset"]
+                await client.subscribe_klines(symbol_name, interval="5min")
+
+            clients.append(client)
+            logger.info(
+                "Client %d subscribed to %d symbols (range %d-%d)",
+                len(clients),
+                len(chunk),
+                i,
+                min(i + max_per_client, total),
+            )
+
+        logger.info("Created %d KuCoin clients for %d symbols", len(clients), total)
+        return clients
 
     async def create_connector(
         self,
@@ -48,9 +68,8 @@ class WebsocketClientFactory:
         based on exchange
         """
         if self.exchange == ExchangeId.KUCOIN:
-            return await self.start_kucoin_streams()
+            return await self.start_stream()
         else:
             connector = KlinesConnector()
             await connector.start_stream()
-            logging.debug("Stream started. Waiting for messages...")
             return connector.clients

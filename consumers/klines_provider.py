@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime
 
@@ -8,7 +7,9 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
 from shared.apis.binbot_api import BinanceApi, BinbotApi
-from shared.enums import BinanceKlineIntervals
+from shared.apis.kucoin_api import KucoinApi
+from shared.apis.types import CombinedApis
+from shared.enums import BinanceKlineIntervals, ExchangeId, KucoinKlineIntervals
 from shared.streaming.async_producer import AsyncProducer
 
 
@@ -21,7 +22,17 @@ class KlinesProvider:
         super().__init__()
         # If we don't instantiate separately, almost no messages are received
         self.binbot_api = BinbotApi()
-        self.binance_api = BinanceApi()
+        self.autotrade_settings = self.binbot_api.get_autotrade_settings()
+        self.api: CombinedApis
+        if self.autotrade_settings["exchange_id"] == "kucoin":
+            self.exchange = ExchangeId.KUCOIN
+            self.api = KucoinApi()
+            self.interval = KucoinKlineIntervals.FIFTEEN_MINUTES.value
+        else:
+            self.exchange = ExchangeId.BINANCE
+            self.api = BinanceApi()
+            self.interval = BinanceKlineIntervals.fifteen_minutes.value
+
         self.consumer = consumer
         # 15 minutes default candles
         self.default_aggregation = {
@@ -64,13 +75,11 @@ class KlinesProvider:
             self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
         if payload:
-            data = json.loads(payload)
+            data = payload
             klines = KlineProduceModel.model_validate(data)
             symbol = klines.symbol
 
-            candles = self.binance_api.get_ui_klines(
-                symbol, interval=BinanceKlineIntervals.fifteen_minutes.value
-            )
+            candles = self.api.get_ui_klines(symbol, interval=self.interval)
 
             if len(candles) == 0:
                 logging.warning(f"{symbol} No data to do analytics")
@@ -78,7 +87,7 @@ class KlinesProvider:
 
             crypto_analytics = CryptoAnalytics(
                 producer=self.producer,
-                binbot_api=self.binbot_api,
+                api=self.api,
                 symbol=symbol,
                 top_gainers_day=self.top_gainers_day,
                 market_breadth_data=self.market_breadth_data,

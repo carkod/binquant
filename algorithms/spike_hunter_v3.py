@@ -78,7 +78,7 @@ class SpikeHunterV3:
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
-        self.price_precision = cls.binbot_api.price_precision(symbol=cls.symbol)
+        self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
         self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer
@@ -588,6 +588,8 @@ class SpikeHunterV3:
             base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
             quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
 
+            kucoin_symbol = base_asset + "-" + quote_asset
+
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
                 - Current price: {round_numbers(current_price, decimals=self.price_precision)}
@@ -597,7 +599,7 @@ class SpikeHunterV3:
                 - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
                 - ₿ Correlation: {round_numbers(self.btc_correlation, decimals=self.price_precision)}
                 - Autotrade?: {"Yes" if False else "No"}
-                - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
+                - <a href='https://www.kucoin.com/trade/{kucoin_symbol}'>KuCoin</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
                 """
 

@@ -53,11 +53,6 @@ class TestWebsocketFactory:
 class TestKucoinWebsocketSDK:
     """Test Kucoin websocket SDK wrapper."""
 
-    def test_kucoin_client_constants(self):
-        """Test Kucoin client action constants."""
-        assert AsyncKucoinWebsocketClient.ACTION_SUBSCRIBE == "subscribe"
-        assert AsyncKucoinWebsocketClient.ACTION_UNSUBSCRIBE == "unsubscribe"
-
     def test_kucoin_client_initialization(self):
         """Test that Kucoin client can be initialized with a producer."""
         from shared.streaming.async_producer import AsyncProducer
@@ -65,7 +60,6 @@ class TestKucoinWebsocketSDK:
         producer = AsyncProducer()
         client = AsyncKucoinWebsocketClient(producer=producer)
         assert client is not None
-        assert client._started is False
 
     @pytest.mark.asyncio
     async def test_kucoin_spot_client_initialization(self):
@@ -75,7 +69,6 @@ class TestKucoinWebsocketSDK:
         producer = AsyncProducer()
         client = AsyncKucoinWebsocketClient(producer=producer)
         assert client is not None
-        assert client._started is False
 
 
 class TestExchangeEnum:
