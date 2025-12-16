@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime
 
 from kucoin_universal_sdk.api import DefaultClient
 from kucoin_universal_sdk.generate.account.account import (
@@ -247,8 +248,6 @@ class KucoinApi:
         symbol: str,
         interval: str,
         limit: int = 500,
-        start_time=None,
-        end_time=None,
     ):
         """
         Get raw klines/candlestick data from Kucoin.
@@ -257,47 +256,51 @@ class KucoinApi:
             symbol: Trading pair symbol (e.g., "BTC-USDT")
             interval: Kline interval (e.g., "15min", "1hour", "1day")
             limit: Number of klines to retrieve (max 1500, default 500)
-            start_time: Start time in milliseconds (optional)
-            end_time: End time in milliseconds (optional)
 
         Returns:
             List of klines in format compatible with Binance format:
             [timestamp, open, high, low, close, volume, close_time, ...]
         """
-        builder = GetKlinesReqBuilder().set_symbol(symbol).set_type(interval)
+        # Compute time window based on limit and interval
+        interval_ms = KucoinKlineIntervals.get_interval_ms(interval)
+        now_ms = int(datetime.now().timestamp() * 1000)
+        # Align end_time to interval boundary
+        end_time = now_ms - (now_ms % interval_ms)
+        start_time = end_time - (limit * interval_ms)
 
-        if start_time:
-            builder = builder.set_start_at(int(start_time / 1000))
-        if end_time:
-            builder = builder.set_end_at(int(end_time / 1000))
+        builder = (
+            GetKlinesReqBuilder()
+            .set_symbol(symbol)
+            .set_type(interval)
+            .set_start_at(int(start_time / 1000))
+            .set_end_at(int(end_time / 1000))
+        )
 
         request = builder.build()
         response = self.spot_api.get_klines(request)
 
+        # Derive close_time from open_time + interval, and map turnover to quote_asset_volume
         interval_ms = KucoinKlineIntervals.get_interval_ms(interval)
+        raw = response.data or []
 
-        klines = []
-        if response.data:
-            # Map Kucoin kline data to Binance-like format
-            # Kucoin does not provide taker_buy_quote_asset_volume, taker_buy_base_asset_volume, number_of_trades
-            for k in response.data[:limit]:
-                open_time = int(k[0]) * 1000
-                close_time = open_time + interval_ms
-                klines.append(
-                    [
-                        open_time,
-                        k[1],
-                        k[3],
-                        k[4],
-                        k[2],
-                        k[5],
-                        close_time,
-                        k[6],
-                        "0",
-                        "0",
-                        "0",
-                        "0",
-                    ]
-                )
+        # Build Binance-like klines: [open_time, open, high, low, close, volume, close_time, quote_asset_volume]
+        klines: list[list] = []
+        # Ensure oldest-first order for downstream rolling/resampling
+        for k in reversed(raw):
+            # KuCoin payload: [time(sec), open, close, high, low, volume, turnover]
+            open_time_ms = int(k[0]) * 1000
+            close_time_ms = open_time_ms + interval_ms
+            klines.append(
+                [
+                    open_time_ms,
+                    k[1],  # open
+                    k[3],  # high
+                    k[4],  # low
+                    k[2],  # close
+                    k[5],  # volume
+                    close_time_ms,
+                    k[6],  # turnover -> quote_asset_volume
+                ]
+            )
 
         return klines

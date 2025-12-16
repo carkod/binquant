@@ -3,18 +3,15 @@ from datetime import datetime
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
 
-from algorithms.coinrule import Coinrule
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_v2 import SpikeHunterV2
-from algorithms.spike_hunter_v3 import SpikeHunterV3
-from algorithms.spikehunter_v1 import SpikeHunter
-from algorithms.whale_signals import WhaleSignals
+from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from models.signals import HABollinguerSpread
 from shared.apis.binbot_api import BinbotApi
 from shared.apis.types import CombinedApis
-from shared.enums import BinanceKlineIntervals, MarketDominance, Strategy
+from shared.enums import BinanceKlineIntervals, ExchangeId, MarketDominance, Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.indicators import Indicators
 from shared.utils import round_numbers
@@ -31,6 +28,7 @@ class CryptoAnalytics:
         top_losers_day,
         all_symbols,
         ac_api,
+        exchange,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -51,6 +49,7 @@ class CryptoAnalytics:
         self.df_1h = DataFrame()
         self.ha_df = DataFrame()
         self.interval = BinanceKlineIntervals.fifteen_minutes.value
+        self.exchange = exchange
         # describes current USDC market: gainers vs losers
         self.current_market_dominance: MarketDominance = MarketDominance.NEUTRAL
         # describes whether tide is shifting
@@ -73,40 +72,24 @@ class CryptoAnalytics:
     def days(self, secs):
         return secs * 86400
 
-    def ha_bb_spreads(self) -> HABollinguerSpread:
+    def bb_spreads(self) -> HABollinguerSpread:
         """
         Calculate Heikin Ashi Bollinguer bands spreads for trailling strategies
         """
-        ha_bb_high = float(self.ha_df.bb_upper.iloc[-1])
-        ha_bb_mid = float(self.ha_df.bb_mid.iloc[-1])
-        ha_bb_low = float(self.ha_df.bb_lower.iloc[-1])
+        bb_high = float(self.df.bb_upper.iloc[-1])
+        bb_mid = float(self.df.bb_mid.iloc[-1])
+        bb_low = float(self.df.bb_lower.iloc[-1])
         return HABollinguerSpread(
-            bb_high=round_numbers(ha_bb_high, 6),
-            bb_mid=round_numbers(ha_bb_mid, 6),
-            bb_low=round_numbers(ha_bb_low, 6),
+            bb_high=round_numbers(bb_high, 6),
+            bb_mid=round_numbers(bb_mid, 6),
+            bb_low=round_numbers(bb_low, 6),
         )
 
     def preprocess_data(self, candles):
         # Pre-process
         self.df = DataFrame(candles)
-        self.df.columns = [
-            "open_time",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "close_time",
-            "quote_asset_volume",
-            "number_of_trades",
-            "taker_buy_base_asset_volume",
-            "taker_buy_quote_asset_volume",
-            "unused_field",
-        ]
-
-        # Drop unused columns - keep only OHLCV data needed for technical analysis
-        self.df = self.df[
-            [
+        if self.exchange == ExchangeId.BINANCE:
+            self.df.columns = [
                 "open_time",
                 "open",
                 "high",
@@ -118,19 +101,65 @@ class CryptoAnalytics:
                 "number_of_trades",
                 "taker_buy_base_asset_volume",
                 "taker_buy_quote_asset_volume",
+                "unused_field",
             ]
-        ]
+
+            # Drop unused columns - keep only OHLCV data needed for technical analysis
+            self.df = self.df[
+                [
+                    "open_time",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "close_time",
+                    "quote_asset_volume",
+                    "number_of_trades",
+                    "taker_buy_base_asset_volume",
+                    "taker_buy_quote_asset_volume",
+                ]
+            ]
+        else:
+            self.df.columns = [
+                "open_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "quote_asset_volume",
+            ]
+            self.df = self.df[
+                [
+                    "open_time",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "close_time",
+                    "quote_asset_volume",
+                ]
+            ]
 
         # Convert price and volume columns to float
         price_volume_columns = ["open", "high", "low", "close", "volume"]
         self.df[price_volume_columns] = self.df[price_volume_columns].astype(float)
 
-        # Generate Heikin Ashi DataFrame once processed and cleaned
-        self.ha_df = HeikinAshi.get_heikin_ashi(self.df.copy())
+        # # Generate Heikin Ashi DataFrame once processed and cleaned
+        self.df = HeikinAshi.get_heikin_ashi(self.df)
 
         # Ensure close_time is datetime and set as index for proper resampling
         self.df["timestamp"] = to_datetime(self.df["close_time"], unit="ms")
         self.df.set_index("timestamp", inplace=True)
+
+        # Sort by timestamp ascending (required for rolling windows and resampling)
+        self.df = self.df.sort_index()
+
+        # Remove duplicate timestamps, keeping the last occurrence
+        self.df = self.df[~self.df.index.duplicated(keep="last")]
 
         # Create aggregation dictionary without close_time and open_time since they're now index-based
         resample_aggregation = {
@@ -173,11 +202,8 @@ class CryptoAnalytics:
         self.df_4h.reset_index(drop=True, inplace=True)
 
         self.mda = MarketBreadthAlgo(cls=self)
-        self.sh = SpikeHunter(cls=self)
-        self.cr = Coinrule(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
-        self.sh3 = SpikeHunterV3(cls=self)
-        self.whale = WhaleSignals(cls=self)
+        self.sh3 = SpikeHunterV3KuCoin(cls=self)
 
     async def process_data(self, candles):
         """
@@ -206,9 +232,6 @@ class CryptoAnalytics:
             self.df = Indicators.bollinguer_spreads(self.df)
             self.df = Indicators.set_twap(self.df)
 
-            # Heikin Ashi technicals
-            self.ha_df = Indicators.bollinguer_spreads(self.ha_df)
-
             self.postprocess_data()
 
             # Dropped NaN values may end up with empty dataframe
@@ -219,27 +242,18 @@ class CryptoAnalytics:
             ):
                 return
 
-            if self.bot_strategy == Strategy.margin_short:
-                return
-
             close_price = float(self.df["close"].iloc[-1])
 
-            if self.btc_correlation == 0 or self.btc_price == 0:
-                symbol = self.symbol.replace("-", "")
-                self.btc_correlation, self.btc_price = (
-                    self.binbot_api.get_btc_correlation(symbol=symbol)
-                )
-
-            ha_spreads = self.ha_bb_spreads()
+            spreads = self.bb_spreads()
 
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
-            await self.sh2.signal(
+            await self.sh3.signal(
                 current_price=close_price,
-                bb_high=ha_spreads.bb_high,
-                bb_mid=ha_spreads.bb_mid,
-                bb_low=ha_spreads.bb_low,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
             )
 
         return

@@ -78,8 +78,19 @@ class KlinesProvider:
             data = payload
             klines = KlineProduceModel.model_validate(data)
             symbol = klines.symbol
-
-            candles = self.api.get_ui_klines(symbol, interval=self.interval)
+            kline_limit = 1000
+            # Build time window for 1000 klines of 15min (or current interval)
+            if self.exchange == ExchangeId.KUCOIN:
+                candles = self.api.get_ui_klines(
+                    symbol,
+                    interval=self.interval,
+                    limit=kline_limit,
+                )
+            else:
+                # Binance path supports limit directly
+                candles = self.api.get_ui_klines(
+                    symbol, interval=self.interval, limit=kline_limit
+                )
 
             if len(candles) == 0:
                 logging.warning(f"{symbol} No data to do analytics")
@@ -94,5 +105,6 @@ class KlinesProvider:
                 top_losers_day=self.top_losers_day,
                 all_symbols=self.all_symbols,
                 ac_api=self.ac_api,
+                exchange=self.exchange,
             )
             await crypto_analytics.process_data(candles)

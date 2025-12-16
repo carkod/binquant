@@ -23,6 +23,9 @@ class OHLCDataFrame(pd.DataFrame):
         "close_time",
         "volume",
         "quote_asset_volume",
+    ]
+
+    OPTIONAL_COLUMNS = [
         "number_of_trades",
         "taker_buy_base_asset_volume",
         "taker_buy_quote_asset_volume",
@@ -65,10 +68,11 @@ class OHLCDataFrame(pd.DataFrame):
             "close_time",
             "volume",
             "quote_asset_volume",
-            "number_of_trades",
-            "taker_buy_base_asset_volume",
-            "taker_buy_quote_asset_volume",
         ]
+
+        if len(df.columns) >= len(cls.REQUIRED_COLUMNS):
+            numeric_cols += [col for col in cls.OPTIONAL_COLUMNS if col in df.columns]
+
         for col in numeric_cols:
             if col in df.columns and not pd.api.types.is_numeric_dtype(df[col]):
                 df[col] = pd.to_numeric(df[col], errors="coerce")

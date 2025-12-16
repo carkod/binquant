@@ -21,7 +21,7 @@ class BinanceAIReport:
         self,
         cls: "CryptoAnalytics",
     ) -> None:
-        self.symbol = cls.symbol
+        self.symbol = cls.symbol.replace("-", "")
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = BinbotApi()
