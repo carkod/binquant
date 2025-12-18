@@ -64,7 +64,8 @@ class SpikeHunterV3KuCoin:
         self,
         cls: "CryptoAnalytics",
     ):
-        self.symbol = cls.symbol
+        self.kucoin_symbol = cls.symbol
+        self.symbol = cls.symbol.replace("-", "")
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api

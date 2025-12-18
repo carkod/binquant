@@ -22,7 +22,7 @@ class CryptoAnalytics:
         self,
         producer: Producer,
         api: CombinedApis,
-        symbol,
+        symbol: str,
         top_gainers_day,
         market_breadth_data,
         top_losers_day,
