@@ -32,7 +32,7 @@ def test_is_ohlc_dataframe_negative():
     """
     Test that a DataFrame missing required OHLC columns is not recognized as such.
     """
-    df = make_base_df().drop(columns=["taker_buy_quote_asset_volume"])
+    df = make_base_df().drop(columns=["close_time"])
     assert OHLCDataFrame.is_ohlc_dataframe(df) is False
 
 
@@ -47,11 +47,11 @@ def test_ensure_ohlc_success():
 
 def test_ensure_ohlc_missing_columns():
     # Remove two required columns to trigger validation error
-    df = make_base_df().drop(columns=["volume", "taker_buy_base_asset_volume"])
+    df = make_base_df().drop(columns=["volume", "close_time"])
     with pytest.raises(ValueError) as exc:
         OHLCDataFrame.ensure_ohlc(df)
     msg = str(exc.value)
-    assert "volume" in msg and "taker_buy_base_asset_volume" in msg
+    assert "volume" in msg and "close_time" in msg
 
 
 def test_ensure_ohlc_coercion():

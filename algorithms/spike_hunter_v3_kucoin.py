@@ -414,8 +414,6 @@ class SpikeHunterV3KuCoin:
             logging.info("No recent spike detected for breakout.")
             return
 
-        final_report = self.binance_ai_report.final_report()
-
         if (
             last_spike["cumulative_price_break_flag"]
             or last_spike["is_suppressed"]
@@ -425,10 +423,11 @@ class SpikeHunterV3KuCoin:
             algo = "spike_hunter_v3_kucoin"
             bot_strategy = Strategy.long
             symbol_data = self.current_symbol_data
+            autotrade = True
 
-            if last_spike["upward"] or final_report == 1:
+            if last_spike["upward"]:
                 streak = "📈"
-            elif last_spike["downward"] or final_report == -1:
+            elif last_spike["downward"]:
                 if symbol_data and not symbol_data["is_margin_trading_allowed"]:
                     logging.info(
                         f"Skipping downward spike for {self.symbol}: margin trading not allowed."
@@ -436,6 +435,7 @@ class SpikeHunterV3KuCoin:
                     return
                 streak = "📉"
                 bot_strategy = Strategy.margin_short
+                return
             else:
                 streak = "N/A"
                 return
@@ -451,13 +451,13 @@ class SpikeHunterV3KuCoin:
                 - 📊 {base_asset} volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)}
                 - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
                 - ₿ Correlation: {round_numbers(self.btc_correlation, decimals=self.price_precision)}
-                - Autotrade?: {"Yes" if False else "No"}
+                - Autotrade?: {"Yes" if autotrade else "No"}
                 - <a href='https://www.kucoin.com/trade/{kucoin_symbol}'>KuCoin</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
                 """
 
             value = SignalsConsumer(
-                autotrade=False,
+                autotrade=autotrade,
                 current_price=current_price,
                 msg=msg,
                 symbol=self.symbol,

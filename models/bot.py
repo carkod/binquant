@@ -173,7 +173,7 @@ class BotModel(BaseModel):
     )
 
     # Relationships
-    id: UUID | None = Field(default_factory=uuid4)
+    id: UUID = Field(default_factory=uuid4)
     deal: DealModel = Field(default_factory=DealModel)
     orders: list[OrderModel] = Field(default=[])
 
@@ -208,12 +208,6 @@ class BotModel(BaseModel):
             ],
         },
     }
-
-    @field_validator("id")
-    def deserialize_id(cls, v):
-        if isinstance(v, UUID):
-            return str(v)
-        return True
 
 
 class ErrorsRequestBody(BaseModel):

@@ -232,6 +232,7 @@ class QuoteAssets(str, Enum):
     but the different markets we trade in.
     """
 
+    USDT = "USDT"
     USDC = "USDC"
     BTC = "BTC"
     ETH = "ETH"
