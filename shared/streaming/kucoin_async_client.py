@@ -13,7 +13,7 @@ from kucoin_universal_sdk.model.constants import (
 from kucoin_universal_sdk.model.websocket_option import WebSocketClientOptionBuilder
 
 from models.klines import KlineProduceModel
-from shared.enums import KafkaTopics
+from shared.enums import KafkaTopics, KucoinKlineIntervals
 from shared.streaming.async_producer import AsyncProducer
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,13 @@ class AsyncKucoinWebsocketClient:
         self.message_queue: asyncio.Queue = asyncio.Queue()
         self._ws_started = False
         self._queue_processor_task: asyncio.Task | None = None
+        # Default to 15min interval
+        self.interval = KucoinKlineIntervals.FIFTEEN_MINUTES
+        # Track last emission time per symbol for deduplication (15min window)
+        self._last_emission: dict[str, int] = {}  # symbol -> timestamp_ms
+        self._emission_cooldown_ms = KucoinKlineIntervals.get_interval_ms(
+            self.interval.value
+        )
         client_option = (
             ClientOptionBuilder()
             .set_key(os.getenv("KUCOIN_API_KEY", ""))
@@ -140,6 +147,8 @@ class AsyncKucoinWebsocketClient:
         """
         Universal SDK subscription is synchronous, runs in a separate thread.
         Push messages to an asyncio.Queue for the main event loop to process.
+
+        Deduplicates symbols within a 15-minute window to avoid redundant emissions.
         """
         if not candles or len(candles) < 6:
             return
@@ -147,10 +156,22 @@ class AsyncKucoinWebsocketClient:
         logger.debug(f"Received kline for {symbol}: {candles}")
 
         ts = int(candles[0])
+        ts_ms = ts * 1000
+
+        # Skip if symbol was emitted within last 15 minutes
+        last_emit = self._last_emission.get(symbol, 0)
+        if ts_ms - last_emit < self._emission_cooldown_ms:
+            logger.debug(
+                f"Skipping {symbol}: emitted {(ts_ms - last_emit) // 1000}s ago (cooldown: {self._emission_cooldown_ms // 1000}s)"
+            )
+            return
+
+        # Update last emission time
+        self._last_emission[symbol] = ts_ms
 
         kline = KlineProduceModel(
             symbol=symbol,
-            open_time=str(ts * 1000),
+            open_time=str(ts_ms),
             close_time=str((ts + 60) * 1000),
             open_price=str(candles[1]),
             close_price=str(candles[2]),
@@ -164,7 +185,7 @@ class AsyncKucoinWebsocketClient:
             message_data = {
                 "symbol": symbol,
                 "json": kline.model_dump_json(),
-                "timestamp": ts * 1000,
+                "timestamp": ts_ms,
             }
             # Queue.put_nowait is thread-safe
             self.message_queue.put_nowait(message_data)
