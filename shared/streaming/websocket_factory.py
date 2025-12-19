@@ -46,7 +46,7 @@ class WebsocketClientFactory:
 
             for s in chunk:
                 symbol_name = s["base_asset"] + "-" + s["quote_asset"]
-                await client.subscribe_klines(symbol_name, interval="5min")
+                await client.subscribe_klines(symbol_name, interval="15min")
 
             clients.append(client)
             logger.info(

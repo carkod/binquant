@@ -45,9 +45,8 @@ class BinbotApi:
     bb_liquidation_url = f"{bb_base_url}/account/one-click-liquidation"
 
     # balances
-    bb_balance_url = f"{bb_base_url}/account/balance/raw"
+    bb_balance_url = f"{bb_base_url}/account/balance"
     bb_balance_series_url = f"{bb_base_url}/account/balance/series"
-    bb_account_fiat = f"{bb_base_url}/account/fiat"
     bb_available_fiat_url = f"{bb_base_url}/account/fiat/available"
 
     # research
@@ -81,10 +80,6 @@ class BinbotApi:
             async with session.request(method=method, url=url, **kwargs) as response:
                 data = await aio_response_handler(response)
                 return data
-
-    def get_available_fiat(self):
-        response = self.request(url=self.bb_available_fiat_url)
-        return response["data"]
 
     def get_symbols(self) -> list[dict]:
         response = self.request(url=self.bb_symbols)
@@ -186,6 +181,10 @@ class BinbotApi:
     def get_balances(self):
         data = self.request(url=self.bb_balance_url)
         return data
+
+    def get_available_fiat(self) -> float:
+        all_balances = self.get_balances()
+        return float(all_balances["data"]["fiat_available"])
 
     def create_bot(self, data):
         data = self.request(url=self.bb_bot_url, method="POST", data=data)

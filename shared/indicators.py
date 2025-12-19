@@ -8,6 +8,44 @@ class Indicators:
     dependencies that causes issues in the infrastructure
     """
 
+    original_cols = [
+        "open_time",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "close_time",
+        "quote_asset_volume",
+        "number_of_trades",
+        "taker_buy_base_asset_volume",
+        "taker_buy_quote_asset_volume",
+        "unused_field",
+    ]
+    binance_cols = [
+        "open_time",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "close_time",
+        "quote_asset_volume",
+        "number_of_trades",
+        "taker_buy_base_asset_volume",
+        "taker_buy_quote_asset_volume",
+    ]
+    kucoin_cols = [
+        "open_time",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "close_time",
+        "quote_asset_volume",
+    ]
+
     def post_process(df: DataFrame) -> DataFrame:
         """
         Post-process the DataFrame by filling missing values and
