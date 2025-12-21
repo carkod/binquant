@@ -241,7 +241,6 @@ class CryptoAnalytics:
                 return
 
             close_price = float(self.df["close"].iloc[-1])
-
             spreads = self.bb_spreads()
 
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:

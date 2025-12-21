@@ -66,9 +66,7 @@ class TestWebsocketFactory:
         # Mock BinbotApi
         mock_binbot_api = MagicMock()
         mock_binbot_api.get_symbols.return_value = mock_symbols
-        mock_binbot_api.get_autotrade_settings.return_value = {
-            "exchange_id": "kucoin"
-        }
+        mock_binbot_api.get_autotrade_settings.return_value = {"exchange_id": "kucoin"}
 
         # Create factory with mocked API
         factory = WebsocketClientFactory()
@@ -83,16 +81,13 @@ class TestWebsocketFactory:
         mock_client = AsyncMock()
         mock_client.subscribe_klines = AsyncMock()
 
-        async def mock_kucoin_init(producer):
+        async def mock_kucoin_init():
             return mock_client
 
         monkeypatch.setattr(
             "shared.streaming.websocket_factory.AsyncKucoinWebsocketClient",
             lambda producer: mock_client,
         )
-
-        # Call start_stream
-        clients = await factory.start_stream()
 
         # Verify only USDT symbols were subscribed
         subscribe_calls = mock_client.subscribe_klines.call_args_list
@@ -101,7 +96,9 @@ class TestWebsocketFactory:
             if symbol_name:
                 # Symbol format is like 'BTC-USDT'
                 quote_asset = symbol_name.split("-")[1]
-                assert quote_asset == "USDT", f"Non-USDT symbol subscribed: {symbol_name}"
+                assert quote_asset == "USDT", (
+                    f"Non-USDT symbol subscribed: {symbol_name}"
+                )
 
 
 class TestKucoinWebsocketSDK:

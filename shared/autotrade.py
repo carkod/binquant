@@ -55,6 +55,7 @@ class Autotrade(BinbotApi):
         self.db_collection_name = db_collection_name
         self.binbot_api = BinbotApi()
         self.binance_api = BinanceApi()
+        self.exchange = settings["exchange"]
         # restart streams after bot activation
         super().__init__()
 
@@ -202,7 +203,7 @@ class Autotrade(BinbotApi):
                 )
                 # transfer quantity required to cover losses
                 transfer_qty = stop_loss_price_inc * estimate_qty
-                balance_check = self.get_available_fiat()
+                balance_check = self.get_available_fiat(exchange=self.exchange)
                 if balance_check < transfer_qty:
                     logging.error(
                         f"Not enough funds to autotrade margin_short bot. Unable to cover potential losses. balances: {balances}. transfer qty: {transfer_qty}"

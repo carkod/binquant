@@ -28,6 +28,7 @@ class AutotradeConsumer(BinbotApi):
         self.active_test_bots = active_test_bots
         self.all_symbols = all_symbols
         self.test_autotrade_settings = test_autotrade_settings
+        self.exchange = autotrade_settings["exchange_id"]
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -105,7 +106,7 @@ class AutotradeConsumer(BinbotApi):
                 await test_autotrade.activate_autotrade(data)
 
         # Check balance to avoid failed autotrades
-        balance_check = self.get_available_fiat()
+        balance_check = self.get_available_fiat(exchange=self.exchange)
         if balance_check < float(self.autotrade_settings["base_order_size"]):
             logging.info("Not enough funds to autotrade [bots].")
             return

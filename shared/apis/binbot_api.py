@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from requests import Session
 
 from shared.apis.binance_api import BinanceApi
-from shared.enums import Status
+from shared.enums import ExchangeId, Status
 from shared.utils import aio_response_handler, handle_binance_errors
 
 load_dotenv()
@@ -47,6 +47,7 @@ class BinbotApi:
     # balances
     bb_balance_url = f"{bb_base_url}/account/balance"
     bb_balance_series_url = f"{bb_base_url}/account/balance/series"
+    bb_kucoin_balance_url = f"{bb_base_url}/account/kucoin-balance"
 
     # research
     bb_autotrade_settings_url = f"{bb_base_url}/autotrade-settings/bots"
@@ -181,9 +182,40 @@ class BinbotApi:
         data = self.request(url=self.bb_balance_url)
         return data
 
-    def get_available_fiat(self) -> float:
-        all_balances = self.get_balances()
-        return float(all_balances["data"]["fiat_available"])
+    def get_balances_by_type(self):
+        data = self.request(url=self.bb_kucoin_balance_url)
+        return data
+
+    def get_available_fiat(self, exchange: str, is_margin=False) -> float:
+        if exchange == ExchangeId.KUCOIN.value:
+            all_balances = self.get_balances_by_type()
+            available_fiat = 0.0
+
+            for account_type in all_balances["data"]:
+                if is_margin and account_type.name == "MARGIN":
+                    for key in all_balances["data"][account_type]:
+                        if key == "USDT":
+                            available_fiat += float(
+                                all_balances["data"][account_type][key]["available"]
+                            )
+                else:
+                    if account_type.name == "TRADE":
+                        for key in all_balances["data"][account_type]:
+                            if key == "USDT":
+                                available_fiat += float(
+                                    all_balances["data"][account_type][key]["available"]
+                                )
+                    if account_type.name == "MAIN":
+                        for key in all_balances["data"][account_type]:
+                            if key == "USDT":
+                                available_fiat += float(
+                                    all_balances["data"][account_type][key]["available"]
+                                )
+
+            return float(all_balances["data"]["fiat_available"])
+        else:
+            all_balances = self.get_balances()
+            return float(all_balances["data"]["fiat_available"])
 
     def create_bot(self, data):
         data = self.request(url=self.bb_bot_url, method="POST", data=data)
