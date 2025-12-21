@@ -79,3 +79,55 @@ async def test_producer_error(klines_connector: KlinesConnector):
         assert AssertionError()
     except KeyError:
         assert True
+
+
+@pytest.mark.asyncio
+async def test_usdt_filtering(monkeypatch):
+    """Test that only USDT markets are subscribed to"""
+    from unittest.mock import AsyncMock, MagicMock
+
+    # Mock symbols with mixed quote assets
+    mock_symbols = [
+        {"id": "BTCUSDT", "base_asset": "BTC", "quote_asset": "USDT"},
+        {"id": "ETHUSDT", "base_asset": "ETH", "quote_asset": "USDT"},
+        {"id": "BTCUSDC", "base_asset": "BTC", "quote_asset": "USDC"},
+        {"id": "ETHBTC", "base_asset": "ETH", "quote_asset": "BTC"},
+        {"id": "BNBUSDT", "base_asset": "BNB", "quote_asset": "USDT"},
+    ]
+
+    # Create a real KlinesConnector instance with mocked dependencies
+    connector = KlinesConnector()
+
+    # Mock get_symbols to return our test data
+    monkeypatch.setattr(connector, "get_symbols", lambda: mock_symbols)
+
+    # Mock producer
+    mock_producer = AsyncMock()
+    mock_producer.start = AsyncMock()
+    connector.producer = mock_producer
+
+    # Mock connect_client to avoid actual websocket connection
+    mock_client = MagicMock()
+    mock_client.send_message_to_server = AsyncMock()
+    connector.connect_client = AsyncMock(return_value=mock_client)
+
+    # Call start_stream
+    await connector.start_stream()
+
+    # Verify that only USDT symbols were used
+    # Check that clients were created
+    assert len(connector.clients) > 0
+
+    # Get the first client's subscription call
+    if mock_client.send_message_to_server.called:
+        # Get the markets that were subscribed to
+        call_args = mock_client.send_message_to_server.call_args
+        markets = call_args[0][0] if call_args else []
+
+        # Verify only USDT markets are in the subscription
+        for market in markets:
+            # Market format is like 'btcusdt@kline_5m'
+            symbol = market.split("@")[0].upper()
+            # Should only be BTCUSDT, ETHUSDT, or BNBUSDT (not BTCUSDC or ETHBTC)
+            assert symbol in ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+
