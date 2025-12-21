@@ -92,6 +92,8 @@ class KlinesConnector(BinbotApi):
         # Initialize async Kafka producer (AIOKafkaProducer)
         await self.producer.start()
         symbols = self.get_symbols()
+        # Filter to only USDT markets
+        symbols = [s for s in symbols if s.get("quote_asset") == "USDT"]
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
             for i in range(0, len(symbols), self.MAX_MARKETS_PER_CLIENT)
@@ -121,6 +123,8 @@ class KlinesConnector(BinbotApi):
     async def start_stream_for_client(self, idx: int) -> None:
         """Send subscription message for a specific client."""
         symbols = self.get_symbols()
+        # Filter to only USDT markets
+        symbols = [s for s in symbols if s.get("quote_asset") == "USDT"]
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
             for i in range(0, len(symbols), self.MAX_MARKETS_PER_CLIENT)

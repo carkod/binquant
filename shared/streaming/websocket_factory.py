@@ -33,6 +33,8 @@ class WebsocketClientFactory:
     async def start_stream(self) -> list[AsyncKucoinWebsocketClient]:
         await self.producer.start()
         symbols = self.binbot_api.get_symbols()
+        # Filter to only USDT markets
+        symbols = [s for s in symbols if s.get("quote_asset") == "USDT"]
         total = len(symbols)
         clients: list[AsyncKucoinWebsocketClient] = []
         max_per_client = 300
