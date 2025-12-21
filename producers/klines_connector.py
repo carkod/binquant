@@ -32,6 +32,10 @@ class KlinesConnector(BinbotApi):
         self.autotrade_settings = self.get_autotrade_settings()
         self.clients: list[AsyncSpotWebsocketStreamClient] = []
 
+    def _filter_usdt_symbols(self, symbols: list[dict]) -> list[dict]:
+        """Filter symbols to only include USDT markets."""
+        return [s for s in symbols if s.get("quote_asset") == "USDT"]
+
     async def connect_client(self, on_message, on_close, on_error):
         """Instantiate and start an async websocket client."""
         client = AsyncSpotWebsocketStreamClient(
@@ -91,9 +95,7 @@ class KlinesConnector(BinbotApi):
         """
         # Initialize async Kafka producer (AIOKafkaProducer)
         await self.producer.start()
-        symbols = self.get_symbols()
-        # Filter to only USDT markets
-        symbols = [s for s in symbols if s.get("quote_asset") == "USDT"]
+        symbols = self._filter_usdt_symbols(self.get_symbols())
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
             for i in range(0, len(symbols), self.MAX_MARKETS_PER_CLIENT)
@@ -122,9 +124,7 @@ class KlinesConnector(BinbotApi):
 
     async def start_stream_for_client(self, idx: int) -> None:
         """Send subscription message for a specific client."""
-        symbols = self.get_symbols()
-        # Filter to only USDT markets
-        symbols = [s for s in symbols if s.get("quote_asset") == "USDT"]
+        symbols = self._filter_usdt_symbols(self.get_symbols())
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
             for i in range(0, len(symbols), self.MAX_MARKETS_PER_CLIENT)
