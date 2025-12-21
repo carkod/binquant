@@ -49,13 +49,6 @@ class WebsocketClientFactory:
                 await client.subscribe_klines(symbol_name, interval="15min")
 
             clients.append(client)
-            logger.info(
-                "Client %d subscribed to %d symbols (range %d-%d)",
-                len(clients),
-                len(chunk),
-                i,
-                min(i + max_per_client, total),
-            )
 
         logger.info("Created %d KuCoin clients for %d symbols", len(clients), total)
         return clients

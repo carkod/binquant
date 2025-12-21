@@ -47,7 +47,6 @@ class BinbotApi:
     # balances
     bb_balance_url = f"{bb_base_url}/account/balance"
     bb_balance_series_url = f"{bb_base_url}/account/balance/series"
-    bb_available_fiat_url = f"{bb_base_url}/account/fiat/available"
 
     # research
     bb_autotrade_settings_url = f"{bb_base_url}/autotrade-settings/bots"

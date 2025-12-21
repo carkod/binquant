@@ -147,8 +147,6 @@ class CryptoAnalytics:
         # Convert price and volume columns to float
         price_volume_columns = ["open", "high", "low", "close", "volume"]
         self.df[price_volume_columns] = self.df[price_volume_columns].astype(float)
-
-        # # Generate Heikin Ashi DataFrame once processed and cleaned
         self.df = HeikinAshi.get_heikin_ashi(self.df)
 
         # Ensure close_time is datetime and set as index for proper resampling
