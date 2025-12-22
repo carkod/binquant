@@ -186,31 +186,35 @@ class BinbotApi:
         data = self.request(url=self.bb_kucoin_balance_url)
         return data
 
-    def get_available_fiat(self, exchange: str, is_margin=False) -> float:
+    def get_available_fiat(
+        self, exchange: str, fiat: str = "USDT", is_margin=False
+    ) -> float:
         if exchange == ExchangeId.KUCOIN.value:
             all_balances = self.get_balances_by_type()
             available_fiat = 0.0
 
-            for account_type in all_balances["data"]:
-                if is_margin and account_type.name == "MARGIN":
-                    for key in all_balances["data"][account_type]:
-                        if key == "USDT":
-                            available_fiat += float(
-                                all_balances["data"][account_type][key]["available"]
-                            )
+            for item in all_balances["data"]["balances"]:
+                if is_margin:
+                    if item == "margin":
+                        for key in all_balances["data"]["balances"]["margin"]:
+                            if key == fiat:
+                                available_fiat += float(
+                                    all_balances["data"]["balances"]["margin"][key]
+                                )
                 else:
-                    if account_type.name == "TRADE":
-                        for key in all_balances["data"][account_type]:
-                            if key == "USDT":
+                    if item == "trade":
+                        for key in all_balances["data"]["balances"]["trade"]:
+                            if key == fiat:
                                 available_fiat += float(
-                                    all_balances["data"][account_type][key]["available"]
+                                    all_balances["data"]["balances"]["trade"][key]
                                 )
-                    if account_type.name == "MAIN":
-                        for key in all_balances["data"][account_type]:
-                            if key == "USDT":
-                                available_fiat += float(
-                                    all_balances["data"][account_type][key]["available"]
-                                )
+
+                if item == "main":
+                    for key in all_balances["data"]["balances"]["main"]:
+                        if key == fiat:
+                            available_fiat += float(
+                                all_balances["data"]["balances"]["main"][key]
+                            )
 
             return float(all_balances["data"]["fiat_available"])
         else:

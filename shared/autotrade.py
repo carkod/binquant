@@ -203,7 +203,9 @@ class Autotrade(BinbotApi):
                 )
                 # transfer quantity required to cover losses
                 transfer_qty = stop_loss_price_inc * estimate_qty
-                balance_check = self.get_available_fiat(exchange=self.exchange)
+                balance_check = self.get_available_fiat(
+                    exchange=self.exchange, fiat=self.default_bot.fiat
+                )
                 if balance_check < transfer_qty:
                     logging.error(
                         f"Not enough funds to autotrade margin_short bot. Unable to cover potential losses. balances: {balances}. transfer qty: {transfer_qty}"

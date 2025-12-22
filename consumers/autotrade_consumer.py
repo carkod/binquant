@@ -106,7 +106,9 @@ class AutotradeConsumer(BinbotApi):
                 await test_autotrade.activate_autotrade(data)
 
         # Check balance to avoid failed autotrades
-        balance_check = self.get_available_fiat(exchange=self.exchange)
+        balance_check = self.get_available_fiat(
+            exchange=self.exchange, fiat=self.autotrade_settings["fiat"]
+        )
         if balance_check < float(self.autotrade_settings["base_order_size"]):
             logging.info("Not enough funds to autotrade [bots].")
             return

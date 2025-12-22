@@ -98,6 +98,11 @@ async def test_usdt_filtering(monkeypatch):
     # Mock get_symbols to return our test data (patch before instance creation)
     monkeypatch.setattr(KlinesConnector, "get_symbols", lambda self: mock_symbols)
 
+    # Avoid network calls in __init__: patch autotrade settings retrieval
+    monkeypatch.setattr(
+        KlinesConnector, "get_autotrade_settings", lambda self: {"fiat": "USDT"}
+    )
+
     # Mock connect_client to avoid actual websocket connection
     mock_client = MagicMock()
     mock_client.send_message_to_server = AsyncMock()
