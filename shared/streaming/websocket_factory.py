@@ -27,16 +27,19 @@ class WebsocketClientFactory:
     def __init__(self) -> None:
         self.binbot_api = BinbotApi()
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
+        self.fiat = self.autotrade_settings["fiat"]
         self.exchange = ExchangeId(self.autotrade_settings["exchange_id"])
         self.producer = AsyncProducer()
 
-    def _filter_usdt_symbols(self, symbols: list[dict]) -> list[dict]:
-        """Filter symbols to only include USDT markets."""
-        return [s for s in symbols if s.get("quote_asset") == "USDT"]
+    def filter_fiat_symbols(self, symbols: list[dict]) -> list[dict]:
+        """
+        Filter symbols to only include USDT markets.
+        """
+        return [s for s in symbols if s.get("quote_asset") == self.fiat]
 
     async def start_stream(self) -> list[AsyncKucoinWebsocketClient]:
         await self.producer.start()
-        symbols = self._filter_usdt_symbols(self.binbot_api.get_symbols())
+        symbols = self.filter_fiat_symbols(self.binbot_api.get_symbols())
         total = len(symbols)
         clients: list[AsyncKucoinWebsocketClient] = []
         max_per_client = 300

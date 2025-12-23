@@ -55,7 +55,7 @@ class Autotrade(BinbotApi):
         self.db_collection_name = db_collection_name
         self.binbot_api = BinbotApi()
         self.binance_api = BinanceApi()
-        self.exchange = settings["exchange"]
+        self.exchange = settings["exchange_id"]
         # restart streams after bot activation
         super().__init__()
 

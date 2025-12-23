@@ -77,12 +77,13 @@ class KlinesProvider:
         if payload:
             data = payload
             klines = KlineProduceModel.model_validate(data)
-            symbol = klines.symbol
+            kucoin_symbol = klines.symbol
+            symbol = kucoin_symbol.replace("-", "")
             kline_limit = 1000
             # Build time window for 1000 klines of 15min (or current interval)
             if self.exchange == ExchangeId.KUCOIN:
                 candles = self.api.get_ui_klines(
-                    symbol,
+                    kucoin_symbol,
                     interval=self.interval,
                     limit=kline_limit,
                 )
@@ -99,6 +100,7 @@ class KlinesProvider:
             crypto_analytics = CryptoAnalytics(
                 producer=self.producer,
                 api=self.api,
+                kucoin_symbol=kucoin_symbol,
                 symbol=symbol,
                 top_gainers_day=self.top_gainers_day,
                 market_breadth_data=self.market_breadth_data,

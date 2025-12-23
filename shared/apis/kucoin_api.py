@@ -21,6 +21,7 @@ from kucoin_universal_sdk.generate.spot.market import (
     GetAllSymbolsReqBuilder,
     GetKlinesReqBuilder,
     GetPartOrderBookReqBuilder,
+    GetSymbolReqBuilder,
 )
 from kucoin_universal_sdk.model import (
     GLOBAL_API_ENDPOINT,
@@ -75,6 +76,14 @@ class KucoinApi:
     def get_all_symbols(self):
         request = GetAllSymbolsReqBuilder().build()
         response = self.spot_api.get_all_symbols(request)
+        return response
+
+    def get_symbol(self, symbol: str):
+        """
+        Get single symbol data
+        """
+        request = GetSymbolReqBuilder().set_symbol(symbol).build()
+        response = self.spot_api.get_symbol(request)
         return response
 
     def get_ticker_price(self, symbol: str) -> float:
