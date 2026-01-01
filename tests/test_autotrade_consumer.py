@@ -3,7 +3,7 @@ from consumers.autotrade_consumer import AutotradeConsumer
 
 class TestAutotradeConsumer:
     def setup_method(self):
-        self.settings = {"max_active_autotrade_bots": 2}
+        self.settings = {"max_active_autotrade_bots": 2, "exchange_id": "binance"}
         self.test_settings = {"max_active_autotrade_bots": 1}
         self.consumer = AutotradeConsumer(
             autotrade_settings=self.settings,

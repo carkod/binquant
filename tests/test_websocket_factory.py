@@ -52,7 +52,7 @@ class TestWebsocketFactory:
     @pytest.mark.asyncio
     async def test_kucoin_usdt_filtering(self, monkeypatch):
         """Test that KuCoin factory only subscribes to USDT markets"""
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock
 
         # Mock symbols with mixed quote assets
         mock_symbols = [
@@ -63,16 +63,18 @@ class TestWebsocketFactory:
             {"id": "BNB-USDT", "base_asset": "BNB", "quote_asset": "USDT"},
         ]
 
-        # Mock BinbotApi
-        mock_binbot_api = MagicMock()
-        mock_binbot_api.get_symbols.return_value = mock_symbols
-        mock_binbot_api.get_autotrade_settings.return_value = {
-            "exchange_id": "kucoin"
-        }
+        # Patch BinbotApi methods used inside factory __init__ and start_stream
+        monkeypatch.setattr(
+            "shared.streaming.websocket_factory.BinbotApi.get_autotrade_settings",
+            lambda self: {"exchange_id": "kucoin", "fiat": "USDT"},
+        )
+        monkeypatch.setattr(
+            "shared.streaming.websocket_factory.BinbotApi.get_symbols",
+            lambda self: mock_symbols,
+        )
 
-        # Create factory with mocked API
+        # Create factory (will use patched BinbotApi)
         factory = WebsocketClientFactory()
-        monkeypatch.setattr(factory, "binbot_api", mock_binbot_api)
 
         # Mock producer
         mock_producer = AsyncMock()
@@ -83,7 +85,7 @@ class TestWebsocketFactory:
         mock_client = AsyncMock()
         mock_client.subscribe_klines = AsyncMock()
 
-        async def mock_kucoin_init(producer):
+        async def mock_kucoin_init():
             return mock_client
 
         monkeypatch.setattr(
@@ -91,8 +93,8 @@ class TestWebsocketFactory:
             lambda producer: mock_client,
         )
 
-        # Call start_stream
-        clients = await factory.start_stream()
+        # Trigger subscriptions
+        await factory.start_stream()
 
         # Verify only USDT symbols were subscribed
         subscribe_calls = mock_client.subscribe_klines.call_args_list
@@ -101,7 +103,9 @@ class TestWebsocketFactory:
             if symbol_name:
                 # Symbol format is like 'BTC-USDT'
                 quote_asset = symbol_name.split("-")[1]
-                assert quote_asset == "USDT", f"Non-USDT symbol subscribed: {symbol_name}"
+                assert quote_asset == "USDT", (
+                    f"Non-USDT symbol subscribed: {symbol_name}"
+                )
 
 
 class TestKucoinWebsocketSDK:

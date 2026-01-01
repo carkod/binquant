@@ -35,7 +35,7 @@ class TestKlinesProvider:
         api_instance.get_top_gainers = AsyncMock(return_value=[])
         api_instance.get_top_losers = AsyncMock(return_value=[])
         api_instance.get_market_breadth = AsyncMock(return_value={})
-        api_instance.get_autotrade_settings.return_value = {}
+        api_instance.get_autotrade_settings.return_value = {"exchange_id": "kucoin"}
         api_instance.get_test_autotrade_settings.return_value = {}
         provider.binbot_api = api_instance
         await provider.load_data_on_start()

@@ -64,17 +64,17 @@ class SpikeHunterV3KuCoin:
         self,
         cls: "CryptoAnalytics",
     ):
-        self.kucoin_symbol = cls.symbol
-        self.symbol = cls.symbol.replace("-", "")
+        self.kucoin_symbol = cls.kucoin_symbol
+        self.symbol = cls.symbol
         df = cls.clean_df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
-        self.price_precision = cls.price_precision
-        self.current_symbol_data = cls.current_symbol_data
-        self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
         self.binance_ai_report = BinanceAIReport(cls)
+        self.current_symbol_data = cls.current_symbol_data
+        self.price_precision = cls.price_precision
+        self.qty_precision = cls.qty_precision
 
         # Thresholds (v2-like defaults preserved)
         self.volume_cluster_min_ratio = 2.0
@@ -422,27 +422,19 @@ class SpikeHunterV3KuCoin:
         ):
             algo = "spike_hunter_v3_kucoin"
             bot_strategy = Strategy.long
-            symbol_data = self.current_symbol_data
             autotrade = True
 
             if last_spike["upward"]:
                 streak = "📈"
             elif last_spike["downward"]:
-                if symbol_data and not symbol_data["is_margin_trading_allowed"]:
-                    logging.info(
-                        f"Skipping downward spike for {self.symbol}: margin trading not allowed."
-                    )
-                    return
                 streak = "📉"
                 bot_strategy = Strategy.margin_short
-                return
             else:
                 streak = "N/A"
                 return
 
-            base_asset = symbol_data["base_asset"] if symbol_data else "Base asset"
-            quote_asset = symbol_data["quote_asset"] if symbol_data else "Quote asset"
-            kucoin_symbol = base_asset + "-" + quote_asset
+            base_asset = self.current_symbol_data["base_asset"]
+            quote_asset = self.current_symbol_data["quote_asset"]
 
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#spike_hunter_v3_kucoin algorithm</strong> #{self.symbol}
@@ -450,9 +442,8 @@ class SpikeHunterV3KuCoin:
                 - Last close timestamp: {last_spike["timestamp"]}
                 - 📊 {base_asset} volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)}
                 - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
-                - ₿ Correlation: {round_numbers(self.btc_correlation, decimals=self.price_precision)}
                 - Autotrade?: {"Yes" if autotrade else "No"}
-                - <a href='https://www.kucoin.com/trade/{kucoin_symbol}'>KuCoin</a>
+                - <a href='https://www.kucoin.com/trade/{self.kucoin_symbol}'>KuCoin</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
                 """
 

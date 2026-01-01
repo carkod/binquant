@@ -29,6 +29,7 @@ class CryptoAnalytics:
         all_symbols,
         ac_api,
         exchange,
+        kucoin_symbol=None,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -41,9 +42,7 @@ class CryptoAnalytics:
         self.api = api
         self.binbot_api = BinbotApi()
         self.symbol = symbol
-        self.price_precision = self.binbot_api.price_precision(
-            symbol=symbol.replace("-", "")
-        )
+        self.kucoin_symbol = kucoin_symbol
         self.df = DataFrame()
         self.df_4h = DataFrame()
         self.df_1h = DataFrame()
@@ -63,8 +62,15 @@ class CryptoAnalytics:
         self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
-        self.current_symbol_data: dict | None = next(
-            (s for s in all_symbols if s["id"] == symbol), None
+        # theorically current_symbol_data is always defined
+        # if it's not defined, then it wouldn't subscribe with websockets
+        self.current_symbol_data: dict = [s for s in all_symbols if s["id"] == symbol][
+            0
+        ]
+        self.price_precision = (
+            self.current_symbol_data["price_precision"]
+            if self.current_symbol_data
+            else 1
         )
         self.telegram_consumer = TelegramConsumer()
         self.at_consumer: AutotradeConsumer = ac_api
@@ -85,9 +91,20 @@ class CryptoAnalytics:
             bb_low=round_numbers(bb_low, 6),
         )
 
+    def symbol_dependent_data(self):
+        """
+        Reload symbol-dependent data such as price and qty precision
+        """
+        self.current_symbol_data = [
+            s for s in self.all_symbols if s["id"] == self.symbol
+        ][0]
+        self.price_precision = self.current_symbol_data["price_precision"]
+        self.qty_precision = self.current_symbol_data["qty_precision"]
+
     def preprocess_data(self, candles):
         # Pre-process
         self.df = DataFrame(candles)
+        self.symbol_dependent_data()
         if self.exchange == ExchangeId.BINANCE:
             self.df.columns = [
                 "open_time",
@@ -241,7 +258,6 @@ class CryptoAnalytics:
                 return
 
             close_price = float(self.df["close"].iloc[-1])
-
             spreads = self.bb_spreads()
 
             if not self.market_breadth_data or datetime.now().minute % 30 == 0:

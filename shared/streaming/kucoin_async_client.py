@@ -149,8 +149,11 @@ class AsyncKucoinWebsocketClient:
         Push messages to an asyncio.Queue for the main event loop to process.
 
         Deduplicates symbols within a 15-minute window to avoid redundant emissions.
+
+        Skip if no candles, few candles or no volume
         """
-        if not candles or len(candles) < 6:
+
+        if not candles or len(candles) < 6 or float(candles[5]) == 0:
             return
 
         logger.debug(f"Received kline for {symbol}: {candles}")
