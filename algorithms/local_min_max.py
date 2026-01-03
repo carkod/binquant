@@ -1,11 +1,11 @@
 from os import getenv
 
 from pandas import DataFrame, to_datetime
+from pybinbot import Strategy
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from models.signals import HABollinguerSpread, SignalsConsumer
-from pybinbot import Strategy
 from shared.utils import suppress_notation
 
 

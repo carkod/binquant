@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from pybinbot import Strategy
 
 from algorithms.binance_report_ai import BinanceAIReport
 from models.signals import HABollinguerSpread, SignalsConsumer
-from pybinbot import Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import round_numbers, timestamp_to_datetime
 

@@ -1,8 +1,8 @@
 """Tests for WebSocket factory using KuCoin Universal SDK."""
 
 import pytest
-
 from pybinbot import ExchangeId
+
 from shared.streaming.kucoin_async_client import (
     AsyncKucoinWebsocketClient,
 )

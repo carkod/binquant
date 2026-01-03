@@ -2,10 +2,10 @@ import os
 
 from aiohttp import ClientSession
 from dotenv import load_dotenv
+from pybinbot import ExchangeId, Status
 from requests import Session
 
 from shared.apis.binance_api import BinanceApi
-from pybinbot import ExchangeId, Status
 from shared.utils import aio_response_handler, handle_binance_errors
 
 load_dotenv()

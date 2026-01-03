@@ -28,7 +28,6 @@ from kucoin_universal_sdk.model import (
     ClientOptionBuilder,
     TransportOptionBuilder,
 )
-
 from pybinbot import KucoinKlineIntervals
 
 
