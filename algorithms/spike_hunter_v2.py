@@ -10,7 +10,7 @@ import pandas as pd
 
 from models.signals import HABollinguerSpread, SignalsConsumer
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import Strategy
+from pybinbot import Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import round_numbers, timestamp_to_datetime
 

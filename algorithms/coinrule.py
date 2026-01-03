@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from pandas import to_datetime
 
 from models.signals import HABollinguerSpread, SignalsConsumer
-from shared.enums import MarketDominance, Strategy
+from pybinbot import MarketDominance, Strategy
 from shared.indicators import Indicators
 from shared.utils import round_numbers
 

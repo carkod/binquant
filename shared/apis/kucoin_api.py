@@ -29,7 +29,7 @@ from kucoin_universal_sdk.model import (
     TransportOptionBuilder,
 )
 
-from shared.enums import KucoinKlineIntervals
+from pybinbot import KucoinKlineIntervals
 
 
 class KucoinApi:

@@ -5,7 +5,7 @@ from pandas import DataFrame, to_datetime
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from models.signals import HABollinguerSpread, SignalsConsumer
-from shared.enums import Strategy
+from pybinbot import Strategy
 from shared.utils import suppress_notation
 
 

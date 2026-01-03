@@ -9,7 +9,7 @@ from producers.analytics import CryptoAnalytics
 from shared.apis.binbot_api import BinanceApi, BinbotApi
 from shared.apis.kucoin_api import KucoinApi
 from shared.apis.types import CombinedApis
-from shared.enums import BinanceKlineIntervals, ExchangeId, KucoinKlineIntervals
+from pybinbot import BinanceKlineIntervals, ExchangeId, KucoinKlineIntervals
 from shared.streaming.async_producer import AsyncProducer
 
 

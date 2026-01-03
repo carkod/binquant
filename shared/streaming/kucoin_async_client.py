@@ -13,7 +13,7 @@ from kucoin_universal_sdk.model.constants import (
 from kucoin_universal_sdk.model.websocket_option import WebSocketClientOptionBuilder
 
 from models.klines import KlineProduceModel
-from shared.enums import KafkaTopics, KucoinKlineIntervals
+from pybinbot import KafkaTopics, KucoinKlineIntervals
 from shared.streaming.async_producer import AsyncProducer
 
 logger = logging.getLogger(__name__)

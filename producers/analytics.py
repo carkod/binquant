@@ -11,7 +11,7 @@ from consumers.telegram_consumer import TelegramConsumer
 from models.signals import HABollinguerSpread
 from shared.apis.binbot_api import BinbotApi
 from shared.apis.types import CombinedApis
-from shared.enums import BinanceKlineIntervals, ExchangeId, MarketDominance, Strategy
+from pybinbot import BinanceKlineIntervals, ExchangeId, MarketDominance, Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.indicators import Indicators
 from shared.utils import round_numbers

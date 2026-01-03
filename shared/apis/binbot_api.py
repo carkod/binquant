@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from requests import Session
 
 from shared.apis.binance_api import BinanceApi
-from shared.enums import ExchangeId, Status
+from pybinbot import ExchangeId, Status
 from shared.utils import aio_response_handler, handle_binance_errors
 
 load_dotenv()

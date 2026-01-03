@@ -8,7 +8,7 @@ import pandas as pd
 
 from algorithms.binance_report_ai import BinanceAIReport
 from models.signals import HABollinguerSpread, SignalsConsumer
-from shared.enums import Strategy
+from pybinbot import Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.utils import round_numbers, timestamp_to_datetime
 

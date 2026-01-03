@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from models.signals import HABollinguerSpread, SignalsConsumer
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import MarketDominance, Strategy
+from pybinbot import MarketDominance, Strategy
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics

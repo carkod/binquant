@@ -2,7 +2,7 @@
 
 import pytest
 
-from shared.enums import ExchangeId
+from pybinbot import ExchangeId
 from shared.streaming.kucoin_async_client import (
     AsyncKucoinWebsocketClient,
 )

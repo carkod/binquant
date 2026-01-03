@@ -29,6 +29,10 @@ format:
 	ruff check .  --fix
 	mypy .
 
+upgrade-pybinbot:  ## Upgrade pybinbot to latest compatible version
+	uv lock --upgrade-package pybinbot
+	uv sync --extra dev
+
 get-models: ## Get AI models from binbot-notebooks
 	curl -s https://api.github.com/repos/carkod/binbot-notebooks/contents/checkpoints | \
         grep '"name":' | cut -d '"' -f 4 | \
