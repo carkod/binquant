@@ -2,9 +2,7 @@ from time import time
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, BeforeValidator, Field, field_validator
-
-from shared.enums import (
+from pybinbot import (
     BinanceKlineIntervals,
     CloseConditions,
     DealType,
@@ -14,6 +12,7 @@ from shared.enums import (
     Status,
     Strategy,
 )
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 
 def timestamp():

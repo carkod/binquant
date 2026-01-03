@@ -6,10 +6,9 @@ import uuid
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.structs import TopicPartition
+from pybinbot import KafkaTopics, configure_logging
 
 from consumers.klines_provider import KlinesProvider
-from shared.enums import KafkaTopics
-from shared.logging_config import configure_logging
 from shared.rebalance_listener import RebalanceListener
 
 configure_logging(force=True)

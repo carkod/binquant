@@ -1,6 +1,5 @@
+from pybinbot import Strategy
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from shared.enums import Strategy
 
 
 class HABollinguerSpread(BaseModel):

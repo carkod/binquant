@@ -7,9 +7,10 @@ for different exchanges (Binance, Kucoin) without changing existing code.
 import asyncio
 import logging
 
+from pybinbot import ExchangeId
+
 from producers.klines_connector import KlinesConnector
 from shared.apis.binbot_api import BinbotApi
-from shared.enums import ExchangeId
 from shared.streaming.async_producer import AsyncProducer
 from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
 from shared.streaming.kucoin_async_client import (

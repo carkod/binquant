@@ -2,6 +2,7 @@ from datetime import datetime
 
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
+from pybinbot import BinanceKlineIntervals, ExchangeId, MarketDominance, Strategy
 
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_v2 import SpikeHunterV2
@@ -11,7 +12,6 @@ from consumers.telegram_consumer import TelegramConsumer
 from models.signals import HABollinguerSpread
 from shared.apis.binbot_api import BinbotApi
 from shared.apis.types import CombinedApis
-from shared.enums import BinanceKlineIntervals, ExchangeId, MarketDominance, Strategy
 from shared.heikin_ashi import HeikinAshi
 from shared.indicators import Indicators
 from shared.utils import round_numbers
