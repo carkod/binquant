@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class Coinrule:
     def __init__(self, cls: "CryptoAnalytics") -> None:
         self.ti = cls
-        self.df = cls.ha_df
+        self.df = cls.df
         self.df_1h = cls.df_1h
         self.market_breadth_data = cls.market_breadth_data
         self.symbol = cls.symbol
@@ -92,7 +92,7 @@ class Coinrule:
         self.pre_process()
 
         # Reuse shared Supertrend (period adjusted to 10 to match strategy)
-        Indicators.set_supertrend(self.df, period=10, multiplier=3.0)
+        Indicators.set_supertrend(self.df, multiplier=3.0)
 
         adp_diff = (
             self.market_breadth_data["adp"][-1] - self.market_breadth_data["adp"][-2]

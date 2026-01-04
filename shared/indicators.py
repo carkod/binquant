@@ -83,6 +83,17 @@ class Indicators:
 
         return df
 
+    def ema(
+        df: DataFrame, column: str = "close", span: int = 9, out_col: str | None = None
+    ) -> DataFrame:
+        """Exponential moving average for a given column.
+
+        Adds a new column with the EMA values and returns the DataFrame.
+        """
+        target_col = out_col or f"ema_{span}"
+        df[target_col] = df[column].ewm(span=span, adjust=False).mean()
+        return df
+
     def rsi(df: DataFrame, window: int = 14) -> DataFrame:
         """
         Relative Strength Index (RSI) indicator
@@ -187,77 +198,95 @@ class Indicators:
 
         return df
 
-    def set_supertrend(
-        df: DataFrame, period: int = 14, multiplier: float = 3.0
+    def atr(
+        df: DataFrame,
+        window: int = 14,
+        min_periods: int | None = None,
+        col_prefix: str = "",
     ) -> DataFrame:
-        """Compute Supertrend indicator.
-
-        Adds columns: 'atr', 'upperband', 'lowerband', 'supertrend'.
-        'supertrend' is a boolean (or None before initialization) indicating
-        bullish (True) or bearish (False) trend.
         """
-        if len(df) == 0:
+        Generic ATR indicator.
+
+        Adds column: '{prefix}ATR'
+        """
+        if df.empty:
             return df
 
-        hl2 = (df["high"] + df["low"]) / 2.0
+        if min_periods is None:
+            min_periods = window
+
         prev_close = df["close"].shift(1)
+
         tr = concat(
             [
-                (df["high"] - df["low"]),
+                df["high"] - df["low"],
                 (df["high"] - prev_close).abs(),
                 (df["low"] - prev_close).abs(),
             ],
             axis=1,
         ).max(axis=1)
 
-        df["atr"] = tr.rolling(window=period).mean()
-        upperband = hl2 + multiplier * df["atr"]
-        lowerband = hl2 - multiplier * df["atr"]
+        df[f"{col_prefix}ATR"] = tr.rolling(
+            window=window, min_periods=min_periods
+        ).mean()
 
-        # Smooth bands
-        for i in range(period, len(df)):
-            if df["close"].iloc[i - 1] > upperband.iloc[i - 1]:
-                upperband.iloc[i] = max(upperband.iloc[i], upperband.iloc[i - 1])
-            if df["close"].iloc[i - 1] < lowerband.iloc[i - 1]:
-                lowerband.iloc[i] = min(lowerband.iloc[i], lowerband.iloc[i - 1])
+        return df
 
-        direction: list[bool | None] = [None] * len(df)
-        for i in range(period, len(df)):
-            if df["close"].iloc[i] > upperband.iloc[i - 1]:
-                direction[i] = True
-            elif df["close"].iloc[i] < lowerband.iloc[i - 1]:
-                direction[i] = False
+    def set_supertrend(
+        df: DataFrame,
+        atr_col: str = "ATR",
+        multiplier: float = 3.0,
+        prefix: str = "",
+    ) -> DataFrame:
+        """
+        Supertrend indicator.
+
+        Requires ATR to already exist.
+        Adds:
+        - '{prefix}supertrend'
+        - '{prefix}supertrend_dir'  (1 bullish, -1 bearish)
+        """
+        if df.empty or atr_col not in df:
+            return df
+
+        hl2 = (df["high"] + df["low"]) / 2
+        atr = df[atr_col]
+
+        upperband = hl2 + multiplier * atr
+        lowerband = hl2 - multiplier * atr
+
+        final_upper = upperband.copy()
+        final_lower = lowerband.copy()
+
+        for i in range(1, len(df)):
+            final_upper.iloc[i] = (
+                min(upperband.iloc[i], final_upper.iloc[i - 1])
+                if df["close"].iloc[i - 1] <= final_upper.iloc[i - 1]
+                else upperband.iloc[i]
+            )
+
+            final_lower.iloc[i] = (
+                max(lowerband.iloc[i], final_lower.iloc[i - 1])
+                if df["close"].iloc[i - 1] >= final_lower.iloc[i - 1]
+                else lowerband.iloc[i]
+            )
+
+        direction = [0] * len(df)
+        supertrend = [None] * len(df)
+
+        for i in range(1, len(df)):
+            if df["close"].iloc[i] > final_upper.iloc[i - 1]:
+                direction[i] = 1
+            elif df["close"].iloc[i] < final_lower.iloc[i - 1]:
+                direction[i] = -1
             else:
                 direction[i] = direction[i - 1]
 
-        df["upperband"] = upperband
-        df["lowerband"] = lowerband
-        df["supertrend"] = direction
-        return df
+            supertrend[i] = (
+                final_lower.iloc[i] if direction[i] == 1 else final_upper.iloc[i]
+            )
 
-    def atr(df: DataFrame, window: int = 30, min_periods: int = 20) -> DataFrame:
-        df["open_time"] = to_datetime(df["open_time"], unit="ms")
-        df.set_index("open_time", inplace=True)
-        df[["open", "high", "low", "close", "volume"]] = df[
-            ["open", "high", "low", "close", "volume"]
-        ].astype(float)
+        df[f"{prefix}supertrend"] = supertrend
+        df[f"{prefix}supertrend_dir"] = direction
 
-        # ATR breakout logic
-        tr = concat(
-            [
-                df["high"] - df["low"],
-                (df["high"] - df["close"].shift()).abs(),
-                (df["low"] - df["close"].shift()).abs(),
-            ],
-            axis=1,
-        ).max(axis=1)
-
-        df["amplitude"] = df["high"] - df["low"]
-
-        df["ATR"] = tr.rolling(window=window, min_periods=min_periods).mean()
-        df["rolling_high"] = df["high"].rolling(window=window).max().shift(1)
-        df["breakout_strength"] = (df["close"] - df["rolling_high"]) / df["ATR"]
-        df["ATR_breakout"] = (df["close"] > (df["rolling_high"] + 1.1 * df["ATR"])) & (
-            df["breakout_strength"] > 0.05
-        )
         return df

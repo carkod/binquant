@@ -75,7 +75,7 @@ class SpikeHunterV3:
         rel_path = "checkpoints/spikehunter_model_v2.pkl"
         abs_file_path = path.join(script_dir, rel_path)
         self.bundle = joblib.load(abs_file_path)
-        df = cls.clean_df.copy()
+        df = cls.df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
         self.price_precision = cls.price_precision
