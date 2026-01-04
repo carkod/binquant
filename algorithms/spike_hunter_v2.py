@@ -7,12 +7,15 @@ from typing import TYPE_CHECKING
 import joblib
 import numpy as np
 import pandas as pd
-from pybinbot import Strategy
-
-from models.signals import HABollinguerSpread, SignalsConsumer
+from pybinbot import (
+    HABollinguerSpread,
+    SignalsConsumer,
+    Strategy,
+    round_numbers,
+    timestamp_to_datetime,
+)
 from shared.apis.binbot_api import BinbotApi
 from shared.heikin_ashi import HeikinAshi
-from shared.utils import round_numbers, timestamp_to_datetime
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics

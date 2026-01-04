@@ -3,11 +3,14 @@ import os
 from typing import TYPE_CHECKING
 
 from pandas import to_datetime
-from pybinbot import MarketDominance, Strategy
-
-from models.signals import HABollinguerSpread, SignalsConsumer
+from pybinbot import (
+    HABollinguerSpread,
+    MarketDominance,
+    SignalsConsumer,
+    Strategy,
+    round_numbers,
+)
 from shared.indicators import Indicators
-from shared.utils import round_numbers
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics

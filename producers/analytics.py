@@ -2,7 +2,14 @@ from datetime import datetime
 
 from confluent_kafka import Producer
 from pandas import DataFrame, to_datetime
-from pybinbot import BinanceKlineIntervals, ExchangeId, MarketDominance, Strategy
+from pybinbot import (
+    BinanceKlineIntervals,
+    ExchangeId,
+    HABollinguerSpread,
+    MarketDominance,
+    Strategy,
+    round_numbers,
+)
 
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_v2 import SpikeHunterV2
@@ -10,12 +17,10 @@ from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
-from models.signals import HABollinguerSpread
 from shared.apis.binbot_api import BinbotApi
 from shared.apis.types import CombinedApis
 from shared.heikin_ashi import HeikinAshi
 from shared.indicators import Indicators
-from shared.utils import round_numbers
 
 
 class CryptoAnalytics:

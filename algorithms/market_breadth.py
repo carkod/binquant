@@ -2,9 +2,7 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from pybinbot import MarketDominance, Strategy
-
-from models.signals import HABollinguerSpread, SignalsConsumer
+from pybinbot import MarketDominance, Strategy, HABollinguerSpread, SignalsConsumer
 from shared.apis.binbot_api import BinbotApi
 
 if TYPE_CHECKING:

@@ -1,14 +1,17 @@
 import logging
 import math
 
-from pybinbot import CloseConditions, Strategy
-
+from pybinbot import (
+    CloseConditions,
+    SignalsConsumer,
+    Strategy,
+    round_numbers,
+    supress_notation,
+)
 from models.bot import BotModel
-from models.signals import SignalsConsumer
 from shared.apis.binance_api import BinanceApi
 from shared.apis.binbot_api import BinbotApi
 from shared.exceptions import AutotradeError
-from shared.utils import round_numbers, suppress_notation
 
 
 class Autotrade(BinbotApi):
@@ -138,7 +141,7 @@ class Autotrade(BinbotApi):
 
                 ticker = self.binance_api.ticker_24_price(symbol=self.pair)
                 rate = ticker["price"]
-                qty = suppress_notation(b["free"], self.decimals)
+                qty = supress_notation(b["free"], self.decimals)
                 # Round down to 6 numbers to avoid not enough funds
                 base_order_size = (
                     math.floor((float(qty) / float(rate)) * 10000000) / 10000000

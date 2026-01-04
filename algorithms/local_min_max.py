@@ -1,12 +1,9 @@
 from os import getenv
 
 from pandas import DataFrame, to_datetime
-from pybinbot import Strategy
-
+from pybinbot import HABollinguerSpread, SignalsConsumer, Strategy, supress_notation
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
-from models.signals import HABollinguerSpread, SignalsConsumer
-from shared.utils import suppress_notation
 
 
 async def local_min_max(
@@ -41,12 +38,12 @@ async def local_min_max(
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{symbol}
-            - 🔥 {symbol} has hit a new minimum {suppress_notation(num=min_price, precision=precision)}!!
+            - 🔥 {symbol} has hit a new minimum {supress_notation(num=min_price, precision=precision)}!!
             - 📅 {last_timestamp}
             - Number of trades: {df["number_of_trades"].iloc[-1]}
             - Volume: {df["volume"].iloc[-1]}
             - Quote volume: {df["quote_asset_volume"].iloc[-1]}
-            - Current price: {suppress_notation(num=current_price, precision=precision)}
+            - Current price: {supress_notation(num=current_price, precision=precision)}
             - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='https://www.binance.com/en/trade/{symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{symbol}'>Dashboard trade</a>
