@@ -7,6 +7,7 @@ from pybinbot import BinanceKlineIntervals, ExchangeId, MarketDominance, Strateg
 from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_v2 import SpikeHunterV2
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
+from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from models.signals import HABollinguerSpread
@@ -46,7 +47,6 @@ class CryptoAnalytics:
         self.df = DataFrame()
         self.df_4h = DataFrame()
         self.df_1h = DataFrame()
-        self.ha_df = DataFrame()
         self.interval = BinanceKlineIntervals.fifteen_minutes.value
         self.exchange = exchange
         # describes current USDC market: gainers vs losers
@@ -138,7 +138,8 @@ class CryptoAnalytics:
                 ]
             ]
         else:
-            self.df.columns = [
+            # in the case of Kucoin, no extra columns
+            columns = [
                 "open_time",
                 "open",
                 "high",
@@ -148,18 +149,8 @@ class CryptoAnalytics:
                 "close_time",
                 "quote_asset_volume",
             ]
-            self.df = self.df[
-                [
-                    "open_time",
-                    "open",
-                    "high",
-                    "low",
-                    "close",
-                    "volume",
-                    "close_time",
-                    "quote_asset_volume",
-                ]
-            ]
+            self.df.columns = columns
+            self.df = self.df[columns]
 
         # Convert price and volume columns to float
         price_volume_columns = ["open", "high", "low", "close", "volume"]
@@ -199,10 +190,6 @@ class CryptoAnalytics:
         self.df_1h["open_time"] = self.df_1h.index
         self.df_1h["close_time"] = self.df_1h.index
 
-        # Keep a copy of a clean df
-        # Some algos don't need indicators
-        self.clean_df = self.df.copy()
-
     def postprocess_data(self):
         """
         Post-process the data after all indicators have been applied.
@@ -219,6 +206,7 @@ class CryptoAnalytics:
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
+        self.af = ApexFlow(cls=self)
 
     async def process_data(self, candles):
         """
@@ -264,6 +252,14 @@ class CryptoAnalytics:
                 self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
             await self.sh3.signal(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
+
+            # Apex Flow signals
+            await self.af.signal(
                 current_price=close_price,
                 bb_high=spreads.bb_high,
                 bb_mid=spreads.bb_mid,

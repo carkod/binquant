@@ -53,7 +53,7 @@ class SpikeHunter:
 
         # dependencies
         self.ti = cls
-        df = cls.clean_df.copy()
+        df = cls.df.copy()
         self.df = HeikinAshi.get_heikin_ashi(df)
         self.current_market_dominance = cls.current_market_dominance
 

@@ -66,7 +66,7 @@ class SpikeHunterV3KuCoin:
     ):
         self.kucoin_symbol = cls.kucoin_symbol
         self.symbol = cls.symbol
-        df = cls.clean_df.copy()
+        df = cls.df.copy()
         self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer

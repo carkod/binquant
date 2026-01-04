@@ -1,12 +1,8 @@
 import time
+import requests
 from math import tanh
 from typing import TYPE_CHECKING
-
-import pandas as pd
-import requests
-
 from shared.apis.binbot_api import BinbotApi
-from shared.heikin_ashi import HeikinAshi
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -22,8 +18,6 @@ class BinanceAIReport:
         cls: "CryptoAnalytics",
     ) -> None:
         self.symbol = cls.symbol.replace("-", "")
-        df = cls.clean_df.copy()
-        self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
         self.binbot_api = BinbotApi()
         self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
