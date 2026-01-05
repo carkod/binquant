@@ -33,17 +33,19 @@ class ApexFlow:
         self.qty_precision = cls.qty_precision
         self.df: pd.DataFrame = cls.df.copy()
 
-        # Volatility compression parameters
+        # Bollinger compression
         self.bb_period = 20
-        self.bb_threshold = 0.055
-        self.atr_period = 14
-        self.atr_lookback = 35
-        self.atr_percentile = 0.35
+        self.bb_threshold = 0.04  # VERY tight bands
 
-        # Expansion parameters
-        self.atr_expansion_mult = 1.35
-        self.volume_mult = 1.2
-        self.expansion_lookback = 4
+        # ATR compression
+        self.atr_period = 14
+        self.atr_lookback = 50
+        self.atr_percentile = 0.25  # bottom 25% volatility only
+
+        # Expansion confirmation
+        self.atr_expansion_mult = 1.5
+        self.volume_mult = 1.3
+        self.expansion_lookback = 3
 
     # ---------- Core VCE components ---------- #
     def detect_volatility_compression(self) -> pd.DataFrame:
@@ -212,6 +214,16 @@ class ApexFlow:
         ]
         return signals
 
+    def get_trend_bias(self) -> str | None:
+        if "ema_fast" not in self.df.columns or "ema_slow" not in self.df.columns:
+            return None
+
+        if self.df["ema_fast"].iloc[-1] > self.df["ema_slow"].iloc[-1]:
+            return "LONG"
+        elif self.df["ema_fast"].iloc[-1] < self.df["ema_slow"].iloc[-1]:
+            return "SHORT"
+        return None
+
     # ---------- Public API ---------- #
     async def signal(
         self,
@@ -235,30 +247,35 @@ class ApexFlow:
         pattern = None
         direction: str | None = None
 
-        # Priority: Liquidity Sweep Reversal > Momentum Continuation > VCE impulse
+        trend_bias = self.get_trend_bias()
+
+        # Priority: LSR > MCD > VCE
         if has_lsr and row.get("lsr_direction"):
+            # LSR is allowed to counter-trend
             pattern = "LSR"
             direction = row.get("lsr_direction")
+
         elif has_mcd and row.get("mcd_direction"):
-            pattern = "MCD"
-            direction = row.get("mcd_direction")
+            # MCD must align with trend
+            if trend_bias == row.get("mcd_direction"):
+                pattern = "MCD"
+                direction = trend_bias
+
         elif has_vce and row.get("vce_direction"):
-            pattern = "VCE"
-            direction = row.get("vce_direction")
+            # VCE MUST align with trend
+            if trend_bias is not None:
+                pattern = "VCE"
+                direction = trend_bias
 
-        if not pattern or not direction:
-            logging.info("[VCE] No active VCE/MCD/LSR pattern on latest bar.")
-            return
-
-        algo = "vce"
-        bot_strategy = Strategy.margin_short if direction == "SHORT" else Strategy.long
+        algo = "volatility_compression_expansion"
+        bot_strategy = Strategy.long
         autotrade = False
 
-        base_asset = self.current_symbol_data.get("base_asset", "Base asset")
+        base_asset = self.current_symbol_data["base_asset"]
 
         # Base message with shared stats
         msg = f"""
-                - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#VCE stack ({pattern})</strong> #{self.symbol}
+                - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#VCE ({pattern})</strong> #{self.symbol}
                 - Current price: {round_numbers(current_price, decimals=self.price_precision)}
                 - Pattern: {pattern}
                 - ATR: {round_numbers(float(row.get("atr", 0.0)), decimals=self.price_precision)}

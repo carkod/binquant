@@ -1,12 +1,10 @@
 import logging
-import math
 
 from pybinbot import (
     CloseConditions,
     SignalsConsumer,
     Strategy,
     round_numbers,
-    supress_notation,
 )
 from models.bot import BotModel
 from shared.apis.binance_api import BinanceApi
@@ -129,27 +127,10 @@ class Autotrade(BinbotApi):
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)
 
-    def set_paper_trading_values(self, balances, qty):
-        # Get balance that match the pair
-        # Check that we have minimum binance required qty to trade
-        for b in balances["data"]:
-            if self.pair.endswith(b["asset"]):
-                qty = round_numbers(b["free"], self.decimals)
-                if self.min_amount_check(self.pair, qty):
-                    self.default_bot.fiat_order_size = qty
-                    break
-
-                ticker = self.binance_api.ticker_24_price(symbol=self.pair)
-                rate = ticker["price"]
-                qty = supress_notation(b["free"], self.decimals)
-                # Round down to 6 numbers to avoid not enough funds
-                base_order_size = (
-                    math.floor((float(qty) / float(rate)) * 10000000) / 10000000
-                )
-                self.default_bot.deal.base_order_size = round_numbers(
-                    base_order_size, self.decimals
-                )
-                pass
+    def set_paper_trading_values(self, data: SignalsConsumer):
+        if data.bb_spreads:
+            self._set_bollinguer_spreads(data)
+        pass
 
     async def activate_autotrade(self, data: SignalsConsumer):
         """
@@ -177,9 +158,7 @@ class Autotrade(BinbotApi):
                 self.set_margin_short_values(data)
                 pass
             else:
-                balances = self.get_balances()
-                qty = 0
-                self.set_paper_trading_values(balances, qty)
+                self.set_paper_trading_values(data)
                 pass
 
         # Can't get balance qty, because balance = 0 if real bot is trading
@@ -212,7 +191,7 @@ class Autotrade(BinbotApi):
                 )
                 if balance_check < transfer_qty:
                     logging.error(
-                        f"Not enough funds to autotrade margin_short bot. Unable to cover potential losses. balances: {balances}. transfer qty: {transfer_qty}"
+                        f"Not enough funds to autotrade margin_short bot. Unable to cover potential losses. balances: {balance_check}. transfer qty: {transfer_qty}"
                     )
                     return
                 self.set_margin_short_values(data)
