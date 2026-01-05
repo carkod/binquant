@@ -252,7 +252,7 @@ requires-dist = [
     { name = "kucoin-universal-sdk", specifier = ">=1.3.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.16.0" },
     { name = "passlib" },
-    { name = "pybinbot" },
+    { name = "pybinbot", specifier = ">=0.2.6" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.1.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
@@ -1086,7 +1086,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "0.1.10"
+version = "0.2.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -1094,9 +1094,9 @@ dependencies = [
     { name = "pydantic", extra = ["email"] },
     { name = "pymongo" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/e1/00a73b275dbfe4e4db090623e6f388d8d926237f8ce21d4638449f0dca64/pybinbot-0.1.10.tar.gz", hash = "sha256:ef18303da1902e20543a4bdd5a0032445a30ec65e5df8ff48c72122f4daed011", size = 11626, upload-time = "2026-01-05T00:17:55.709Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/b0/080b377c8c9ee2e9fc825b45129412434197de938c73ba6b15956729145b/pybinbot-0.2.6.tar.gz", hash = "sha256:2c3cb41124fb6450d60a6727350c50c3a2aa1b97df5f02d377152ad3a6de29ca", size = 11884, upload-time = "2026-01-05T18:03:16.388Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/33/5a8c720f5b9f6ab19a2610d89a84858214470074fa77ec6dc7b355808867/pybinbot-0.1.10-py3-none-any.whl", hash = "sha256:62b776f6683e0a225997ced6476f3d0e7fc98f03aea6f222b463245261710490", size = 13650, upload-time = "2026-01-05T00:17:54.721Z" },
+    { url = "https://files.pythonhosted.org/packages/09/98/56a70affcbe5c1cc35c254b7ebbcb68f892e22d3c1d03d97ded4689b348b/pybinbot-0.2.6-py3-none-any.whl", hash = "sha256:6c23d07fde5e384dee0d2893a84ef53fbfd8350732941d92e5e46d78e5bf877d", size = 13762, upload-time = "2026-01-05T18:03:15.295Z" },
 ]
 
 [[package]]

@@ -17,7 +17,7 @@ class AutotradeConsumer(BinbotApi):
         self.active_bots: list = []
         self.paper_trading_active_bots: list = []
         self.active_bot_pairs: list = []
-        self.active_test_bots: list = []
+        self.active_test_bots: list = active_test_bots
         self.all_symbols: list[dict] = []
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
@@ -25,10 +25,10 @@ class AutotradeConsumer(BinbotApi):
 
         # API dependencies
         self.autotrade_settings = autotrade_settings
-        self.active_test_bots = active_test_bots
         self.all_symbols = all_symbols
         self.test_autotrade_settings = test_autotrade_settings
         self.exchange = autotrade_settings["exchange_id"]
+        self.binbot_api = BinbotApi()
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -46,11 +46,15 @@ class AutotradeConsumer(BinbotApi):
         need to be left for Safety orders
         """
         if db_collection_name == "paper_trading":
+            self.active_test_bots = self.binbot_api.get_active_pairs(
+                collection_name="paper_trading"
+            )
             active_count = len(self.active_test_bots)
             if active_count > self.test_autotrade_settings["max_active_autotrade_bots"]:
                 return True
 
         if db_collection_name == "bots":
+            self.active_bots = self.binbot_api.get_active_pairs(collection_name="bots")
             active_count = len(self.active_bots)
             if active_count > self.autotrade_settings["max_active_autotrade_bots"]:
                 return True
