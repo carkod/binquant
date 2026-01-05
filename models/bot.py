@@ -19,8 +19,7 @@ def ensure_float(value: str | int | float) -> float:
 
 
 class OrderModel(OrderBase):
-    deal_type: DealType | None = DealType.base_order
-
+    deal_type: DealType = DealType.base_order
     model_config = {
         "use_enum_values": True,
     }

@@ -165,7 +165,7 @@ class Autotrade(BinbotApi):
             )
             return
 
-        self.default_bot.strategy = data.bot_strategy
+        self.default_bot.strategy = Strategy(data.bot_strategy)
         if self.db_collection_name == "paper_trading":
             # Dynamic switch to real bot URLs
             create_func = self.create_paper_bot

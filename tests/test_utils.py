@@ -8,9 +8,7 @@ import requests
 from shared.utils import (
     aio_response_handler,
     handle_binance_errors,
-    interval_to_millisecs,
     safe_format,
-    suppress_notation,
 )
 
 
@@ -38,22 +36,6 @@ def test_safe_format_str():
 
 def test_safe_format_int():
     assert safe_format(42) == "42.00"
-
-
-def test_interval_to_millisecs():
-    assert interval_to_millisecs("1m") == 60000
-    assert interval_to_millisecs("2h") == 7200000
-    assert interval_to_millisecs("1d") == 86400000
-    assert interval_to_millisecs("1w") == 432000000
-    assert interval_to_millisecs("1M") == 2592000000
-    assert interval_to_millisecs("5x") == 0
-
-
-def test_suppress_notation():
-    assert suppress_notation(8e-5, 5) == "0.00008"
-    assert suppress_notation(123.456, 2) == "123.46"
-    # Compare only the first 8 characters for precision-sensitive case
-    assert suppress_notation(0.0001234, -1)[:8] == "0.000123"
 
 
 def test_handle_binance_errors_success():

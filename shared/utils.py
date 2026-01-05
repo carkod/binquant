@@ -1,6 +1,4 @@
 import logging
-import re
-from decimal import Decimal
 from time import sleep
 
 from aiohttp import ClientResponse

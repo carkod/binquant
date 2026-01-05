@@ -1,7 +1,6 @@
 import os
 from typing import TYPE_CHECKING
-
-from models.signals import HABollinguerSpread, SignalsConsumer
+from pybinbot import SignalsConsumer, HABollinguerSpread
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
