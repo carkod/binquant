@@ -426,7 +426,7 @@ class SpikeHunterV3KuCoin:
         ):
             algo = "spike_hunter_v3_kucoin"
             bot_strategy = Strategy.long
-            autotrade = True
+            autotrade = False
 
             if last_spike["upward"]:
                 streak = "📈"

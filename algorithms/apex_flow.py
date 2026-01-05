@@ -269,17 +269,17 @@ class ApexFlow:
 
         algo = "volatility_compression_expansion"
         bot_strategy = Strategy.long
-        autotrade = False
+        autotrade = True
 
         base_asset = self.current_symbol_data["base_asset"]
+        pattern_text = f" ({pattern})" if pattern else ""
 
         # Base message with shared stats
         msg = f"""
-                - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#VCE ({pattern})</strong> #{self.symbol}
-                - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-                - Pattern: {pattern}
-                - ATR: {round_numbers(float(row.get("atr", 0.0)), decimals=self.price_precision)}
-                - BB width: {round_numbers(float(row.get("bb_width", 0.0)), decimals=self.price_precision)}
+            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#VCE{pattern_text}</strong> #{self.symbol}
+            - Current price: {round_numbers(current_price, decimals=self.price_precision)}
+            - ATR: {round_numbers(float(row.get("atr", 0.0)), decimals=self.price_precision)}
+            - BB width: {round_numbers(float(row.get("bb_width", 0.0)), decimals=self.price_precision)}
         """
 
         # Momentum continuation context
@@ -288,21 +288,21 @@ class ApexFlow:
                 - EMA Fast: {round_numbers(float(row.get("ema_fast", 0.0)), decimals=self.price_precision)}
                 - EMA Slow: {round_numbers(float(row.get("ema_slow", 0.0)), decimals=self.price_precision)}
                 - RSI: {round_numbers(float(row.get("rsi", 0.0)), decimals=self.price_precision)}
-        """
+            """
 
         # Liquidity sweep context
         if has_lsr:
             msg += f"""
                 - Previous high: {round_numbers(float(row.get("prev_high", 0.0)), decimals=self.price_precision)}
                 - Previous low: {round_numbers(float(row.get("prev_low", 0.0)), decimals=self.price_precision)}
-        """
+            """
 
         msg += f"""
-                - 📊 {base_asset} volume: {round_numbers(float(row.get("volume", 0.0)), decimals=self.price_precision)}
-                - Autotrade?: {"Yes" if autotrade else "No"}
-                - <a href='https://www.kucoin.com/trade/{self.kucoin_symbol}'>KuCoin</a>
-                - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
-                """
+            - 📊 {base_asset} volume: {round_numbers(float(row.get("volume", 0.0)), decimals=self.price_precision)}
+            - Autotrade?: {"Yes" if autotrade else "No"}
+            - <a href='https://www.kucoin.com/trade/{self.kucoin_symbol}'>KuCoin</a>
+            - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
+            """
 
         value = SignalsConsumer(
             autotrade=autotrade,
