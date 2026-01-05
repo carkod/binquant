@@ -1,5 +1,4 @@
 import asyncio
-import math
 from unittest.mock import MagicMock
 
 import aiohttp
@@ -9,13 +8,7 @@ import requests
 from shared.utils import (
     aio_response_handler,
     handle_binance_errors,
-    interval_to_millisecs,
-    round_numbers,
-    round_numbers_ceiling,
     safe_format,
-    suppress_notation,
-    suppress_trailing,
-    timestamp_to_datetime,
 )
 
 
@@ -45,39 +38,6 @@ def test_safe_format_int():
     assert safe_format(42) == "42.00"
 
 
-def test_round_numbers():
-    assert round_numbers(3.1415926535, 2) == 3.14
-    assert round_numbers(3.1415926535, 0) == 3.0
-    assert round_numbers(2.9999, 0) == 2.0
-
-
-def test_suppress_trailing():
-    assert math.isclose(suppress_trailing("3.1400000"), 3.14, rel_tol=1e-9)
-    assert math.isclose(suppress_trailing(2.05e-5), 2.1e-5, rel_tol=1e-9)
-    assert math.isclose(suppress_trailing(3.140), 3.14, rel_tol=1e-9)
-
-
-def test_round_numbers_ceiling():
-    assert round_numbers_ceiling(3.1415926535, 2) == 3.15
-    assert round_numbers_ceiling(2.9999, 0) == 3.0
-
-
-def test_interval_to_millisecs():
-    assert interval_to_millisecs("1m") == 60000
-    assert interval_to_millisecs("2h") == 7200000
-    assert interval_to_millisecs("1d") == 86400000
-    assert interval_to_millisecs("1w") == 432000000
-    assert interval_to_millisecs("1M") == 2592000000
-    assert interval_to_millisecs("5x") == 0
-
-
-def test_suppress_notation():
-    assert suppress_notation(8e-5, 5) == "0.00008"
-    assert suppress_notation(123.456, 2) == "123.46"
-    # Compare only the first 8 characters for precision-sensitive case
-    assert suppress_notation(0.0001234, -1)[:8] == "0.000123"
-
-
 def test_handle_binance_errors_success():
     resp = make_response(
         headers={"x-mbx-used-weight-1m": "10"}, json_data={"code": 200, "msg": "ok"}
@@ -104,11 +64,6 @@ def test_handle_binance_errors_binbot_error():
 def test_handle_binance_errors_other():
     resp = make_response(json_data={"foo": "bar"})
     assert handle_binance_errors(resp) == {"foo": "bar"}
-
-
-def test_timestamp_to_datetime_utc():
-    # 1633046400000 ms = 2021-10-01 01:00:00 in Europe/London (BST)
-    assert timestamp_to_datetime(1633046400000) == "2021-10-01 01:00:00"
 
 
 def make_aio_response(json_data):

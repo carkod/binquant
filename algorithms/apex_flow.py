@@ -4,11 +4,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from pybinbot import Strategy
-
-from models.signals import HABollinguerSpread, SignalsConsumer
+from pybinbot import Strategy, HABollinguerSpread, SignalsConsumer, round_numbers
 from shared.indicators import Indicators
-from shared.utils import round_numbers
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
