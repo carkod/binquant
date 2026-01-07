@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from confluent_kafka import Producer
-from pandas import DataFrame, to_datetime
+from pandas import DataFrame, to_datetime, to_numeric
 from pybinbot import (
     BinanceKlineIntervals,
     ExchangeId,
@@ -108,10 +108,12 @@ class CryptoAnalytics:
 
     def preprocess_data(self, candles):
         # Pre-process
-        self.df = DataFrame(candles)
+        df = DataFrame(candles)
+        df_1h = DataFrame()
+        df_4h = DataFrame()
         self.symbol_dependent_data()
         if self.exchange == ExchangeId.BINANCE:
-            self.df.columns = [
+            df.columns = [
                 "open_time",
                 "open",
                 "high",
@@ -127,7 +129,7 @@ class CryptoAnalytics:
             ]
 
             # Drop unused columns - keep only OHLCV data needed for technical analysis
-            self.df = self.df[
+            df = df[
                 [
                     "open_time",
                     "open",
@@ -154,23 +156,29 @@ class CryptoAnalytics:
                 "close_time",
                 "quote_asset_volume",
             ]
-            self.df.columns = columns
-            self.df = self.df[columns]
+            df.columns = columns
+            df = df[columns]
 
-        # Convert price and volume columns to float
-        price_volume_columns = ["open", "high", "low", "close", "volume"]
-        self.df[price_volume_columns] = self.df[price_volume_columns].astype(float)
-        self.df = HeikinAshi.get_heikin_ashi(self.df)
+        # Ensure the dataframe has exactly these columns
+        if len(df.columns) != len(columns):
+            raise ValueError(
+                f"Column mismatch: {len(df.columns)} vs expected {len(columns)}"
+            )
+
+        df = df[columns]
+
+        # Convert only numeric columns safely
+        numeric_cols = ["open", "high", "low", "close", "volume"]
+        for col in numeric_cols:
+            df[col] = to_numeric(df[col], errors="coerce")
+
+        df = HeikinAshi.get_heikin_ashi(df)
 
         # Ensure close_time is datetime and set as index for proper resampling
-        self.df["timestamp"] = to_datetime(self.df["close_time"], unit="ms")
-        self.df.set_index("timestamp", inplace=True)
-
-        # Sort by timestamp ascending (required for rolling windows and resampling)
-        self.df = self.df.sort_index()
-
-        # Remove duplicate timestamps, keeping the last occurrence
-        self.df = self.df[~self.df.index.duplicated(keep="last")]
+        df["timestamp"] = to_datetime(df["close_time"], unit="ms")
+        df.set_index("timestamp", inplace=True)
+        df = df.sort_index()
+        df = df[~df.index.duplicated(keep="last")]
 
         # Create aggregation dictionary without close_time and open_time since they're now index-based
         resample_aggregation = {
@@ -184,43 +192,50 @@ class CryptoAnalytics:
         }
 
         # Resample to 4 hour candles for TWAP (align to calendar hours like MongoDB)
-        self.df_4h = self.df.resample("4h").agg(resample_aggregation)
+        df_4h = df.resample("4h").agg(resample_aggregation)
         # Add open_time and close_time back as columns for 4h data
-        self.df_4h["open_time"] = self.df_4h.index
-        self.df_4h["close_time"] = self.df_4h.index
+        df_4h["open_time"] = df_4h.index
+        df_4h["close_time"] = df_4h.index
 
         # Resample to 1 hour candles for Supertrend (align to calendar hours like MongoDB)
-        self.df_1h = self.df.resample("1h").agg(resample_aggregation)
+        df_1h = df.resample("1h").agg(resample_aggregation)
         # Add open_time and close_time back as columns for 1h data
-        self.df_1h["open_time"] = self.df_1h.index
-        self.df_1h["close_time"] = self.df_1h.index
+        df_1h["open_time"] = df_1h.index
+        df_1h["close_time"] = df_1h.index
 
-    def postprocess_data(self):
+        return df, df_1h, df_4h
+
+    @staticmethod
+    def postprocess_data(df: DataFrame):
         """
         Post-process the data after all indicators have been applied.
         """
 
         # Drop any rows with NaN values
-        self.df.dropna(inplace=True)
-        self.df.reset_index(drop=True, inplace=True)
-        self.df_1h.dropna(inplace=True)
-        self.df_1h.reset_index(drop=True, inplace=True)
-        self.df_4h.dropna(inplace=True)
-        self.df_4h.reset_index(drop=True, inplace=True)
+        df.dropna(inplace=True)
+        df.reset_index(drop=True, inplace=True)
 
+        return df
+
+    def load_algorithms(self):
+        """
+        Initialize algorithm instances only once
+        they must be loaded after post data processing
+        """
         self.mda = MarketBreadthAlgo(cls=self)
         self.sh2 = SpikeHunterV2(cls=self)
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
 
-    async def process_data(self, candles):
+    async def process_data(self, candles, btc_candles=None):
         """
         Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
 
         Algorithms should consume this data
         """
 
-        self.preprocess_data(candles)
+        self.df, self.df_1h, self.df_4h = self.preprocess_data(candles)
+        self.df_btc, _, _ = self.preprocess_data(btc_candles)
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
         if self.df.empty is False and self.df.close.size > 0:
@@ -240,7 +255,10 @@ class CryptoAnalytics:
             self.df = Indicators.bollinguer_spreads(self.df)
             self.df = Indicators.set_twap(self.df)
 
-            self.postprocess_data()
+            self.df = self.postprocess_data(self.df)
+            self.df_1h = self.postprocess_data(self.df_1h)
+            self.df_4h = self.postprocess_data(self.df_4h)
+            self.load_algorithms()
 
             # Dropped NaN values may end up with empty dataframe
             if (
