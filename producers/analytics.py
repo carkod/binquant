@@ -1,10 +1,9 @@
 from datetime import datetime
 
 from confluent_kafka import Producer
-from pandas import DataFrame, to_datetime, to_numeric
+from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
-    ExchangeId,
     HABollinguerSpread,
     MarketDominance,
     Strategy,
@@ -12,15 +11,13 @@ from pybinbot import (
 )
 
 from algorithms.market_breadth import MarketBreadthAlgo
-from algorithms.spike_hunter_v2 import SpikeHunterV2
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
 from shared.apis.types import CombinedApis
-from shared.heikin_ashi import HeikinAshi
-from shared.indicators import Indicators
+from pybinbot import Indicators
 
 
 class CryptoAnalytics:
@@ -52,6 +49,7 @@ class CryptoAnalytics:
         self.df = DataFrame()
         self.df_4h = DataFrame()
         self.df_1h = DataFrame()
+        self.btc_df = DataFrame()
         self.interval = BinanceKlineIntervals.fifteen_minutes.value
         self.exchange = exchange
         # describes current USDC market: gainers vs losers
@@ -106,124 +104,12 @@ class CryptoAnalytics:
         self.price_precision = self.current_symbol_data["price_precision"]
         self.qty_precision = self.current_symbol_data["qty_precision"]
 
-    def preprocess_data(self, candles):
-        # Pre-process
-        df = DataFrame(candles)
-        df_1h = DataFrame()
-        df_4h = DataFrame()
-        self.symbol_dependent_data()
-        if self.exchange == ExchangeId.BINANCE:
-            df.columns = [
-                "open_time",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "close_time",
-                "quote_asset_volume",
-                "number_of_trades",
-                "taker_buy_base_asset_volume",
-                "taker_buy_quote_asset_volume",
-                "unused_field",
-            ]
-
-            # Drop unused columns - keep only OHLCV data needed for technical analysis
-            df = df[
-                [
-                    "open_time",
-                    "open",
-                    "high",
-                    "low",
-                    "close",
-                    "volume",
-                    "close_time",
-                    "quote_asset_volume",
-                    "number_of_trades",
-                    "taker_buy_base_asset_volume",
-                    "taker_buy_quote_asset_volume",
-                ]
-            ]
-        else:
-            # in the case of Kucoin, no extra columns
-            columns = [
-                "open_time",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "close_time",
-                "quote_asset_volume",
-            ]
-            df.columns = columns
-            df = df[columns]
-
-        # Ensure the dataframe has exactly these columns
-        if len(df.columns) != len(columns):
-            raise ValueError(
-                f"Column mismatch: {len(df.columns)} vs expected {len(columns)}"
-            )
-
-        df = df[columns]
-
-        # Convert only numeric columns safely
-        numeric_cols = ["open", "high", "low", "close", "volume"]
-        for col in numeric_cols:
-            df[col] = to_numeric(df[col], errors="coerce")
-
-        df = HeikinAshi.get_heikin_ashi(df)
-
-        # Ensure close_time is datetime and set as index for proper resampling
-        df["timestamp"] = to_datetime(df["close_time"], unit="ms")
-        df.set_index("timestamp", inplace=True)
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep="last")]
-
-        # Create aggregation dictionary without close_time and open_time since they're now index-based
-        resample_aggregation = {
-            "open": "first",
-            "close": "last",
-            "high": "max",
-            "low": "min",
-            "volume": "sum",  # Add volume if it exists in your data
-            "close_time": "first",
-            "open_time": "first",
-        }
-
-        # Resample to 4 hour candles for TWAP (align to calendar hours like MongoDB)
-        df_4h = df.resample("4h").agg(resample_aggregation)
-        # Add open_time and close_time back as columns for 4h data
-        df_4h["open_time"] = df_4h.index
-        df_4h["close_time"] = df_4h.index
-
-        # Resample to 1 hour candles for Supertrend (align to calendar hours like MongoDB)
-        df_1h = df.resample("1h").agg(resample_aggregation)
-        # Add open_time and close_time back as columns for 1h data
-        df_1h["open_time"] = df_1h.index
-        df_1h["close_time"] = df_1h.index
-
-        return df, df_1h, df_4h
-
-    @staticmethod
-    def postprocess_data(df: DataFrame):
-        """
-        Post-process the data after all indicators have been applied.
-        """
-
-        # Drop any rows with NaN values
-        df.dropna(inplace=True)
-        df.reset_index(drop=True, inplace=True)
-
-        return df
-
     def load_algorithms(self):
         """
         Initialize algorithm instances only once
         they must be loaded after post data processing
         """
         self.mda = MarketBreadthAlgo(cls=self)
-        self.sh2 = SpikeHunterV2(cls=self)
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
 
@@ -233,9 +119,11 @@ class CryptoAnalytics:
 
         Algorithms should consume this data
         """
-
-        self.df, self.df_1h, self.df_4h = self.preprocess_data(candles)
-        self.df_btc, _, _ = self.preprocess_data(btc_candles)
+        self.symbol_dependent_data()
+        self.df, self.df_1h, self.df_4h = Indicators().pre_process(
+            self.exchange, candles
+        )
+        self.df_btc, _, _ = Indicators().pre_process(self.exchange, btc_candles)
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
         if self.df.empty is False and self.df.close.size > 0:
@@ -255,9 +143,9 @@ class CryptoAnalytics:
             self.df = Indicators.bollinguer_spreads(self.df)
             self.df = Indicators.set_twap(self.df)
 
-            self.df = self.postprocess_data(self.df)
-            self.df_1h = self.postprocess_data(self.df_1h)
-            self.df_4h = self.postprocess_data(self.df_4h)
+            self.df = Indicators.post_process(self.df)
+            self.df_1h = Indicators.post_process(self.df_1h)
+            self.df_4h = Indicators.post_process(self.df_4h)
             self.load_algorithms()
 
             # Dropped NaN values may end up with empty dataframe

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from shared.ohlc import OHLCDataFrame
+from pybinbot import OHLCDataFrame
 
 
 def make_base_df():
