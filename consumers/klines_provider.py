@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from kafka import KafkaConsumer
 from pybinbot import BinanceKlineIntervals, ExchangeId, KucoinKlineIntervals
 
@@ -84,13 +85,14 @@ class KlinesProvider:
         """
         with self.symbol_locks[symbol]:
             self.asset_klines[symbol] = self.merge_candle(
-                self.asset_klines[symbol], new_candle
+                self.asset_klines[symbol], new_candle, symbol=symbol
             )
 
     def merge_candle(
         self,
         candles: list[dict],
         new_candle: dict,
+        symbol: str,
         max_len: int = MAX_CANDLES,
     ) -> list[dict]:
         """
@@ -102,13 +104,15 @@ class KlinesProvider:
             return [new_candle]
 
         last_candle = candles[-1]
-
-        if int(new_candle["open_time"]) == int(last_candle[0]):
-            candles[-1] = new_candle  # update last candle
-        elif int(new_candle["open_time"]) > int(last_candle[0]):
-            candles.append(new_candle)
-            if len(candles) > max_len:
-                candles = candles[-max_len:]  # trim oldest candles
+        try:
+            if int(new_candle["open_time"]) == int(last_candle[0]):
+                candles[-1] = new_candle  # update last candle
+            elif int(new_candle["open_time"]) > int(last_candle[0]):
+                candles.append(new_candle)
+                if len(candles) > max_len:
+                    candles = candles[-max_len:]  # trim oldest candles
+        except KeyError:
+            logging.error(f"KeyError during candle merge for symbol: {symbol}")
 
         return candles
 
@@ -138,9 +142,10 @@ class KlinesProvider:
             self.asset_klines[symbol] = historical_candles or []
 
         # Merge the new WebSocket candle
-        self.update_candles(
-            symbol,
+        self.merge_candle(
+            self.asset_klines[symbol],
             klines.model_dump(),
+            symbol=symbol,
         )
 
         # Pass candles to CryptoAnalytics for processing
