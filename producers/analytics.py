@@ -17,7 +17,7 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from shared.apis.binbot_api import BinbotApi
 from shared.apis.types import CombinedApis
-from pybinbot import Indicators
+from pybinbot import Indicators, HeikinAshi
 
 
 class CryptoAnalytics:
@@ -120,10 +120,10 @@ class CryptoAnalytics:
         Algorithms should consume this data
         """
         self.symbol_dependent_data()
-        self.df, self.df_1h, self.df_4h = Indicators().pre_process(
+        self.df, self.df_1h, self.df_4h = HeikinAshi().pre_process(
             self.exchange, candles
         )
-        self.df_btc, _, _ = Indicators().pre_process(self.exchange, btc_candles)
+        self.df_btc, _, _ = HeikinAshi().pre_process(self.exchange, btc_candles)
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
         if self.df.empty is False and self.df.close.size > 0:
@@ -143,9 +143,9 @@ class CryptoAnalytics:
             self.df = Indicators.bollinguer_spreads(self.df)
             self.df = Indicators.set_twap(self.df)
 
-            self.df = Indicators.post_process(self.df)
-            self.df_1h = Indicators.post_process(self.df_1h)
-            self.df_4h = Indicators.post_process(self.df_4h)
+            self.df = HeikinAshi().post_process(self.df)
+            self.df_1h = HeikinAshi().post_process(self.df_1h)
+            self.df_4h = HeikinAshi().post_process(self.df_4h)
             self.load_algorithms()
 
             # Dropped NaN values may end up with empty dataframe

@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from consumers.klines_provider import KlinesProvider
 
 
@@ -11,7 +10,18 @@ class TestKlinesProvider:
         return_value={"exchange_id": "binance"},
     )
     @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
-    def test_init(self, mock_get_symbols, mock_get_settings):
+    @patch("consumers.klines_provider.BinbotApi.get_active_pairs", return_value=set())
+    @patch(
+        "consumers.klines_provider.BinbotApi.get_test_autotrade_settings",
+        return_value={},
+    )
+    def test_init(
+        self,
+        mock_get_test_autotrade,
+        mock_get_active_pairs,
+        mock_get_symbols,
+        mock_get_settings,
+    ):
         consumer = MagicMock()
         provider = KlinesProvider(consumer)
         assert provider.consumer == consumer
