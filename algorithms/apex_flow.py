@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 from pybinbot import Strategy, HABollinguerSpread, SignalsConsumer, round_numbers
-from shared.indicators import Indicators
+from pybinbot import Indicators
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -32,6 +32,7 @@ class ApexFlow:
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
         self.df: pd.DataFrame = cls.df.copy()
+        self.btc_df = cls.btc_df.copy()
 
         # Bollinger compression
         self.bb_period = 20
@@ -187,6 +188,40 @@ class ApexFlow:
 
         return self.df
 
+    def low_cap_relative_strength_rotation(
+        self,
+        lookback: int = 20,
+        ma_smooth: int = 5,
+        min_relative_strength: float = 1.02,
+    ) -> pd.DataFrame:
+        """
+        Low-Cap Relative Strength Rotation (asset vs BTC benchmark).
+
+        - lookback: periods to compute returns
+        - ma_smooth: optional smoothing of relative strength
+        - min_relative_strength: threshold to consider rotation attractive
+        """
+        if self.df.empty or self.btc_df.empty:
+            return pd.DataFrame()
+
+        # Compute percentage returns over lookback
+        asset_ret = self.df["close"].pct_change(lookback)
+        btc_ret = self.btc_df["close"].pct_change(lookback)
+
+        # Relative strength
+        rel_strength = asset_ret / (btc_ret + 1e-9)
+
+        # Smooth to reduce noise
+        rel_strength_ma = rel_strength.rolling(ma_smooth).mean()
+
+        self.df["rel_strength"] = rel_strength
+        self.df["rel_strength_ma"] = rel_strength_ma
+
+        # Generate rotation signal
+        self.df["lcrs_signal"] = rel_strength_ma > min_relative_strength
+
+        return self.df
+
     # ---------- Orchestration ---------- #
     def run_all_detectors(self) -> pd.DataFrame:
         """Run VCE, Momentum Continuation, and LSR detectors in sequence.
@@ -206,8 +241,6 @@ class ApexFlow:
 
     def vce_detector(self) -> pd.DataFrame:
         self.run_all_detectors()
-        if self.df.empty:
-            return self.df
 
         signals = self.df[self.df["vce_signal"]][
             ["close", "atr", "bb_width", "volume", "vce_direction"]
@@ -232,11 +265,17 @@ class ApexFlow:
         bb_low: float,
         bb_mid: float,
     ) -> None:
-        self.run_all_detectors()
-
         if self.df is None or self.df.empty:
             logging.info("[VCE] No data available for combined VCE/MCD/LSR signal.")
             return
+
+        self.run_all_detectors()
+
+        # --- LCRS computation ---
+        lcrs_df = self.low_cap_relative_strength_rotation()
+        last_lcrs_signal = (
+            bool(lcrs_df["lcrs_signal"].iloc[-1]) if not lcrs_df.empty else False
+        )
 
         row = self.df.iloc[-1]
 
@@ -274,15 +313,20 @@ class ApexFlow:
         base_asset = self.current_symbol_data["base_asset"]
         pattern_text = f" ({pattern})" if pattern else ""
 
-        # Base message with shared stats
         msg = f"""
-            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#VCE{pattern_text}</strong> #{self.symbol}
+            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#APEX{pattern_text}</strong> #{self.symbol}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - ATR: {round_numbers(float(row.get("atr", 0.0)), decimals=self.price_precision)}
             - BB width: {round_numbers(float(row.get("bb_width", 0.0)), decimals=self.price_precision)}
         """
 
-        # Momentum continuation context
+        if last_lcrs_signal:
+            rel_strength_val = lcrs_df["rel_strength_ma"].iloc[-1]
+            msg += f"""
+                - Relative Strength (vs BTC): {round_numbers(float(rel_strength_val), 4)}
+            """
+
+        # Include other signals context if needed
         if has_mcd:
             msg += f"""
                 - EMA Fast: {round_numbers(float(row.get("ema_fast", 0.0)), decimals=self.price_precision)}
@@ -290,7 +334,6 @@ class ApexFlow:
                 - RSI: {round_numbers(float(row.get("rsi", 0.0)), decimals=self.price_precision)}
             """
 
-        # Liquidity sweep context
         if has_lsr:
             msg += f"""
                 - Previous high: {round_numbers(float(row.get("prev_high", 0.0)), decimals=self.price_precision)}
@@ -302,7 +345,10 @@ class ApexFlow:
             - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='https://www.kucoin.com/trade/{self.kucoin_symbol}'>KuCoin</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
-            """
+        """
+
+        if not (has_lsr or has_mcd or has_vce):
+            return
 
         value = SignalsConsumer(
             autotrade=autotrade,
@@ -317,5 +363,6 @@ class ApexFlow:
                 bb_low=bb_low,
             ),
         )
+
         await self.telegram_consumer.send_signal(value.model_dump_json())
         await self.at_consumer.process_autotrade_restrictions(value)

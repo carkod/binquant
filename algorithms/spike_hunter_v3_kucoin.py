@@ -11,10 +11,10 @@ from pybinbot import (
     Strategy,
     round_numbers,
     timestamp_to_datetime,
+    HeikinAshi,
 )
 
 from algorithms.binance_report_ai import BinanceAIReport
-from shared.heikin_ashi import HeikinAshi
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -71,7 +71,7 @@ class SpikeHunterV3KuCoin:
         self.kucoin_symbol = cls.kucoin_symbol
         self.symbol = cls.symbol
         df = cls.df.copy()
-        self.df: pd.DataFrame = HeikinAshi.get_heikin_ashi(df)
+        self.df: pd.DataFrame = HeikinAshi().get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
@@ -187,7 +187,6 @@ class SpikeHunterV3KuCoin:
         )
         df["vol_ratio_slope_3"] = df["volume_ratio"].diff(3)
         df["vol_ratio_accel"] = df["vol_ratio_slope_3"].diff()
-        df["quote_vol_ratio_slope_3"] = df.get("quote_volume_ratio", 0).diff(3)
         df["pc_1"] = df["price_change"]
         df["pc_2c"] = df["price_change"].rolling(2).sum()
         df["pc_3c"] = df["price_change"].rolling(3).sum()
@@ -294,18 +293,18 @@ class SpikeHunterV3KuCoin:
         if self.require_both_patterns:
             base_combo = (
                 (df["volume_cluster_flag"] == 1) & (df["price_break_flag"] == 1)
-            ).astype(int)
+            ).astype(bool)
         else:
             base_combo = (
                 (df["volume_cluster_flag"] == 1) | (df["price_break_flag"] == 1)
-            ).astype(int)
+            ).astype(bool)
         aux = (df["cumulative_price_break_flag"] == 1) | (df["accel_spike_flag"] == 1)
-        label_pre = (base_combo | aux).astype(int)
+        label_pre = (base_combo | aux).astype(bool)
         if self.require_bullish_spike:
             label_pre = label_pre & (df["is_bullish"] == 1)
         if self.body_size_pct_min > 0:
             label_pre = label_pre & (df["body_size_pct"] >= self.body_size_pct_min)
-        self.df["label_pre"] = label_pre.astype(int)
+        self.df["label_pre"] = label_pre.astype(bool)
         self.df["label"] = self.df["label_pre"].copy()
 
     def compute_early_proba(self):

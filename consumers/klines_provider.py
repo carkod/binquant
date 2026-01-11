@@ -138,8 +138,8 @@ class KlinesProvider:
             self.asset_klines[symbol] = historical_candles or []
 
         # Merge the new WebSocket candle
-        self.asset_klines[symbol] = self.merge_candle(
-            self.asset_klines[symbol],
+        self.update_candles(
+            symbol,
             klines.model_dump(),
         )
 
