@@ -257,6 +257,65 @@ class ApexFlow:
             return "SHORT"
         return None
 
+    def market_regime(self) -> str:
+        """
+        Determines overall market regime using BTC structure.
+        Returns: 'BULL', 'BEAR', or 'CHOP'
+        """
+        if self.btc_df.empty:
+            return "CHOP"
+
+        btc_fast = self.btc_df["close"].ewm(span=9).mean().iloc[-1]
+        btc_slow = self.btc_df["close"].ewm(span=21).mean().iloc[-1]
+
+        spread = abs(btc_fast - btc_slow) / btc_slow
+
+        if spread < 0.002:
+            return "CHOP"
+
+        return "BULL" if btc_fast > btc_slow else "BEAR"
+
+    def regime_allows(self, direction: str) -> bool:
+        regime = self.market_regime()
+
+        # BTC regime alignment
+        if direction == "LONG" and regime != "BULL":
+            return False
+
+        if direction == "SHORT" and regime != "BEAR":
+            return False
+
+        # Relative strength confirmation (if available)
+        if "rel_strength_ma" in self.df.columns:
+            rs = self.df["rel_strength_ma"].iloc[-1]
+            if direction == "LONG" and rs < 1.0:
+                return False
+            if direction == "SHORT" and rs > 1.0:
+                return False
+
+        return True
+
+    def signal_score(
+        self,
+        has_vce: bool,
+        has_mcd: bool,
+        has_lsr: bool,
+        trend_bias: str | None,
+        direction: str,
+    ) -> int:
+        score = 0
+
+        if has_lsr:
+            score += 2  # event-based, highest value
+        if has_mcd:
+            score += 1
+        if has_vce:
+            score += 1
+        if trend_bias == direction:
+            score += 1
+
+        return score
+
     # ---------- Public API ---------- #
     async def signal(
         self,
@@ -271,12 +330,6 @@ class ApexFlow:
 
         self.run_all_detectors()
 
-        # --- LCRS computation ---
-        lcrs_df = self.low_cap_relative_strength_rotation()
-        last_lcrs_signal = (
-            bool(lcrs_df["lcrs_signal"].iloc[-1]) if not lcrs_df.empty else False
-        )
-
         row = self.df.iloc[-1]
 
         has_lsr = bool(row.get("lsr_signal", False))
@@ -286,23 +339,29 @@ class ApexFlow:
         pattern = None
         direction: str | None = None
 
+        # --- LCRS computation ---
+        lcrs_df = self.low_cap_relative_strength_rotation()
+        last_lcrs_signal = (
+            bool(lcrs_df["lcrs_signal"].iloc[-1]) if not lcrs_df.empty else False
+        )
+
         trend_bias = self.get_trend_bias()
 
         # Priority: LSR > MCD > VCE
         if has_lsr and row.get("lsr_direction"):
-            # LSR is allowed to counter-trend
-            pattern = "LSR"
-            direction = row.get("lsr_direction")
+            if self.market_regime() != "CHOP":
+                pattern = "LSR"
+                direction = row.get("lsr_direction")
 
         elif has_mcd and row.get("mcd_direction"):
             # MCD must align with trend
-            if trend_bias == row.get("mcd_direction"):
+            if trend_bias == row["mcd_direction"] and self.regime_allows(trend_bias):
                 pattern = "MCD"
                 direction = trend_bias
 
         elif has_vce and row.get("vce_direction"):
             # VCE MUST align with trend
-            if trend_bias is not None:
+            if trend_bias and self.regime_allows(trend_bias):
                 pattern = "VCE"
                 direction = trend_bias
 
@@ -314,7 +373,7 @@ class ApexFlow:
         pattern_text = f" ({pattern})" if pattern else ""
 
         msg = f"""
-            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#APEX{pattern_text}</strong> #{self.symbol}
+            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#APEX_{pattern_text}</strong> #{self.symbol}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - ATR: {round_numbers(float(row.get("atr", 0.0)), decimals=self.price_precision)}
             - BB width: {round_numbers(float(row.get("bb_width", 0.0)), decimals=self.price_precision)}
@@ -347,7 +406,22 @@ class ApexFlow:
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
         """
 
-        if not (has_lsr or has_mcd or has_vce):
+        if not direction:
+            return
+
+        score = self.signal_score(
+            has_vce=has_vce,
+            has_mcd=has_mcd,
+            has_lsr=has_lsr,
+            trend_bias=trend_bias,
+            direction=direction,
+        )
+
+        # Require minimum quality
+        if score < 3:
+            logging.info(
+                f"[APEX] Signal rejected | {self.symbol} | score={score} | pattern={pattern}"
+            )
             return
 
         value = SignalsConsumer(
