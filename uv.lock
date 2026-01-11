@@ -252,7 +252,7 @@ requires-dist = [
     { name = "kucoin-universal-sdk", specifier = ">=1.3.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.16.0" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=0.2.6" },
+    { name = "pybinbot", specifier = ">=0.3.0" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.1.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
@@ -958,6 +958,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pandas-stubs"
+version = "2.3.3.251219"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "types-pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/ee/5407e9e63d22a47774f9246ca80b24f82c36f26efd39f9e3c5b584b915aa/pandas_stubs-2.3.3.251219.tar.gz", hash = "sha256:dc2883e6daff49d380d1b5a2e864983ab9be8cd9a661fa861e3dea37559a5af4", size = 106899, upload-time = "2025-12-19T15:49:53.766Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/20/69f2a39792a653fd64d916cd563ed79ec6e5dcfa6408c4674021d810afcf/pandas_stubs-2.3.3.251219-py3-none-any.whl", hash = "sha256:ccc6337febb51d6d8a08e4c96b479478a0da0ef704b5e08bd212423fe1cb549c", size = 163667, upload-time = "2025-12-19T15:49:52.072Z" },
+]
+
+[[package]]
 name = "parse"
 version = "1.20.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1086,17 +1099,18 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "0.2.6"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pandas-stubs" },
     { name = "pydantic", extra = ["email"] },
     { name = "pymongo" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/b0/080b377c8c9ee2e9fc825b45129412434197de938c73ba6b15956729145b/pybinbot-0.2.6.tar.gz", hash = "sha256:2c3cb41124fb6450d60a6727350c50c3a2aa1b97df5f02d377152ad3a6de29ca", size = 11884, upload-time = "2026-01-05T18:03:16.388Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/75/17/6ff7d6d5c9dd4a60dc00d7eda6899c7532df3ad81be80ffcddf620dd2624/pybinbot-0.3.0.tar.gz", hash = "sha256:0f3fb5cee696a8e7a4f19328ae452f378531bac874e36148aaa3739246b31426", size = 21040, upload-time = "2026-01-11T17:13:38.717Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/98/56a70affcbe5c1cc35c254b7ebbcb68f892e22d3c1d03d97ded4689b348b/pybinbot-0.2.6-py3-none-any.whl", hash = "sha256:6c23d07fde5e384dee0d2893a84ef53fbfd8350732941d92e5e46d78e5bf877d", size = 13762, upload-time = "2026-01-05T18:03:15.295Z" },
+    { url = "https://files.pythonhosted.org/packages/75/18/d3ffec5f12c99c32b6e4e3a9611633cb779ab55c043d4f74b4eaaa85948e/pybinbot-0.3.0-py3-none-any.whl", hash = "sha256:97754bcc9afc95efba032e8e16b8501107ee3db025561ed5ea0516d64ce39a79", size = 19182, upload-time = "2026-01-11T17:13:37.105Z" },
 ]
 
 [[package]]
@@ -1639,6 +1653,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e4ab51796dd745cdba7ed47ad142a9f4a1eb8e0c744d/tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2", size = 169737, upload-time = "2024-11-24T20:12:22.481Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl", hash = "sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2", size = 78540, upload-time = "2024-11-24T20:12:19.698Z" },
+]
+
+[[package]]
+name = "types-pytz"
+version = "2025.2.0.20251108"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/ff/c047ddc68c803b46470a357454ef76f4acd8c1088f5cc4891cdd909bfcf6/types_pytz-2025.2.0.20251108.tar.gz", hash = "sha256:fca87917836ae843f07129567b74c1929f1870610681b4c92cb86a3df5817bdb", size = 10961, upload-time = "2025-11-08T02:55:57.001Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e7/c1/56ef16bf5dcd255155cc736d276efa6ae0a5c26fd685e28f0412a4013c01/types_pytz-2025.2.0.20251108-py3-none-any.whl", hash = "sha256:0f1c9792cab4eb0e46c52f8845c8f77cf1e313cb3d68bf826aa867fe4717d91c", size = 10116, upload-time = "2025-11-08T02:55:56.194Z" },
 ]
 
 [[package]]

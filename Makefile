@@ -25,13 +25,15 @@ migrate:  ## Apply latest alembic migrations
 	uv run alembic revision --autogenerate -m "$(message)" --head head
 
 format: 
-	ruff format .
-	ruff check .  --fix
-	mypy .
+	@uv run ruff format .
+	@uv run ruff check .  --fix
+	@uv run mypy .
 
-upgrade-pybinbot:  ## Upgrade pybinbot to latest compatible version
-	uv lock --upgrade-package pybinbot
-	uv sync --extra dev
+upgrade-pybinbot:
+	source ./.venv/bin/activate;
+	@uv remove pybinbot
+	@uv add pybinbot
+	@uv sync --extra dev
 
 get-models: ## Get AI models from binbot-notebooks
 	curl -s https://api.github.com/repos/carkod/binbot-notebooks/contents/checkpoints | \
