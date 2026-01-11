@@ -26,7 +26,7 @@ dependencies = [
     "scikit-learn==1.7.0",
     "uvicorn>=0.37.0",
     "websocket-client>=1.5.0",
-    "pybinbot>=0.2.12",
+    "pybinbot>=0.3.0",
 ]
 
 [project.optional-dependencies]

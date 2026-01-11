@@ -256,7 +256,7 @@ class KucoinApi:
         symbol: str,
         interval: str,
         limit: int = 500,
-    ):
+    ) -> list:
         """
         Get raw klines/candlestick data from Kucoin.
 
