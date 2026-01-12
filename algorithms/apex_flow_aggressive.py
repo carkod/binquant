@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
 
 
-class ApexFlow(BaseApexFlow):
+class ApexFlowAggressive(BaseApexFlow):
     """
     Volatility Compression–Expansion (VCE) algorithm.
 
@@ -26,6 +26,70 @@ class ApexFlow(BaseApexFlow):
         super().__init__(cls)
         pass
 
+    def apex_aggressive(self) -> dict | None:
+        """
+        Aggressive breakout capture.
+        Paper trading ONLY.
+        """
+        self.run_all_detectors()
+        row = self.df.iloc[-1]
+
+        # ─────────────────────────
+        # 1. HARD REQUIREMENT: VCE
+        # ─────────────────────────
+        if not row["has_vce"]:
+            return None
+
+        direction = row["vce_direction"]  # "LONG" or "SHORT"
+        price = row["close"]
+        atr = row["atr"]
+
+        # ─────────────────────────
+        # 2. SOFT REGIME FILTER
+        # ─────────────────────────
+        btc_bias = self.get_btc_regime()  # "LONG" | "SHORT" | None
+
+        size_multiplier = 1.0
+        if btc_bias and btc_bias != direction:
+            size_multiplier = 0.5   # do NOT block, just reduce risk
+
+        # ─────────────────────────
+        # 3. MOMENTUM SANITY CHECK
+        # ─────────────────────────
+        rsi = row["rsi"]
+
+        if direction == "LONG" and rsi < 45:
+            return None
+        if direction == "SHORT" and rsi > 55:
+            return None
+
+        # ─────────────────────────
+        # 4. ENTRY (IMMEDIATE)
+        # ─────────────────────────
+        entry = price
+
+        if direction == "LONG":
+            stop = entry - 1.0 * atr
+            take_profit = entry + 1.5 * atr
+        else:
+            stop = entry + 1.0 * atr
+            take_profit = entry - 1.5 * atr
+
+        # ─────────────────────────
+        # 5. TIME STOP METADATA
+        # ─────────────────────────
+        return {
+            "action": "OPEN",
+            "direction": direction,
+            "entry": entry,
+            "stop_loss": stop,
+            "take_profit": take_profit,
+            "size_multiplier": size_multiplier,
+            "time_stop_candles": 3,   # VERY important
+            "mode": "aggressive",
+            "reason": "VCE_BREAKOUT",
+        }
+
     # ---------- Public API ---------- #
     async def signal(
         self,
@@ -34,43 +98,21 @@ class ApexFlow(BaseApexFlow):
         bb_low: float,
         bb_mid: float,
     ) -> None:
+        if self.df is None or self.df.empty:
+            logging.info("[VCE] No data available for combined VCE/MCD/LSR signal.")
+            return
 
-        self.run_all_detectors()
+        position = self.apex_aggressive()
 
-        row = self.df.iloc[-1]
-
-        has_lsr = bool(row.get("lsr_signal", False))
-        has_mcd = bool(row.get("momentum_continue", False))
-        has_vce = bool(row.get("vce_signal", False))
-
-        pattern = None
-        direction: str | None = None
-
-        # --- LCRS computation ---
-        lcrs_df = self.low_cap_relative_strength_rotation()
-        last_lcrs_signal = (
-            bool(lcrs_df["lcrs_signal"].iloc[-1]) if not lcrs_df.empty else False
-        )
-
-        trend_bias = self.get_trend_bias()
 
         # Priority: LSR > MCD > VCE
-        if has_lsr and row.get("lsr_direction"):
-            if self.market_regime() != "CHOP":
-                pattern = "LSR"
-                direction = row.get("lsr_direction")
 
-        elif has_mcd and row.get("mcd_direction"):
-            # MCD must align with trend
-            if trend_bias == row["mcd_direction"] and self.regime_allows(trend_bias):
-                pattern = "MCD"
-                direction = trend_bias
+        # Exit if price re-enters Bollinger Bands
+        if position["position"] == "LONG" and row["close"] < row["bb_upper"]:
+            return "EXIT_BB_REENTRY"
 
-        elif has_vce and row.get("vce_direction"):
-            # VCE MUST align with trend
-            if trend_bias and self.regime_allows(trend_bias):
-                pattern = "VCE"
-                direction = trend_bias
+        if position["position"] == "SHORT" and row["close"] > row["bb_lower"]:
+            return "EXIT_BB_REENTRY"
 
         algo = "volatility_compression_expansion"
         bot_strategy = Strategy.long
