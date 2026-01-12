@@ -99,11 +99,6 @@ class KlinesProvider:
                 interval=self.interval.value,
                 limit=self.MAX_CANDLES,
             )
-
-        if (
-            len(self.btc_candles) == 0
-            or now - float(self.btc_candles[-1][0]) > interval_ts
-        ):
             self.btc_candles = self.api.get_ui_klines(
                 symbol="BTC-USDT" if self.exchange == ExchangeId.KUCOIN else "BTCUSDT",
                 interval=self.interval.value,

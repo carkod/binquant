@@ -222,6 +222,11 @@ class ApexFlow:
 
         return self.df
 
+    def compute_trend_quality(self) -> None:
+        self.df["ema_slow_slope"] = self.df["ema_slow"].diff(3)
+        self.df["volume_ma"] = self.df["volume"].rolling(20).mean()
+        self.df["bb_width_ma"] = self.df["bb_width"].rolling(20).mean()
+
     # ---------- Orchestration ---------- #
     def run_all_detectors(self) -> pd.DataFrame:
         """Run VCE, Momentum Continuation, and LSR detectors in sequence.
@@ -235,6 +240,7 @@ class ApexFlow:
         self.detect_volatility_expansion()
         self.classify_vce_direction()
         self.compute_mcd_indicators()
+        self.compute_trend_quality()
         self.detect_momentum_continuation()
         self.detect_liquidity_sweep_reversal()
         return self.df
@@ -300,13 +306,14 @@ class ApexFlow:
         has_vce: bool,
         has_mcd: bool,
         has_lsr: bool,
+        direction: str | None,
         trend_bias: str | None,
-        direction: str,
+        pattern: str | None = None,
     ) -> int:
         score = 0
 
         if has_lsr:
-            score += 2  # event-based, highest value
+            score += 2
         if has_mcd:
             score += 1
         if has_vce:
@@ -314,7 +321,19 @@ class ApexFlow:
         if trend_bias == direction:
             score += 1
 
+        if pattern == "AGGRESSIVE_MOMO":
+            score += 2
+
         return score
+
+    def clean_momentum_trend(self, row: pd.Series) -> bool:
+        return (
+            row["ema_fast"] > row["ema_slow"]
+            and row["ema_slow_slope"] > 0
+            and row["rsi"] >= 58
+            and row["bb_width"] > row["bb_width_ma"]
+            and row["volume"] > 1.5 * row["volume_ma"]
+        )
 
     # ---------- Public API ---------- #
     async def signal(
@@ -347,23 +366,37 @@ class ApexFlow:
 
         trend_bias = self.get_trend_bias()
 
-        # Priority: LSR > MCD > VCE
         if has_lsr and row.get("lsr_direction"):
-            if self.market_regime() != "CHOP":
+            if self.market_regime() != "BEAR":
                 pattern = "LSR"
-                direction = row.get("lsr_direction")
+                direction = row["lsr_direction"]
+
+        elif (
+            has_vce
+            and trend_bias == "LONG"
+            and self.clean_momentum_trend(row)
+            and row.get("prev_high")
+            and row["close"] > row["prev_high"]
+        ):
+            pattern = "AGGRESSIVE_MOMO"
+            direction = "LONG"
 
         elif has_mcd and row.get("mcd_direction"):
-            # MCD must align with trend
             if trend_bias == row["mcd_direction"] and self.regime_allows(trend_bias):
                 pattern = "MCD"
                 direction = trend_bias
 
-        elif has_vce and row.get("vce_direction"):
-            # VCE MUST align with trend
-            if trend_bias and self.regime_allows(trend_bias):
-                pattern = "VCE"
-                direction = trend_bias
+        score = self.signal_score(
+            has_vce=has_vce,
+            has_mcd=has_mcd,
+            has_lsr=has_lsr,
+            trend_bias=trend_bias,
+            direction=direction,
+            pattern=pattern,
+        )
+
+        if not direction or score < 3:
+            return
 
         algo = "volatility_compression_expansion"
         bot_strategy = Strategy.long
@@ -405,24 +438,6 @@ class ApexFlow:
             - <a href='https://www.kucoin.com/trade/{self.kucoin_symbol}'>KuCoin</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
         """
-
-        if not direction:
-            return
-
-        score = self.signal_score(
-            has_vce=has_vce,
-            has_mcd=has_mcd,
-            has_lsr=has_lsr,
-            trend_bias=trend_bias,
-            direction=direction,
-        )
-
-        # Require minimum quality
-        if score < 3:
-            logging.info(
-                f"[APEX] Signal rejected | {self.symbol} | score={score} | pattern={pattern}"
-            )
-            return
 
         value = SignalsConsumer(
             autotrade=autotrade,
