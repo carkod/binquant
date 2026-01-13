@@ -9,10 +9,12 @@ from pybinbot import (
 from models.bot import BotModel
 from shared.apis.binance_api import BinanceApi
 from shared.apis.binbot_api import BinbotApi
+from shared.apis.kucoin_api import KucoinApi
 from shared.exceptions import AutotradeError
+from pybinbot import ExchangeId
 
 
-class Autotrade(BinbotApi):
+class Autotrade:
     def __init__(
         self,
         pair,
@@ -34,8 +36,17 @@ class Autotrade(BinbotApi):
         db_collection_name: Mongodb collection name ["paper_trading", "bots"]
         """
         self.pair: str = pair
-        self.symbol_data = self.get_single_symbol(self.pair)
-        self.decimals = self.price_precision(pair)
+        self.binbot_api = BinbotApi()
+        self.exchange = ExchangeId(settings["exchange_id"])
+        self.api: BinanceApi | KucoinApi
+
+        if self.exchange == ExchangeId.KUCOIN:
+            self.api = KucoinApi()
+        else:
+            self.api = BinanceApi()
+
+        self.symbol_data = self.binbot_api.get_single_symbol(self.pair)
+        self.decimals = self.symbol_data["price_precision"]
         self.algorithm_name = algorithm_name
         self.default_bot = BotModel(
             pair=pair,
@@ -55,9 +66,6 @@ class Autotrade(BinbotApi):
             dynamic_trailling=True,  # not added to settings yet
         )
         self.db_collection_name = db_collection_name
-        self.binbot_api = BinbotApi()
-        self.binance_api = BinanceApi()
-        self.exchange = settings["exchange_id"]
         # restart streams after bot activation
         super().__init__()
 
@@ -139,7 +147,7 @@ class Autotrade(BinbotApi):
         2. Create bot with given parameters from research_controller
         3. Activate bot
         """
-        excluded_symbols = self.filter_excluded_symbols()
+        excluded_symbols = self.binbot_api.filter_excluded_symbols()
         if self.pair in excluded_symbols:
             logging.info(
                 f"Autotrade already active or in exclusion list for {self.pair}, skipping..."
@@ -149,10 +157,10 @@ class Autotrade(BinbotApi):
         self.default_bot.strategy = Strategy(data.bot_strategy)
         if self.db_collection_name == "paper_trading":
             # Dynamic switch to real bot URLs
-            create_func = self.create_paper_bot
-            activate_func = self.activate_paper_bot
-            errors_func = self.submit_paper_trading_event_logs
-            delete_func = self.delete_paper_bot
+            create_func = self.binbot_api.create_paper_bot
+            activate_func = self.binbot_api.activate_paper_bot
+            errors_func = self.binbot_api.submit_paper_trading_event_logs
+            delete_func = self.binbot_api.delete_paper_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
                 self.set_margin_short_values(data)
@@ -166,18 +174,14 @@ class Autotrade(BinbotApi):
         # and because there is no matching engine endpoint to get market qty
         # So deal base_order should update this to the correct amount
         if self.db_collection_name == "bots":
-            create_func = self.create_bot
-            activate_func = self.activate_bot
-            errors_func = self.submit_bot_event_logs
-            delete_func = self.delete_bot
+            create_func = self.binbot_api.create_bot
+            activate_func = self.binbot_api.activate_bot
+            errors_func = self.binbot_api.submit_bot_event_logs
+            delete_func = self.binbot_api.delete_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
-                try:
-                    ticker = self.binance_api.ticker_24_price(self.default_bot.pair)
-                except Exception as e:
-                    logging.error(f"Error getting ticker price: {e}")
-                    return
-                initial_price = ticker["price"]
+                initial_price = self.api.ticker_24_price(self.default_bot.pair)
+
                 estimate_qty = float(self.default_bot.fiat_order_size) / float(
                     initial_price
                 )
@@ -186,7 +190,7 @@ class Autotrade(BinbotApi):
                 )
                 # transfer quantity required to cover losses
                 transfer_qty = stop_loss_price_inc * estimate_qty
-                balance_check = self.get_available_fiat(
+                balance_check = self.binbot_api.get_available_fiat(
                     exchange=self.exchange, fiat=self.default_bot.fiat
                 )
                 if balance_check < transfer_qty:
@@ -218,7 +222,7 @@ class Autotrade(BinbotApi):
             message = bot["message"]
             errors_func(bot_id, message)
             if self.default_bot.strategy == Strategy.margin_short:
-                self.clean_margin_short(self.default_bot.pair)
+                self.binbot_api.clean_margin_short(self.default_bot.pair)
             delete_func(bot_id)
             raise AutotradeError(message)
 

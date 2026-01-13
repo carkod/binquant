@@ -320,3 +320,8 @@ class KucoinApi:
             )
 
         return klines
+
+    def ticker_24_price(self, symbol: str) -> float:
+        request = GetPartOrderBookReqBuilder().set_symbol(symbol).set_size("1").build()
+        response = self.spot_api.get_ticker(request)
+        return float(response.price)

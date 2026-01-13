@@ -106,9 +106,9 @@ class BinanceApi:
         data = self.request(url=self.ticker_price_url, params=params)
         return data
 
-    def ticker_24_price(self, symbol: str):
+    def ticker_24_price(self, symbol: str) -> float:
         data = self.request(url=self.ticker_price_url, params={"symbol": symbol})
-        return data
+        return float(data["price"])
 
     def ticker_24(self, symbol: str | None = None):
         """
