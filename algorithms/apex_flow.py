@@ -36,17 +36,17 @@ class ApexFlow:
 
         # Bollinger compression
         self.bb_period = 20
-        self.bb_threshold = 0.04  # VERY tight bands
+        self.bb_threshold = 0.06
 
         # ATR compression
         self.atr_period = 14
         self.atr_lookback = 50
-        self.atr_percentile = 0.25  # bottom 25% volatility only
+        self.atr_percentile = 0.35
 
         # Expansion confirmation
-        self.atr_expansion_mult = 1.5
-        self.volume_mult = 1.3
-        self.expansion_lookback = 3
+        self.atr_expansion_mult = 1.2
+        self.volume_mult = 1.15
+        self.expansion_lookback = 5
 
     # ---------- Core VCE components ---------- #
     def detect_volatility_compression(self) -> pd.DataFrame:
@@ -106,8 +106,8 @@ class ApexFlow:
             return self.df
 
         vce_direction = pd.Series(index=self.df.index, dtype=object)
-        vce_direction[self.df["close"] > self.df["bb_upper"].shift(1)] = "LONG"
-        vce_direction[self.df["close"] < self.df["bb_lower"].shift(1)] = "SHORT"
+        vce_direction[self.df["close"] > self.df["close"].shift(1)] = "LONG"
+        vce_direction[self.df["close"] < self.df["close"].shift(1)] = "SHORT"
         self.df["vce_direction"] = vce_direction
 
         self.df.loc[~self.df["vce_signal"], "vce_direction"] = None
@@ -330,9 +330,9 @@ class ApexFlow:
         return (
             row["ema_fast"] > row["ema_slow"]
             and row["ema_slow_slope"] > 0
-            and row["rsi"] >= 58
+            and row["rsi"] >= 54
             and row["bb_width"] > row["bb_width_ma"]
-            and row["volume"] > 1.5 * row["volume_ma"]
+            and row["volume"] > 1.2 * row["volume_ma"]
         )
 
     # ---------- Public API ---------- #
@@ -350,10 +350,11 @@ class ApexFlow:
         self.run_all_detectors()
 
         row = self.df.iloc[-1]
+        recent = self.df.iloc[-3:]
 
-        has_lsr = bool(row.get("lsr_signal", False))
-        has_mcd = bool(row.get("momentum_continue", False))
-        has_vce = bool(row.get("vce_signal", False))
+        has_vce = bool(recent["vce_signal"].any())
+        has_mcd = bool(recent["momentum_continue"].any())
+        has_lsr = bool(recent["lsr_signal"].any())
 
         pattern = None
         direction: str | None = None
@@ -367,7 +368,7 @@ class ApexFlow:
         trend_bias = self.get_trend_bias()
 
         if has_lsr and row.get("lsr_direction"):
-            if self.market_regime() != "BEAR":
+            if self.market_regime() in {"CHOP", "BULL"}:
                 pattern = "LSR"
                 direction = row["lsr_direction"]
 
