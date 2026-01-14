@@ -160,7 +160,10 @@ class ApexFlow:
 
     # ---------- Liquidity Sweep Reversal (LSR) components ---------- #
     def detect_liquidity_sweep_reversal(
-        self, lookback: int = 20, volume_mult: float = 1.8
+        self,
+        lookback: int = 20,
+        volume_mult: float = 1.8,
+        cooldown: int = 10,
     ) -> pd.DataFrame:
         if self.df.empty:
             return self.df
@@ -177,9 +180,21 @@ class ApexFlow:
             self.df["close"] > self.df["prev_low"]
         )
 
-        volume_ok = self.df["volume"] > self.df["vol_mean"] * volume_mult
+        candle_range = self.df["high"] - self.df["low"]
+        body = (self.df["close"] - self.df["open"]).abs()
 
-        self.df["lsr_signal"] = (sweep_high | sweep_low) & volume_ok
+        strong_rejection = body / (candle_range + 1e-9) > 0.5
+        micro_trend_up = self.df["ema_fast"] > self.df["ema_slow"]
+
+        volume_ok = self.df["volume"] > self.df["vol_mean"] * volume_mult
+        raw_lsr = (
+            (sweep_high | sweep_low) & volume_ok & strong_rejection & micro_trend_up
+        )
+
+        # Cooldown: allow only first signal in `cooldown` bars
+        recent_lsr = raw_lsr.shift(1).rolling(cooldown).max().fillna(False).astype(bool)
+
+        self.df["lsr_signal"] = raw_lsr & ~recent_lsr
 
         lsr_direction = pd.Series(index=self.df.index, dtype=object)
         lsr_direction[sweep_low] = "LONG"
@@ -399,15 +414,14 @@ class ApexFlow:
         if not direction or score < 3:
             return
 
-        algo = "volatility_compression_expansion"
+        algo = f"apex_{pattern.lower()}" if pattern else "apex"
         bot_strategy = Strategy.long
         autotrade = True
 
         base_asset = self.current_symbol_data["base_asset"]
-        pattern_text = f" ({pattern})" if pattern else ""
 
         msg = f"""
-            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#APEX_{pattern_text}</strong> #{self.symbol}
+            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - ATR: {round_numbers(float(row.get("atr", 0.0)), decimals=self.price_precision)}
             - BB width: {round_numbers(float(row.get("bb_width", 0.0)), decimals=self.price_precision)}
