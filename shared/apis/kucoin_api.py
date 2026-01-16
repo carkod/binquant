@@ -1,4 +1,3 @@
-import logging
 import os
 import uuid
 from datetime import datetime
@@ -288,13 +287,6 @@ class KucoinApi:
         request = builder.build()
         response = self.spot_api.get_klines(request)
 
-        # Log rate limit information
-        if response.common_response and response.common_response.rate_limit:
-            rl = response.common_response.rate_limit
-            logging.error(
-                f"[KuCoin Rate Limit] Limit: {rl.limit}, Remaining: {rl.remaining}, Reset: {rl.reset}ms"
-            )
-
         # Derive close_time from open_time + interval, and map turnover to quote_asset_volume
         interval_ms = KucoinKlineIntervals.get_interval_ms(interval)
         raw = response.data or []
@@ -320,3 +312,8 @@ class KucoinApi:
             )
 
         return klines
+
+    def ticker_24_price(self, symbol: str) -> float:
+        request = GetPartOrderBookReqBuilder().set_symbol(symbol).set_size("1").build()
+        response = self.spot_api.get_ticker(request)
+        return float(response.price)

@@ -36,17 +36,17 @@ class ApexFlow:
 
         # Bollinger compression
         self.bb_period = 20
-        self.bb_threshold = 0.04  # VERY tight bands
+        self.bb_threshold = 0.06
 
         # ATR compression
         self.atr_period = 14
         self.atr_lookback = 50
-        self.atr_percentile = 0.25  # bottom 25% volatility only
+        self.atr_percentile = 0.35
 
         # Expansion confirmation
-        self.atr_expansion_mult = 1.5
-        self.volume_mult = 1.3
-        self.expansion_lookback = 3
+        self.atr_expansion_mult = 1.2
+        self.volume_mult = 1.15
+        self.expansion_lookback = 5
 
     # ---------- Core VCE components ---------- #
     def detect_volatility_compression(self) -> pd.DataFrame:
@@ -106,8 +106,8 @@ class ApexFlow:
             return self.df
 
         vce_direction = pd.Series(index=self.df.index, dtype=object)
-        vce_direction[self.df["close"] > self.df["bb_upper"].shift(1)] = "LONG"
-        vce_direction[self.df["close"] < self.df["bb_lower"].shift(1)] = "SHORT"
+        vce_direction[self.df["close"] > self.df["close"].shift(1)] = "LONG"
+        vce_direction[self.df["close"] < self.df["close"].shift(1)] = "SHORT"
         self.df["vce_direction"] = vce_direction
 
         self.df.loc[~self.df["vce_signal"], "vce_direction"] = None
@@ -160,7 +160,10 @@ class ApexFlow:
 
     # ---------- Liquidity Sweep Reversal (LSR) components ---------- #
     def detect_liquidity_sweep_reversal(
-        self, lookback: int = 20, volume_mult: float = 1.8
+        self,
+        lookback: int = 20,
+        volume_mult: float = 1.8,
+        cooldown: int = 10,
     ) -> pd.DataFrame:
         if self.df.empty:
             return self.df
@@ -177,9 +180,21 @@ class ApexFlow:
             self.df["close"] > self.df["prev_low"]
         )
 
-        volume_ok = self.df["volume"] > self.df["vol_mean"] * volume_mult
+        candle_range = self.df["high"] - self.df["low"]
+        body = (self.df["close"] - self.df["open"]).abs()
 
-        self.df["lsr_signal"] = (sweep_high | sweep_low) & volume_ok
+        strong_rejection = body / (candle_range + 1e-9) > 0.5
+        micro_trend_up = self.df["ema_fast"] > self.df["ema_slow"]
+
+        volume_ok = self.df["volume"] > self.df["vol_mean"] * volume_mult
+        raw_lsr = (
+            (sweep_high | sweep_low) & volume_ok & strong_rejection & micro_trend_up
+        )
+
+        # Cooldown: allow only first signal in `cooldown` bars
+        recent_lsr = raw_lsr.shift(1).rolling(cooldown).max().fillna(False).astype(bool)
+
+        self.df["lsr_signal"] = raw_lsr & ~recent_lsr
 
         lsr_direction = pd.Series(index=self.df.index, dtype=object)
         lsr_direction[sweep_low] = "LONG"
@@ -330,9 +345,9 @@ class ApexFlow:
         return (
             row["ema_fast"] > row["ema_slow"]
             and row["ema_slow_slope"] > 0
-            and row["rsi"] >= 58
+            and row["rsi"] >= 54
             and row["bb_width"] > row["bb_width_ma"]
-            and row["volume"] > 1.5 * row["volume_ma"]
+            and row["volume"] > 1.2 * row["volume_ma"]
         )
 
     # ---------- Public API ---------- #
@@ -350,10 +365,11 @@ class ApexFlow:
         self.run_all_detectors()
 
         row = self.df.iloc[-1]
+        recent = self.df.iloc[-3:]
 
-        has_lsr = bool(row.get("lsr_signal", False))
-        has_mcd = bool(row.get("momentum_continue", False))
-        has_vce = bool(row.get("vce_signal", False))
+        has_vce = bool(recent["vce_signal"].any())
+        has_mcd = bool(recent["momentum_continue"].any())
+        has_lsr = bool(recent["lsr_signal"].any())
 
         pattern = None
         direction: str | None = None
@@ -367,7 +383,7 @@ class ApexFlow:
         trend_bias = self.get_trend_bias()
 
         if has_lsr and row.get("lsr_direction"):
-            if self.market_regime() != "BEAR":
+            if self.market_regime() in {"CHOP", "BULL"}:
                 pattern = "LSR"
                 direction = row["lsr_direction"]
 
@@ -398,15 +414,14 @@ class ApexFlow:
         if not direction or score < 3:
             return
 
-        algo = "volatility_compression_expansion"
+        algo = f"apex_{pattern.lower()}" if pattern else "apex"
         bot_strategy = Strategy.long
         autotrade = True
 
         base_asset = self.current_symbol_data["base_asset"]
-        pattern_text = f" ({pattern})" if pattern else ""
 
         msg = f"""
-            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#APEX_{pattern_text}</strong> #{self.symbol}
+            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - ATR: {round_numbers(float(row.get("atr", 0.0)), decimals=self.price_precision)}
             - BB width: {round_numbers(float(row.get("bb_width", 0.0)), decimals=self.price_precision)}

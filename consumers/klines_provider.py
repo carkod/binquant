@@ -1,5 +1,4 @@
 from datetime import datetime
-from time import time
 from kafka import KafkaConsumer
 from pybinbot import BinanceKlineIntervals, ExchangeId, KucoinKlineIntervals
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -90,20 +89,16 @@ class KlinesProvider:
         kucoin_symbol = klines.symbol
         symbol = kucoin_symbol.replace("-", "")
 
-        interval_ts = self.interval.get_interval_ms()
-        now = time() * 1000
-
-        if len(self.candles) == 0 or now - float(klines.open_time) > interval_ts:
-            self.candles = self.api.get_ui_klines(
-                symbol=kucoin_symbol if self.exchange == ExchangeId.KUCOIN else symbol,
-                interval=self.interval.value,
-                limit=self.MAX_CANDLES,
-            )
-            self.btc_candles = self.api.get_ui_klines(
-                symbol="BTC-USDT" if self.exchange == ExchangeId.KUCOIN else "BTCUSDT",
-                interval=self.interval.value,
-                limit=self.MAX_CANDLES,
-            )
+        self.candles = self.api.get_ui_klines(
+            symbol=kucoin_symbol if self.exchange == ExchangeId.KUCOIN else symbol,
+            interval=self.interval.value,
+            limit=self.MAX_CANDLES,
+        )
+        self.btc_candles = self.api.get_ui_klines(
+            symbol="BTC-USDT" if self.exchange == ExchangeId.KUCOIN else "BTCUSDT",
+            interval=self.interval.value,
+            limit=self.MAX_CANDLES,
+        )
 
         # Pass candles to CryptoAnalytics for processing
         crypto_analytics = CryptoAnalytics(
