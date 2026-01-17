@@ -3,7 +3,6 @@ import logging
 import os
 
 from aiokafka import AIOKafkaProducer
-
 from database import KafkaDB
 
 logger = logging.getLogger(__name__)

@@ -1,12 +1,16 @@
 from datetime import datetime
 from kafka import KafkaConsumer
-from pybinbot import BinanceKlineIntervals, ExchangeId, KucoinKlineIntervals
+from pybinbot import (
+    BinanceKlineIntervals,
+    ExchangeId,
+    KucoinKlineIntervals,
+    BinbotApi,
+    KucoinApi,
+    BinanceApi,
+)
 from consumers.autotrade_consumer import AutotradeConsumer
 from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
-from shared.apis.binbot_api import BinbotApi
-from shared.apis.kucoin_api import KucoinApi
-from shared.apis.binance_api import BinanceApi
 from shared.apis.types import CombinedApis
 from shared.streaming.async_producer import AsyncProducer
 

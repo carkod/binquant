@@ -10,7 +10,7 @@ import logging
 from pybinbot import ExchangeId
 
 from producers.klines_connector import KlinesConnector
-from shared.apis.binbot_api import BinbotApi
+from pybinbot import BinbotApi
 from shared.streaming.async_producer import AsyncProducer
 from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
 from shared.streaming.kucoin_async_client import (

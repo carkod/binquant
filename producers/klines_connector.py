@@ -2,10 +2,8 @@ import asyncio
 import json
 import logging
 
-from pybinbot import BinanceKlineIntervals, KafkaTopics
-
+from pybinbot import BinanceKlineIntervals, KafkaTopics, BinbotApi
 from models.klines import KlineProduceModel
-from shared.apis.binbot_api import BinbotApi
 from shared.streaming.async_producer import AsyncProducer
 from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
 

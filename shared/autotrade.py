@@ -7,11 +7,8 @@ from pybinbot import (
     round_numbers,
 )
 from models.bot import BotModel
-from shared.apis.binance_api import BinanceApi
-from shared.apis.binbot_api import BinbotApi
-from shared.apis.kucoin_api import KucoinApi
 from shared.exceptions import AutotradeError
-from pybinbot import ExchangeId
+from pybinbot import ExchangeId, BinanceApi, KucoinApi, BinbotApi
 
 
 class Autotrade:
@@ -180,7 +177,7 @@ class Autotrade:
             delete_func = self.binbot_api.delete_bot
 
             if self.default_bot.strategy == Strategy.margin_short:
-                initial_price = self.api.ticker_24_price(self.default_bot.pair)
+                initial_price = self.api.get_ticker_price(self.default_bot.pair)
 
                 estimate_qty = float(self.default_bot.fiat_order_size) / float(
                     initial_price

@@ -1,7 +1,6 @@
 import logging
 
-from pybinbot import SignalsConsumer
-from shared.apis.binbot_api import BinbotApi
+from pybinbot import SignalsConsumer, BinbotApi
 from shared.autotrade import Autotrade
 
 

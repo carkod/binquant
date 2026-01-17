@@ -2,8 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from pymongo import MongoClient
-
-from shared.apis.binance_api import BinanceApi
+from pybinbot import BinanceApi
 
 load_dotenv()
 

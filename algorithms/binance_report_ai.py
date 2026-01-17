@@ -2,7 +2,7 @@ import time
 import requests
 from math import tanh
 from typing import TYPE_CHECKING
-from shared.apis.binbot_api import BinbotApi
+from pybinbot import BinbotApi
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
