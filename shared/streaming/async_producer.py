@@ -3,12 +3,11 @@ import logging
 import os
 
 from aiokafka import AIOKafkaProducer
-from database import KafkaDB
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncProducer(KafkaDB):
+class AsyncProducer:
     """Async Kafka producer wrapper using AIOKafkaProducer.
 
     Provides explicit async lifecycle methods and a simple send API that

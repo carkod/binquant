@@ -9,6 +9,7 @@ from pybinbot import (
 from models.bot import BotModel
 from shared.exceptions import AutotradeError
 from pybinbot import ExchangeId, BinanceApi, KucoinApi, BinbotApi
+from shared.config import Config
 
 
 class Autotrade:
@@ -36,11 +37,18 @@ class Autotrade:
         self.binbot_api = BinbotApi()
         self.exchange = ExchangeId(settings["exchange_id"])
         self.api: BinanceApi | KucoinApi
+        self.config = Config()
 
         if self.exchange == ExchangeId.KUCOIN:
-            self.api = KucoinApi()
+            self.api = KucoinApi(
+                key=self.config.kucoin_key,
+                secret=self.config.kucoin_secret,
+                passphrase=self.config.kucoin_passphrase,
+            )
         else:
-            self.api = BinanceApi()
+            self.api = BinanceApi(
+                key=self.config.binance_key, secret=self.config.binance_secret
+            )
 
         self.symbol_data = self.binbot_api.get_single_symbol(self.pair)
         self.decimals = self.symbol_data["price_precision"]

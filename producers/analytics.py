@@ -14,8 +14,7 @@ from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
-from shared.apis.types import CombinedApis
-from pybinbot import Indicators, HeikinAshi, BinbotApi
+from pybinbot import Indicators, HeikinAshi, BinbotApi, KucoinApi, BinanceApi
 from shared.streaming.async_producer import AsyncProducer
 
 
@@ -23,7 +22,7 @@ class CryptoAnalytics:
     def __init__(
         self,
         producer: AsyncProducer,
-        api: CombinedApis,
+        api: KucoinApi | BinanceApi,
         symbol: str,
         top_gainers_day,
         market_breadth_data,
