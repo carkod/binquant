@@ -1,14 +1,18 @@
 from datetime import datetime
 from kafka import KafkaConsumer
-from pybinbot import BinanceKlineIntervals, ExchangeId, KucoinKlineIntervals
+from pybinbot import (
+    BinanceKlineIntervals,
+    ExchangeId,
+    KucoinKlineIntervals,
+    BinbotApi,
+    KucoinApi,
+    BinanceApi,
+)
 from consumers.autotrade_consumer import AutotradeConsumer
 from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
-from shared.apis.binbot_api import BinbotApi
-from shared.apis.kucoin_api import KucoinApi
-from shared.apis.binance_api import BinanceApi
-from shared.apis.types import CombinedApis
 from shared.streaming.async_producer import AsyncProducer
+from shared.config import Config
 
 
 class KlinesProvider:
@@ -22,9 +26,10 @@ class KlinesProvider:
     MAX_CANDLES = 400
 
     def __init__(self, consumer: KafkaConsumer) -> None:
+        self.config = Config()
         self.binbot_api = BinbotApi()
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
-        self.api: CombinedApis
+        self.api: KucoinApi | BinanceApi
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.consumer = consumer
@@ -36,11 +41,17 @@ class KlinesProvider:
         # Determine exchange
         if self.autotrade_settings["exchange_id"] == "kucoin":
             self.exchange = ExchangeId.KUCOIN
-            self.api = KucoinApi()
+            self.api = KucoinApi(
+                key=self.config.kucoin_key,
+                secret=self.config.kucoin_secret,
+                passphrase=self.config.kucoin_passphrase,
+            )
             self.interval = KucoinKlineIntervals.FIFTEEN_MINUTES
         else:
             self.exchange = ExchangeId.BINANCE
-            self.api = BinanceApi()
+            self.api = BinanceApi(
+                key=self.config.binance_key, secret=self.config.binance_secret
+            )
             self.interval = BinanceKlineIntervals.fifteen_minutes
 
         self.all_symbols = self.binbot_api.get_symbols()

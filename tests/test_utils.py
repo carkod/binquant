@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import MagicMock
 
 import aiohttp
@@ -6,7 +5,6 @@ import pytest
 import requests
 
 from shared.utils import (
-    aio_response_handler,
     handle_binance_errors,
     safe_format,
 )
@@ -74,10 +72,3 @@ def make_aio_response(json_data):
 
     resp.json = json
     return resp
-
-
-@pytest.mark.asyncio
-def test_aio_response_handler():
-    resp = make_aio_response({"foo": "bar"})
-    result = asyncio.run(aio_response_handler(resp))
-    assert result == {"foo": "bar"}

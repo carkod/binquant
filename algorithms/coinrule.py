@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import TYPE_CHECKING
-
 from pandas import to_datetime
 from pybinbot import (
     HABollinguerSpread,
@@ -9,8 +8,8 @@ from pybinbot import (
     SignalsConsumer,
     Strategy,
     round_numbers,
+    Indicators,
 )
-from shared.indicators import Indicators
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics

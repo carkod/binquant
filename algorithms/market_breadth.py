@@ -1,9 +1,13 @@
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING
-
-from pybinbot import MarketDominance, Strategy, HABollinguerSpread, SignalsConsumer
-from shared.apis.binbot_api import BinbotApi
+from pybinbot import (
+    MarketDominance,
+    Strategy,
+    HABollinguerSpread,
+    SignalsConsumer,
+    BinbotApi,
+)
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics

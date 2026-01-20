@@ -5,19 +5,17 @@ for different exchanges (Binance, Kucoin) without changing existing code.
 """
 
 import asyncio
-import logging
-
-from pybinbot import ExchangeId
-
+from pybinbot import ExchangeId, configure_logging
 from producers.klines_connector import KlinesConnector
-from shared.apis.binbot_api import BinbotApi
+from pybinbot import BinbotApi
 from shared.streaming.async_producer import AsyncProducer
 from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
 from shared.streaming.kucoin_async_client import (
     AsyncKucoinWebsocketClient,
 )
 
-logger = logging.getLogger(__name__)
+
+configure_logging()
 
 
 class WebsocketClientFactory:
@@ -58,7 +56,6 @@ class WebsocketClientFactory:
 
             clients.append(client)
 
-        logger.info("Created %d KuCoin clients for %d symbols", len(clients), total)
         return clients
 
     async def create_connector(

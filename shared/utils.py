@@ -1,7 +1,6 @@
 import logging
 from time import sleep
 
-from aiohttp import ClientResponse
 from requests import Response
 
 from shared.exceptions import BinbotError, InvalidSymbol
@@ -68,8 +67,3 @@ def handle_binance_errors(response: Response):
 
     else:
         return content
-
-
-async def aio_response_handler(response: ClientResponse):
-    content = await response.json()
-    return content

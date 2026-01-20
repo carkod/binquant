@@ -1,6 +1,5 @@
 from datetime import datetime
 
-from confluent_kafka import Producer
 from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
@@ -15,16 +14,15 @@ from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
-from shared.apis.binbot_api import BinbotApi
-from shared.apis.types import CombinedApis
-from pybinbot import Indicators, HeikinAshi
+from pybinbot import Indicators, HeikinAshi, BinbotApi, KucoinApi, BinanceApi
+from shared.streaming.async_producer import AsyncProducer
 
 
 class CryptoAnalytics:
     def __init__(
         self,
-        producer: Producer,
-        api: CombinedApis,
+        producer: AsyncProducer,
+        api: KucoinApi | BinanceApi,
         symbol: str,
         top_gainers_day,
         market_breadth_data,
