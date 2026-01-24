@@ -2,10 +2,15 @@ import asyncio
 import json
 import logging
 
-from pybinbot import BinanceKlineIntervals, KafkaTopics, BinbotApi
-from models.klines import KlineProduceModel
-from shared.streaming.async_producer import AsyncProducer
-from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
+from pybinbot import (
+    BinanceKlineIntervals,
+    KafkaTopics,
+    BinbotApi,
+    AsyncProducer,
+    AsyncSpotWebsocketStreamClient,
+    KlineProduceModel,
+)
+from shared.config import Config
 
 
 class KlinesConnector(BinbotApi):
@@ -25,9 +30,12 @@ class KlinesConnector(BinbotApi):
     ) -> None:
         logging.debug("Started Kafka producer SignalsInbound")
         super().__init__()
+        self.config = Config()
         self.interval = interval
         # Async Kafka producer wrapper (AIOKafkaProducer) – start in start_stream
-        self.producer = AsyncProducer()
+        self.producer = AsyncProducer(
+            host=self.config.kafka_host, port=self.config.kafka_port
+        )
         self.autotrade_settings = self.get_autotrade_settings()
         self.clients: list[AsyncSpotWebsocketStreamClient] = []
 

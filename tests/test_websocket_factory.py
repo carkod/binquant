@@ -1,11 +1,7 @@
 """Tests for WebSocket factory using KuCoin Universal SDK."""
 
 import pytest
-from pybinbot import ExchangeId
-
-from shared.streaming.kucoin_async_client import (
-    AsyncKucoinWebsocketClient,
-)
+from pybinbot import ExchangeId, AsyncKucoinWebsocketClient
 from shared.streaming.websocket_factory import WebsocketClientFactory
 
 
@@ -109,23 +105,30 @@ class TestWebsocketFactory:
 
 
 class TestKucoinWebsocketSDK:
-    """Test Kucoin websocket SDK wrapper."""
+    """
+    Test Kucoin websocket SDK wrapper.
+    """
 
-    def test_kucoin_client_initialization(self):
-        """Test that Kucoin client can be initialized with a producer."""
-        from shared.streaming.async_producer import AsyncProducer
+    @pytest.mark.asyncio
+    async def test_kucoin_client_initialization(self):
+        """
+        Test that Kucoin client can be initialized with a producer.
+        """
+        from pybinbot.streaming.async_producer import AsyncProducer
 
-        producer = AsyncProducer()
-        client = AsyncKucoinWebsocketClient(producer=producer)
+        test_producer = AsyncProducer(host="localhost", port=9092)
+        client = AsyncKucoinWebsocketClient(producer=test_producer)
         assert client is not None
 
     @pytest.mark.asyncio
     async def test_kucoin_spot_client_initialization(self):
-        """Test that Kucoin spot client can be initialized with a producer."""
-        from shared.streaming.async_producer import AsyncProducer
+        """
+        Test that Kucoin spot client can be initialized with a producer.
+        """
+        from pybinbot.streaming.async_producer import AsyncProducer
 
-        producer = AsyncProducer()
-        client = AsyncKucoinWebsocketClient(producer=producer)
+        test_producer = AsyncProducer(host="localhost", port=9092)
+        client = AsyncKucoinWebsocketClient(producer=test_producer)
         assert client is not None
 
 

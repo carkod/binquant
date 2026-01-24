@@ -7,11 +7,11 @@ from pybinbot import (
     BinbotApi,
     KucoinApi,
     BinanceApi,
+    AsyncProducer,
+    KlineProduceModel,
 )
 from consumers.autotrade_consumer import AutotradeConsumer
-from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
-from shared.streaming.async_producer import AsyncProducer
 from shared.config import Config
 from time import time
 
@@ -34,7 +34,9 @@ class KlinesProvider:
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.consumer = consumer
-        self.producer: AsyncProducer = AsyncProducer()
+        self.producer = AsyncProducer(
+            host=self.config.kafka_host, port=self.config.kafka_port
+        )
         # Candles/btc candles storage
         self.candles: list = []
         self.btc_candles: list[list] = []
@@ -67,7 +69,7 @@ class KlinesProvider:
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
         )
 
-    def _refresh_btc_candles(self):
+    def _refresh_btc_candles(self) -> bool:
         """
         Refresh if interval exceeded since last BTC candle.
         """
