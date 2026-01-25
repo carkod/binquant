@@ -369,6 +369,8 @@ class ApexFlow:
         has_vce = bool(recent["vce_signal"].any())
         has_mcd = bool(recent["momentum_continue"].any())
         has_lsr = bool(recent["lsr_signal"].any())
+        has_lsr_direction = bool(row.get("lsr_direction"))
+        has_mcd_direction = bool(row.get("mcd_direction"))
 
         pattern = None
         direction: str | None = None
@@ -381,7 +383,7 @@ class ApexFlow:
 
         trend_bias = self.get_trend_bias()
 
-        if has_lsr and row.get("lsr_direction"):
+        if has_lsr and has_lsr_direction:
             if self.market_regime() in {"CHOP", "BULL"}:
                 pattern = "LSR"
                 direction = row["lsr_direction"]
@@ -396,7 +398,7 @@ class ApexFlow:
             pattern = "AGGRESSIVE_MOMO"
             direction = "LONG"
 
-        elif has_mcd and row.get("mcd_direction"):
+        elif has_mcd and has_mcd_direction:
             if trend_bias == row["mcd_direction"] and self.regime_allows(trend_bias):
                 pattern = "MCD"
                 direction = trend_bias

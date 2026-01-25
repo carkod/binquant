@@ -8,7 +8,7 @@ class SignalCandidate(SignalsConsumer):
     SignalsConsumer but as a candidate for the ranked signals system
     """
 
-    direction: str = Field(description="Signal direction: buy/sell")
+    direction: str = Field(default="", description="Signal direction: buy/sell")
     score: float = Field(default=0, description="Score for ranking signals")
     atr: float
     bb_width: float
