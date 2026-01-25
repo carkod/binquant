@@ -3,7 +3,7 @@ from os import getenv
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
+from pandas import notna, DataFrame, Series
 from pybinbot import Strategy, round_numbers, Indicators
 from models.signals import SignalCandidate
 from consumers.signal_collector import SignalCollector
@@ -32,7 +32,7 @@ class ApexFlow:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
-        self.df: pd.DataFrame = cls.df.copy()
+        self.df: DataFrame = cls.df.copy()
         self.btc_df = cls.btc_df.copy()
         self.signal_collector = SignalCollector()
 
@@ -51,7 +51,7 @@ class ApexFlow:
         self.expansion_lookback = 5
 
     # ---------- Core VCE components ---------- #
-    def detect_volatility_compression(self) -> pd.DataFrame:
+    def detect_volatility_compression(self) -> DataFrame:
         """
         Bollinguer bands, ATR based volatility compression detection
         """
@@ -80,7 +80,7 @@ class ApexFlow:
 
         return self.df
 
-    def detect_volatility_expansion(self) -> pd.DataFrame:
+    def detect_volatility_expansion(self) -> DataFrame:
         if "compression" not in self.df.columns:
             return self.df
 
@@ -103,11 +103,11 @@ class ApexFlow:
         self.df["vce_signal"] = expansion_after_compression
         return self.df
 
-    def classify_vce_direction(self) -> pd.DataFrame:
+    def classify_vce_direction(self) -> DataFrame:
         if self.df.empty or "vce_signal" not in self.df.columns:
             return self.df
 
-        vce_direction = pd.Series(index=self.df.index, dtype=object)
+        vce_direction = Series(index=self.df.index, dtype=object)
         vce_direction[self.df["close"] > self.df["close"].shift(1)] = "LONG"
         vce_direction[self.df["close"] < self.df["close"].shift(1)] = "SHORT"
         self.df["vce_direction"] = vce_direction
@@ -116,7 +116,7 @@ class ApexFlow:
         return self.df
 
     # ---------- Momentum Continuation (MCD) components ---------- #
-    def compute_mcd_indicators(self) -> pd.DataFrame:
+    def compute_mcd_indicators(self) -> DataFrame:
         if self.df.empty:
             return self.df
 
@@ -131,7 +131,7 @@ class ApexFlow:
 
     def detect_momentum_continuation(
         self, rsi_threshold: int = 55, atr_mult: float = 1.2
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         if (
             self.df.empty
             or "ema_fast" not in self.df.columns
@@ -166,7 +166,7 @@ class ApexFlow:
         lookback: int = 20,
         volume_mult: float = 1.8,
         cooldown: int = 10,
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         if self.df.empty:
             return self.df
 
@@ -198,7 +198,7 @@ class ApexFlow:
 
         self.df["lsr_signal"] = raw_lsr & ~recent_lsr
 
-        lsr_direction = pd.Series(index=self.df.index, dtype=object)
+        lsr_direction = Series(index=self.df.index, dtype=object)
         lsr_direction[sweep_low] = "LONG"
         lsr_direction[sweep_high] = "SHORT"
         self.df["lsr_direction"] = lsr_direction
@@ -210,7 +210,7 @@ class ApexFlow:
         lookback: int = 20,
         ma_smooth: int = 5,
         min_relative_strength: float = 1.02,
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         """
         Low-Cap Relative Strength Rotation (asset vs BTC benchmark).
 
@@ -219,7 +219,7 @@ class ApexFlow:
         - min_relative_strength: threshold to consider rotation attractive
         """
         if self.df.empty or self.btc_df.empty:
-            return pd.DataFrame()
+            return DataFrame()
 
         # Compute percentage returns over lookback
         asset_ret = self.df["close"].pct_change(lookback)
@@ -245,7 +245,7 @@ class ApexFlow:
         self.df["bb_width_ma"] = self.df["bb_width"].rolling(20).mean()
 
     # ---------- Orchestration ---------- #
-    def run_all_detectors(self) -> pd.DataFrame:
+    def run_all_detectors(self) -> DataFrame:
         """Run VCE, Momentum Continuation, and LSR detectors in sequence.
 
         Order:
@@ -262,7 +262,7 @@ class ApexFlow:
         self.detect_liquidity_sweep_reversal()
         return self.df
 
-    def vce_detector(self) -> pd.DataFrame:
+    def vce_detector(self) -> DataFrame:
         self.run_all_detectors()
 
         signals = self.df[self.df["vce_signal"]][
@@ -343,7 +343,7 @@ class ApexFlow:
 
         return score
 
-    def clean_momentum_trend(self, row: pd.Series) -> bool:
+    def clean_momentum_trend(self, row: Series) -> bool:
         return (
             row["ema_fast"] > row["ema_slow"]
             and row["ema_slow_slope"] > 0
@@ -369,8 +369,8 @@ class ApexFlow:
         has_vce = bool(recent["vce_signal"].any())
         has_mcd = bool(recent["momentum_continue"].any())
         has_lsr = bool(recent["lsr_signal"].any())
-        has_lsr_direction = bool(row.get("lsr_direction"))
-        has_mcd_direction = bool(row.get("mcd_direction"))
+        has_lsr_direction = notna(row.get("lsr_direction"))
+        has_mcd_direction = notna(row.get("mcd_direction"))
 
         pattern = None
         direction: str | None = None

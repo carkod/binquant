@@ -1,6 +1,7 @@
 from time import time
 from models.signals import SignalCandidate
 from collections.abc import Callable
+from pybinbot import BinbotApi
 
 
 class SignalCollector:
@@ -9,6 +10,7 @@ class SignalCollector:
         self.max_window_ms = max_window_ms
         self.first_seen_at: int | None = None
         self.autotrade = None
+        self.binbot_api = BinbotApi()
 
     def rank(self) -> list[SignalCandidate]:
         return sorted(
@@ -41,6 +43,8 @@ class SignalCollector:
         self.first_seen_at = None
 
     async def dispatch(self, ranked: list[SignalCandidate]):
+        active_bots = self.binbot_api.get_active_pairs()
+
         for candidate in ranked:
-            if self.autotrade:
+            if self.autotrade and candidate.symbol in active_bots:
                 await self.autotrade(candidate)
