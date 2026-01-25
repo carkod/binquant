@@ -1,5 +1,4 @@
 from datetime import datetime
-
 from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
@@ -7,6 +6,12 @@ from pybinbot import (
     MarketDominance,
     Strategy,
     round_numbers,
+    Indicators,
+    HeikinAshi,
+    BinbotApi,
+    KucoinApi,
+    BinanceApi,
+    AsyncProducer,
 )
 
 from algorithms.market_breadth import MarketBreadthAlgo
@@ -14,8 +19,6 @@ from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
-from pybinbot import Indicators, HeikinAshi, BinbotApi, KucoinApi, BinanceApi
-from shared.streaming.async_producer import AsyncProducer
 
 
 class CryptoAnalytics:
@@ -28,7 +31,7 @@ class CryptoAnalytics:
         market_breadth_data,
         top_losers_day,
         all_symbols,
-        ac_api,
+        ac_api: AutotradeConsumer,
         exchange,
         kucoin_symbol=None,
     ) -> None:
@@ -74,7 +77,7 @@ class CryptoAnalytics:
             else 1
         )
         self.telegram_consumer = TelegramConsumer()
-        self.at_consumer: AutotradeConsumer = ac_api
+        self.at_consumer = ac_api
 
     def days(self, secs):
         return secs * 86400

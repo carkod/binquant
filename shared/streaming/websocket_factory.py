@@ -5,14 +5,18 @@ for different exchanges (Binance, Kucoin) without changing existing code.
 """
 
 import asyncio
-from pybinbot import ExchangeId, configure_logging
-from producers.klines_connector import KlinesConnector
-from pybinbot import BinbotApi
-from shared.streaming.async_producer import AsyncProducer
-from shared.streaming.async_socket_client import AsyncSpotWebsocketStreamClient
-from shared.streaming.kucoin_async_client import (
+from pybinbot import (
+    ExchangeId,
+    configure_logging,
+    KucoinKlineIntervals,
+    BinanceKlineIntervals,
+    BinbotApi,
+    AsyncProducer,
+    AsyncSpotWebsocketStreamClient,
     AsyncKucoinWebsocketClient,
 )
+from producers.klines_connector import KlinesConnector
+from shared.config import Config
 
 
 configure_logging()
@@ -25,10 +29,19 @@ class WebsocketClientFactory:
 
     def __init__(self) -> None:
         self.binbot_api = BinbotApi()
+        self.config = Config()
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.fiat = self.autotrade_settings["fiat"]
         self.exchange = ExchangeId(self.autotrade_settings["exchange_id"])
-        self.producer = AsyncProducer()
+        self.producer = AsyncProducer(
+            host=self.config.kafka_host,
+            port=self.config.kafka_port,
+        )
+        self.interval = (
+            KucoinKlineIntervals.FIFTEEN_MINUTES
+            if self.exchange == ExchangeId.KUCOIN
+            else BinanceKlineIntervals.fifteen_minutes
+        )
 
     def filter_fiat_symbols(self, symbols: list[dict]) -> list[dict]:
         """
@@ -52,7 +65,7 @@ class WebsocketClientFactory:
 
             for s in chunk:
                 symbol_name = s["base_asset"] + "-" + s["quote_asset"]
-                await client.subscribe_klines(symbol_name, interval="15min")
+                await client.subscribe_klines(symbol_name, interval=self.interval.value)
 
             clients.append(client)
 

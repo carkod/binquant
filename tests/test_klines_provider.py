@@ -5,6 +5,7 @@ from consumers.klines_provider import KlinesProvider
 
 
 class TestKlinesProvider:
+    @patch("consumers.klines_provider.AsyncProducer")
     @patch(
         "consumers.klines_provider.BinbotApi.get_autotrade_settings",
         return_value={"exchange_id": "binance"},
@@ -21,6 +22,7 @@ class TestKlinesProvider:
         mock_get_active_pairs,
         mock_get_symbols,
         mock_get_settings,
+        mock_async_producer,
     ):
         consumer = MagicMock()
         provider = KlinesProvider(consumer)

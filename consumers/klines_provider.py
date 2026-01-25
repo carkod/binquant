@@ -7,12 +7,13 @@ from pybinbot import (
     BinbotApi,
     KucoinApi,
     BinanceApi,
+    AsyncProducer,
+    KlineProduceModel,
 )
 from consumers.autotrade_consumer import AutotradeConsumer
-from models.klines import KlineProduceModel
 from producers.analytics import CryptoAnalytics
-from shared.streaming.async_producer import AsyncProducer
 from shared.config import Config
+from time import time
 
 
 class KlinesProvider:
@@ -33,7 +34,9 @@ class KlinesProvider:
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.consumer = consumer
-        self.producer: AsyncProducer = AsyncProducer()
+        self.producer = AsyncProducer(
+            host=self.config.kafka_host, port=self.config.kafka_port
+        )
         # Candles/btc candles storage
         self.candles: list = []
         self.btc_candles: list[list] = []
@@ -65,6 +68,24 @@ class KlinesProvider:
             all_symbols=self.all_symbols,
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
         )
+
+    def _refresh_btc_candles(self) -> bool:
+        """
+        Refresh if interval exceeded since last BTC candle.
+        """
+        refresh_btc_candles = False
+        if len(self.btc_candles) == 0:
+            refresh_btc_candles = True
+        else:
+            last_btc_open_time = self.btc_candles[-1][0]  # open_time in ms
+            now_ts = int(time() * 1000)
+            if (
+                now_ts - last_btc_open_time
+                > int(self.interval.get_interval_ms()) * 60 * 1000
+            ):
+                refresh_btc_candles = True
+
+        return refresh_btc_candles
 
     async def load_data_on_start(self):
         """Load initial BTC benchmark candles and market data."""
@@ -105,11 +126,15 @@ class KlinesProvider:
             interval=self.interval.value,
             limit=self.MAX_CANDLES,
         )
-        self.btc_candles = self.api.get_ui_klines(
-            symbol="BTC-USDT" if self.exchange == ExchangeId.KUCOIN else "BTCUSDT",
-            interval=self.interval.value,
-            limit=self.MAX_CANDLES,
-        )
+        # Refresh BTC candles if empty or last open time is more than 15 minutes behind
+        refresh_btc_candles = self._refresh_btc_candles()
+
+        if refresh_btc_candles:
+            self.btc_candles = self.api.get_ui_klines(
+                symbol="BTC-USDT" if self.exchange == ExchangeId.KUCOIN else "BTCUSDT",
+                interval=self.interval.value,
+                limit=self.MAX_CANDLES,
+            )
 
         # Pass candles to CryptoAnalytics for processing
         crypto_analytics = CryptoAnalytics(

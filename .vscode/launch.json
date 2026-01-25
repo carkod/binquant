@@ -7,7 +7,7 @@
       "request": "launch",
       "program": "producer.py",
       "console": "internalConsole",
-      "justMyCode": true,
+      "justMyCode": false,
       "envFile": "${workspaceFolder}/.env"
     },
     {
@@ -17,7 +17,7 @@
       "program": "consumer.py",
       "console": "internalConsole",
       "envFile": "${workspaceFolder}/.env",
-      "justMyCode": true
+      "justMyCode": false
     }
   ]
 }
