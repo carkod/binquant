@@ -4,8 +4,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from pybinbot import Strategy, HABollinguerSpread, SignalsConsumer, round_numbers
-from pybinbot import Indicators
+from pybinbot import Strategy, round_numbers, Indicators
+from models.signals import SignalCandidate
+from consumers.signal_collector import SignalCollector
 
 if TYPE_CHECKING:
     from producers.analytics import CryptoAnalytics
@@ -33,6 +34,7 @@ class ApexFlow:
         self.qty_precision = cls.qty_precision
         self.df: pd.DataFrame = cls.df.copy()
         self.btc_df = cls.btc_df.copy()
+        self.signal_collector = SignalCollector()
 
         # Bollinger compression
         self.bb_period = 20
@@ -354,9 +356,6 @@ class ApexFlow:
     async def signal(
         self,
         current_price: float,
-        bb_high: float,
-        bb_low: float,
-        bb_mid: float,
     ) -> None:
         if self.df is None or self.df.empty:
             logging.info("[VCE] No data available for combined VCE/MCD/LSR signal.")
@@ -454,19 +453,22 @@ class ApexFlow:
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
         """
 
-        value = SignalsConsumer(
-            autotrade=autotrade,
-            current_price=current_price,
-            msg=msg,
+        candidate = SignalCandidate(
             symbol=self.symbol,
             algo=algo,
-            bot_strategy=bot_strategy,
-            bb_spreads=HABollinguerSpread(
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            ),
+            direction=direction,
+            strategy=bot_strategy,
+            autotrade=autotrade,
+            score=score,
+            current_price=current_price,
+            atr=float(row.get("atr", 0.0)),
+            bb_width=float(row.get("bb_width", 0.0)),
+            volume=float(row.get("volume", 0.0)),
+            msg=msg,
         )
 
-        await self.telegram_consumer.send_signal(value.model_dump_json())
-        await self.at_consumer.process_autotrade_restrictions(value)
+        await self.telegram_consumer.send_signal(msg)
+        await self.signal_collector.handle(
+            candidate=candidate,
+            dispatch_function=self.at_consumer.process_autotrade_restrictions,
+        )

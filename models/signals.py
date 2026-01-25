@@ -1,48 +1,18 @@
-from pybinbot import Strategy
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from time import time
+from pydantic import ConfigDict, Field
+from pybinbot import SignalsConsumer
 
 
-class HABollinguerSpread(BaseModel):
+class SignalCandidate(SignalsConsumer):
     """
-    Pydantic model for the Heikin Ashi Bollinguer spread.
-    (optional)
-    Replaces original HABollinguerSpread
-    permanently using Heikin Ashi candles.
+    SignalsConsumer but as a candidate for the ranked signals system
     """
 
-    bb_high: float
-    bb_mid: float
-    bb_low: float
+    direction: str = Field(description="Signal direction: buy/sell")
+    score: float = Field(default=0, description="Score for ranking signals")
+    atr: float
+    bb_width: float
+    volume: float
+    timestamp: int = Field(default=int(time() * 1000), description="Current ts in ms")
 
-
-class SignalsConsumer(BaseModel):
-    """
-    Pydantic model for the signals consumer.
-    """
-
-    type: str = Field(default="signal")
-    spread: float | None = Field(default=0)
-    current_price: float | None = Field(default=0)
-    msg: str
-    symbol: str
-    algo: str
-    bot_strategy: Strategy = Field(default=Strategy.long)
-    bb_spreads: HABollinguerSpread | None
-    autotrade: bool = Field(default=True, description="False is paper_trading")
-
-    model_config = ConfigDict(
-        extra="allow",
-        use_enum_values=True,
-    )
-
-    @field_validator("spread", "current_price")
-    @classmethod
-    def name_must_contain_space(cls, v):
-        if v is None:
-            return 0
-        elif isinstance(v, str):
-            return float(v)
-        elif isinstance(v, float):
-            return v
-        else:
-            raise ValueError("must be a float or 0")
+    model_config = ConfigDict(from_attributes=True, extra="allow", use_enum_values=True)

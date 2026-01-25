@@ -1,4 +1,3 @@
-from datetime import datetime
 from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
@@ -14,7 +13,6 @@ from pybinbot import (
     AsyncProducer,
 )
 
-from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -110,7 +108,6 @@ class CryptoAnalytics:
         Initialize algorithm instances only once
         they must be loaded after post data processing
         """
-        self.mda = MarketBreadthAlgo(cls=self)
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
 
@@ -160,9 +157,6 @@ class CryptoAnalytics:
             close_price = float(self.df["close"].iloc[-1])
             spreads = self.bb_spreads()
 
-            if not self.market_breadth_data or datetime.now().minute % 30 == 0:
-                self.market_breadth_data = await self.binbot_api.get_market_breadth()
-
             await self.sh3.signal(
                 current_price=close_price,
                 bb_high=spreads.bb_high,
@@ -173,9 +167,6 @@ class CryptoAnalytics:
             # Apex Flow signals
             await self.af.signal(
                 current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
             )
 
         return
