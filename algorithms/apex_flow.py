@@ -426,6 +426,7 @@ class ApexFlow:
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - ATR: {round_numbers(float(row.get("atr", 0.0)), decimals=self.price_precision)}
             - BB width: {round_numbers(float(row.get("bb_width", 0.0)), decimals=self.price_precision)}
+            - Score: {score}
         """
 
         if last_lcrs_signal:

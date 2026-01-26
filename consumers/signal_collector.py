@@ -25,10 +25,10 @@ class SignalCollector:
         dispatch_function: Callable,
     ):
         self.autotrade = dispatch_function
-        now = time() * 1000
+        now = int(time() * 1000)
 
         if self.first_seen_at is None:
-            self.first_seen_at = int(now)
+            self.first_seen_at = now
 
         self.buffer[candidate.symbol] = candidate
 
