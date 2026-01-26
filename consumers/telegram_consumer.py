@@ -6,8 +6,6 @@ from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TimedOut
 
-from models.signals import SignalsConsumer
-
 
 class TelegramConsumer:
     def __init__(self):
@@ -29,13 +27,10 @@ class TelegramConsumer:
                 self.chat_id, text=message, parse_mode=ParseMode.HTML
             )
 
-    async def send_signal(self, result):
+    async def send_signal(self, message: str):
         try:
-            payload = json.loads(result)
-            data = SignalsConsumer(**payload)
-            lines = data.msg.splitlines()
             lines = [
-                line.strip() for line in lines if line.strip()
+                line.strip() for line in message.splitlines() if line.strip()
             ]  # Strip each line, remove empty ones
             cleaned_message = "\n".join(lines)
 

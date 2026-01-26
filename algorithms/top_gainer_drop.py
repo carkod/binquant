@@ -47,7 +47,7 @@ async def top_gainers_drop(
             ),
         )
 
-        await cls.telegram_consumer.send_signal(value.model_dump_json())
+        await cls.telegram_consumer.send_signal(msg)
         await cls.at_consumer.process_autotrade_restrictions(value)
 
     return
