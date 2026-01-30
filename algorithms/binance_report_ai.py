@@ -21,7 +21,6 @@ class BinanceAIReport:
         self.binbot_api = BinbotApi()
         self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
-        self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
 
