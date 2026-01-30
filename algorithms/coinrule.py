@@ -12,11 +12,11 @@ from pybinbot import (
 )
 
 if TYPE_CHECKING:
-    from producers.analytics import CryptoAnalytics
+    from producers.context_evaluator import ContextEvaluator
 
 
 class Coinrule:
-    def __init__(self, cls: "CryptoAnalytics") -> None:
+    def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
         self.df = cls.df
         self.df_1h = cls.df_1h

@@ -17,7 +17,7 @@ from pybinbot import (
 from algorithms.binance_report_ai import BinanceAIReport
 
 if TYPE_CHECKING:
-    from producers.analytics import CryptoAnalytics
+    from producers.context_evaluator import ContextEvaluator
 
 
 class SpikeHunterV3KuCoin:
@@ -66,7 +66,7 @@ class SpikeHunterV3KuCoin:
 
     def __init__(
         self,
-        cls: "CryptoAnalytics",
+        cls: "ContextEvaluator",
     ):
         self.kucoin_symbol = cls.kucoin_symbol
         self.symbol = cls.symbol

@@ -7,9 +7,10 @@ from pandas import notna, DataFrame, Series
 from pybinbot import Strategy, round_numbers, Indicators
 from models.signals import SignalCandidate
 from consumers.signal_collector import SignalCollector
+from shared.enums import direction_type
 
 if TYPE_CHECKING:
-    from producers.analytics import CryptoAnalytics
+    from producers.context_evaluator import ContextEvaluator
 
 
 class ApexFlow:
@@ -22,7 +23,7 @@ class ApexFlow:
     tend to emerge from quiet, compressed ranges rather than at random.
     """
 
-    def __init__(self, cls: "CryptoAnalytics") -> None:
+    def __init__(self, cls: "ContextEvaluator") -> None:
         # Symbol / context
         self.symbol = cls.symbol
         self.kucoin_symbol = cls.kucoin_symbol
@@ -270,7 +271,7 @@ class ApexFlow:
         ]
         return signals
 
-    def get_trend_bias(self) -> str | None:
+    def get_trend_bias(self) -> direction_type | None:
         if "ema_fast" not in self.df.columns or "ema_slow" not in self.df.columns:
             return None
 
@@ -323,9 +324,11 @@ class ApexFlow:
         has_vce: bool,
         has_mcd: bool,
         has_lsr: bool,
-        direction: str | None,
-        trend_bias: str | None,
+        direction: direction_type | None,
+        trend_bias: direction_type | None,
         pattern: str | None = None,
+        btc_price_change: float = 0.0,
+        btc_correlation: float = 0.0,
     ) -> int:
         score = 0
 
@@ -340,6 +343,17 @@ class ApexFlow:
 
         if pattern == "AGGRESSIVE_MOMO":
             score += 2
+
+        # BTC influence
+        if direction == "LONG":
+            btc_effect = btc_correlation * btc_price_change
+        elif direction == "SHORT":
+            btc_effect = -btc_correlation * btc_price_change
+        else:
+            btc_effect = 0
+
+        btc_score = max(min(int(btc_effect / 0.5), 3), -3)
+        score += btc_score
 
         return score
 
@@ -356,6 +370,8 @@ class ApexFlow:
     async def signal(
         self,
         current_price: float,
+        btc_correlation: float,
+        btc_price_change: float,
     ) -> None:
         if self.df is None or self.df.empty:
             logging.info("[VCE] No data available for combined VCE/MCD/LSR signal.")
@@ -373,7 +389,7 @@ class ApexFlow:
         has_mcd_direction = notna(row.get("mcd_direction"))
 
         pattern = None
-        direction: str | None = None
+        direction: direction_type | None = None
 
         # --- LCRS computation ---
         lcrs_df = self.low_cap_relative_strength_rotation()
@@ -410,6 +426,8 @@ class ApexFlow:
             trend_bias=trend_bias,
             direction=direction,
             pattern=pattern,
+            btc_price_change=btc_price_change,
+            btc_correlation=btc_correlation,
         )
 
         if not direction or score < 3:

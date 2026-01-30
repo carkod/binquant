@@ -19,7 +19,7 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 
 
-class CryptoAnalytics:
+class ContextEvaluator:
     def __init__(
         self,
         producer: AsyncProducer,
@@ -61,7 +61,6 @@ class CryptoAnalytics:
         self.top_losers_day = top_losers_day
         self.market_breadth_data = market_breadth_data
         self.btc_correlation: float = 0
-        self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
         # theorically current_symbol_data is always defined
@@ -124,7 +123,7 @@ class CryptoAnalytics:
         self.df_btc, _, _ = HeikinAshi().pre_process(self.exchange, btc_candles)
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
-        if self.df.empty is False and self.df.close.size > 0:
+        if not self.df.empty and self.df.close.size > 0:
             # Basic technical indicators
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe
@@ -147,6 +146,8 @@ class CryptoAnalytics:
                     self.df["close"].corr(self.df_btc["close"], method="pearson"),
                     self.price_precision,
                 )
+                df_pct_change = self.df_btc["close"].pct_change(periods=96) * 100
+                self.btc_price_change = df_pct_change[-1:].iloc[0] if not df_pct_change.empty else 0.0
 
             self.df = HeikinAshi().post_process(self.df)
             self.df_1h = HeikinAshi().post_process(self.df_1h)
@@ -174,6 +175,8 @@ class CryptoAnalytics:
             # Apex Flow signals
             await self.af.signal(
                 current_price=close_price,
+                btc_correlation=self.btc_correlation,
+                btc_price_change=self.btc_price_change,
             )
 
         return
