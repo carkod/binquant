@@ -141,6 +141,13 @@ class CryptoAnalytics:
             self.df = Indicators.bollinguer_spreads(self.df)
             self.df = Indicators.set_twap(self.df)
 
+            # correlation with BTC
+            if not self.df_btc.empty and self.df_btc.close.size > 0:
+                self.btc_correlation = round_numbers(
+                    self.df["close"].corr(self.df_btc["close"], method="pearson"),
+                    self.price_precision,
+                )
+
             self.df = HeikinAshi().post_process(self.df)
             self.df_1h = HeikinAshi().post_process(self.df_1h)
             self.df_4h = HeikinAshi().post_process(self.df_4h)
