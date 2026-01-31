@@ -3,11 +3,11 @@ from typing import TYPE_CHECKING
 from pybinbot import SignalsConsumer, HABollinguerSpread
 
 if TYPE_CHECKING:
-    from producers.analytics import CryptoAnalytics
+    from producers.context_evaluator import ContextEvaluator
 
 
 async def top_gainers_drop(
-    cls: "CryptoAnalytics",
+    cls: "ContextEvaluator",
     close_price,
     open_price,
     bb_high,
@@ -47,7 +47,7 @@ async def top_gainers_drop(
             ),
         )
 
-        await cls.telegram_consumer.send_signal(value.model_dump_json())
+        await cls.telegram_consumer.send_signal(msg)
         await cls.at_consumer.process_autotrade_restrictions(value)
 
     return

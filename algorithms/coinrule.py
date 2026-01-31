@@ -12,11 +12,11 @@ from pybinbot import (
 )
 
 if TYPE_CHECKING:
-    from producers.analytics import CryptoAnalytics
+    from producers.context_evaluator import ContextEvaluator
 
 
 class Coinrule:
-    def __init__(self, cls: "CryptoAnalytics") -> None:
+    def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
         self.df = cls.df
         self.df_1h = cls.df_1h
@@ -75,7 +75,7 @@ class Coinrule:
                 ),
             )
 
-            await self.telegram_consumer.send_signal(value.model_dump_json())
+            await self.telegram_consumer.send_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         pass
@@ -144,7 +144,7 @@ class Coinrule:
                 ),
             )
 
-            await self.telegram_consumer.send_signal(value.model_dump_json())
+            await self.telegram_consumer.send_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         pass
@@ -192,7 +192,7 @@ class Coinrule:
                 ),
             )
 
-            await self.telegram_consumer.send_signal(value.model_dump_json())
+            await self.telegram_consumer.send_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         pass

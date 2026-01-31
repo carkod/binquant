@@ -1,4 +1,3 @@
-from datetime import datetime
 from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
@@ -14,14 +13,13 @@ from pybinbot import (
     AsyncProducer,
 )
 
-from algorithms.market_breadth import MarketBreadthAlgo
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 
 
-class CryptoAnalytics:
+class ContextEvaluator:
     def __init__(
         self,
         producer: AsyncProducer,
@@ -63,7 +61,6 @@ class CryptoAnalytics:
         self.top_losers_day = top_losers_day
         self.market_breadth_data = market_breadth_data
         self.btc_correlation: float = 0
-        self.btc_price: float = 0.0
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
         # theorically current_symbol_data is always defined
@@ -110,7 +107,6 @@ class CryptoAnalytics:
         Initialize algorithm instances only once
         they must be loaded after post data processing
         """
-        self.mda = MarketBreadthAlgo(cls=self)
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
 
@@ -127,7 +123,7 @@ class CryptoAnalytics:
         self.df_btc, _, _ = HeikinAshi().pre_process(self.exchange, btc_candles)
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
-        if self.df.empty is False and self.df.close.size > 0:
+        if not self.df.empty and self.df.close.size > 0:
             # Basic technical indicators
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe
@@ -143,6 +139,15 @@ class CryptoAnalytics:
             self.df = Indicators.ma_spreads(self.df)
             self.df = Indicators.bollinguer_spreads(self.df)
             self.df = Indicators.set_twap(self.df)
+
+            # correlation with BTC
+            if not self.df_btc.empty and self.df_btc.close.size > 0:
+                self.btc_correlation = round_numbers(
+                    self.df["close"].corr(self.df_btc["close"], method="pearson"),
+                    self.price_precision,
+                )
+                df_pct_change = self.df_btc["close"].pct_change(periods=96) * 100
+                self.btc_price_change = df_pct_change[-1:].iloc[0] if not df_pct_change.empty else 0.0
 
             self.df = HeikinAshi().post_process(self.df)
             self.df_1h = HeikinAshi().post_process(self.df_1h)
@@ -160,9 +165,6 @@ class CryptoAnalytics:
             close_price = float(self.df["close"].iloc[-1])
             spreads = self.bb_spreads()
 
-            if not self.market_breadth_data or datetime.now().minute % 30 == 0:
-                self.market_breadth_data = await self.binbot_api.get_market_breadth()
-
             await self.sh3.signal(
                 current_price=close_price,
                 bb_high=spreads.bb_high,
@@ -173,9 +175,8 @@ class CryptoAnalytics:
             # Apex Flow signals
             await self.af.signal(
                 current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
+                btc_correlation=self.btc_correlation,
+                btc_price_change=self.btc_price_change,
             )
 
         return

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from pybinbot import BinbotApi
 
 if TYPE_CHECKING:
-    from producers.analytics import CryptoAnalytics
+    from producers.context_evaluator import ContextEvaluator
 
 
 class BinanceAIReport:
@@ -15,13 +15,12 @@ class BinanceAIReport:
 
     def __init__(
         self,
-        cls: "CryptoAnalytics",
+        cls: "ContextEvaluator",
     ) -> None:
         self.symbol = cls.symbol.replace("-", "")
         self.binbot_api = BinbotApi()
         self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
-        self.btc_correlation = cls.btc_correlation
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
 
