@@ -147,7 +147,9 @@ class ContextEvaluator:
                     self.price_precision,
                 )
                 df_pct_change = self.df_btc["close"].pct_change(periods=96) * 100
-                self.btc_price_change = df_pct_change[-1:].iloc[0] if not df_pct_change.empty else 0.0
+                self.btc_price_change = (
+                    df_pct_change[-1:].iloc[0] if not df_pct_change.empty else 0.0
+                )
 
             self.df = HeikinAshi().post_process(self.df)
             self.df_1h = HeikinAshi().post_process(self.df_1h)
