@@ -11,7 +11,7 @@ from pybinbot import (
     KlineProduceModel,
 )
 from consumers.autotrade_consumer import AutotradeConsumer
-from producers.analytics import CryptoAnalytics
+from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
 from time import time
 
@@ -21,7 +21,7 @@ class KlinesProvider:
     Pools, processes, aggregates, and provides klines data.
 
     Maintains a rolling list of raw candles per symbol. Merges incoming
-    WebSocket updates into historical data and passes it to CryptoAnalytics.
+    WebSocket updates into historical data and passes it to ContextEvaluator.
     """
 
     MAX_CANDLES = 400
@@ -107,7 +107,7 @@ class KlinesProvider:
 
     async def aggregate_data(self, payload: dict):
         """
-        Merge new asset candle and pass data to CryptoAnalytics.
+        Merge new asset candle and pass data to ContextEvaluator.
         """
         # Reload market data at the top of each hour
         current_time = datetime.now()
@@ -136,8 +136,8 @@ class KlinesProvider:
                 limit=self.MAX_CANDLES,
             )
 
-        # Pass candles to CryptoAnalytics for processing
-        crypto_analytics = CryptoAnalytics(
+        # Pass candles to ContextEvaluator for processing
+        crypto_analytics = ContextEvaluator(
             producer=self.producer,
             api=self.api,
             kucoin_symbol=kucoin_symbol,
