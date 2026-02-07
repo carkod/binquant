@@ -286,7 +286,7 @@ requires-dist = [
     { name = "kafka-python", specifier = ">=2.0.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=0.5.1" },
+    { name = "pybinbot", specifier = ">=0.5.5" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "pytest-vcr", marker = "extra == 'dev'", specifier = ">=1.0.2" },
@@ -1249,11 +1249,11 @@ wheels = [
 
 [[package]]
 name = "parse"
-version = "1.20.2"
+version = "1.21.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4f/78/d9b09ba24bb36ef8b83b71be547e118d46214735b6dfb39e4bfde0e9b9dd/parse-1.20.2.tar.gz", hash = "sha256:b41d604d16503c79d81af5165155c0b20f6c8d6c559efa66b4b695c3e5a0a0ce", size = 29391, upload-time = "2024-06-11T04:41:57.34Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/76/2770399accc7b922c288533a88a10e9baa50a1aec76789a8c255a9c6c060/parse-1.21.0.tar.gz", hash = "sha256:937725d51330ffec9c7a26fdb5623baa135d8ba8ed78817ea9523538844e3ce4", size = 29649, upload-time = "2026-02-05T18:33:41.085Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/31/ba45bf0b2aa7898d81cbbfac0e88c267befb59ad91a19e36e1bc5578ddb1/parse-1.20.2-py2.py3-none-any.whl", hash = "sha256:967095588cb802add9177d0c0b6133b5ba33b1ea9007ca800e526f42a85af558", size = 20126, upload-time = "2024-06-11T04:41:55.057Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/b6/3fee2205ce1333eaa85fdf8500de4e412bbc112d77c9b0045cc8d5a6fcec/parse-1.21.0-py2.py3-none-any.whl", hash = "sha256:6d81f7bae0ab25fd72818375c4a9c71c8705256bfc42e8725be609cf8b904aed", size = 20277, upload-time = "2026-02-05T18:33:39.673Z" },
 ]
 
 [[package]]
@@ -1402,7 +1402,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "0.5.1"
+version = "0.5.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1416,9 +1416,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/ee/bdb849a401019ac889cf30faed15fd63832202701d9d434f9109e70b92e4/pybinbot-0.5.1.tar.gz", hash = "sha256:108f44640725ef9dec93f5eb8c6dc8e917a6de6ba2c63a85a38ab77e48b591bc", size = 47138, upload-time = "2026-02-04T01:57:37.435Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/b4/9c8788f03c1ac0972b1966485dbdeb74757c8ed061679a69c584972c2077/pybinbot-0.5.5.tar.gz", hash = "sha256:75252609f0dddfd84058a16dd55db7cefe12313c46f62221c77d428cf6b5542c", size = 47249, upload-time = "2026-02-07T16:15:33.262Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/ca/62f4941820add09de20ae5ea5c7236853581b22ba6b62e7e795de72c8b63/pybinbot-0.5.1-py3-none-any.whl", hash = "sha256:d484d7427ee8da05ea2ec74429f434fbde3442552ac19629a36399dc3c7e6497", size = 49280, upload-time = "2026-02-04T01:57:35.996Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/ab/b4fe0e6a483d15c56fac3608ec8d662c1f30a766d7bd35ae10b797624ca7/pybinbot-0.5.5-py3-none-any.whl", hash = "sha256:deb5618ff03852dc33e1a8954cc845b70878007334ab4a7655c965d766a4e198", size = 49412, upload-time = "2026-02-07T16:15:31.843Z" },
 ]
 
 [[package]]

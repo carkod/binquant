@@ -35,7 +35,9 @@ class ApexFlow:
         self.qty_precision = cls.qty_precision
         self.df: DataFrame = cls.df.copy()
         self.btc_df = cls.btc_df.copy()
-        self.signal_collector = SignalCollector()
+        self.signal_collector = SignalCollector(
+            first_seen_at=cls.first_seen_at, interval=cls.interval
+        )
 
         # Bollinger compression
         self.bb_period = 20

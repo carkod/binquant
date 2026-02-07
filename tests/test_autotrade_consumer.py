@@ -25,9 +25,9 @@ class TestAutotradeConsumer:
         monkeypatch.setattr(
             self.consumer.binbot_api,
             "get_active_pairs",
-            lambda collection_name: [1, 2]
-            if collection_name == "paper_trading"
-            else [],
+            lambda collection_name: (
+                [1, 2] if collection_name == "paper_trading" else []
+            ),
         )
         assert self.consumer.reached_max_active_autobots("paper_trading")
 

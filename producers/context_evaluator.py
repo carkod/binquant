@@ -1,7 +1,9 @@
 from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
+    ExchangeId,
     HABollinguerSpread,
+    KucoinKlineIntervals,
     MarketDominance,
     Strategy,
     round_numbers,
@@ -30,7 +32,9 @@ class ContextEvaluator:
         top_losers_day,
         all_symbols,
         ac_api: AutotradeConsumer,
-        exchange,
+        exchange: ExchangeId,
+        first_seen_at: int,
+        interval: BinanceKlineIntervals | KucoinKlineIntervals,
         kucoin_symbol=None,
     ) -> None:
         """
@@ -49,8 +53,8 @@ class ContextEvaluator:
         self.df_4h = DataFrame()
         self.df_1h = DataFrame()
         self.btc_df = DataFrame()
-        self.interval = BinanceKlineIntervals.fifteen_minutes.value
         self.exchange = exchange
+        self.interval = interval
         # describes current USDC market: gainers vs losers
         self.current_market_dominance: MarketDominance = MarketDominance.NEUTRAL
         # describes whether tide is shifting
@@ -75,6 +79,8 @@ class ContextEvaluator:
         )
         self.telegram_consumer = TelegramConsumer()
         self.at_consumer = ac_api
+        # Countdown for Apex Flow score system
+        self.first_seen_at = first_seen_at
 
     def days(self, secs):
         return secs * 86400
