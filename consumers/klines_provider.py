@@ -28,7 +28,7 @@ class KlinesProvider:
 
     def __init__(self, consumer: KafkaConsumer) -> None:
         self.config = Config()
-        self.binbot_api = BinbotApi()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.api: KucoinApi | BinanceApi
         self.exchange: ExchangeId

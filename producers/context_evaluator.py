@@ -1,3 +1,4 @@
+from shared.config import Config
 from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
@@ -46,7 +47,8 @@ class ContextEvaluator:
         """
         self.producer = producer
         self.api = api
-        self.binbot_api = BinbotApi()
+        self.config = Config()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.symbol = symbol
         self.kucoin_symbol = kucoin_symbol
         self.df = DataFrame()

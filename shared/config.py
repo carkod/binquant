@@ -78,6 +78,8 @@ class Config:
             "KUCOIN_PASSPHRASE",
             "TELEGRAM_BOT_KEY",
             "TELEGRAM_USER_ID",
+            "FRONTEND_DOMAIN",
+            "BACKEND_DOMAIN",
         ]
 
         missing = [var for var in required_vars if not os.getenv(var)]
@@ -107,6 +109,10 @@ class Config:
     @property
     def frontend_domain(self) -> str:
         return self._get_required("FRONTEND_DOMAIN")
+
+    @property
+    def backend_domain(self) -> str:
+        return self._get_required("BACKEND_DOMAIN")
 
     # MongoDB settings
     @property

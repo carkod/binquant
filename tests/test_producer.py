@@ -1,5 +1,5 @@
 import pytest
-
+from os import environ
 from producers.klines_connector import KlinesConnector
 
 
@@ -82,7 +82,7 @@ async def test_producer_error(klines_connector: KlinesConnector):
 
 
 @pytest.mark.asyncio
-async def test_usdt_filtering(monkeypatch):
+async def test_usdt_filtering():
     """Test that only USDT markets are subscribed to"""
     from unittest.mock import AsyncMock, MagicMock
 
@@ -95,45 +95,33 @@ async def test_usdt_filtering(monkeypatch):
         {"id": "BNBUSDT", "base_asset": "BNB", "quote_asset": "USDT"},
     ]
 
-    # Mock get_symbols to return our test data (patch before instance creation)
-    monkeypatch.setattr(KlinesConnector, "get_symbols", lambda self: mock_symbols)
+    # Set fake BACKEND_DOMAIN before instantiation
+    environ["BACKEND_DOMAIN"] = "http://test-url"
 
-    # Avoid network calls in __init__: patch autotrade settings retrieval
-    monkeypatch.setattr(
-        KlinesConnector, "get_autotrade_settings", lambda self: {"fiat": "USDT"}
-    )
+    from unittest.mock import patch
+    from pybinbot.apis.binbot.base import BinbotApi
 
-    # Mock connect_client to avoid actual websocket connection
     mock_client = MagicMock()
     mock_client.send_message_to_server = AsyncMock()
-    monkeypatch.setattr(
-        KlinesConnector, "connect_client", AsyncMock(return_value=mock_client)
-    )
-
-    # Create a real KlinesConnector instance with mocked dependencies
-    connector = KlinesConnector()
-
-    # Mock producer
     mock_producer = AsyncMock()
     mock_producer.start = AsyncMock()
-    connector.producer = mock_producer
 
-    # Call start_stream
-    await connector.start_stream()
-
-    # Verify that only USDT symbols were used
-    # Check that clients were created
-    assert len(connector.clients) > 0
-
-    # Get the first client's subscription call
-    if mock_client.send_message_to_server.called:
-        # Get the markets that were subscribed to
-        call_args = mock_client.send_message_to_server.call_args
-        markets = call_args[0][0] if call_args else []
-
-        # Verify only USDT markets are in the subscription
-        for market in markets:
-            # Market format is like 'btcusdt@kline_5m'
-            symbol = market.split("@")[0].upper()
-            # Should only be BTCUSDT, ETHUSDT, or BNBUSDT (not BTCUSDC or ETHBTC)
-            assert symbol in ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+    with (
+        patch.object(BinbotApi, "get_symbols", return_value=mock_symbols),
+        patch.object(
+            BinbotApi, "get_autotrade_settings", return_value={"fiat": "USDT"}
+        ),
+        patch.object(
+            KlinesConnector, "connect_client", AsyncMock(return_value=mock_client)
+        ),
+    ):
+        connector = KlinesConnector()
+        connector.producer = mock_producer
+        await connector.start_stream()
+        assert len(connector.clients) > 0
+        if mock_client.send_message_to_server.called:
+            call_args = mock_client.send_message_to_server.call_args
+            markets = call_args[0][0] if call_args else []
+            for market in markets:
+                symbol = market.split("@")[0].upper()
+                assert symbol in ["BTCUSDT", "ETHUSDT", "BNBUSDT"]

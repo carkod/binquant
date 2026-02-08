@@ -2,6 +2,7 @@ from time import time
 from models.signals import SignalCandidate
 from collections.abc import Callable
 from pybinbot import BinbotApi
+from shared.config import Config
 
 
 class SignalCollector:
@@ -9,7 +10,8 @@ class SignalCollector:
         self.buffer: dict[str, SignalCandidate] = {}
         self.first_seen_at = first_seen_at
         self.autotrade: Callable
-        self.binbot_api = BinbotApi()
+        self.config = Config()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.interval = interval
 
     def rank(self) -> list[SignalCandidate]:
@@ -44,13 +46,10 @@ class SignalCollector:
         self.first_seen_at = None
 
     async def dispatch(self, ranked: list[SignalCandidate]):
-        if not callable(self.autotrade):
-            raise RuntimeError("autotrade must be set to a callable before dispatching")
-
-        active_bots = self.binbot_api.get_active_pairs()
         if not hasattr(self, "autotrade") or not callable(self.autotrade):
             raise RuntimeError("autotrade must be set to a callable before dispatching")
+        active_bots = self.binbot_api.get_active_pairs()
 
         for candidate in ranked:
-            if candidate.symbol in active_bots:
+            if candidate.symbol not in active_bots:
                 await self.autotrade(candidate)

@@ -1,8 +1,11 @@
 from consumers.autotrade_consumer import AutotradeConsumer
+from os import environ
 
 
 class TestAutotradeConsumer:
     def setup_method(self):
+
+        environ["BACKEND_DOMAIN"] = "http://test-url"
         self.settings = {"max_active_autotrade_bots": 2, "exchange_id": "binance"}
         self.test_settings = {"max_active_autotrade_bots": 1}
         self.consumer = AutotradeConsumer(
