@@ -3,6 +3,7 @@ import requests
 from math import tanh
 from typing import TYPE_CHECKING
 from pybinbot import BinbotApi
+from shared.config import Config
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -18,7 +19,8 @@ class BinanceAIReport:
         cls: "ContextEvaluator",
     ) -> None:
         self.symbol = cls.symbol.replace("-", "")
-        self.binbot_api = BinbotApi()
+        self.config = Config()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
         self.telegram_consumer = cls.telegram_consumer

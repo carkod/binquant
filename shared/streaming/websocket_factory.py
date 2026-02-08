@@ -1,9 +1,3 @@
-"""WebSocket client factory for different exchanges.
-
-Provides a factory pattern implementation to create websocket clients
-for different exchanges (Binance, Kucoin) without changing existing code.
-"""
-
 import asyncio
 from pybinbot import (
     ExchangeId,
@@ -28,8 +22,8 @@ class WebsocketClientFactory:
     """
 
     def __init__(self) -> None:
-        self.binbot_api = BinbotApi()
         self.config = Config()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.fiat = self.autotrade_settings["fiat"]
         self.exchange = ExchangeId(self.autotrade_settings["exchange_id"])

@@ -28,7 +28,7 @@ class KlinesProvider:
 
     def __init__(self, consumer: KafkaConsumer) -> None:
         self.config = Config()
-        self.binbot_api = BinbotApi()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.api: KucoinApi | BinanceApi
         self.exchange: ExchangeId
@@ -37,6 +37,8 @@ class KlinesProvider:
         self.producer = AsyncProducer(
             host=self.config.kafka_host, port=self.config.kafka_port
         )
+        # Apex Flow starting point for scoring signals
+        self.first_seen_at = int(time() * 1000)
         # Candles/btc candles storage
         self.candles: list = []
         self.btc_candles: list[list] = []
@@ -79,10 +81,7 @@ class KlinesProvider:
         else:
             last_btc_open_time = self.btc_candles[-1][0]  # open_time in ms
             now_ts = int(time() * 1000)
-            if (
-                now_ts - last_btc_open_time
-                > int(self.interval.get_interval_ms()) * 60 * 1000
-            ):
+            if now_ts - last_btc_open_time > int(self.interval.get_ms()):
                 refresh_btc_candles = True
 
         return refresh_btc_candles
@@ -148,6 +147,8 @@ class KlinesProvider:
             all_symbols=self.all_symbols,
             ac_api=self.ac_api,
             exchange=self.exchange,
+            first_seen_at=self.first_seen_at,
+            interval=self.interval,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

@@ -34,10 +34,10 @@ class Autotrade:
         db_collection_name: Mongodb collection name ["paper_trading", "bots"]
         """
         self.pair: str = pair
-        self.binbot_api = BinbotApi()
+        self.config = Config()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.exchange = ExchangeId(settings["exchange_id"])
         self.api: BinanceApi | KucoinApi
-        self.config = Config()
 
         if self.exchange == ExchangeId.KUCOIN:
             self.api = KucoinApi(

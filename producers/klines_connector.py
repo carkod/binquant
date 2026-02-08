@@ -13,7 +13,7 @@ from pybinbot import (
 from shared.config import Config
 
 
-class KlinesConnector(BinbotApi):
+class KlinesConnector:
     """
     Klines/Candlestick Streams
 
@@ -31,12 +31,13 @@ class KlinesConnector(BinbotApi):
         logging.debug("Started Kafka producer SignalsInbound")
         super().__init__()
         self.config = Config()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.interval = interval
         # Async Kafka producer wrapper (AIOKafkaProducer) – start in start_stream
         self.producer = AsyncProducer(
             host=self.config.kafka_host, port=self.config.kafka_port
         )
-        self.autotrade_settings = self.get_autotrade_settings()
+        self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.clients: list[AsyncSpotWebsocketStreamClient] = []
 
     def _filter_usdt_symbols(self, symbols: list[dict]) -> list[dict]:
@@ -102,7 +103,7 @@ class KlinesConnector(BinbotApi):
         """
         # Initialize async Kafka producer (AIOKafkaProducer)
         await self.producer.start()
-        symbols = self._filter_usdt_symbols(self.get_symbols())
+        symbols = self._filter_usdt_symbols(self.binbot_api.get_symbols())
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
             for i in range(0, len(symbols), self.MAX_MARKETS_PER_CLIENT)
@@ -131,7 +132,7 @@ class KlinesConnector(BinbotApi):
 
     async def start_stream_for_client(self, idx: int) -> None:
         """Send subscription message for a specific client."""
-        symbols = self._filter_usdt_symbols(self.get_symbols())
+        symbols = self._filter_usdt_symbols(self.binbot_api.get_symbols())
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
             for i in range(0, len(symbols), self.MAX_MARKETS_PER_CLIENT)

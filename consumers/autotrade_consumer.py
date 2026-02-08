@@ -2,9 +2,10 @@ import logging
 
 from pybinbot import SignalsConsumer, BinbotApi
 from shared.autotrade import Autotrade
+from shared.config import Config
 
 
-class AutotradeConsumer(BinbotApi):
+class AutotradeConsumer:
     def __init__(
         self,
         autotrade_settings,
@@ -17,7 +18,6 @@ class AutotradeConsumer(BinbotApi):
         self.paper_trading_active_bots: list = []
         self.active_bot_pairs: list = []
         self.active_test_bots: list = active_test_bots
-        self.all_symbols: list[dict] = []
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
         self.volatility = 0
@@ -27,7 +27,8 @@ class AutotradeConsumer(BinbotApi):
         self.all_symbols = all_symbols
         self.test_autotrade_settings = test_autotrade_settings
         self.exchange = autotrade_settings["exchange_id"]
-        self.binbot_api = BinbotApi()
+        self.config = Config()
+        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -109,7 +110,7 @@ class AutotradeConsumer(BinbotApi):
                 await test_autotrade.activate_autotrade(data)
 
         # Check balance to avoid failed autotrades
-        balance_check = self.get_available_fiat(
+        balance_check = self.binbot_api.get_available_fiat(
             exchange=self.exchange, fiat=self.autotrade_settings["fiat"]
         )
         if balance_check < float(self.autotrade_settings["base_order_size"]):
