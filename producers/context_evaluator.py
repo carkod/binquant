@@ -1,5 +1,6 @@
 from shared.config import Config
 from pandas import DataFrame
+from numpy import isnan, log as logarithm, nan
 from pybinbot import (
     BinanceKlineIntervals,
     ExchangeId,
@@ -28,6 +29,7 @@ class ContextEvaluator:
         producer: AsyncProducer,
         api: KucoinApi | BinanceApi,
         symbol: str,
+        current_symbol_data,
         top_gainers_day,
         market_breadth_data,
         top_losers_day,
@@ -71,9 +73,7 @@ class ContextEvaluator:
         self.all_symbols = all_symbols
         # theorically current_symbol_data is always defined
         # if it's not defined, then it wouldn't subscribe with websockets
-        self.current_symbol_data: dict = [s for s in all_symbols if s["id"] == symbol][
-            0
-        ]
+        self.current_symbol_data = current_symbol_data
         self.price_precision = (
             self.current_symbol_data["price_precision"]
             if self.current_symbol_data
@@ -86,6 +86,46 @@ class ContextEvaluator:
 
     def days(self, secs):
         return secs * 86400
+
+    def dynamic_btc_beta_corr(self, window=50) -> tuple[float, float]:
+        """
+        Rolling beta and correlation of asset returns vs BTC returns
+        Caches returns for BTC but not for the asset
+
+        - Correlation = move
+        - Beta = magnitude
+        """
+        if "returns" not in self.df_btc:
+            self.df_btc["returns"] = logarithm(
+                self.df_btc["close"] / self.df_btc["close"].shift(1)
+            )
+
+        self.df["returns"] = logarithm(self.df["close"] / self.df["close"].shift(1))
+
+        # Align returns
+        returns = (
+            self.df[["returns"]]
+            .join(self.df_btc["returns"], how="inner", rsuffix="_btc")
+            .dropna()
+        )
+        returns.columns = ["alt", "btc"]
+
+        if len(returns) < window:
+            return 0.0, 0.0
+
+        # Use aligned returns for rolling calculations
+        cov = returns["alt"].rolling(window).cov(returns["btc"])
+        var = returns["btc"].rolling(window).var()
+
+        beta_series = cov / var.replace(0, nan)
+
+        beta = beta_series.iloc[-1]
+        corr = returns["alt"].rolling(window).corr(returns["btc"]).iloc[-1]
+
+        beta_value = round_numbers(beta, 6) if not isnan(beta) else 0.0
+        corr_value = 0.0 if isnan(corr) else round_numbers(corr, 6)
+
+        return beta_value, corr_value
 
     def bb_spreads(self) -> HABollinguerSpread:
         """
@@ -150,10 +190,7 @@ class ContextEvaluator:
 
             # correlation with BTC
             if not self.df_btc.empty and self.df_btc.close.size > 0:
-                self.btc_correlation = round_numbers(
-                    self.df["close"].corr(self.df_btc["close"], method="pearson"),
-                    self.price_precision,
-                )
+                self.btc_beta, self.btc_correlation = self.dynamic_btc_beta_corr()
                 df_pct_change = self.df_btc["close"].pct_change(periods=96) * 100
                 self.btc_price_change = (
                     df_pct_change[-1:].iloc[0] if not df_pct_change.empty else 0.0
@@ -187,6 +224,7 @@ class ContextEvaluator:
                 current_price=close_price,
                 btc_correlation=self.btc_correlation,
                 btc_price_change=self.btc_price_change,
+                btc_beta=self.btc_beta,
             )
 
         return

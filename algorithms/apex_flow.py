@@ -374,6 +374,7 @@ class ApexFlow:
         current_price: float,
         btc_correlation: float,
         btc_price_change: float,
+        btc_beta: float,
     ) -> None:
         if self.df is None or self.df.empty:
             logging.info("[VCE] No data available for combined VCE/MCD/LSR signal.")
@@ -467,6 +468,13 @@ class ApexFlow:
             msg += f"""
                 - Previous high: {round_numbers(float(row.get("prev_high", 0.0)), decimals=self.price_precision)}
                 - Previous low: {round_numbers(float(row.get("prev_low", 0.0)), decimals=self.price_precision)}
+            """
+
+        # crypto "winter" gating rule
+        if btc_beta > 2.5 and btc_correlation > 0.6:
+            autotrade = False
+            msg = f"""
+                [VCE] {self.symbol} - BTC beta {btc_beta:.2f} and correlation {btc_correlation:.2f} are too high. Skipping autotrade.
             """
 
         msg += f"""

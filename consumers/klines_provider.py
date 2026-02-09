@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from kafka import KafkaConsumer
 from pybinbot import (
@@ -40,7 +41,7 @@ class KlinesProvider:
         # Apex Flow starting point for scoring signals
         self.first_seen_at = int(time() * 1000)
         # Candles/btc candles storage
-        self.candles: list = []
+        self.candles: list[list] = []
         self.btc_candles: list[list] = []
 
         # Determine exchange
@@ -135,12 +136,22 @@ class KlinesProvider:
                 limit=self.MAX_CANDLES,
             )
 
+        all_symbols = [s for s in self.all_symbols if s["id"] == symbol]
+        if all_symbols and len(all_symbols) > 0:
+            current_symbol_data = all_symbols[0]
+        else:
+            current_symbol_data = None
+            # Can't work with a symbol that doesn't exist in our symbols table
+            logging.error(f"Symbol {symbol} not found in symbols list. Skipping.")
+            return
+
         # Pass candles to ContextEvaluator for processing
         crypto_analytics = ContextEvaluator(
             producer=self.producer,
             api=self.api,
             kucoin_symbol=kucoin_symbol,
             symbol=symbol,
+            current_symbol_data=current_symbol_data,
             top_gainers_day=self.top_gainers_day,
             market_breadth_data=self.market_breadth_data,
             top_losers_day=self.top_losers_day,
