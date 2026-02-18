@@ -5,6 +5,7 @@ from pybinbot import (
     SignalsConsumer,
     Strategy,
     round_numbers,
+    MarketType,
 )
 from models.bot import BotModel
 from shared.exceptions import AutotradeError
@@ -159,7 +160,10 @@ class Autotrade:
             )
             return
 
+        # set common values for both paper and real bots
         self.default_bot.strategy = Strategy(data.bot_strategy)
+        self.default_bot.market_type = MarketType(data.market_type)
+
         if self.db_collection_name == "paper_trading":
             # Dynamic switch to real bot URLs
             create_func = self.binbot_api.create_paper_bot

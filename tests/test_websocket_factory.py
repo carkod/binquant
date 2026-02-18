@@ -1,8 +1,47 @@
 """Tests for WebSocket factory using KuCoin Universal SDK."""
 
+from unittest.mock import AsyncMock
+
 import pytest
-from pybinbot import ExchangeId, AsyncKucoinWebsocketClient
+from pybinbot import ExchangeId, AsyncKucoinWebsocketClient, MarketType
 from shared.streaming.websocket_factory import WebsocketClientFactory
+
+
+@pytest.fixture
+def mock_default_client(monkeypatch):
+    """Prevent real KuCoin SDK connections during tests."""
+
+    class _StubWebsocket:
+        def start(self):
+            return None
+
+        def klines(self, *args, **kwargs):
+            return None
+
+    class _StubWsService:
+        def __init__(self):
+            self._spot = _StubWebsocket()
+            self._futures = _StubWebsocket()
+
+        def new_spot_public_ws(self):
+            return self._spot
+
+        def new_futures_public_ws(self):
+            return self._futures
+
+    class _StubClient:
+        def __init__(self, *args, **kwargs):
+            self._service = _StubWsService()
+
+        def ws_service(self):
+            return self._service
+
+    monkeypatch.setattr(
+        "pybinbot.streaming.kucoin.kucoin_async_client.DefaultClient",
+        _StubClient,
+    )
+
+    return _StubClient
 
 
 class TestWebsocketFactory:
@@ -48,8 +87,6 @@ class TestWebsocketFactory:
     @pytest.mark.asyncio
     async def test_kucoin_usdt_filtering(self, monkeypatch):
         """Test that KuCoin factory only subscribes to USDT markets"""
-        from unittest.mock import AsyncMock
-
         # Mock symbols with mixed quote assets
         mock_symbols = [
             {"id": "BTC-USDT", "base_asset": "BTC", "quote_asset": "USDT"},
@@ -86,7 +123,7 @@ class TestWebsocketFactory:
 
         monkeypatch.setattr(
             "shared.streaming.websocket_factory.AsyncKucoinWebsocketClient",
-            lambda producer: mock_client,
+            lambda *args, **kwargs: mock_client,
         )
 
         # Trigger subscriptions
@@ -110,25 +147,29 @@ class TestKucoinWebsocketSDK:
     """
 
     @pytest.mark.asyncio
-    async def test_kucoin_client_initialization(self):
+    async def test_kucoin_client_initialization(self, mock_default_client):
         """
         Test that Kucoin client can be initialized with a producer.
         """
-        from pybinbot.streaming.async_producer import AsyncProducer
-
-        test_producer = AsyncProducer(host="localhost", port=9092)
-        client = AsyncKucoinWebsocketClient(producer=test_producer)
+        test_producer = AsyncMock()
+        client = AsyncKucoinWebsocketClient(
+            producer=test_producer, key="test", secret="test", passpharse="test"
+        )
         assert client is not None
 
     @pytest.mark.asyncio
-    async def test_kucoin_spot_client_initialization(self):
+    async def test_kucoin_spot_client_initialization(self, mock_default_client):
         """
         Test that Kucoin spot client can be initialized with a producer.
         """
-        from pybinbot.streaming.async_producer import AsyncProducer
-
-        test_producer = AsyncProducer(host="localhost", port=9092)
-        client = AsyncKucoinWebsocketClient(producer=test_producer)
+        test_producer = AsyncMock()
+        client = AsyncKucoinWebsocketClient(
+            producer=test_producer,
+            key="test",
+            secret="test",
+            passpharse="test",
+            market_type=MarketType.SPOT,
+        )
         assert client is not None
 
 

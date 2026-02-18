@@ -8,6 +8,7 @@ from pybinbot import (
     AsyncProducer,
     AsyncSpotWebsocketStreamClient,
     AsyncKucoinWebsocketClient,
+    MarketType,
 )
 from producers.klines_connector import KlinesConnector
 from shared.config import Config
@@ -44,6 +45,11 @@ class WebsocketClientFactory:
         return [s for s in symbols if s.get("quote_asset") == self.fiat]
 
     async def start_stream(self) -> list[AsyncKucoinWebsocketClient]:
+        """
+        Start websocket stream for KuCoin SPOT.
+        max_per_client is 400 for websockets, but to be safe we use 300 to avoid hitting limits.
+        If there are more than 300 symbols, we will create multiple websocket clients.
+        """
         await self.producer.start()
         symbols = self.filter_fiat_symbols(self.binbot_api.get_symbols())
         total = len(symbols)
@@ -53,7 +59,13 @@ class WebsocketClientFactory:
         # Create multiple clients, each subscribing to a chunk of symbols
         for i in range(0, total, max_per_client):
             chunk = symbols[i : i + max_per_client]
-            client = AsyncKucoinWebsocketClient(producer=self.producer)
+            client = AsyncKucoinWebsocketClient(
+                key=self.config.kucoin_key,
+                secret=self.config.kucoin_secret,
+                passpharse=self.config.kucoin_passphrase,
+                producer=self.producer,
+                market_type=MarketType.SPOT,
+            )
             # Give the websocket a moment to be ready before subscribing
             await asyncio.sleep(0.5)
 
@@ -65,6 +77,38 @@ class WebsocketClientFactory:
 
         return clients
 
+    async def start_future_stream(self) -> list[AsyncKucoinWebsocketClient]:
+        """
+        Start websocket stream for KuCoin Futures.
+        It has different endpoints and needs to be separated from SPOT streaming.
+        """
+        await self.producer.start()
+        symbols = self.filter_fiat_symbols(self.binbot_api.get_symbols())
+        futures_symbols = [s for s in symbols if s["id"].endswith("USDTM")]
+        total = len(futures_symbols)
+        clients: list[AsyncKucoinWebsocketClient] = []
+        max_per_client = 300
+
+        # Create multiple clients, each subscribing to a chunk of symbols
+        for i in range(0, total, max_per_client):
+            chunk = futures_symbols[i : i + max_per_client]
+            client = AsyncKucoinWebsocketClient(
+                key=self.config.kucoin_key,
+                secret=self.config.kucoin_secret,
+                passpharse=self.config.kucoin_passphrase,
+                producer=self.producer,
+                market_type=MarketType.FUTURES,
+            )
+            # Give the websocket a moment to be ready before subscribing
+            await asyncio.sleep(0.5)
+
+        for s in chunk:
+            await client.subscribe_klines(s["id"], interval=self.interval.value)
+
+        clients.append(client)
+
+        return clients
+
     async def create_connector(
         self,
     ) -> list[AsyncSpotWebsocketStreamClient] | list[AsyncKucoinWebsocketClient]:
@@ -73,7 +117,9 @@ class WebsocketClientFactory:
         based on exchange
         """
         if self.exchange == ExchangeId.KUCOIN:
-            return await self.start_stream()
+            # clients = await self.start_stream()
+            clients = await self.start_future_stream()
+            return clients
         else:
             connector = KlinesConnector()
             await connector.start_stream()
