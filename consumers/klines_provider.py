@@ -179,7 +179,7 @@ class KlinesProvider:
             exchange=self.exchange,
             first_seen_at=self.first_seen_at,
             interval=self.interval,
-            market_type=klines.market_type,
+            market_type=klines.market_type if klines.market_type else MarketType.SPOT,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

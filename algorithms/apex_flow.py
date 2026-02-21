@@ -8,6 +8,7 @@ from pybinbot import Strategy, round_numbers, Indicators, MarketType
 from models.signals import SignalCandidate
 from consumers.signal_collector import SignalCollector
 from shared.enums import direction_type
+from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -24,9 +25,11 @@ class ApexFlow:
     """
 
     def __init__(self, cls: "ContextEvaluator") -> None:
+        self.config = cls.config
         # Symbol / context
         self.symbol = cls.symbol
         self.kucoin_symbol = cls.kucoin_symbol
+        self.exchange = cls.exchange
         self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.market_type = cls.market_type
@@ -482,11 +485,18 @@ class ApexFlow:
                 [VCE] {self.symbol} - BTC beta {btc_beta:.2f} and correlation {btc_correlation:.2f} are too high. Skipping autotrade.
             """
 
+        kucoin_link = build_links_msg(
+            self.config.env, self.exchange, self.market_type, self.symbol
+        )[0]
+        terminal_link = build_links_msg(
+            self.config.env, self.exchange, self.market_type, self.symbol
+        )[1]
+
         msg += f"""
             - 📊 {base_asset} volume: {round_numbers(float(row.get("volume", 0.0)), decimals=self.price_precision)}
             - Autotrade?: {"Yes" if autotrade else "No"}
-            - <a href='https://www.kucoin.com/trade/{self.kucoin_symbol}'>KuCoin</a>
-            - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
         candidate = SignalCandidate(

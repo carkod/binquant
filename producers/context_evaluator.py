@@ -41,7 +41,7 @@ class ContextEvaluator:
         first_seen_at: int,
         interval: BinanceKlineIntervals | KucoinKlineIntervals,
         kucoin_symbol=None,
-        market_type: MarketType = None,
+        market_type: MarketType = MarketType.SPOT,
     ) -> None:
         """
         Only variables no data requests (third party or db)
