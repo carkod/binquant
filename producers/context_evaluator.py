@@ -15,19 +15,21 @@ from pybinbot import (
     KucoinApi,
     BinanceApi,
     AsyncProducer,
+    MarketType,
 )
 
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
+from shared.kucoin_futures import KucoinFutures
 
 
 class ContextEvaluator:
     def __init__(
         self,
         producer: AsyncProducer,
-        api: KucoinApi | BinanceApi,
+        api: KucoinApi | BinanceApi | KucoinFutures,
         symbol: str,
         current_symbol_data,
         top_gainers_day,
@@ -39,6 +41,7 @@ class ContextEvaluator:
         first_seen_at: int,
         interval: BinanceKlineIntervals | KucoinKlineIntervals,
         kucoin_symbol=None,
+        market_type: MarketType = MarketType.SPOT,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -50,6 +53,7 @@ class ContextEvaluator:
         self.producer = producer
         self.api = api
         self.config = Config()
+        self.market_type = market_type
         self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.symbol = symbol
         self.kucoin_symbol = kucoin_symbol

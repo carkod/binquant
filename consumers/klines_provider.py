@@ -10,11 +10,13 @@ from pybinbot import (
     BinanceApi,
     AsyncProducer,
     KlineProduceModel,
+    MarketType,
 )
 from consumers.autotrade_consumer import AutotradeConsumer
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
 from time import time
+from shared.kucoin_futures import KucoinFutures
 
 
 class KlinesProvider:
@@ -31,7 +33,7 @@ class KlinesProvider:
         self.config = Config()
         self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
-        self.api: KucoinApi | BinanceApi
+        self.api: KucoinApi | BinanceApi | KucoinFutures
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.consumer = consumer
@@ -108,8 +110,8 @@ class KlinesProvider:
     async def aggregate_data(self, payload: dict):
         """
         Merge new asset candle and pass data to ContextEvaluator.
+        - Reload market data at the top of each hour
         """
-        # Reload market data at the top of each hour
         current_time = datetime.now()
         if current_time.minute == 0:
             self.top_gainers_day = await self.binbot_api.get_top_gainers()
@@ -118,6 +120,13 @@ class KlinesProvider:
 
         # Convert payload into standardized candle dict
         klines = KlineProduceModel.model_validate(payload)
+        if klines.market_type == MarketType.FUTURES:
+            self.api = KucoinFutures(
+                key=self.config.kucoin_key,
+                secret=self.config.kucoin_secret,
+                passphrase=self.config.kucoin_passphrase,
+            )
+
         kucoin_symbol = klines.symbol
         symbol = kucoin_symbol.replace("-", "")
 
@@ -130,11 +139,21 @@ class KlinesProvider:
         refresh_btc_candles = self._refresh_btc_candles()
 
         if refresh_btc_candles:
-            self.btc_candles = self.api.get_ui_klines(
-                symbol="BTC-USDT" if self.exchange == ExchangeId.KUCOIN else "BTCUSDT",
-                interval=self.interval.value,
-                limit=self.MAX_CANDLES,
-            )
+            if klines.market_type == MarketType.FUTURES:
+                self.btc_candles = self.api.get_ui_klines(
+                    symbol="ETHBTCUSDTM",
+                    interval=self.interval.value,
+                    limit=self.MAX_CANDLES,
+                )
+            else:
+                symbol = (
+                    "BTCUSDT" if self.exchange == ExchangeId.BINANCE else "BTC-USDT"
+                )
+                self.btc_candles = self.api.get_ui_klines(
+                    symbol=symbol,
+                    interval=self.interval.value,
+                    limit=self.MAX_CANDLES,
+                )
 
         all_symbols = [s for s in self.all_symbols if s["id"] == symbol]
         if all_symbols and len(all_symbols) > 0:
@@ -160,6 +179,7 @@ class KlinesProvider:
             exchange=self.exchange,
             first_seen_at=self.first_seen_at,
             interval=self.interval,
+            market_type=klines.market_type if klines.market_type else MarketType.SPOT,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

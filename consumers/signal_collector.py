@@ -1,12 +1,16 @@
 from time import time
 from models.signals import SignalCandidate
 from collections.abc import Callable
-from pybinbot import BinbotApi
+from pybinbot import BinbotApi, KucoinKlineIntervals, BinanceKlineIntervals
 from shared.config import Config
 
 
 class SignalCollector:
-    def __init__(self, first_seen_at: int | None, interval) -> None:
+    def __init__(
+        self,
+        first_seen_at: int | None,
+        interval: KucoinKlineIntervals | BinanceKlineIntervals,
+    ) -> None:
         self.buffer: dict[str, SignalCandidate] = {}
         self.first_seen_at = first_seen_at
         self.autotrade: Callable
