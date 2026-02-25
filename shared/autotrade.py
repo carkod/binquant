@@ -1,13 +1,13 @@
 import logging
 
 from pybinbot import (
+    BotBase,
     CloseConditions,
     SignalsConsumer,
     Strategy,
     round_numbers,
     MarketType,
 )
-from models.bot import BotModel
 from shared.exceptions import AutotradeError
 from pybinbot import ExchangeId, BinanceApi, KucoinApi, BinbotApi
 from shared.config import Config
@@ -54,7 +54,7 @@ class Autotrade:
         self.symbol_data = self.binbot_api.get_single_symbol(self.pair)
         self.decimals = self.symbol_data["price_precision"]
         self.algorithm_name = algorithm_name
-        self.default_bot = BotModel(
+        self.default_bot = BotBase(
             pair=pair,
             mode="autotrade",
             name=algorithm_name,
@@ -214,7 +214,7 @@ class Autotrade:
                 pass
 
         # Create bot
-        payload = self.default_bot.model_dump_json()
+        payload = self.default_bot.model_dump(mode="json")
         # create paper or real bot
         create_bot = create_func(payload)
 
@@ -238,4 +238,3 @@ class Autotrade:
         else:
             message = f"Succesful {self.db_collection_name} autotrade, opened with {self.pair}!"
             errors_func(bot_id, message)
-            # restart streaming is not necessary, because activation already did it
