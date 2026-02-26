@@ -135,7 +135,10 @@ class Autotrade:
         self.default_bot.cooldown = 360  # Avoid cannibalization of profits
 
         # disable margin short if not available to prevent bot erroring
-        if not self.symbol_data["is_margin_trading_allowed"]:
+        if (
+            not self.symbol_data["is_margin_trading_allowed"]
+            and self.exchange == ExchangeId.BINANCE
+        ):
             self.default_bot.margin_short_reversal = False
 
         if data.bb_spreads:
