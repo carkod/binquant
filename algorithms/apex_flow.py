@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from pandas import notna, DataFrame, Series
-from pybinbot import Strategy, round_numbers, Indicators, MarketType
+from pybinbot import Strategy, round_numbers, Indicators
 from models.signals import SignalCandidate
 from consumers.signal_collector import SignalCollector
 from shared.enums import direction_type
@@ -437,9 +437,8 @@ class ApexFlow:
             btc_correlation=btc_correlation,
         )
 
-        # if not direction or score < 3:
-        #     return
-        direction = direction or "LONG"  # Default to LONG if no clear direction
+        if not direction or score < 3:
+            return
 
         algo = f"apex_{pattern.lower()}" if pattern else "apex"
         bot_strategy = Strategy.margin_short if direction == "SHORT" else Strategy.long
@@ -473,17 +472,6 @@ class ApexFlow:
             msg += f"""
                 - Previous high: {round_numbers(float(row.get("prev_high", 0.0)), decimals=self.price_precision)}
                 - Previous low: {round_numbers(float(row.get("prev_low", 0.0)), decimals=self.price_precision)}
-            """
-
-        # crypto "winter" gating rule
-        if (
-            btc_beta > 2.5
-            and btc_correlation > 0.6
-            and self.market_type != MarketType.SPOT
-        ):
-            autotrade = False
-            msg = f"""
-                [VCE] {self.symbol} - BTC beta {btc_beta:.2f} and correlation {btc_correlation:.2f} are too high. Skipping autotrade.
             """
 
         kucoin_link = build_links_msg(
