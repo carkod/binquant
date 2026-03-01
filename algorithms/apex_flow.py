@@ -437,8 +437,9 @@ class ApexFlow:
             btc_correlation=btc_correlation,
         )
 
-        if not direction or score < 3:
-            return
+        # if not direction or score < 3:
+        #     return
+        direction = direction or "LONG"  # Default to LONG if no clear direction
 
         algo = f"apex_{pattern.lower()}" if pattern else "apex"
         bot_strategy = Strategy.margin_short if direction == "SHORT" else Strategy.long

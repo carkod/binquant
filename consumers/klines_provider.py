@@ -11,12 +11,12 @@ from pybinbot import (
     AsyncProducer,
     KlineProduceModel,
     MarketType,
+    KucoinFutures,
 )
 from consumers.autotrade_consumer import AutotradeConsumer
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
 from time import time
-from shared.kucoin_futures import KucoinFutures
 
 
 class KlinesProvider:

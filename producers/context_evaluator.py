@@ -16,13 +16,13 @@ from pybinbot import (
     BinanceApi,
     AsyncProducer,
     MarketType,
+    KucoinFutures,
 )
 
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
-from shared.kucoin_futures import KucoinFutures
 
 
 class ContextEvaluator:
