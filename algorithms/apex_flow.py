@@ -503,8 +503,8 @@ class ApexFlow:
             msg=msg,
         )
 
-        await self.telegram_consumer.send_signal(msg)
         await self.signal_collector.handle(
             candidate=candidate,
             dispatch_function=self.at_consumer.process_autotrade_restrictions,
+            send_telegram=self.telegram_consumer.send_signal,
         )

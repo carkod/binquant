@@ -14,6 +14,7 @@ class SignalCollector:
         self.buffer: dict[str, SignalCandidate] = {}
         self.first_seen_at = first_seen_at
         self.autotrade: Callable
+        self.send_telegram: Callable | None = None
         self.config = Config()
         self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.interval = interval
@@ -29,8 +30,10 @@ class SignalCollector:
         self,
         candidate: SignalCandidate,
         dispatch_function: Callable,
+        send_telegram: Callable | None = None,
     ):
         self.autotrade = dispatch_function
+        self.send_telegram = send_telegram
         now = int(time() * 1000)
 
         if self.first_seen_at is None:
@@ -56,4 +59,6 @@ class SignalCollector:
 
         for candidate in ranked:
             if candidate.symbol not in active_bots:
+                if self.send_telegram:
+                    await self.send_telegram(candidate.msg)
                 await self.autotrade(candidate)

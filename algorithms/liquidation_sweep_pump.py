@@ -97,7 +97,11 @@ class LiquidationSweepPump:
         # ignore weak signals
         PUMP_SCORE_THRESHOLD = 15
 
-        if latest_score < PUMP_SCORE_THRESHOLD:
+        if (
+            latest_score is None
+            or latest_score != latest_score
+            or latest_score < PUMP_SCORE_THRESHOLD
+        ):
             return
 
         kucoin_link = build_links_msg(
@@ -129,8 +133,8 @@ class LiquidationSweepPump:
             msg=msg,
         )
 
-        await self.telegram_consumer.send_signal(msg)
         await self.signal_collector.handle(
             candidate=candidate,
             dispatch_function=self.at_consumer.process_autotrade_restrictions,
+            send_telegram=self.telegram_consumer.send_signal,
         )
