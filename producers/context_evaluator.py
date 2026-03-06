@@ -21,6 +21,7 @@ from pybinbot import (
 
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
+from algorithms.liquidation_sweep_pump import LiquidationSweepPump
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 
@@ -161,6 +162,7 @@ class ContextEvaluator:
         """
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
+        self.lsp = LiquidationSweepPump(cls=self)
 
     async def process_data(self, candles, btc_candles=None):
         """
@@ -215,6 +217,10 @@ class ContextEvaluator:
 
             close_price = float(self.df["close"].iloc[-1])
             spreads = self.bb_spreads()
+
+            await self.lsp.signal_generator(
+                current_price=close_price,
+            )
 
             await self.sh3.signal(
                 current_price=close_price,
