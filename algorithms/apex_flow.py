@@ -37,7 +37,7 @@ class ApexFlow:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
-        self.df: DataFrame = cls.df.copy()
+        self.df = cls.df.copy()
         self.btc_df = cls.btc_df.copy()
         self.signal_collector = SignalCollector(
             first_seen_at=cls.first_seen_at, interval=cls.interval

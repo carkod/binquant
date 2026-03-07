@@ -34,6 +34,11 @@ class KlinesProvider:
         self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.api: KucoinApi | BinanceApi | KucoinFutures
+        self.kucoin_futures_api = KucoinFutures(
+            key=self.config.kucoin_key,
+            secret=self.config.kucoin_secret,
+            passphrase=self.config.kucoin_passphrase,
+        )
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.consumer = consumer
@@ -45,6 +50,10 @@ class KlinesProvider:
         # Candles/btc candles storage
         self.candles: list[list] = []
         self.btc_candles: list[list] = []
+        # Open interest cache
+        # symbol -> {timestamp: openInterest}
+        self.oi_cache: dict[str, tuple[int, float]] = {}
+        self.CACHE_TTL_MS = 5000
 
         # Determine exchange
         if self.autotrade_settings["exchange_id"] == "kucoin":
@@ -88,6 +97,31 @@ class KlinesProvider:
                 refresh_btc_candles = True
 
         return refresh_btc_candles
+
+    def retrieve_oi(self, kucoin_symbol: str) -> float:
+        """
+        Fetch current open interest from KuCoin with caching and compute OI growth.
+        Returns a float: growth factor relative to last cached OI (1.0 if first tick or no change)
+        """
+        now_ms = int(time() * 1000)
+        last_ts, last_oi = self.oi_cache[kucoin_symbol]
+
+        if kucoin_symbol in self.oi_cache and now_ms - last_ts < self.CACHE_TTL_MS:
+            current_oi = last_oi
+        else:
+            # Fetch fresh OI from API
+            current_oi = float(self.kucoin_futures_api.get_open_interest(kucoin_symbol))
+            # Update cache
+            self.oi_cache[kucoin_symbol] = (now_ms, current_oi)
+
+        # --- Compute OI growth ---
+        oi_growth: float = max(current_oi / last_oi, 0.0)
+        if last_oi is None or last_oi == 0:
+            oi_growth = 1.0
+
+        # Update last OI for next tick
+        self.oi_cache[kucoin_symbol] = (now_ms, current_oi)
+        return oi_growth
 
     async def load_data_on_start(self):
         """Load initial BTC benchmark candles and market data."""
@@ -180,6 +214,7 @@ class KlinesProvider:
             first_seen_at=self.first_seen_at,
             interval=self.interval,
             market_type=klines.market_type if klines.market_type else MarketType.SPOT,
+            oi_data=self.retrieve_oi(kucoin_symbol),
         )
         await crypto_analytics.process_data(
             candles=self.candles,
