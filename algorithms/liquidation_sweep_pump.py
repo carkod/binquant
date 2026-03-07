@@ -1,9 +1,8 @@
 from os import getenv
 from typing import TYPE_CHECKING
-
-from pandas import DataFrame
 from models.signals import SignalCandidate
-from pybinbot import Strategy, round_numbers
+from pybinbot import Strategy, round_numbers, KlineSchema
+from pandera.typing import DataFrame as TypedDataFrame
 from consumers.signal_collector import SignalCollector
 from shared.utils import build_links_msg
 
@@ -25,97 +24,93 @@ class LiquidationSweepPump:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
-        self.df: DataFrame = cls.df.copy()
-        self.btc_df = cls.btc_df.copy()
+        self.oi_growth = cls.oi_data
+        self.df: TypedDataFrame[KlineSchema] = cls.df.copy()
+        self.df_btc: TypedDataFrame[KlineSchema] = cls.df_btc.copy()
         self.signal_collector = SignalCollector(
             first_seen_at=cls.first_seen_at, interval=cls.interval
         )
 
-    def compute_pump_score(
-        self,
-        oi_col="open_interest",
-        vol_col="volume",
-        price_col="close",
-        window_hours=3,
-    ) -> DataFrame:
+    def compute_pump_score(self, window_hours=3) -> TypedDataFrame[KlineSchema]:
         """
-        Compute the PumpScore for a single asset based on:
-        - Open Interest growth
-        - Volume growth
+        Compute pump score using:
+        - Relative volume
+        - Early momentum
         - Price compression
-
-        df: pandas DataFrame with candlestick data sorted by timestamp ascending
-        window_hours: number of past hours to calculate momentum
-
-        Returns: df with a new column 'pump_score'
+        - OI growth (cached per asset; defaults to 1.0 if unavailable)
         """
-
         df = self.df.copy()
 
-        # 1. Volume Growth
-        df["vol_growth"] = df[vol_col].rolling(window=window_hours).sum() / df[
-            vol_col
-        ].rolling(window=window_hours * 2).sum().shift(window_hours)
+        # --- 1. Relative Volume ---
+        df["rel_volume"] = df.volume / df.volume.rolling(
+            window=window_hours * 2
+        ).mean().shift(window_hours)
 
-        # 2. Open Interest Growth (if available)
-        if oi_col in df.columns:
-            df["oi_growth"] = df[oi_col].rolling(window=window_hours).mean() / df[
-                oi_col
-            ].rolling(window=window_hours * 2).mean().shift(window_hours)
-        else:
-            df["oi_growth"] = 1.0  # default to 1 if no OI
+        # --- 2. Early Momentum ---
+        df["price_momentum"] = df.close.pct_change(periods=window_hours)
 
-        # 3. Price Range Fraction (Price compression)
+        # --- 3. Price Compression ---
         df["price_range_frac"] = (
-            df["high"].rolling(window=window_hours * 2).max()
-            - df["low"].rolling(window=window_hours * 2).min()
-        ) / df[price_col]
+            df.high.rolling(window=window_hours * 2).max()
+            - df.low.rolling(window=window_hours * 2).min()
+        ) / df.close
 
-        # 4. Pump Score
-        df["pump_score"] = (df["oi_growth"] * df["vol_growth"]) / df["price_range_frac"]
+        # --- 4. OI Growth ---
+        oi_growth = 1 + max(0, (self.oi_growth - 1)) if self.oi_growth else 1.0
 
-        # Optional: smooth the score to reduce noise
+        # --- 5. Pump Score ---
+        df["pump_score"] = (
+            df["rel_volume"] * (1 + df["price_momentum"]) * oi_growth
+        ) / df["price_range_frac"]
         df["pump_score_smooth"] = df["pump_score"].rolling(window=2).mean()
 
         return df
 
     async def signal_generator(self, current_price: float) -> None:
         """
-        Generate a signal if the pump score exceeds a certain threshold
+        Generate signal if pump score exceeds threshold and OI growth filter
         """
         if self.df is None or self.df.empty:
             return None
 
-        algo = "liquidation sweep pump"
-        autotrade = False
-        df = self.compute_pump_score()
-        row = df.iloc[-1]
-        latest_score = df["pump_score_smooth"].iloc[-1]
-        base_asset = self.current_symbol_data["base_asset"]
+        algo = "liquidation_sweep_pump"
+        autotrade = True
         bot_strategy = Strategy.long
+        base_asset = self.current_symbol_data["base_asset"]
 
-        # ignore weak signals
-        PUMP_SCORE_THRESHOLD = 15
+        df = self.compute_pump_score()
 
-        if (
-            latest_score is None
-            or latest_score != latest_score
-            or latest_score < PUMP_SCORE_THRESHOLD
-        ):
+        # --- Filters ---
+        # Take last N candles (say 48 for 12h)
+        recent_scores = df["pump_score_smooth"].iloc[-48:]
+        btc_momentum = self.df_btc.close.pct_change().iloc[-1]
+
+        # Compute dynamic threshold
+        # For example, top 5% of historical scores
+        PUMP_SCORE_THRESHOLD = recent_scores.quantile(0.95)
+        row = df.iloc[-1]
+        latest_score = row["pump_score_smooth"]
+
+        if btc_momentum < -0.01:
             return
 
-        kucoin_link = build_links_msg(
+        if latest_score is None or float(latest_score) < PUMP_SCORE_THRESHOLD:
+            return
+
+        # Optional OI confirmation
+        if self.oi_growth is not None and self.oi_growth < 1.05:
+            return
+
+        kucoin_link, terminal_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
-        )[0]
-        terminal_link = build_links_msg(
-            self.config.env, self.exchange, self.market_type, self.symbol
-        )[1]
+        )
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-            - Score: {latest_score}
-            - 📊 {base_asset} volume: {round_numbers(float(row.get("volume", 0.0)), decimals=self.price_precision)}
+            - Score: {latest_score:.2f}
+            - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
+            - OI Growth: {self.oi_growth:.2f}
             - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
@@ -129,7 +124,7 @@ class LiquidationSweepPump:
             market_type=self.market_type,
             score=latest_score,
             current_price=current_price,
-            volume=float(row.get("volume", 0.0)),
+            volume=float(row.volume),
             msg=msg,
         )
 
