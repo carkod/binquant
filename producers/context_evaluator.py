@@ -57,7 +57,11 @@ class ContextEvaluator:
         self.api = api
         self.config = Config()
         self.market_type = market_type
-        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
+        self.binbot_api = BinbotApi(
+            base_url=self.config.backend_domain,
+            service_email=self.config.service_email,
+            service_password=self.config.service_password,
+        )
         self.symbol = symbol
         self.kucoin_symbol = kucoin_symbol
         self.df: TypedDataFrame[KlineSchema]

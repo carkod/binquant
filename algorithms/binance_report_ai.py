@@ -20,7 +20,11 @@ class BinanceAIReport:
     ) -> None:
         self.symbol = cls.symbol.replace("-", "")
         self.config = Config()
-        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
+        self.binbot_api = BinbotApi(
+            base_url=self.config.backend_domain,
+            service_email=self.config.service_email,
+            service_password=self.config.service_password,
+        )
         self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
         self.telegram_consumer = cls.telegram_consumer
