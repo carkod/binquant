@@ -37,8 +37,8 @@ class ApexFlow:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
-        self.df: DataFrame = cls.df.copy()
-        self.btc_df = cls.btc_df.copy()
+        self.df = cls.df.copy()
+        self.df_btc = cls.df_btc.copy()
         self.signal_collector = SignalCollector(
             first_seen_at=cls.first_seen_at, interval=cls.interval
         )
@@ -225,12 +225,12 @@ class ApexFlow:
         - ma_smooth: optional smoothing of relative strength
         - min_relative_strength: threshold to consider rotation attractive
         """
-        if self.df.empty or self.btc_df.empty:
+        if self.df.empty or self.df_btc.empty:
             return DataFrame()
 
         # Compute percentage returns over lookback
         asset_ret = self.df["close"].pct_change(lookback)
-        btc_ret = self.btc_df["close"].pct_change(lookback)
+        btc_ret = self.df_btc["close"].pct_change(lookback)
 
         # Relative strength
         rel_strength = asset_ret / (btc_ret + 1e-9)
@@ -292,11 +292,11 @@ class ApexFlow:
         Determines overall market regime using BTC structure.
         Returns: 'BULL', 'BEAR', or 'CHOP'
         """
-        if self.btc_df.empty:
+        if self.df_btc.empty:
             return "CHOP"
 
-        btc_fast = self.btc_df["close"].ewm(span=9).mean().iloc[-1]
-        btc_slow = self.btc_df["close"].ewm(span=21).mean().iloc[-1]
+        btc_fast = self.df_btc["close"].ewm(span=9).mean().iloc[-1]
+        btc_slow = self.df_btc["close"].ewm(span=21).mean().iloc[-1]
 
         spread = abs(btc_fast - btc_slow) / btc_slow
 
@@ -503,8 +503,8 @@ class ApexFlow:
             msg=msg,
         )
 
-        await self.telegram_consumer.send_signal(msg)
         await self.signal_collector.handle(
             candidate=candidate,
             dispatch_function=self.at_consumer.process_autotrade_restrictions,
+            send_telegram=self.telegram_consumer.send_signal,
         )

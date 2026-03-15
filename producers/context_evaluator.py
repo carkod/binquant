@@ -1,10 +1,11 @@
 from shared.config import Config
-from pandas import DataFrame
+from pandera.typing import DataFrame as TypedDataFrame
 from numpy import isnan, log as logarithm, nan
 from pybinbot import (
     BinanceKlineIntervals,
     ExchangeId,
     HABollinguerSpread,
+    KlineSchema,
     KucoinKlineIntervals,
     MarketDominance,
     Strategy,
@@ -21,6 +22,7 @@ from pybinbot import (
 
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
+from algorithms.liquidation_sweep_pump import LiquidationSweepPump
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 
@@ -42,6 +44,7 @@ class ContextEvaluator:
         interval: BinanceKlineIntervals | KucoinKlineIntervals,
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
+        oi_data: float = None,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -57,10 +60,10 @@ class ContextEvaluator:
         self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
         self.symbol = symbol
         self.kucoin_symbol = kucoin_symbol
-        self.df = DataFrame()
-        self.df_4h = DataFrame()
-        self.df_1h = DataFrame()
-        self.btc_df = DataFrame()
+        self.df: TypedDataFrame[KlineSchema]
+        self.df_4h: TypedDataFrame[KlineSchema]
+        self.df_1h: TypedDataFrame[KlineSchema]
+        self.btc_df: TypedDataFrame[KlineSchema]
         self.exchange = exchange
         self.interval = interval
         # describes current USDC market: gainers vs losers
@@ -87,6 +90,7 @@ class ContextEvaluator:
         self.at_consumer = ac_api
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
+        self.oi_data = oi_data
 
     def days(self, secs):
         return secs * 86400
@@ -161,6 +165,7 @@ class ContextEvaluator:
         """
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
+        self.lsp = LiquidationSweepPump(cls=self)
 
     async def process_data(self, candles, btc_candles=None):
         """
@@ -215,6 +220,10 @@ class ContextEvaluator:
 
             close_price = float(self.df["close"].iloc[-1])
             spreads = self.bb_spreads()
+
+            await self.lsp.signal_generator(
+                current_price=close_price,
+            )
 
             await self.sh3.signal(
                 current_price=close_price,

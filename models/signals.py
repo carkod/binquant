@@ -10,9 +10,13 @@ class SignalCandidate(SignalsConsumer):
 
     direction: str = Field(default="", description="Signal direction: buy/sell")
     score: float = Field(default=0, description="Score for ranking signals")
-    atr: float
-    bb_width: float
-    volume: float
+    atr: float = Field(default=0, description="Average True Range for volatility")
+    bb_width: float = Field(
+        default=0, description="Bollinger Bands width for volatility"
+    )
+    volume: float = Field(
+        default=0, description="Volume at the time of signal generation"
+    )
     timestamp: int = Field(default=int(time() * 1000), description="Current ts in ms")
 
     model_config = ConfigDict(from_attributes=True, extra="allow", use_enum_values=True)
