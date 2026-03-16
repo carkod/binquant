@@ -221,6 +221,7 @@ class KlinesProvider:
             interval=self.interval,
             market_type=klines.market_type if klines.market_type else MarketType.SPOT,
             oi_data=self.retrieve_oi(kucoin_symbol),
+            binbot_api=self.binbot_api,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

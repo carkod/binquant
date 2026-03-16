@@ -28,7 +28,9 @@ class LiquidationSweepPump:
         self.df: TypedDataFrame[KlineSchema] = cls.df.copy()
         self.df_btc: TypedDataFrame[KlineSchema] = cls.df_btc.copy()
         self.signal_collector = SignalCollector(
-            first_seen_at=cls.first_seen_at, interval=cls.interval
+            first_seen_at=cls.first_seen_at,
+            interval=cls.interval,
+            binbot_api=cls.binbot_api,
         )
 
     def compute_pump_score(self, window_hours=3) -> TypedDataFrame[KlineSchema]:

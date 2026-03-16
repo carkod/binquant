@@ -107,6 +107,7 @@ class AutotradeConsumer:
                     pair=symbol,
                     settings=self.test_autotrade_settings,
                     algorithm_name=data.algo,
+                    binbot_api=self.binbot_api,
                 )
                 await test_autotrade.activate_autotrade(data)
 
@@ -136,6 +137,7 @@ class AutotradeConsumer:
                     settings=self.autotrade_settings,
                     algorithm_name=data.algo,
                     db_collection_name="bots",
+                    binbot_api=self.binbot_api,
                 )
                 await autotrade.activate_autotrade(data)
 

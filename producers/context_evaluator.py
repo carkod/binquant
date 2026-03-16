@@ -42,6 +42,7 @@ class ContextEvaluator:
         exchange: ExchangeId,
         first_seen_at: int,
         interval: BinanceKlineIntervals | KucoinKlineIntervals,
+        binbot_api: BinbotApi,
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
@@ -57,11 +58,7 @@ class ContextEvaluator:
         self.api = api
         self.config = Config()
         self.market_type = market_type
-        self.binbot_api = BinbotApi(
-            base_url=self.config.backend_domain,
-            service_email=self.config.service_email,
-            service_password=self.config.service_password,
-        )
+        self.binbot_api = binbot_api
         self.symbol = symbol
         self.kucoin_symbol = kucoin_symbol
         self.df: TypedDataFrame[KlineSchema]

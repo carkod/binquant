@@ -2,7 +2,6 @@ import time
 import requests
 from math import tanh
 from typing import TYPE_CHECKING
-from pybinbot import BinbotApi
 from shared.config import Config
 
 if TYPE_CHECKING:
@@ -20,11 +19,7 @@ class BinanceAIReport:
     ) -> None:
         self.symbol = cls.symbol.replace("-", "")
         self.config = Config()
-        self.binbot_api = BinbotApi(
-            base_url=self.config.backend_domain,
-            service_email=self.config.service_email,
-            service_password=self.config.service_password,
-        )
+        self.binbot_api = cls.binbot_api
         self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
         self.telegram_consumer = cls.telegram_consumer
