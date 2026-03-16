@@ -85,6 +85,7 @@ class KlinesProvider:
             ),
             all_symbols=self.all_symbols,
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
+            binbot_api=self.binbot_api,
         )
 
     def _refresh_btc_candles(self) -> bool:
