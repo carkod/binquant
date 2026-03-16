@@ -12,6 +12,7 @@ class AutotradeConsumer:
         active_test_bots,
         all_symbols,
         test_autotrade_settings,
+        binbot_api: BinbotApi,
     ) -> None:
         self.market_domination_reversal = False
         self.active_bots: list = []
@@ -28,11 +29,7 @@ class AutotradeConsumer:
         self.test_autotrade_settings = test_autotrade_settings
         self.exchange = autotrade_settings["exchange_id"]
         self.config = Config()
-        self.binbot_api = BinbotApi(
-            base_url=self.config.backend_domain,
-            service_email=self.config.service_email,
-            service_password=self.config.service_password,
-        )
+        self.binbot_api = binbot_api
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -110,6 +107,7 @@ class AutotradeConsumer:
                     pair=symbol,
                     settings=self.test_autotrade_settings,
                     algorithm_name=data.algo,
+                    binbot_api=self.binbot_api,
                 )
                 await test_autotrade.activate_autotrade(data)
 
@@ -139,6 +137,7 @@ class AutotradeConsumer:
                     settings=self.autotrade_settings,
                     algorithm_name=data.algo,
                     db_collection_name="bots",
+                    binbot_api=self.binbot_api,
                 )
                 await autotrade.activate_autotrade(data)
 

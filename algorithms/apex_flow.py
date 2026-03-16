@@ -40,7 +40,9 @@ class ApexFlow:
         self.df = cls.df.copy()
         self.df_btc = cls.df_btc.copy()
         self.signal_collector = SignalCollector(
-            first_seen_at=cls.first_seen_at, interval=cls.interval
+            first_seen_at=cls.first_seen_at,
+            interval=cls.interval,
+            binbot_api=cls.binbot_api,
         )
 
         # Bollinger compression

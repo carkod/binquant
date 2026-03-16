@@ -19,6 +19,7 @@ class Autotrade:
         pair,
         settings,
         algorithm_name,
+        binbot_api: BinbotApi,
         db_collection_name="paper_trading",
     ) -> None:
         """
@@ -36,11 +37,7 @@ class Autotrade:
         """
         self.pair: str = pair
         self.config = Config()
-        self.binbot_api = BinbotApi(
-            base_url=self.config.backend_domain,
-            service_email=self.config.service_email,
-            service_password=self.config.service_password,
-        )
+        self.binbot_api = binbot_api
         self.exchange = ExchangeId(settings["exchange_id"])
         self.api: BinanceApi | KucoinApi
 

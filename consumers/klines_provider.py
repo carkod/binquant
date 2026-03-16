@@ -85,6 +85,7 @@ class KlinesProvider:
             ),
             all_symbols=self.all_symbols,
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
+            binbot_api=self.binbot_api,
         )
 
     def _refresh_btc_candles(self) -> bool:
@@ -220,6 +221,7 @@ class KlinesProvider:
             interval=self.interval,
             market_type=klines.market_type if klines.market_type else MarketType.SPOT,
             oi_data=self.retrieve_oi(kucoin_symbol),
+            binbot_api=self.binbot_api,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

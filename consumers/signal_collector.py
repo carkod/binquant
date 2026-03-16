@@ -10,17 +10,14 @@ class SignalCollector:
         self,
         first_seen_at: int | None,
         interval: KucoinKlineIntervals | BinanceKlineIntervals,
+        binbot_api: BinbotApi,
     ) -> None:
         self.buffer: dict[str, SignalCandidate] = {}
         self.first_seen_at = first_seen_at
         self.autotrade: Callable
         self.send_telegram: Callable | None = None
         self.config = Config()
-        self.binbot_api = BinbotApi(
-            base_url=self.config.backend_domain,
-            service_email=self.config.service_email,
-            service_password=self.config.service_password,
-        )
+        self.binbot_api = binbot_api
         self.interval = interval
 
     def rank(self) -> list[SignalCandidate]:
