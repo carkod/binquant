@@ -220,18 +220,17 @@ class ContextEvaluator:
                 return
 
             close_price = float(self.df["close"].iloc[-1])
-            spreads = self.bb_spreads()
 
             await self.lsp.signal_generator(
                 current_price=close_price,
             )
 
-            await self.sh3.signal(
-                current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
-            )
+            # await self.sh3.signal(
+            #     current_price=close_price,
+            #     bb_high=spreads.bb_high,
+            #     bb_mid=spreads.bb_mid,
+            #     bb_low=spreads.bb_low,
+            # )
 
             # Apex Flow signals
             await self.af.signal(
