@@ -120,10 +120,6 @@ class Config:
         return self._get_required("MONGO_HOSTNAME")
 
     @property
-    def mongo_port(self) -> int:
-        return int(self._get_optional("MONGO_PORT", "27018"))
-
-    @property
     def mongo_auth_database(self) -> str:
         return self._get_required("MONGO_AUTH_DATABASE")
 
@@ -144,9 +140,6 @@ class Config:
         return self._get_required("MONGO_KAFKA_DATABASE")
 
     # Kafka settings
-    @property
-    def kafka_port(self) -> int:
-        return int(self._get_optional("KAFKA_PORT", "29092"))
 
     @property
     def kafka_host(self) -> str:
@@ -212,3 +205,24 @@ class Config:
     @property
     def telegram_user_id(self) -> str:
         return self._get_required("TELEGRAM_USER_ID")
+
+    # Optional properties moved to the bottom
+    @property
+    def mongo_port(self) -> int:
+        return int(self._get_optional("MONGO_PORT", "27018"))
+
+    @property
+    def kafka_port(self) -> int:
+        return int(self._get_optional("KAFKA_PORT", "29092"))
+
+    @property
+    def service_email(self) -> str:
+        return self._get_optional("SERVICE_EMAIL")
+
+    @property
+    def service_password(self) -> str:
+        return self._get_optional("SERVICE_PASSWORD")
+
+    @property
+    def service_user(self) -> str:
+        return self._get_optional("SERVICE_USER")

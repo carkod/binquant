@@ -16,7 +16,11 @@ class SignalCollector:
         self.autotrade: Callable
         self.send_telegram: Callable | None = None
         self.config = Config()
-        self.binbot_api = BinbotApi(base_url=self.config.backend_domain)
+        self.binbot_api = BinbotApi(
+            base_url=self.config.backend_domain,
+            service_email=self.config.service_email,
+            service_password=self.config.service_password,
+        )
         self.interval = interval
 
     def rank(self) -> list[SignalCandidate]:
