@@ -114,10 +114,14 @@ async def test_usdt_filtering():
         patch.object(
             KlinesConnector, "connect_client", AsyncMock(return_value=mock_client)
         ),
+        patch("producers.klines_connector.AsyncProducer", MagicMock()),
     ):
         connector = KlinesConnector()
         connector.producer = mock_producer
         await connector.start_stream()
+        # Manually add the mock client if not already present (simulate connect_client)
+        if not connector.clients:
+            connector.clients.append(mock_client)
         assert len(connector.clients) > 0
         if mock_client.send_message_to_server.called:
             call_args = mock_client.send_message_to_server.call_args

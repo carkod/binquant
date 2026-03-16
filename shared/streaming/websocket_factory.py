@@ -55,7 +55,8 @@ class WebsocketClientFactory:
         If there are more than 300 symbols, we will create multiple websocket clients.
         """
         await self.producer.start()
-        symbols = self.filter_fiat_symbols(self.binbot_api.get_symbols())
+        all_symbols = self.binbot_api.get_symbols()
+        symbols = self.filter_fiat_symbols(all_symbols)
         total = len(symbols)
         clients: list[AsyncKucoinWebsocketClient] = []
         max_per_client = 300
@@ -87,7 +88,8 @@ class WebsocketClientFactory:
         It has different endpoints and needs to be separated from SPOT streaming.
         """
         await self.producer.start()
-        symbols = self.filter_fiat_symbols(self.binbot_api.get_symbols())
+        all_symbols = self.binbot_api.get_symbols()
+        symbols = self.filter_fiat_symbols(all_symbols)
         futures_symbols = [s for s in symbols if s["id"].endswith("USDTM")]
         total = len(futures_symbols)
         clients: list[AsyncKucoinWebsocketClient] = []
@@ -121,7 +123,6 @@ class WebsocketClientFactory:
         based on exchange
         """
         if self.exchange == ExchangeId.KUCOIN:
-            # clients = await self.start_stream()
             clients = await self.start_future_stream()
             return clients
         else:

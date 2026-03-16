@@ -96,15 +96,17 @@ class TestWebsocketFactory:
             {"id": "BNB-USDT", "base_asset": "BNB", "quote_asset": "USDT"},
         ]
 
-        # Patch BinbotApi methods used inside factory __init__ and start_stream
-        monkeypatch.setattr(
-            "shared.streaming.websocket_factory.BinbotApi.get_autotrade_settings",
-            lambda self: {"exchange_id": "kucoin", "fiat": "USDT"},
-        )
-        monkeypatch.setattr(
-            "shared.streaming.websocket_factory.BinbotApi.get_symbols",
-            lambda self: mock_symbols,
-        )
+        # Set return values for the global BinbotApi mock
+        import typing
+        from unittest.mock import MagicMock
+        from shared.streaming.websocket_factory import BinbotApi
+
+        mock_binbot_api = typing.cast(MagicMock, BinbotApi)
+        mock_binbot_api.return_value.get_autotrade_settings.return_value = {
+            "exchange_id": "kucoin",
+            "fiat": "USDT",
+        }
+        mock_binbot_api.return_value.get_symbols.return_value = mock_symbols
 
         # Create factory (will use patched BinbotApi)
         factory = WebsocketClientFactory()

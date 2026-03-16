@@ -1,5 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
-
+from unittest.mock import patch, MagicMock, AsyncMock
 import pytest
 from consumers.klines_provider import KlinesProvider
 
