@@ -32,8 +32,8 @@ class ActivityBurstPump:
             binbot_api=cls.binbot_api,
         )
 
-        self.volume_multiplier = 5.0
-        self.price_threshold = 0.02
+        self.volume_multiplier = 2.10
+        self.price_threshold = 0.006
         self.lookback_window = 20
         self.min_baseline_volume = 1e-8
 
@@ -74,7 +74,7 @@ class ActivityBurstPump:
             return None
 
         algo = "activity_burst_pump"
-        autotrade = True
+        autotrade = False
         bot_strategy = Strategy.long
         base_asset = self.current_symbol_data["base_asset"]
 
@@ -103,7 +103,7 @@ class ActivityBurstPump:
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
-        value = SignalCandidate(
+        candidate = SignalCandidate(
             symbol=self.symbol,
             algo=algo,
             strategy=bot_strategy,
@@ -115,5 +115,8 @@ class ActivityBurstPump:
             msg=msg,
         )
 
-        await self.telegram_consumer.send_signal(msg)
-        await self.at_consumer.process_autotrade_restrictions(value)
+        await self.signal_collector.handle(
+            candidate=candidate,
+            dispatch_function=self.at_consumer.process_autotrade_restrictions,
+            send_telegram=self.telegram_consumer.send_signal,
+        )

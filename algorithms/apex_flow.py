@@ -55,8 +55,8 @@ class ApexFlow:
         self.atr_percentile = 0.35
 
         # Expansion confirmation
-        self.atr_expansion_mult = 1.2
-        self.volume_mult = 1.15
+        self.atr_expansion_mult = 1.1
+        self.volume_mult = 1.05
         self.expansion_lookback = 5
 
     # ---------- Core VCE components ---------- #
@@ -139,7 +139,7 @@ class ApexFlow:
         return self.df
 
     def detect_momentum_continuation(
-        self, rsi_threshold: int = 55, atr_mult: float = 1.2
+        self, rsi_threshold: int = 52, atr_mult: float = 1.1
     ) -> DataFrame:
         if (
             self.df.empty
@@ -173,7 +173,7 @@ class ApexFlow:
     def detect_liquidity_sweep_reversal(
         self,
         lookback: int = 20,
-        volume_mult: float = 1.8,
+        volume_mult: float = 1.5,
         cooldown: int = 10,
     ) -> DataFrame:
         if self.df.empty:
@@ -369,9 +369,9 @@ class ApexFlow:
         return (
             row["ema_fast"] > row["ema_slow"]
             and row["ema_slow_slope"] > 0
-            and row["rsi"] >= 54
+            and row["rsi"] >= 52
             and row["bb_width"] > row["bb_width_ma"]
-            and row["volume"] > 1.2 * row["volume_ma"]
+            and row["volume"] > 1.1 * row["volume_ma"]
         )
 
     # ---------- Public API ---------- #
@@ -439,7 +439,7 @@ class ApexFlow:
             btc_correlation=btc_correlation,
         )
 
-        if not direction or score < 3:
+        if not direction or score < 2:
             return
 
         algo = f"apex_{pattern.lower()}" if pattern else "apex"

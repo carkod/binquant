@@ -103,8 +103,8 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
 @pytest.mark.asyncio
 async def test_signal_generator_skips_when_price_jump_is_too_small():
     df = make_low_liquidity_df()
-    df.loc[df.index[-1], "close"] = 1.01
-    df.loc[df.index[-1], "high"] = 1.012
+    df.loc[df.index[-1], "close"] = 1.005
+    df.loc[df.index[-1], "high"] = 1.006
     algo = make_algo(df)
     handle_mock = AsyncMock()
     algo.signal_collector = cast(Any, SimpleNamespace(handle=handle_mock))
