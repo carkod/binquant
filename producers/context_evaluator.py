@@ -95,6 +95,9 @@ class ContextEvaluator:
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
         self.oi_data = oi_data
+        self.pending_signal_state = (
+            pending_signal_state if pending_signal_state is not None else {}
+        )
 
     def days(self, secs):
         return secs * 86400
