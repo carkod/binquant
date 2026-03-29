@@ -47,6 +47,7 @@ class ContextEvaluator:
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
+        pending_signal_state: dict[str, dict] | None = None,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -94,6 +95,9 @@ class ContextEvaluator:
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
         self.oi_data = oi_data
+        self.pending_signal_state = (
+            pending_signal_state if pending_signal_state is not None else {}
+        )
 
     def days(self, secs):
         return secs * 86400
