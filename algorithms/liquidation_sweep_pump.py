@@ -133,35 +133,13 @@ class LiquidationSweepPump:
 
     async def signal_generator(self, current_price: float) -> None:
         """
-        Detect sweep events, then confirm direction on the next candles.
+        Detect sweep events and emit immediately.
         """
         if self.df is None or self.df.empty or len(self.df) < 8:
             return None
 
         df = self.compute_pump_score()
         row = df.iloc[-1]
-        latest_signature = self.candle_signature(row)
-        pending = self.pending_signal_state.get(self.symbol)
-
-        if pending and pending["event_signature"] != latest_signature:
-            if pending["last_checked_signature"] != latest_signature:
-                direction = self.confirmation_direction(pending, row)
-                if direction:
-                    await self.dispatch_confirmed_signal(
-                        current_price=current_price,
-                        latest_row=row,
-                        pending=pending,
-                        direction=direction,
-                    )
-                    self.pending_signal_state.pop(self.symbol, None)
-                    return
-
-                pending["confirmation_checks"] += 1
-                pending["last_checked_signature"] = latest_signature
-                if pending["confirmation_checks"] >= 2:
-                    self.pending_signal_state.pop(self.symbol, None)
-                else:
-                    self.pending_signal_state[self.symbol] = pending
 
         # --- Filters ---
         # Take last N candles (say 48 for 12h)
@@ -183,9 +161,6 @@ class LiquidationSweepPump:
         if self.oi_growth is not None and self.oi_growth < 1.01:
             return
 
-        if pending and pending["event_signature"] == latest_signature:
-            return
-
         swing_window = df["high"].iloc[-7:-1]
         swing_high = (
             float(swing_window.max()) if not swing_window.empty else float(row["high"])
@@ -194,10 +169,20 @@ class LiquidationSweepPump:
         if float(row["high"]) < swing_high:
             return
 
-        self.pending_signal_state[self.symbol] = self.build_pending_event(
+        event = self.build_pending_event(
             row=row,
             score=float(latest_score),
             swing_high=swing_high,
+        )
+        direction = self.confirmation_direction(event, row)
+        if direction is None:
+            direction = "LONG" if float(row["close"]) >= float(row["open"]) else "SHORT"
+
+        await self.dispatch_confirmed_signal(
+            current_price=current_price,
+            latest_row=row,
+            pending=event,
+            direction=direction,
         )
 
     async def dispatch_confirmed_signal(
