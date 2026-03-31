@@ -64,6 +64,7 @@ class ContextEvaluator:
         self.symbol = symbol
         self.kucoin_symbol = kucoin_symbol
         self.df: TypedDataFrame[KlineSchema]
+        self.df_15m: TypedDataFrame[KlineSchema]
         self.df_4h: TypedDataFrame[KlineSchema]
         self.df_1h: TypedDataFrame[KlineSchema]
         self.df_5m: TypedDataFrame[KlineSchema]
@@ -112,11 +113,13 @@ class ContextEvaluator:
                 self.df_btc["close"] / self.df_btc["close"].shift(1)
             )
 
-        self.df["returns"] = logarithm(self.df["close"] / self.df["close"].shift(1))
+        self.df_15m["returns"] = logarithm(
+            self.df_15m["close"] / self.df_15m["close"].shift(1)
+        )
 
         # Align returns
         returns = (
-            self.df[["returns"]]
+            self.df_15m[["returns"]]
             .join(self.df_btc["returns"], how="inner", rsuffix="_btc")
             .dropna()
         )
@@ -143,9 +146,9 @@ class ContextEvaluator:
         """
         Calculate Heikin Ashi Bollinguer bands spreads for trailling strategies
         """
-        bb_high = float(self.df.bb_upper.iloc[-1])
-        bb_mid = float(self.df.bb_mid.iloc[-1])
-        bb_low = float(self.df.bb_lower.iloc[-1])
+        bb_high = float(self.df_15m.bb_upper.iloc[-1])
+        bb_mid = float(self.df_15m.bb_mid.iloc[-1])
+        bb_low = float(self.df_15m.bb_lower.iloc[-1])
         return HABollinguerSpread(
             bb_high=round_numbers(bb_high, 6),
             bb_mid=round_numbers(bb_mid, 6),
@@ -179,28 +182,51 @@ class ContextEvaluator:
         Algorithms should consume this data
         """
         self.symbol_dependent_data()
-        self.df, self.df_1h, self.df_4h = HeikinAshi().pre_process(
-            self.exchange, candles
+        heikin_ashi = HeikinAshi()
+
+        parity_exchange_15m_candles = None
+        if heikin_ashi.is_15m_parity_check_due(self.symbol):
+            interval = KucoinKlineIntervals.FIFTEEN_MINUTES.value
+            if isinstance(self.api, BinanceApi):
+                interval = BinanceKlineIntervals.fifteen_minutes.value
+
+            parity_symbol = (
+                self.kucoin_symbol
+                if self.exchange == ExchangeId.KUCOIN and self.kucoin_symbol
+                else self.symbol
+            )
+
+            parity_exchange_15m_candles = self.api.get_ui_klines(
+                symbol=parity_symbol,
+                interval=interval,
+                limit=400,
+            )
+
+        self.df, self.df_15m, self.df_1h, self.df_4h = heikin_ashi.pre_process(
+            self.exchange,
+            candles,
+            parity_symbol=self.symbol,
+            parity_exchange_15m_candles=parity_exchange_15m_candles,
         )
-        self.df_btc, _, _ = HeikinAshi().pre_process(self.exchange, btc_candles)
+        _, self.df_btc, _, _ = heikin_ashi.pre_process(self.exchange, btc_candles)
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
-        if not self.df.empty and self.df.close.size > 0:
+        if not self.df_15m.empty and self.df_15m.close.size > 0:
             # Basic technical indicators
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe
-            self.df = Indicators.moving_averages(self.df, 7)
-            self.df = Indicators.moving_averages(self.df, 25)
-            self.df = Indicators.moving_averages(self.df, 100)
+            self.df_15m = Indicators.moving_averages(self.df_15m, 7)
+            self.df_15m = Indicators.moving_averages(self.df_15m, 25)
+            self.df_15m = Indicators.moving_averages(self.df_15m, 100)
 
             # Oscillators
-            self.df = Indicators.macd(self.df)
-            self.df = Indicators.rsi(df=self.df)
+            self.df_15m = Indicators.macd(self.df_15m)
+            self.df_15m = Indicators.rsi(df=self.df_15m)
 
             # Advanced technicals
-            self.df = Indicators.ma_spreads(self.df)
-            self.df = Indicators.bollinguer_spreads(self.df)
-            self.df = Indicators.set_twap(self.df)
+            self.df_15m = Indicators.ma_spreads(self.df_15m)
+            self.df_15m = Indicators.bollinguer_spreads(self.df_15m)
+            self.df_15m = Indicators.set_twap(self.df_15m)
 
             # correlation with BTC
             if not self.df_btc.empty and self.df_btc.close.size > 0:
@@ -210,20 +236,24 @@ class ContextEvaluator:
                     df_pct_change[-1:].iloc[0] if not df_pct_change.empty else 0.0
                 )
 
-            self.df = HeikinAshi().post_process(self.df)
-            self.df_1h = HeikinAshi().post_process(self.df_1h)
-            self.df_4h = HeikinAshi().post_process(self.df_4h)
+            self.df = heikin_ashi.post_process(self.df)
+            self.df_15m = heikin_ashi.post_process(self.df_15m)
+            self.df_1h = heikin_ashi.post_process(self.df_1h)
+            self.df_4h = heikin_ashi.post_process(self.df_4h)
+            self.df_5m = self.df
+            # Algorithms still consume `cls.df`; point it to the 15m frame.
+            self.df = self.df_15m
             self.load_algorithms()
 
             # Dropped NaN values may end up with empty dataframe
             if (
-                self.df["ma_7"].size < 7
-                or self.df["ma_25"].size < 25
-                or self.df["ma_100"].size < 100
+                self.df_15m["ma_7"].size < 7
+                or self.df_15m["ma_25"].size < 25
+                or self.df_15m["ma_100"].size < 100
             ):
                 return
 
-            close_price = float(self.df["close"].iloc[-1])
+            close_price = float(self.df_15m["close"].iloc[-1])
 
             await self.lsp.signal_generator(
                 current_price=close_price,
