@@ -51,8 +51,6 @@ class KlinesProvider:
         )
         # Apex Flow starting point for scoring signals
         self.first_seen_at = int(time() * 1000)
-        # Cross-candle strategy memory keyed by symbol.
-        self.pending_signal_state: dict[str, dict] = {}
         # Candles/btc candles storage
         self.candles: list[list] = []
         self.btc_candles: list[list] = []
@@ -224,7 +222,6 @@ class KlinesProvider:
             market_type=klines.market_type if klines.market_type else MarketType.SPOT,
             oi_data=self.retrieve_oi(kucoin_symbol),
             binbot_api=self.binbot_api,
-            pending_signal_state=self.pending_signal_state,
         )
         await crypto_analytics.process_data(
             candles=self.candles,
