@@ -20,6 +20,7 @@ class Coinrule:
         self.ti = cls
         self.df = cls.df
         self.df_1h = cls.df_1h
+        self.df_5m = cls.df_5m
         self.market_breadth_data = cls.market_breadth_data
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
@@ -180,6 +181,89 @@ class Coinrule:
 
             value = SignalsConsumer(
                 autotrade=False,
+                current_price=close_price,
+                msg=msg,
+                symbol=self.symbol,
+                algo=algo,
+                bot_strategy=bot_strategy,
+                bb_spreads=HABollinguerSpread(
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
+                ),
+            )
+
+            await self.telegram_consumer.send_signal(msg)
+            await self.at_consumer.process_autotrade_restrictions(value)
+
+        pass
+
+    @staticmethod
+    def _compute_mfi(df, window: int = 14) -> float:
+        """
+        Money Flow Index (MFI) using the last `window` candles.
+
+        Requires 'high', 'low', 'close', 'volume' columns.
+        Returns the most recent MFI value (0–100).
+        When negative money flow is zero (pure uptrend), MFI is 100.
+        """
+        typical_price = (df["high"] + df["low"] + df["close"]) / 3
+        raw_money_flow = typical_price * df["volume"]
+
+        tp_change = typical_price.diff()
+        positive_flow = raw_money_flow.where(tp_change > 0, 0.0)
+        negative_flow = raw_money_flow.where(tp_change < 0, 0.0)
+
+        positive_sum = positive_flow.rolling(window).sum()
+        negative_sum = negative_flow.rolling(window).sum()
+
+        # When negative_sum is 0 (pure uptrend), MFI = 100
+        money_ratio = positive_sum / negative_sum.replace(0, float("nan"))
+        raw_mfi = 100 - (100 / (1 + money_ratio))
+        mfi = raw_mfi.fillna(100.0)
+        return float(mfi.iloc[-1])
+
+    async def price_tracker(self, close_price, bb_high, bb_low, bb_mid):
+        """
+        Coinrule price tracker algorithm
+        Entry: RSI(14) < 30 AND MACD < 0 AND MFI < 20 using 5-minute candles
+        BUY $30 of that coin with USDT wallet as limit order
+        """
+        df_5m = self.df_5m.copy()
+
+        if df_5m.isnull().values.any() or len(df_5m) < 30:
+            logging.warning(
+                f"5m candles price tracker not enough data for symbol: {self.symbol}"
+            )
+            return
+
+        df_5m.dropna(inplace=True)
+        df_5m.reset_index(drop=True, inplace=True)
+
+        df_5m = Indicators.rsi(df=df_5m)
+        df_5m = Indicators.macd(df_5m)
+
+        rsi_value = float(df_5m["rsi"].iloc[-1])
+        macd_value = float(df_5m["macd"].iloc[-1])
+        mfi_value = self._compute_mfi(df_5m)
+
+        if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
+            algo = "coinrule_price_tracker"
+            bot_strategy = Strategy.long
+
+            msg = f"""
+            - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Current price: {close_price}
+            - RSI (14) < 30: {round_numbers(rsi_value, 2)}
+            - MACD < 0: {round_numbers(macd_value, 6)}
+            - MFI < 20: {round_numbers(mfi_value, 2)}
+            - Strategy: {bot_strategy.value}
+            - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
+            - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
+            """
+
+            value = SignalsConsumer(
+                autotrade=True,
                 current_price=close_price,
                 msg=msg,
                 symbol=self.symbol,
