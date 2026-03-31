@@ -67,13 +67,13 @@ class KlinesProvider:
                 secret=self.config.kucoin_secret,
                 passphrase=self.config.kucoin_passphrase,
             )
-            self.interval = KucoinKlineIntervals.FIFTEEN_MINUTES
+            self.interval = KucoinKlineIntervals.FIVE_MINUTES
         else:
             self.exchange = ExchangeId.BINANCE
             self.api = BinanceApi(
                 key=self.config.binance_key, secret=self.config.binance_secret
             )
-            self.interval = BinanceKlineIntervals.fifteen_minutes
+            self.interval = BinanceKlineIntervals.five_minutes
 
         self.all_symbols = self.binbot_api.get_symbols()
 
@@ -169,9 +169,10 @@ class KlinesProvider:
 
         kucoin_symbol = klines.symbol
         symbol = kucoin_symbol.replace("-", "")
+        api_symbol = kucoin_symbol if self.exchange == ExchangeId.KUCOIN else symbol
 
         self.candles = self.api.get_ui_klines(
-            symbol=kucoin_symbol if self.exchange == ExchangeId.KUCOIN else symbol,
+            symbol=api_symbol,
             interval=self.interval.value,
             limit=self.MAX_CANDLES,
         )
