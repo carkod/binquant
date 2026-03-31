@@ -51,12 +51,24 @@ class ActivityBurstPump:
             lower=self.min_baseline_volume
         )
         df["volume_ratio"] = df["volume"] / df["baseline_volume_safe"]
+        df["signed_price_jump"] = (df["close"] - df["close"].shift(1)) / df[
+            "close"
+        ].shift(1).clip(lower=self.min_baseline_volume)
         df["price_jump"] = (df["close"] - df["close"].shift(1)).abs() / df[
             "close"
         ].shift(1).clip(lower=self.min_baseline_volume)
         df["range_frac"] = (df["high"] - df["low"]) / df["close"].clip(
             lower=self.min_baseline_volume
         )
+        candle_range = (df["high"] - df["low"]).clip(lower=self.min_baseline_volume)
+        df["close_position"] = (df["close"] - df["low"]) / candle_range
+        df["upper_wick_frac"] = (
+            df["high"] - df[["open", "close"]].max(axis=1)
+        ) / candle_range
+        df["lower_wick_frac"] = (
+            df[["open", "close"]].min(axis=1) - df["low"]
+        ) / candle_range
+        df["bullish_body"] = df["close"] > df["open"]
         df["vol_spike"] = df["volume"] > (
             self.volume_multiplier * df["baseline_volume_safe"]
         )
@@ -64,6 +76,36 @@ class ActivityBurstPump:
         df["activity_burst_score"] = df["volume_ratio"] * df["price_jump"]
 
         return df
+
+    def burst_direction(self, row) -> str:
+        signed_price_jump = float(row["signed_price_jump"])
+        close_position = float(row["close_position"])
+        upper_wick_frac = float(row["upper_wick_frac"])
+        lower_wick_frac = float(row["lower_wick_frac"])
+        bullish_body = bool(row["bullish_body"])
+
+        bullish_burst = (
+            signed_price_jump > 0
+            and bullish_body
+            and close_position >= 0.6
+            and upper_wick_frac <= 0.3
+        )
+        bearish_burst = (
+            signed_price_jump < 0
+            and not bullish_body
+            and close_position <= 0.4
+            and lower_wick_frac <= 0.3
+        )
+        bearish_rejection = (
+            signed_price_jump > 0 and close_position <= 0.45 and upper_wick_frac >= 0.35
+        )
+
+        if bearish_burst or bearish_rejection:
+            return "SHORT"
+        if bullish_burst:
+            return "LONG"
+
+        return "LONG" if signed_price_jump >= 0 else "SHORT"
 
     async def signal_generator(self, current_price: float) -> None:
         if (
@@ -75,7 +117,6 @@ class ActivityBurstPump:
 
         algo = "activity_burst_pump"
         autotrade = False
-        bot_strategy = Strategy.long
         base_asset = self.current_symbol_data["base_asset"]
 
         df = self.compute_indicators()
@@ -85,15 +126,19 @@ class ActivityBurstPump:
             return None
 
         score = float(row["activity_burst_score"])
+        direction = self.burst_direction(row)
+        bot_strategy = Strategy.margin_short if direction == "SHORT" else Strategy.long
         kucoin_link, terminal_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
         )
 
         msg = f"""
-            - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
+            - {"📈" if direction == "LONG" else "📉"} [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
+            - Direction: {direction}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - Baseline volume: {round_numbers(float(row["baseline_volume_safe"]), decimals=self.price_precision)}
             - Volume ratio: {round_numbers(float(row["volume_ratio"]), 2)}
+            - Signed jump: {round_numbers(float(row["signed_price_jump"]) * 100, 2)}%
             - Price jump: {round_numbers(float(row["price_jump"]) * 100, 2)}%
             - Range expansion: {round_numbers(float(row["range_frac"]) * 100, 2)}%
             - Score: {round_numbers(score, 4)}
@@ -106,6 +151,7 @@ class ActivityBurstPump:
         candidate = SignalCandidate(
             symbol=self.symbol,
             algo=algo,
+            direction=direction,
             strategy=bot_strategy,
             autotrade=autotrade,
             market_type=self.market_type,

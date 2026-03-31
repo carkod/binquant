@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
 import pytest
-from pybinbot import ExchangeId, MarketType
+from pybinbot import ExchangeId, MarketType, Strategy
 
 from algorithms.activity_burst_pump import ActivityBurstPump
 
@@ -60,6 +60,34 @@ def make_low_liquidity_df() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def make_bearish_burst_df() -> pd.DataFrame:
+    rows = []
+    close = 1.0
+
+    for idx in range(23):
+        rows.append(
+            {
+                "open": close,
+                "high": close * 1.001,
+                "low": close * 0.999,
+                "close": close,
+                "volume": 0.0 if idx < 10 else 1.0,
+            }
+        )
+
+    rows.append(
+        {
+            "open": close,
+            "high": 1.02,
+            "low": 0.93,
+            "close": 0.94,
+            "volume": 10.0,
+        }
+    )
+
+    return pd.DataFrame(rows)
+
+
 def test_compute_indicators_uses_median_baseline():
     df = make_low_liquidity_df()
     algo = make_algo(df)
@@ -96,6 +124,8 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
 
     assert candidate.algo == "activity_burst_pump"
     assert candidate.symbol == "TESTUSDT"
+    assert candidate.direction == "LONG"
+    assert candidate.strategy == Strategy.long
     assert candidate.score == pytest.approx(0.4)
     assert candidate.volume == pytest.approx(10.0)
 
@@ -112,3 +142,26 @@ async def test_signal_generator_skips_when_price_jump_is_too_small():
     await algo.signal_generator(current_price=float(df.close.iloc[-1]))
 
     handle_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_generator_dispatches_short_on_bearish_burst(monkeypatch):
+    df = make_bearish_burst_df()
+    algo = make_algo(df)
+    handle_mock = AsyncMock()
+    algo.signal_collector = cast(Any, SimpleNamespace(handle=handle_mock))
+
+    monkeypatch.setattr(
+        "algorithms.activity_burst_pump.build_links_msg",
+        lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
+    )
+
+    await algo.signal_generator(current_price=float(df.close.iloc[-1]))
+
+    handle_mock.assert_awaited_once()
+    await_args = handle_mock.await_args
+    assert await_args is not None
+    candidate = await_args.kwargs["candidate"]
+
+    assert candidate.direction == "SHORT"
+    assert candidate.strategy == Strategy.margin_short
