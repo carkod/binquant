@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class Coinrule:
+class PriceTracker:
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
         self.df = cls.df
@@ -222,7 +222,7 @@ class Coinrule:
         mfi = raw_mfi.fillna(100.0)
         return float(mfi.iloc[-1])
 
-    async def price_tracker(self, close_price, bb_high, bb_low, bb_mid):
+    async def signal(self, close_price, bb_high, bb_low, bb_mid):
         """
         Coinrule price tracker algorithm
         Entry: RSI(14) < 30 AND MACD < 0 AND MFI < 20 using 5-minute candles

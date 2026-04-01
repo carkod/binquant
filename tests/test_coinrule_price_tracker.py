@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from pybinbot import ExchangeId, MarketType, MarketDominance, Strategy
 
-from algorithms.coinrule import Coinrule
+from algorithms.coinrule import PriceTracker
 
 
 def make_context(df: pd.DataFrame) -> SimpleNamespace:
@@ -33,8 +33,8 @@ def make_context(df: pd.DataFrame) -> SimpleNamespace:
     )
 
 
-def make_algo(df: pd.DataFrame) -> Coinrule:
-    return Coinrule(cast(Any, make_context(df)))
+def make_algo(df: pd.DataFrame) -> PriceTracker:
+    return PriceTracker(cast(Any, make_context(df)))
 
 
 def make_ohlcv_df(n: int = 50, oversold: bool = False) -> pd.DataFrame:
@@ -86,21 +86,21 @@ def make_ohlcv_df(n: int = 50, oversold: bool = False) -> pd.DataFrame:
 
 def test_compute_mfi_returns_float():
     df = make_ohlcv_df(n=50, oversold=False)
-    result = Coinrule._compute_mfi(df)
+    result = PriceTracker._compute_mfi(df)
     assert isinstance(result, float)
 
 
 def test_compute_mfi_range():
     """MFI must always be in [0, 100]."""
     df = make_ohlcv_df(n=50, oversold=False)
-    result = Coinrule._compute_mfi(df)
+    result = PriceTracker._compute_mfi(df)
     assert 0 <= result <= 100
 
 
 def test_compute_mfi_low_for_downtrend_low_volume():
     """Persistent downtrend with very low volume should yield low MFI."""
     df = make_ohlcv_df(n=50, oversold=True)
-    result = Coinrule._compute_mfi(df)
+    result = PriceTracker._compute_mfi(df)
     assert result < 50
 
 
@@ -117,7 +117,7 @@ async def test_price_tracker_skips_when_insufficient_data():
     at_mock = AsyncMock()
     algo.at_consumer = SimpleNamespace(process_autotrade_restrictions=at_mock)
 
-    await algo.price_tracker(
+    await algo.signal(
         close_price=100.0, bb_high=105.0, bb_low=95.0, bb_mid=100.0
     )
 
@@ -133,7 +133,7 @@ async def test_price_tracker_no_signal_on_uptrend():
     algo.at_consumer = SimpleNamespace(process_autotrade_restrictions=at_mock)
     algo.telegram_consumer = SimpleNamespace(send_signal=AsyncMock())
 
-    await algo.price_tracker(
+    await algo.signal(
         close_price=float(df["close"].iloc[-1]),
         bb_high=115.0,
         bb_low=85.0,
@@ -166,11 +166,11 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
         lambda df: df.copy().assign(macd=-0.5, macd_signal=-0.3),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.Coinrule._compute_mfi",
+        "algorithms.coinrule.PriceTracker._compute_mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
 
-    await algo.price_tracker(
+    await algo.signal(
         close_price=float(df["close"].iloc[-1]),
         bb_high=115.0,
         bb_low=85.0,
