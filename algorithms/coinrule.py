@@ -20,7 +20,6 @@ class Coinrule:
         self.ti = cls
         self.df = cls.df
         self.df_1h = cls.df_1h
-        self.df_5m = cls.df_5m
         self.market_breadth_data = cls.market_breadth_data
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
@@ -229,7 +228,7 @@ class Coinrule:
         Entry: RSI(14) < 30 AND MACD < 0 AND MFI < 20 using 5-minute candles
         BUY $30 of that coin with USDT wallet as limit order
         """
-        df_5m = self.df_5m.copy()
+        df_5m = self.df.copy()
 
         if df_5m.isnull().values.any() or len(df_5m) < 30:
             logging.warning(

@@ -24,7 +24,6 @@ def make_context(df: pd.DataFrame) -> SimpleNamespace:
         qty_precision=8,
         df=df,
         df_1h=df,
-        df_5m=df,
         market_breadth_data={"adp": [0, 1, 2]},
         bot_strategy=Strategy.long,
         current_market_dominance=MarketDominance.NEUTRAL,
