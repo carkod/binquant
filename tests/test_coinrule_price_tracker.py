@@ -118,7 +118,9 @@ async def test_price_tracker_skips_when_insufficient_data():
     df = make_ohlcv_df(n=20)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    algo.at_consumer = cast(AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock))
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
 
     at_mock.assert_not_awaited()
 
@@ -129,8 +131,12 @@ async def test_price_tracker_no_signal_on_uptrend():
     df = make_ohlcv_df(n=50, oversold=False)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    algo.at_consumer = cast(AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock))
-    algo.telegram_consumer = cast(TelegramConsumer, SimpleNamespace(send_signal=AsyncMock()))
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(send_signal=AsyncMock())
+    )
 
     await algo.signal(
         close_price=float(df["close"].iloc[-1]),
@@ -152,8 +158,12 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     algo = make_algo(df)
     at_mock = AsyncMock()
     tg_mock = AsyncMock()
-    algo.at_consumer = cast(AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock))
-    algo.telegram_consumer = cast(TelegramConsumer, SimpleNamespace(send_signal=tg_mock))
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+    )
 
     # Force indicator values to satisfy all entry conditions
     monkeypatch.setattr(

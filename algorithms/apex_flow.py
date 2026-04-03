@@ -37,7 +37,7 @@ class ApexFlow:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
-        self.df = cls.df.copy()
+        self.df = cls.df_15m.copy()
         self.df_btc = cls.df_btc.copy()
         self.signal_collector = SignalCollector(
             first_seen_at=cls.first_seen_at,
@@ -307,7 +307,7 @@ class ApexFlow:
 
         return "BULL" if btc_fast > btc_slow else "BEAR"
 
-    def regime_allows(self, direction: str) -> bool:
+    def regime_allows(self, direction: direction_type | None) -> bool:
         regime = self.market_regime()
 
         # BTC regime alignment

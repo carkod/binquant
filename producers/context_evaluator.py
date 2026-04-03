@@ -243,8 +243,6 @@ class ContextEvaluator:
             self.df_1h = heikin_ashi.post_process(self.df_1h)
             self.df_4h = heikin_ashi.post_process(self.df_4h)
             self.df_5m = self.df
-            # Algorithms still consume `cls.df`; point it to the 15m frame.
-            self.df = self.df_15m
             self.load_algorithms()
 
             # Dropped NaN values may end up with empty dataframe
@@ -256,6 +254,7 @@ class ContextEvaluator:
                 return
 
             close_price = float(self.df_15m["close"].iloc[-1])
+            spreads = self.bb_spreads()
 
             await self.lsp.signal_generator(
                 current_price=close_price,
@@ -280,7 +279,6 @@ class ContextEvaluator:
                 btc_beta=self.btc_beta,
             )
 
-            spreads = self.bb_spreads()
             await self.pt.signal(
                 close_price=close_price,
                 bb_high=spreads.bb_high,
