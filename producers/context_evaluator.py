@@ -48,7 +48,6 @@ class ContextEvaluator:
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
-        pending_signal_state: dict[str, dict] | None = None,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -214,6 +213,10 @@ class ContextEvaluator:
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
         if not self.df_15m.empty and self.df_15m.close.size > 0:
+            raw_15m_len = len(self.df_15m.index)
+            if raw_15m_len < 100:
+                return
+
             # Basic technical indicators
             # This would be an ideal process to spark.parallelize
             # not sure what's the best way with pandas-on-spark dataframe
@@ -222,7 +225,7 @@ class ContextEvaluator:
             self.df_15m = Indicators.moving_averages(self.df_15m, 100)
 
             # Oscillators
-            self.df_15m = Indicators.macd(self.df_15m)
+            self.df_15m = Indicators.macd(df=self.df_15m)
             self.df_15m = Indicators.rsi(df=self.df_15m)
 
             # Advanced technicals
@@ -242,16 +245,13 @@ class ContextEvaluator:
             self.df_15m = heikin_ashi.post_process(self.df_15m)
             self.df_1h = heikin_ashi.post_process(self.df_1h)
             self.df_4h = heikin_ashi.post_process(self.df_4h)
-            self.df_5m = self.df
-            self.load_algorithms()
 
-            # Dropped NaN values may end up with empty dataframe
-            if (
-                self.df_15m["ma_7"].size < 7
-                or self.df_15m["ma_25"].size < 25
-                or self.df_15m["ma_100"].size < 100
-            ):
+            # post_process() drops warm-up rows for all indicators. That can leave
+            # fewer than N rows in `ma_N` even when the raw 15m history was sufficient.
+            if self.df_15m.empty or self.df.empty:
                 return
+
+            self.load_algorithms()
 
             close_price = float(self.df_15m["close"].iloc[-1])
             spreads = self.bb_spreads()
