@@ -287,7 +287,7 @@ requires-dist = [
     { name = "kafka-python", specifier = ">=2.0.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=0.7.39" },
+    { name = "pybinbot", specifier = ">=0.7.41" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "pytest-vcr", marker = "extra == 'dev'", specifier = ">=1.0.2" },
@@ -428,14 +428,14 @@ wheels = [
 
 [[package]]
 name = "click"
-version = "8.3.1"
+version = "8.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/fa/656b739db8587d7b5dfa22e22ed02566950fbfbcdc20311993483657a5c0/click-8.3.1.tar.gz", hash = "sha256:12ff4785d337a1bb490bb7e9c2b1ee5da3112e94a8622f26a6c77f5d2fc6842a", size = 295065, upload-time = "2025-11-15T20:45:42.706Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/75/31212c6bf2503fdf920d87fee5d7a86a2e3bcf444984126f13d8e4016804/click-8.3.2.tar.gz", hash = "sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5", size = 302856, upload-time = "2026-04-03T19:14:45.118Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl", hash = "sha256:981153a64e25f12d547d3426c367a4857371575ee7ad18df2a6183ab0545b2a6", size = 108274, upload-time = "2025-11-15T20:45:41.139Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/20/71885d8b97d4f3dde17b1fdb92dbd4908b00541c5a3379787137285f602e/click-8.3.2-py3-none-any.whl", hash = "sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d", size = 108379, upload-time = "2026-04-03T19:14:43.505Z" },
 ]
 
 [[package]]
@@ -1501,7 +1501,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "0.7.39"
+version = "0.7.41"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1516,9 +1516,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/d3/e2a4b75df9f0efd2943ab15e6e80fac801d1279eee9306935468bfdc875e/pybinbot-0.7.39.tar.gz", hash = "sha256:fdba1358014f37ef3f63cb8300753779d771b3cda385e73f230de0d7232ee7ae", size = 55304, upload-time = "2026-04-03T18:52:18.775Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/c5/e6d48f6520634bbc9c326209e2cfe56c744fdfd0c4411b40860bd6d3e05d/pybinbot-0.7.41.tar.gz", hash = "sha256:88ffebc51d7f07470c62fbe8518dfd0e9fb00ae6dd01ba9adeb2aa000ba3c032", size = 56095, upload-time = "2026-04-03T23:46:44.315Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/4c/55fc198e2a3d08aebbd2e8085ec8a000adba80fd78e454a4560a376f09e8/pybinbot-0.7.39-py3-none-any.whl", hash = "sha256:71dee56bc74d122c6f2d159d338d8fe25c8f99117d16f5a8d70a39bb3e946c9a", size = 58345, upload-time = "2026-04-03T18:52:17.558Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/74/ab99c7dbd2abe0a500c37c41222cb77a3fb233179b1d6ad3c1ea796aca9f/pybinbot-0.7.41-py3-none-any.whl", hash = "sha256:8de668a33fd07fd8a13b53726bee45362b9dd8f7b4c55f8178b51e25127dae88", size = 59009, upload-time = "2026-04-03T23:46:42.881Z" },
 ]
 
 [[package]]
