@@ -20,6 +20,7 @@ from pybinbot import (
     KucoinFutures,
 )
 
+from algorithms.coinrule import PriceTracker
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from algorithms.activity_burst_pump import ActivityBurstPump
@@ -174,6 +175,7 @@ class ContextEvaluator:
         self.af = ApexFlow(cls=self)
         self.abp = ActivityBurstPump(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
+        self.pt = PriceTracker(cls=self)
 
     async def process_data(self, candles, btc_candles=None):
         """
@@ -276,6 +278,14 @@ class ContextEvaluator:
                 btc_correlation=self.btc_correlation,
                 btc_price_change=self.btc_price_change,
                 btc_beta=self.btc_beta,
+            )
+
+            spreads = self.bb_spreads()
+            await self.pt.signal(
+                close_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_low=spreads.bb_low,
+                bb_mid=spreads.bb_mid,
             )
 
         return
