@@ -79,25 +79,34 @@ def test_compute_indicators_uses_median_baseline():
 async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch):
     df = make_low_liquidity_df()
     algo = make_algo(df)
-    handle_mock = AsyncMock()
-    algo.signal_collector = cast(Any, SimpleNamespace(handle=handle_mock))
+    send_signal_mock = AsyncMock()
+    process_mock = AsyncMock()
+    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
 
     monkeypatch.setattr(
         "algorithms.activity_burst_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
     )
 
-    await algo.signal_generator(current_price=float(df.close.iloc[-1]))
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]), bb_high=1.05, bb_mid=1.03, bb_low=1.01
+    )
 
-    handle_mock.assert_awaited_once()
-    await_args = handle_mock.await_args
+    send_signal_mock.assert_awaited_once()
+    process_mock.assert_awaited_once()
+
+    await_args = process_mock.await_args
     assert await_args is not None
-    candidate = await_args.kwargs["candidate"]
+    value = await_args.args[0]
 
-    assert candidate.algo == "activity_burst_pump"
-    assert candidate.symbol == "TESTUSDT"
-    assert candidate.score == pytest.approx(0.4)
-    assert candidate.volume == pytest.approx(10.0)
+    assert value.algo == "activity_burst_pump"
+    assert value.symbol == "TESTUSDT"
+    assert value.current_price == pytest.approx(1.04)
+    assert value.bot_strategy == "long"
+    assert "Score: 0.4" in value.msg
 
 
 @pytest.mark.asyncio
@@ -106,9 +115,16 @@ async def test_signal_generator_skips_when_price_jump_is_too_small():
     df.loc[df.index[-1], "close"] = 1.005
     df.loc[df.index[-1], "high"] = 1.006
     algo = make_algo(df)
-    handle_mock = AsyncMock()
-    algo.signal_collector = cast(Any, SimpleNamespace(handle=handle_mock))
+    send_signal_mock = AsyncMock()
+    process_mock = AsyncMock()
+    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
 
-    await algo.signal_generator(current_price=float(df.close.iloc[-1]))
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]), bb_high=1.05, bb_mid=1.03, bb_low=1.01
+    )
 
-    handle_mock.assert_not_awaited()
+    send_signal_mock.assert_not_awaited()
+    process_mock.assert_not_awaited()

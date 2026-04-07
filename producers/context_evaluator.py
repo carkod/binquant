@@ -253,12 +253,15 @@ class ContextEvaluator:
                 current_price=close_price,
             )
 
-            await self.abp.signal_generator(
-                current_price=close_price,
-            )
-
             # below signals require spreads
             spreads = self.bb_spreads()
+
+            await self.abp.signal(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
 
             # uncomment once it's ready
             await self.tgrd.signal(
