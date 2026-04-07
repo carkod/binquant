@@ -25,6 +25,7 @@ from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from algorithms.activity_burst_pump import ActivityBurstPump
 from algorithms.liquidation_sweep_pump import LiquidationSweepPump
+from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 
@@ -176,6 +177,7 @@ class ContextEvaluator:
         self.af = ApexFlow(cls=self)
         self.abp = ActivityBurstPump(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
+        self.tgrd = TopGainersReversalDrop(cls=self)
         self.pt = PriceTracker(cls=self)
 
     async def process_data(self, candles, btc_candles=None):
@@ -260,7 +262,6 @@ class ContextEvaluator:
                 return
 
             close_price = float(self.df_15m["close"].iloc[-1])
-            spreads = self.bb_spreads()
 
             await self.lsp.signal_generator(
                 current_price=close_price,
@@ -269,6 +270,17 @@ class ContextEvaluator:
             await self.abp.signal_generator(
                 current_price=close_price,
             )
+
+            # below signals require spreads
+            spreads = self.bb_spreads()
+
+            # uncomment once it's ready
+            # await self.tgrd.signal(
+            #     current_price=close_price,
+            #     bb_high=spreads.bb_high,
+            #     bb_mid=spreads.bb_mid,
+            #     bb_low=spreads.bb_low,
+            # )
 
             # await self.sh3.signal(
             #     current_price=close_price,
