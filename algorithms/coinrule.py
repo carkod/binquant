@@ -5,6 +5,7 @@ from pandas import to_datetime
 from pybinbot import (
     HABollinguerSpread,
     MarketDominance,
+    MarketType,
     SignalsConsumer,
     Strategy,
     round_numbers,
@@ -253,21 +254,22 @@ class PriceTracker:
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
             - Current price: {close_price}
-            - RSI (14) < 30: {round_numbers(rsi_value, 2)}
-            - MACD < 0: {round_numbers(macd_value, 6)}
-            - MFI < 20: {round_numbers(mfi_value, 2)}
+            - RSI (14) &lt; 30: {round_numbers(rsi_value, 2)}
+            - MACD &lt; 0: {round_numbers(macd_value, 6)}
+            - MFI &lt; 20: {round_numbers(mfi_value, 2)}
             - Strategy: {bot_strategy.value}
             - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
-                autotrade=True,
+                autotrade=False,
                 current_price=close_price,
                 msg=msg,
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,

@@ -25,7 +25,7 @@ class LiquidationSweepPump:
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
         self.oi_growth = cls.oi_data
-        self.df: TypedDataFrame[KlineSchema] = cls.df.copy()
+        self.df: TypedDataFrame[KlineSchema] = cls.df_15m.copy()
         self.df_btc: TypedDataFrame[KlineSchema] = cls.df_btc.copy()
         self.signal_collector = SignalCollector(
             first_seen_at=cls.first_seen_at,

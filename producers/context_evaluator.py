@@ -48,7 +48,6 @@ class ContextEvaluator:
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
-        pending_signal_state: dict[str, dict] | None = None,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -82,6 +81,8 @@ class ContextEvaluator:
         self.top_losers_day = top_losers_day
         self.market_breadth_data = market_breadth_data
         self.btc_correlation: float = 0
+        self.btc_beta: float = 0
+        self.btc_price_change: float = 0
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
         # theorically current_symbol_data is always defined
@@ -222,13 +223,19 @@ class ContextEvaluator:
             self.df_15m = Indicators.moving_averages(self.df_15m, 100)
 
             # Oscillators
-            self.df_15m = Indicators.macd(self.df_15m)
+            self.df_15m = Indicators.macd(df=self.df_15m)
             self.df_15m = Indicators.rsi(df=self.df_15m)
 
             # Advanced technicals
             self.df_15m = Indicators.ma_spreads(self.df_15m)
             self.df_15m = Indicators.bollinguer_spreads(self.df_15m)
             self.df_15m = Indicators.set_twap(self.df_15m)
+
+            # Default BTC-derived metrics let downstream algorithms run even
+            # when benchmark candle preprocessing yields no usable rows.
+            self.btc_beta = 0.0
+            self.btc_correlation = 0.0
+            self.btc_price_change = 0.0
 
             # correlation with BTC
             if not self.df_btc.empty and self.df_btc.close.size > 0:
@@ -242,9 +249,6 @@ class ContextEvaluator:
             self.df_15m = heikin_ashi.post_process(self.df_15m)
             self.df_1h = heikin_ashi.post_process(self.df_1h)
             self.df_4h = heikin_ashi.post_process(self.df_4h)
-            self.df_5m = self.df
-            # Algorithms still consume `cls.df`; point it to the 15m frame.
-            self.df = self.df_15m
             self.load_algorithms()
 
             # Dropped NaN values may end up with empty dataframe
@@ -256,6 +260,7 @@ class ContextEvaluator:
                 return
 
             close_price = float(self.df_15m["close"].iloc[-1])
+            spreads = self.bb_spreads()
 
             await self.lsp.signal_generator(
                 current_price=close_price,
@@ -280,7 +285,6 @@ class ContextEvaluator:
                 btc_beta=self.btc_beta,
             )
 
-            spreads = self.bb_spreads()
             await self.pt.signal(
                 close_price=close_price,
                 bb_high=spreads.bb_high,
