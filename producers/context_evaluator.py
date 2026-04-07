@@ -81,6 +81,8 @@ class ContextEvaluator:
         self.top_losers_day = top_losers_day
         self.market_breadth_data = market_breadth_data
         self.btc_correlation: float = 0
+        self.btc_beta: float = 0
+        self.btc_price_change: float = 0
         self.repeated_signals: dict = {}
         self.all_symbols = all_symbols
         # theorically current_symbol_data is always defined
@@ -228,6 +230,12 @@ class ContextEvaluator:
             self.df_15m = Indicators.ma_spreads(self.df_15m)
             self.df_15m = Indicators.bollinguer_spreads(self.df_15m)
             self.df_15m = Indicators.set_twap(self.df_15m)
+
+            # Default BTC-derived metrics let downstream algorithms run even
+            # when benchmark candle preprocessing yields no usable rows.
+            self.btc_beta = 0.0
+            self.btc_correlation = 0.0
+            self.btc_price_change = 0.0
 
             # correlation with BTC
             if not self.df_btc.empty and self.df_btc.close.size > 0:
