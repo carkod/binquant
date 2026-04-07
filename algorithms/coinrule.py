@@ -5,6 +5,7 @@ from pandas import to_datetime
 from pybinbot import (
     HABollinguerSpread,
     MarketDominance,
+    MarketType,
     SignalsConsumer,
     Strategy,
     round_numbers,
@@ -262,12 +263,13 @@ class PriceTracker:
             """
 
             value = SignalsConsumer(
-                autotrade=True,
+                autotrade=False,
                 current_price=close_price,
                 msg=msg,
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
