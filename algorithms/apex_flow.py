@@ -360,7 +360,12 @@ class ApexFlow:
         else:
             btc_effect = 0
 
-        btc_score = max(min(int(btc_effect / 0.5), 3), -3)
+        try:
+            btc_score = max(min(int(btc_effect / 0.5), 3), -3)
+        except Exception as error:
+            logging.error(f"Error computing BTC score: {error}")
+            btc_score = 0
+
         score += btc_score
 
         return score

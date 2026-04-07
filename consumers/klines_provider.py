@@ -28,6 +28,7 @@ class KlinesProvider:
     """
 
     MAX_CANDLES = 400
+    MAX_CANDLES_15M = 400
 
     def __init__(self, consumer: KafkaConsumer) -> None:
         self.config = Config()
@@ -45,6 +46,7 @@ class KlinesProvider:
         )
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
+        self.interval_15m: BinanceKlineIntervals | KucoinKlineIntervals
         self.consumer = consumer
         self.producer = AsyncProducer(
             host=self.config.kafka_host, port=self.config.kafka_port
@@ -54,6 +56,8 @@ class KlinesProvider:
         # Candles/btc candles storage
         self.candles: list[list] = []
         self.btc_candles: list[list] = []
+        self.candles_15m: list[list] = []
+        self.btc_candles_15m: list[list] = []
         # Open interest cache
         # symbol -> {timestamp: openInterest}
         self.oi_cache: dict[str, tuple[int, float]] = {}
@@ -68,12 +72,14 @@ class KlinesProvider:
                 passphrase=self.config.kucoin_passphrase,
             )
             self.interval = KucoinKlineIntervals.FIVE_MINUTES
+            self.interval_15m = KucoinKlineIntervals.FIFTEEN_MINUTES
         else:
             self.exchange = ExchangeId.BINANCE
             self.api = BinanceApi(
                 key=self.config.binance_key, secret=self.config.binance_secret
             )
             self.interval = BinanceKlineIntervals.five_minutes
+            self.interval_15m = BinanceKlineIntervals.fifteen_minutes
 
         self.all_symbols = self.binbot_api.get_symbols()
 
@@ -146,6 +152,11 @@ class KlinesProvider:
             interval=self.interval.value,
             limit=self.MAX_CANDLES,
         )
+        self.btc_candles_15m = self.api.get_ui_klines(
+            symbol=btc_symbol,
+            interval=self.interval_15m.value,
+            limit=self.MAX_CANDLES_15M,
+        )
 
     async def aggregate_data(self, payload: dict):
         """
@@ -176,15 +187,25 @@ class KlinesProvider:
             interval=self.interval.value,
             limit=self.MAX_CANDLES,
         )
+        self.candles_15m = self.api.get_ui_klines(
+            symbol=api_symbol,
+            interval=self.interval_15m.value,
+            limit=self.MAX_CANDLES_15M,
+        )
         # Refresh BTC candles if empty or last open time is more than 15 minutes behind
         refresh_btc_candles = self._refresh_btc_candles()
 
         if refresh_btc_candles:
             if klines.market_type == MarketType.FUTURES:
                 self.btc_candles = self.api.get_ui_klines(
-                    symbol="ETHBTCUSDTM",
+                    symbol="XBTUSDTM",
                     interval=self.interval.value,
                     limit=self.MAX_CANDLES,
+                )
+                self.btc_candles_15m = self.api.get_ui_klines(
+                    symbol="XBTUSDTM",
+                    interval=self.interval_15m.value,
+                    limit=self.MAX_CANDLES_15M,
                 )
             else:
                 symbol = (
@@ -194,6 +215,11 @@ class KlinesProvider:
                     symbol=symbol,
                     interval=self.interval.value,
                     limit=self.MAX_CANDLES,
+                )
+                self.btc_candles_15m = self.api.get_ui_klines(
+                    symbol=symbol,
+                    interval=self.interval_15m.value,
+                    limit=self.MAX_CANDLES_15M,
                 )
 
         all_symbols = [s for s in self.all_symbols if s["id"] == symbol]
@@ -227,4 +253,6 @@ class KlinesProvider:
         await crypto_analytics.process_data(
             candles=self.candles,
             btc_candles=self.btc_candles,
+            candles_15m=self.candles_15m,
+            btc_candles_15m=self.btc_candles_15m,
         )

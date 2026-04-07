@@ -1,7 +1,6 @@
 from os import getenv
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from consumers.signal_collector import SignalCollector
 from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
     HABollinguerSpread,
@@ -31,96 +30,18 @@ class TopGainersReversalDrop:
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
         self.df: TypedDataFrame[KlineSchema] = cls.df.copy()
-        self.signal_collector = SignalCollector(
-            first_seen_at=cls.first_seen_at,
-            interval=cls.interval,
-            binbot_api=cls.binbot_api,
-        )
 
         self.lookback_window = 20
         self.score_lookback = 80
         self.score_quantile = 0.9
         self.pump_lookback = 6
         self.cooldown_bars = 4
-        self.top_gainers_limit = 8
         self.min_baseline_volume = 1e-8
         self.min_pump_return = 0.04
         self.min_retrace_from_peak = 0.015
         self.min_volume_ratio = 1.8
         self.min_upper_wick_frac = 0.3
         self.max_close_position = 0.35
-
-    @staticmethod
-    def _normalize_symbol(value: Any) -> str:
-        return (
-            str(value or "").upper().replace("-", "").replace("_", "").replace("/", "")
-        )
-
-    def _extract_symbol(self, record: Any) -> str:
-        if not isinstance(record, dict):
-            return self._normalize_symbol(record)
-
-        for key in ("symbol", "id", "pair", "ticker", "code", "name"):
-            if record.get(key):
-                return self._normalize_symbol(record[key])
-
-        base_asset = record.get("base_asset") or record.get("baseAsset")
-        quote_asset = record.get("quote_asset") or record.get("quoteAsset")
-        if base_asset and quote_asset:
-            return self._normalize_symbol(f"{base_asset}{quote_asset}")
-
-        return ""
-
-    @staticmethod
-    def _extract_float(record: dict[str, Any], keys: tuple[str, ...]) -> float | None:
-        for key in keys:
-            value = record.get(key)
-            if value in (None, ""):
-                continue
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                continue
-        return None
-
-    def _match_top_gainer(
-        self, payload: Any
-    ) -> tuple[int | None, dict[str, Any] | None, float | None]:
-        if isinstance(payload, dict) and isinstance(payload.get("data"), list):
-            payload = payload["data"]
-
-        if not isinstance(payload, list):
-            return None, None, None
-
-        current_symbols = {
-            self._normalize_symbol(self.symbol),
-            self._normalize_symbol(self.kucoin_symbol),
-        }
-
-        for rank, record in enumerate(payload[: self.top_gainers_limit], start=1):
-            record_symbol = self._extract_symbol(record)
-            if record_symbol not in current_symbols:
-                continue
-
-            gain_pct = None
-            if isinstance(record, dict):
-                gain_pct = self._extract_float(
-                    record,
-                    (
-                        "priceChangePercent",
-                        "price_change_percent",
-                        "change_percent",
-                        "changePercent",
-                        "percent",
-                        "percentage",
-                        "gain_percent",
-                        "gainPct",
-                    ),
-                )
-
-            return rank, record if isinstance(record, dict) else None, gain_pct
-
-        return None, None, None
 
     def compute_indicators(self) -> TypedDataFrame[KlineSchema]:
         df = self.df.copy()
@@ -206,8 +127,17 @@ class TopGainersReversalDrop:
             return None
 
         top_gainers = await self.binbot_api.get_top_gainers()
-        rank, _, gain_pct = self._match_top_gainer(top_gainers)
-        if rank is None:
+        gain_pct = None
+        for record in top_gainers:
+            if record["symbol"] != self.symbol:
+                continue
+            try:
+                gain_pct = float(record["priceChangePercent"])
+            except (KeyError, TypeError, ValueError):
+                return None
+            break
+
+        if gain_pct is None:
             return None
 
         algo = "top_gainers_reversal_drop"
@@ -232,7 +162,6 @@ class TopGainersReversalDrop:
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-            - Top gainers rank: #{rank}
             - Pump return ({self.pump_lookback} bars): {round_numbers(float(row["pump_return"]) * 100, 2)}%{daily_gain_line}
             - Retrace from peak: {round_numbers(float(row["retrace_from_peak"]) * 100, 2)}%
             - Upper wick fraction: {round_numbers(float(row["upper_wick_frac"]) * 100, 2)}%

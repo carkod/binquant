@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pandas as pd
 import pytest
-from pybinbot import ExchangeId, MarketType, Strategy
+from pybinbot import ExchangeId, MarketType
 
 from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
 
@@ -90,65 +90,80 @@ def make_reversal_df() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def test_match_top_gainer_supports_kucoin_style_symbol():
-    algo = make_algo(make_reversal_df())
-
-    rank, record, gain_pct = algo._match_top_gainer(
-        [
-            {"symbol": "ABC-USDT", "priceChangePercent": "9.1"},
-            {"symbol": "TEST-USDT", "priceChangePercent": "17.4"},
-        ]
-    )
-
-    assert rank == 2
-    assert record == {"symbol": "TEST-USDT", "priceChangePercent": "17.4"}
-    assert gain_pct == pytest.approx(17.4)
-
-
 @pytest.mark.asyncio
-async def test_signal_generator_dispatches_for_top_gainer_reversal(monkeypatch):
+async def test_signal_dispatches_for_top_gainer_reversal():
     df = make_reversal_df()
     algo = make_algo(df)
-    algo.binbot_api = SimpleNamespace(
-        get_top_gainers=AsyncMock(
-            return_value=[
-                {"symbol": "TEST-USDT", "priceChangePercent": "15.8"},
-                {"symbol": "ABC-USDT", "priceChangePercent": "9.2"},
-            ]
-        )
+    get_top_gainers_mock = AsyncMock(
+        return_value=[
+            {"symbol": "TESTUSDT", "priceChangePercent": "15.8"},
+            {"symbol": "ABCUSDT", "priceChangePercent": "9.2"},
+        ]
     )
-    handle_mock = AsyncMock()
-    algo.signal_collector = cast(Any, SimpleNamespace(handle=handle_mock))
-
-    monkeypatch.setattr(
-        "algorithms.top_gainers_reversal_drop.build_links_msg",
-        lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
+    send_signal_mock = AsyncMock()
+    process_mock = AsyncMock()
+    algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
+    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
 
-    await algo.signal_generator(current_price=float(df.close.iloc[-1]))
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]), bb_high=0, bb_mid=0, bb_low=0
+    )
 
-    handle_mock.assert_awaited_once()
-    await_args = handle_mock.await_args
+    send_signal_mock.assert_awaited_once()
+    process_mock.assert_awaited_once()
+
+    await_args = process_mock.await_args
     assert await_args is not None
-    candidate = await_args.kwargs["candidate"]
-    assert candidate.algo == "top_gainers_reversal_drop"
-    assert candidate.symbol == "TESTUSDT"
-    assert candidate.strategy == Strategy.margin_short
-    assert candidate.score > 0
+    value = await_args.args[0]
+    assert value.algo == "top_gainers_reversal_drop"
+    assert value.symbol == "TESTUSDT"
+    assert value.bot_strategy == "margin_short"
 
 
 @pytest.mark.asyncio
 async def test_signal_generator_skips_when_symbol_is_not_a_top_gainer():
     df = make_reversal_df()
     algo = make_algo(df)
-    algo.binbot_api = SimpleNamespace(
-        get_top_gainers=AsyncMock(
-            return_value=[{"symbol": "ABC-USDT", "priceChangePercent": "15.8"}]
-        )
+    get_top_gainers_mock = AsyncMock(
+        return_value=[{"symbol": "ABCUSDT", "priceChangePercent": "15.8"}]
     )
-    handle_mock = AsyncMock()
-    algo.signal_collector = cast(Any, SimpleNamespace(handle=handle_mock))
+    send_signal_mock = AsyncMock()
+    process_mock = AsyncMock()
+    algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
+    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
 
-    await algo.signal_generator(current_price=float(df.close.iloc[-1]))
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]), bb_high=0, bb_mid=0, bb_low=0
+    )
 
-    handle_mock.assert_not_awaited()
+    send_signal_mock.assert_not_awaited()
+    process_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_skips_when_price_change_percent_is_invalid():
+    df = make_reversal_df()
+    algo = make_algo(df)
+    get_top_gainers_mock = AsyncMock(
+        return_value=[{"symbol": "TESTUSDT", "priceChangePercent": None}]
+    )
+    send_signal_mock = AsyncMock()
+    process_mock = AsyncMock()
+    algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
+    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]), bb_high=0, bb_mid=0, bb_low=0
+    )
+
+    send_signal_mock.assert_not_awaited()
+    process_mock.assert_not_awaited()

@@ -287,7 +287,7 @@ requires-dist = [
     { name = "kafka-python", specifier = ">=2.0.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=0.7.41" },
+    { name = "pybinbot", specifier = ">=0.7.42" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "pytest-vcr", marker = "extra == 'dev'", specifier = ">=1.0.2" },
@@ -1501,7 +1501,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "0.7.41"
+version = "0.7.42"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1516,9 +1516,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/c5/e6d48f6520634bbc9c326209e2cfe56c744fdfd0c4411b40860bd6d3e05d/pybinbot-0.7.41.tar.gz", hash = "sha256:88ffebc51d7f07470c62fbe8518dfd0e9fb00ae6dd01ba9adeb2aa000ba3c032", size = 56095, upload-time = "2026-04-03T23:46:44.315Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/12/7f2c4228bbed294d977507652019c4714bc3677df48051ec9c9732f16108/pybinbot-0.7.42.tar.gz", hash = "sha256:693643332ce422f386663edf8b756c52bf69217d1d2a93a73cad8d6f2aa0cd1a", size = 55148, upload-time = "2026-04-07T16:07:53.734Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b2/74/ab99c7dbd2abe0a500c37c41222cb77a3fb233179b1d6ad3c1ea796aca9f/pybinbot-0.7.41-py3-none-any.whl", hash = "sha256:8de668a33fd07fd8a13b53726bee45362b9dd8f7b4c55f8178b51e25127dae88", size = 59009, upload-time = "2026-04-03T23:46:42.881Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/d9/4d353773a170d3f10f04e0712ea727bc0a6873ddc4e9e369239f0aabe733/pybinbot-0.7.42-py3-none-any.whl", hash = "sha256:f31a281197bd7d1060d25d068f495541720f9ff818248b638f582614feeabde3", size = 58092, upload-time = "2026-04-07T16:07:52.299Z" },
 ]
 
 [[package]]
@@ -2203,15 +2203,15 @@ wheels = [
 
 [[package]]
 name = "uvicorn"
-version = "0.43.0"
+version = "0.44.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "h11" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/f2/368268300fb8af33743508d738ef7bb4d56afdb46c6d9c0fa3dd515df171/uvicorn-0.43.0.tar.gz", hash = "sha256:ab1652d2fb23abf124f36ccc399828558880def222c3cb3d98d24021520dc6e8", size = 85686, upload-time = "2026-04-03T18:37:48.984Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/da/6eee1ff8b6cbeed47eeb5229749168e81eb4b7b999a1a15a7176e51410c9/uvicorn-0.44.0.tar.gz", hash = "sha256:6c942071b68f07e178264b9152f1f16dfac5da85880c4ce06366a96d70d4f31e", size = 86947, upload-time = "2026-04-06T09:23:22.826Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/df/0cf5b0c451602748fdc7a702d4667f6e209bf96aa6e3160d754234445f2a/uvicorn-0.43.0-py3-none-any.whl", hash = "sha256:46fac64f487fd968cd999e5e49efbbe64bd231b5bd8b4a0b482a23ebce499620", size = 68591, upload-time = "2026-04-03T18:37:47.64Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/23/a5bbd9600dd607411fa644c06ff4951bec3a4d82c4b852374024359c19c0/uvicorn-0.44.0-py3-none-any.whl", hash = "sha256:ce937c99a2cc70279556967274414c087888e8cec9f9c94644dfca11bd3ced89", size = 69425, upload-time = "2026-04-06T09:23:21.524Z" },
 ]
 
 [[package]]

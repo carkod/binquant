@@ -180,7 +180,13 @@ class ContextEvaluator:
         self.tgrd = TopGainersReversalDrop(cls=self)
         self.pt = PriceTracker(cls=self)
 
-    async def process_data(self, candles, btc_candles=None):
+    async def process_data(
+        self,
+        candles,
+        btc_candles=None,
+        candles_15m=None,
+        btc_candles_15m=None,
+    ):
         """
         Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
 
@@ -188,32 +194,16 @@ class ContextEvaluator:
         """
         self.symbol_dependent_data()
         heikin_ashi = HeikinAshi()
-
-        parity_exchange_15m_candles = None
-        if heikin_ashi.is_15m_parity_check_due(self.symbol):
-            interval = KucoinKlineIntervals.FIFTEEN_MINUTES.value
-            if isinstance(self.api, BinanceApi):
-                interval = BinanceKlineIntervals.fifteen_minutes.value
-
-            parity_symbol = (
-                self.kucoin_symbol
-                if self.exchange == ExchangeId.KUCOIN and self.kucoin_symbol
-                else self.symbol
-            )
-
-            parity_exchange_15m_candles = self.api.get_ui_klines(
-                symbol=parity_symbol,
-                interval=interval,
-                limit=400,
-            )
-
-        self.df, self.df_15m, self.df_1h, self.df_4h = heikin_ashi.pre_process(
-            self.exchange,
-            candles,
-            parity_symbol=self.symbol,
-            parity_exchange_15m_candles=parity_exchange_15m_candles,
+        candles_15m = candles_15m if candles_15m is not None else candles
+        btc_candles_15m = (
+            btc_candles_15m if btc_candles_15m is not None else btc_candles
         )
-        _, self.df_btc, _, _ = heikin_ashi.pre_process(self.exchange, btc_candles)
+
+        self.df, _, _, _ = heikin_ashi.pre_process(self.exchange, candles)
+        self.df_15m, _, self.df_1h, self.df_4h = heikin_ashi.pre_process(
+            self.exchange, candles_15m
+        )
+        self.df_btc, _, _, _ = heikin_ashi.pre_process(self.exchange, btc_candles_15m)
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
         if not self.df_15m.empty and self.df_15m.close.size > 0:
@@ -275,19 +265,19 @@ class ContextEvaluator:
             spreads = self.bb_spreads()
 
             # uncomment once it's ready
-            # await self.tgrd.signal(
-            #     current_price=close_price,
-            #     bb_high=spreads.bb_high,
-            #     bb_mid=spreads.bb_mid,
-            #     bb_low=spreads.bb_low,
-            # )
+            await self.tgrd.signal(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
 
-            # await self.sh3.signal(
-            #     current_price=close_price,
-            #     bb_high=spreads.bb_high,
-            #     bb_mid=spreads.bb_mid,
-            #     bb_low=spreads.bb_low,
-            # )
+            await self.sh3.signal(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
 
             # Apex Flow signals
             await self.af.signal(
