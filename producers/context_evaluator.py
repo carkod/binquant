@@ -249,12 +249,15 @@ class ContextEvaluator:
 
             close_price = float(self.df_15m["close"].iloc[-1])
 
-            await self.lsp.signal_generator(
-                current_price=close_price,
-            )
-
             # below signals require spreads
             spreads = self.bb_spreads()
+
+            await self.lsp.signal_generator(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
 
             await self.abp.signal(
                 current_price=close_price,
@@ -278,19 +281,19 @@ class ContextEvaluator:
                 bb_low=spreads.bb_low,
             )
 
+            await self.pt.signal(
+                close_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_low=spreads.bb_low,
+                bb_mid=spreads.bb_mid,
+            )
+
             # Apex Flow signals
             await self.af.signal(
                 current_price=close_price,
                 btc_correlation=self.btc_correlation,
                 btc_price_change=self.btc_price_change,
                 btc_beta=self.btc_beta,
-            )
-
-            await self.pt.signal(
-                close_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_low=spreads.bb_low,
-                bb_mid=spreads.bb_mid,
             )
 
         return
