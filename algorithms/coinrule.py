@@ -12,6 +12,8 @@ from pybinbot import (
     Indicators,
 )
 
+from shared.utils import build_links_msg
+
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
@@ -19,6 +21,10 @@ if TYPE_CHECKING:
 class PriceTracker:
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
+        self.config = cls.config
+        self.exchange = cls.exchange
+        self.market_type = cls.market_type
+        self.exchange = cls.exchange
         self.df = cls.df
         self.df_1h = cls.df_1h
         self.market_breadth_data = cls.market_breadth_data
@@ -247,6 +253,13 @@ class PriceTracker:
         macd_value = float(df_5m["macd"].iloc[-1])
         mfi_value = self._compute_mfi(df_5m)
 
+        kucoin_link = build_links_msg(
+            self.config.env, self.exchange, self.market_type, self.symbol
+        )[0]
+        terminal_link = build_links_msg(
+            self.config.env, self.exchange, self.market_type, self.symbol
+        )[1]
+
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
             algo = "coinrule_price_tracker"
             bot_strategy = Strategy.long
@@ -258,8 +271,8 @@ class PriceTracker:
             - MACD &lt; 0: {round_numbers(macd_value, 6)}
             - MFI &lt; 20: {round_numbers(mfi_value, 2)}
             - Strategy: {bot_strategy.value}
-            - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
-            - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
