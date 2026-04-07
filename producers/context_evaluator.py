@@ -183,7 +183,6 @@ class ContextEvaluator:
     async def process_data(
         self,
         candles,
-        btc_candles=None,
         candles_15m=None,
         btc_candles_15m=None,
     ):
@@ -195,9 +194,6 @@ class ContextEvaluator:
         self.symbol_dependent_data()
         heikin_ashi = HeikinAshi()
         candles_15m = candles_15m if candles_15m is not None else candles
-        btc_candles_15m = (
-            btc_candles_15m if btc_candles_15m is not None else btc_candles
-        )
 
         self.df, _, _, _ = heikin_ashi.pre_process(self.exchange, candles)
         self.df_15m, _, self.df_1h, self.df_4h = heikin_ashi.pre_process(
