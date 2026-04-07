@@ -194,4 +194,7 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     assert call_kwargs.algo == "coinrule_price_tracker"
     assert call_kwargs.symbol == "TESTUSDT"
     assert call_kwargs.bot_strategy == Strategy.long
-    assert call_kwargs.autotrade is True
+    assert call_kwargs.autotrade is False
+    assert "&lt; 30" in call_kwargs.msg
+    assert "&lt; 0" in call_kwargs.msg
+    assert "&lt; 20" in call_kwargs.msg
