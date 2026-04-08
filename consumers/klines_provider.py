@@ -92,7 +92,7 @@ class KlinesProvider:
 
         self.market_context_accumulator = LiveMarketContextAccumulator(
             state_store=self.market_state_store,
-            btc_symbol=self._normalize_store_symbol(self.futures_benchmark_symbol),
+            btc_symbol=self.futures_benchmark_symbol,
         )
         self.latest_market_context: LiveMarketContext | None = None
 
@@ -108,10 +108,6 @@ class KlinesProvider:
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
             binbot_api=self.binbot_api,
         )
-
-    @staticmethod
-    def _normalize_store_symbol(symbol: str) -> str:
-        return symbol.replace("-", "").strip().upper()
 
     def _get_benchmark_symbol(self, market_type: MarketType = MarketType.SPOT) -> str:
         if market_type == MarketType.FUTURES:
@@ -152,7 +148,7 @@ class KlinesProvider:
             return
 
         self.market_state_store.update(
-            symbol=self._normalize_store_symbol(symbol),
+            symbol=symbol,
             candle=DataFrame(rows),
         )
 
@@ -187,10 +183,8 @@ class KlinesProvider:
         if self.candles_15m:
             latest_candle = self._raw_kline_to_store_candle(self.candles_15m[-1])
             if latest_candle is not None:
-                self.market_context_accumulator.btc_symbol = (
-                    self._normalize_store_symbol(
-                        self._get_benchmark_symbol(market_type)
-                    )
+                self.market_context_accumulator.btc_symbol = self._get_benchmark_symbol(
+                    market_type
                 )
                 self.latest_market_context = (
                     self.market_context_accumulator.refresh_context_for_timestamp(

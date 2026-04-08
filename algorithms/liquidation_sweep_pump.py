@@ -38,14 +38,10 @@ class LiquidationSweepPump:
         self.df: TypedDataFrame[KlineSchema] = cls.df_15m.copy()
         self.df_btc: TypedDataFrame[KlineSchema] = cls.df_btc.copy()
         self.latest_market_context = getattr(cls, "latest_market_context", None)
-        self.signal_context_scorer = getattr(
-            cls,
-            "signal_context_scorer",
-            SignalContextScorer(
-                context_weight=0.35,
-                risk_weight=0.35,
-                support_weight=0.2,
-            ),
+        self.signal_context_scorer = SignalContextScorer(
+            context_weight=0.35,
+            risk_weight=0.35,
+            support_weight=0.2,
         )
         self.signal_collector = SignalCollector(
             first_seen_at=cls.first_seen_at,

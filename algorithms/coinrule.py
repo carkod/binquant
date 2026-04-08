@@ -40,14 +40,10 @@ class PriceTracker:
         self.current_market_dominance = cls.current_market_dominance
         self.market_domination_reversal = cls.market_domination_reversal
         self.latest_market_context = getattr(cls, "latest_market_context", None)
-        self.signal_context_scorer = getattr(
-            cls,
-            "signal_context_scorer",
-            SignalContextScorer(
-                context_weight=0.35,
-                risk_weight=0.35,
-                support_weight=0.2,
-            ),
+        self.signal_context_scorer = SignalContextScorer(
+            context_weight=0.35,
+            risk_weight=0.35,
+            support_weight=0.2,
         )
 
     def pre_process(self):

@@ -275,7 +275,6 @@ class ContextEvaluator:
                 bb_low=spreads.bb_low,
             )
 
-            # uncomment once it's ready
             await self.tgrd.signal(
                 current_price=close_price,
                 bb_high=spreads.bb_high,
@@ -298,11 +297,6 @@ class ContextEvaluator:
             )
 
             # Apex Flow signals
-            await self.af.signal(
-                current_price=close_price,
-                btc_correlation=self.btc_correlation,
-                btc_price_change=self.btc_price_change,
-                btc_beta=self.btc_beta,
-            )
+            await self.af.signal()
 
         return
