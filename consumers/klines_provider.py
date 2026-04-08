@@ -27,7 +27,7 @@ class KlinesProvider:
     WebSocket updates into historical data and passes it to ContextEvaluator.
     """
 
-    MAX_CANDLES = 400
+    LIMIT = 400
 
     def __init__(self, consumer: KafkaConsumer) -> None:
         self.config = Config()
@@ -45,6 +45,7 @@ class KlinesProvider:
         )
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
+        self.interval_15m: BinanceKlineIntervals | KucoinKlineIntervals
         self.consumer = consumer
         self.producer = AsyncProducer(
             host=self.config.kafka_host, port=self.config.kafka_port
@@ -53,7 +54,8 @@ class KlinesProvider:
         self.first_seen_at = int(time() * 1000)
         # Candles/btc candles storage
         self.candles: list[list] = []
-        self.btc_candles: list[list] = []
+        self.candles_15m: list[list] = []
+        self.btc_candles_15m: list[list] = []
         # Open interest cache
         # symbol -> {timestamp: openInterest}
         self.oi_cache: dict[str, tuple[int, float]] = {}
@@ -68,12 +70,18 @@ class KlinesProvider:
                 passphrase=self.config.kucoin_passphrase,
             )
             self.interval = KucoinKlineIntervals.FIVE_MINUTES
+            self.interval_15m = KucoinKlineIntervals.FIFTEEN_MINUTES
+            self.benchmark_symbol = "BTC-USDT"
+            self.futures_benchmark_symbol = "XBTUSDTM"
         else:
             self.exchange = ExchangeId.BINANCE
             self.api = BinanceApi(
                 key=self.config.binance_key, secret=self.config.binance_secret
             )
             self.interval = BinanceKlineIntervals.five_minutes
+            self.interval_15m = BinanceKlineIntervals.fifteen_minutes
+            self.benchmark_symbol = "BTCUSDC"
+            self.futures_benchmark_symbol = "BTCUSDTM"
 
         self.all_symbols = self.binbot_api.get_symbols()
 
@@ -88,20 +96,34 @@ class KlinesProvider:
             binbot_api=self.binbot_api,
         )
 
-    def _refresh_btc_candles(self) -> bool:
+    def _refresh_btc_candles_15m(self, market_type: MarketType) -> None:
         """
         Refresh if interval exceeded since last BTC candle.
         """
         refresh_btc_candles = False
-        if len(self.btc_candles) == 0:
+        if len(self.btc_candles_15m) == 0:
             refresh_btc_candles = True
         else:
-            last_btc_open_time = self.btc_candles[-1][0]  # open_time in ms
+            last_btc_open_time = self.btc_candles_15m[-1][0]  # open_time in ms
             now_ts = int(time() * 1000)
-            if now_ts - last_btc_open_time > int(self.interval.get_ms()):
+            if now_ts - last_btc_open_time > int(self.interval_15m.get_ms()):
                 refresh_btc_candles = True
 
-        return refresh_btc_candles
+        if refresh_btc_candles:
+            if market_type == MarketType.FUTURES:
+                symbol = self.futures_benchmark_symbol
+                self.btc_candles_15m = self.api.get_ui_klines(
+                    symbol=symbol,
+                    interval=self.interval_15m.value,
+                    limit=self.LIMIT,
+                )
+            else:
+                symbol = self.benchmark_symbol
+                self.btc_candles_15m = self.api.get_ui_klines(
+                    symbol=symbol,
+                    interval=self.interval_15m.value,
+                    limit=self.LIMIT,
+                )
 
     def retrieve_oi(self, kucoin_symbol: str) -> float:
         """
@@ -140,11 +162,10 @@ class KlinesProvider:
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
         # Load BTC benchmark candles
-        btc_symbol = "BTCUSDT" if self.exchange == ExchangeId.BINANCE else "BTC-USDT"
-        self.btc_candles = self.api.get_ui_klines(
-            symbol=btc_symbol,
-            interval=self.interval.value,
-            limit=self.MAX_CANDLES,
+        self.btc_candles_15m = self.api.get_ui_klines(
+            symbol=self.benchmark_symbol,
+            interval=self.interval_15m.value,
+            limit=self.LIMIT,
         )
 
     async def aggregate_data(self, payload: dict):
@@ -166,6 +187,7 @@ class KlinesProvider:
                 secret=self.config.kucoin_secret,
                 passphrase=self.config.kucoin_passphrase,
             )
+        market_type = klines.market_type or MarketType.SPOT
 
         kucoin_symbol = klines.symbol
         symbol = kucoin_symbol.replace("-", "")
@@ -174,27 +196,15 @@ class KlinesProvider:
         self.candles = self.api.get_ui_klines(
             symbol=api_symbol,
             interval=self.interval.value,
-            limit=self.MAX_CANDLES,
+            limit=self.LIMIT,
+        )
+        self.candles_15m = self.api.get_ui_klines(
+            symbol=api_symbol,
+            interval=self.interval_15m.value,
+            limit=self.LIMIT,
         )
         # Refresh BTC candles if empty or last open time is more than 15 minutes behind
-        refresh_btc_candles = self._refresh_btc_candles()
-
-        if refresh_btc_candles:
-            if klines.market_type == MarketType.FUTURES:
-                self.btc_candles = self.api.get_ui_klines(
-                    symbol="ETHBTCUSDTM",
-                    interval=self.interval.value,
-                    limit=self.MAX_CANDLES,
-                )
-            else:
-                symbol = (
-                    "BTCUSDT" if self.exchange == ExchangeId.BINANCE else "BTC-USDT"
-                )
-                self.btc_candles = self.api.get_ui_klines(
-                    symbol=symbol,
-                    interval=self.interval.value,
-                    limit=self.MAX_CANDLES,
-                )
+        self._refresh_btc_candles_15m(market_type)
 
         all_symbols = [s for s in self.all_symbols if s["id"] == symbol]
         if all_symbols and len(all_symbols) > 0:
@@ -220,11 +230,12 @@ class KlinesProvider:
             exchange=self.exchange,
             first_seen_at=self.first_seen_at,
             interval=self.interval,
-            market_type=klines.market_type if klines.market_type else MarketType.SPOT,
+            market_type=market_type,
             oi_data=self.retrieve_oi(kucoin_symbol),
             binbot_api=self.binbot_api,
         )
         await crypto_analytics.process_data(
             candles=self.candles,
-            btc_candles=self.btc_candles,
+            candles_15m=self.candles_15m,
+            btc_candles_15m=self.btc_candles_15m,
         )

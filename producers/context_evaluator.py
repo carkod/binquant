@@ -25,6 +25,7 @@ from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.apex_flow import ApexFlow
 from algorithms.activity_burst_pump import ActivityBurstPump
 from algorithms.liquidation_sweep_pump import LiquidationSweepPump
+from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 
@@ -176,9 +177,15 @@ class ContextEvaluator:
         self.af = ApexFlow(cls=self)
         self.abp = ActivityBurstPump(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
+        self.tgrd = TopGainersReversalDrop(cls=self)
         self.pt = PriceTracker(cls=self)
 
-    async def process_data(self, candles, btc_candles=None):
+    async def process_data(
+        self,
+        candles,
+        candles_15m=None,
+        btc_candles_15m=None,
+    ):
         """
         Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
 
@@ -186,32 +193,13 @@ class ContextEvaluator:
         """
         self.symbol_dependent_data()
         heikin_ashi = HeikinAshi()
+        candles_15m = candles_15m if candles_15m is not None else candles
 
-        parity_exchange_15m_candles = None
-        if heikin_ashi.is_15m_parity_check_due(self.symbol):
-            interval = KucoinKlineIntervals.FIFTEEN_MINUTES.value
-            if isinstance(self.api, BinanceApi):
-                interval = BinanceKlineIntervals.fifteen_minutes.value
-
-            parity_symbol = (
-                self.kucoin_symbol
-                if self.exchange == ExchangeId.KUCOIN and self.kucoin_symbol
-                else self.symbol
-            )
-
-            parity_exchange_15m_candles = self.api.get_ui_klines(
-                symbol=parity_symbol,
-                interval=interval,
-                limit=400,
-            )
-
-        self.df, self.df_15m, self.df_1h, self.df_4h = heikin_ashi.pre_process(
-            self.exchange,
-            candles,
-            parity_symbol=self.symbol,
-            parity_exchange_15m_candles=parity_exchange_15m_candles,
+        self.df, _, _, _ = heikin_ashi.pre_process(self.exchange, candles)
+        self.df_15m, _, self.df_1h, self.df_4h = heikin_ashi.pre_process(
+            self.exchange, candles_15m
         )
-        _, self.df_btc, _, _ = heikin_ashi.pre_process(self.exchange, btc_candles)
+        self.df_btc, _, _, _ = heikin_ashi.pre_process(self.exchange, btc_candles_15m)
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
         if not self.df_15m.empty and self.df_15m.close.size > 0:
@@ -260,29 +248,37 @@ class ContextEvaluator:
                 return
 
             close_price = float(self.df_15m["close"].iloc[-1])
+
+            # below signals require spreads
             spreads = self.bb_spreads()
 
             await self.lsp.signal_generator(
                 current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
             )
 
-            await self.abp.signal_generator(
+            await self.abp.signal(
                 current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
             )
 
-            # await self.sh3.signal(
-            #     current_price=close_price,
-            #     bb_high=spreads.bb_high,
-            #     bb_mid=spreads.bb_mid,
-            #     bb_low=spreads.bb_low,
-            # )
-
-            # Apex Flow signals
-            await self.af.signal(
+            # uncomment once it's ready
+            await self.tgrd.signal(
                 current_price=close_price,
-                btc_correlation=self.btc_correlation,
-                btc_price_change=self.btc_price_change,
-                btc_beta=self.btc_beta,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
+
+            await self.sh3.signal(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
             )
 
             await self.pt.signal(
@@ -290,6 +286,14 @@ class ContextEvaluator:
                 bb_high=spreads.bb_high,
                 bb_low=spreads.bb_low,
                 bb_mid=spreads.bb_mid,
+            )
+
+            # Apex Flow signals
+            await self.af.signal(
+                current_price=close_price,
+                btc_correlation=self.btc_correlation,
+                btc_price_change=self.btc_price_change,
+                btc_beta=self.btc_beta,
             )
 
         return

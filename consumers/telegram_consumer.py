@@ -41,3 +41,4 @@ class TelegramConsumer:
             logging.warning("Telegram signal timed out, skipping...")
         except Exception as e:
             logging.error(f"Error sending telegram signal: {e}")
+            logging.error(f"Original message: {message}")

@@ -1,7 +1,12 @@
 from os import getenv
 from typing import TYPE_CHECKING
-from models.signals import SignalCandidate
-from pybinbot import Strategy, round_numbers, KlineSchema
+from pybinbot import (
+    HABollinguerSpread,
+    SignalsConsumer,
+    Strategy,
+    round_numbers,
+    KlineSchema,
+)
 from pandera.typing import DataFrame as TypedDataFrame
 from consumers.signal_collector import SignalCollector
 from shared.utils import build_links_msg
@@ -68,7 +73,9 @@ class LiquidationSweepPump:
 
         return df
 
-    async def signal_generator(self, current_price: float) -> None:
+    async def signal_generator(
+        self, current_price: float, bb_high: float, bb_mid: float, bb_low: float
+    ) -> None:
         """
         Generate signal if pump score exceeds threshold and OI growth filter
         """
@@ -118,20 +125,18 @@ class LiquidationSweepPump:
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
-        candidate = SignalCandidate(
+        value = SignalsConsumer(
+            autotrade=autotrade,
+            current_price=current_price,
+            msg=msg,
             symbol=self.symbol,
             algo=algo,
-            strategy=bot_strategy,
-            autotrade=autotrade,
-            market_type=self.market_type,
-            score=latest_score,
-            current_price=current_price,
-            volume=float(row.volume),
-            msg=msg,
+            bot_strategy=bot_strategy,
+            bb_spreads=HABollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
         )
-
-        await self.signal_collector.handle(
-            candidate=candidate,
-            dispatch_function=self.at_consumer.process_autotrade_restrictions,
-            send_telegram=self.telegram_consumer.send_signal,
-        )
+        await self.telegram_consumer.send_signal(msg)
+        await self.at_consumer.process_autotrade_restrictions(value)
