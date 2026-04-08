@@ -37,11 +37,11 @@ class LiquidationSweepPump:
         self.oi_growth = cls.oi_data
         self.df: TypedDataFrame[KlineSchema] = cls.df_15m.copy()
         self.df_btc: TypedDataFrame[KlineSchema] = cls.df_btc.copy()
-        self.latest_market_context = getattr(cls, "latest_market_context", None)
+        self.latest_market_context = cls.latest_market_context
         self.signal_context_scorer = SignalContextScorer(
-            context_weight=0.35,
-            risk_weight=0.35,
-            support_weight=0.2,
+            context_weight=0.12,
+            risk_weight=0.1,
+            support_weight=0.08,
         )
         self.signal_collector = SignalCollector(
             first_seen_at=cls.first_seen_at,
@@ -179,10 +179,21 @@ class LiquidationSweepPump:
             emit_threshold=1.0,
         )
         context_score = evaluation.context_score
+        market_context = self.latest_market_context
+        if market_context is not None:
+            in_long_regime = (
+                market_context.advancers_ratio >= 0.55
+                and market_context.long_tailwind > 0
+            )
+            in_neutral_transition = 0.45 < market_context.advancers_ratio < 0.55
+            high_market_stress = market_context.market_stress_score >= 0.35
+
+            if not in_long_regime or in_neutral_transition or high_market_stress:
+                return
         if (
             context_score.confidence >= 0.65
-            and context_score.followthrough_score < -0.2
-            and context_score.adverse_excursion_risk > 0.6
+            and context_score.followthrough_score < -0.35
+            and context_score.adverse_excursion_risk > 0.75
         ):
             return
         if not evaluation.emit:
@@ -190,8 +201,10 @@ class LiquidationSweepPump:
 
         msg += f"""
             - Context confidence: {round_numbers(context_score.confidence, 2)}
+            - Long regime: {"Yes" if market_context and market_context.advancers_ratio >= 0.55 and market_context.long_tailwind > 0 else "No"}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
+            - Market stress: {round_numbers(market_context.market_stress_score, 3) if market_context else 0}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
         """
 
