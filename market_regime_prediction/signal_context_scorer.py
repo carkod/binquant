@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
-from market_regime_prediction.market_context_model import BaseMarketContextModel
+from market_regime_prediction.context_scoring import RuleBasedMarketContextModel
 from market_regime_prediction.models import LiveMarketContext, MarketContextScore
 
 
@@ -34,10 +34,15 @@ class SignalContextScorer(BaseModel):
         direction: str,
         local_score: float,
         market_context: LiveMarketContext | None,
-        context_model: BaseMarketContextModel,
+        context_model: RuleBasedMarketContextModel | None = None,
         local_features: dict[str, float] | None = None,
     ) -> tuple[float, MarketContextScore]:
-        context_score = context_model.evaluate(
+        active_context_model = (
+            context_model
+            if context_model is not None
+            else RuleBasedMarketContextModel()
+        )
+        context_score = active_context_model.evaluate(
             symbol=symbol,
             direction=direction,
             snapshot_or_live_context=market_context,

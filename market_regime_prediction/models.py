@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from models.signals import SignalCandidate
 
 
 def _normalize_direction(value: str) -> str:
@@ -132,3 +133,12 @@ class MarketContextScore(BaseModel):
         if value is not None and value < 0:
             raise ValueError("context_timestamp must be non-negative")
         return value
+
+
+class SignalContextEvaluation(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    candidate: SignalCandidate
+    adjusted_score: float
+    emit: bool = Field(default=True)
+    context_score: MarketContextScore

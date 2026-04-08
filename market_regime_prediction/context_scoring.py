@@ -9,12 +9,12 @@ def _non_negative(value: float) -> float:
     return max(0.0, float(value))
 
 
-class BaseMarketContextModel:
+class RuleBasedMarketContextModel:
     """
-    Deterministic reusable whole-market conditioning model.
+    Deterministic whole-market conditioning model.
 
-    Is the broader market supportive for a candidate's direction?
-    How strongly the symbol can overcome weak breadth on its own?
+    This scores whether the broader market is supportive for a candidate's
+    direction and how strongly the symbol can offset weak breadth on its own.
     """
 
     def evaluate(
@@ -94,6 +94,7 @@ class BaseMarketContextModel:
                 supportiveness_score + 0.2 * override_strength
             )
             followthrough_score = _clamp(followthrough_score + 0.15 * override_strength)
+
         if (
             normalized_direction == "SHORT"
             and breadth_score < 0

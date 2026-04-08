@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from kafka import KafkaConsumer
-import pandas as pd
+from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
     ExchangeId,
@@ -15,6 +15,10 @@ from pybinbot import (
     KucoinFutures,
 )
 from consumers.autotrade_consumer import AutotradeConsumer
+from market_regime_prediction.live_market_context_accumulator import (
+    LiveMarketContextAccumulator,
+)
+from market_regime_prediction.models import LiveMarketContext
 from market_regime_prediction.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
@@ -86,6 +90,12 @@ class KlinesProvider:
             self.benchmark_symbol = "BTCUSDC"
             self.futures_benchmark_symbol = "BTCUSDTM"
 
+        self.market_context_accumulator = LiveMarketContextAccumulator(
+            state_store=self.market_state_store,
+            btc_symbol=self._normalize_store_symbol(self.futures_benchmark_symbol),
+        )
+        self.latest_market_context: LiveMarketContext | None = None
+
         self.all_symbols = self.binbot_api.get_symbols()
 
         # Autotrade consumer setup
@@ -143,7 +153,7 @@ class KlinesProvider:
 
         self.market_state_store.update(
             symbol=self._normalize_store_symbol(symbol),
-            candle=pd.DataFrame(rows),
+            candle=DataFrame(rows),
         )
 
     def _store_btc_history(self, market_type: MarketType) -> None:
@@ -174,6 +184,19 @@ class KlinesProvider:
             ui_klines=self.candles_15m,
         )
         self._store_btc_history(market_type=market_type)
+        if self.candles_15m:
+            latest_candle = self._raw_kline_to_store_candle(self.candles_15m[-1])
+            if latest_candle is not None:
+                self.market_context_accumulator.btc_symbol = (
+                    self._normalize_store_symbol(
+                        self._get_benchmark_symbol(market_type)
+                    )
+                )
+                self.latest_market_context = (
+                    self.market_context_accumulator.refresh_context_for_timestamp(
+                        int(latest_candle["timestamp"])
+                    )
+                )
 
     def _refresh_btc_candles_15m(self, market_type: MarketType) -> None:
         """
@@ -292,6 +315,7 @@ class KlinesProvider:
             interval=self.interval,
             market_type=market_type,
             oi_data=self.retrieve_oi(kucoin_symbol),
+            latest_market_context=self.latest_market_context,
             binbot_api=self.binbot_api,
         )
         await crypto_analytics.process_data(

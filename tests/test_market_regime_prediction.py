@@ -1,19 +1,15 @@
 from __future__ import annotations
 
-from market_regime_prediction import (
+from market_regime_prediction.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
-    MarketStateStore,
-    RuleBasedMarketContextModel,
-    SignalContextScorer,
 )
-from market_regime_prediction.integration import score_signal_candidate_with_context
-
-
-class DummyCandidate:
-    def __init__(self, symbol: str, direction: str, score: float) -> None:
-        self.symbol = symbol
-        self.direction = direction
-        self.score = score
+from market_regime_prediction.context_scoring import RuleBasedMarketContextModel
+from market_regime_prediction.market_state_store import MarketStateStore
+from market_regime_prediction.score_signal_candidate_with_context import (
+    score_signal_candidate_with_context,
+)
+from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from models.signals import SignalCandidate
 
 
 def make_candle(timestamp: int, close: float) -> dict[str, float]:
@@ -136,11 +132,16 @@ def test_signal_candidate_can_be_rescored() -> None:
         seed_symbol(store, symbol, 1_000, 100 + index)
         context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
 
-    candidate = DummyCandidate(symbol="ALT0USDT", direction="LONG", score=0.8)
+    candidate = SignalCandidate(
+        symbol="ALT0USDT",
+        direction="LONG",
+        score=0.8,
+        msg="",
+        algo="test_market_context",
+    )
     evaluation = score_signal_candidate_with_context(
         candidate=candidate,
         market_context=context,
-        context_model=RuleBasedMarketContextModel(),
         scorer=SignalContextScorer(),
         local_features={"relative_strength_vs_btc": 0.03, "trend_score": 0.02},
     )

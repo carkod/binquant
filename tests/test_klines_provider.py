@@ -79,7 +79,7 @@ class TestKlinesProvider:
             [2000, "1.1", "1.3", "1.0", "1.2", "120", 2999],
         ]
 
-        provider._store_symbol_history("eth-usdt")
+        provider._sync_market_state_from_ui_klines("eth-usdt", provider.candles_15m)
         history = provider.market_state_store.get_symbol_history("ETHUSDT")
 
         assert len(history) == 2

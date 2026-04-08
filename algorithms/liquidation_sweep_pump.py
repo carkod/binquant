@@ -2,12 +2,16 @@ from os import getenv
 from typing import TYPE_CHECKING
 from pybinbot import (
     HABollinguerSpread,
-    SignalsConsumer,
     Strategy,
     round_numbers,
     KlineSchema,
     MarketType,
 )
+from market_regime_prediction.score_signal_candidate_with_context import (
+    score_signal_candidate_with_context,
+)
+from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from models.signals import SignalCandidate
 from pandera.typing import DataFrame as TypedDataFrame
 from consumers.signal_collector import SignalCollector
 from shared.utils import build_links_msg
@@ -33,6 +37,16 @@ class LiquidationSweepPump:
         self.oi_growth = cls.oi_data
         self.df: TypedDataFrame[KlineSchema] = cls.df_15m.copy()
         self.df_btc: TypedDataFrame[KlineSchema] = cls.df_btc.copy()
+        self.latest_market_context = getattr(cls, "latest_market_context", None)
+        self.signal_context_scorer = getattr(
+            cls,
+            "signal_context_scorer",
+            SignalContextScorer(
+                context_weight=0.35,
+                risk_weight=0.35,
+                support_weight=0.2,
+            ),
+        )
         self.signal_collector = SignalCollector(
             first_seen_at=cls.first_seen_at,
             interval=cls.interval,
@@ -111,6 +125,21 @@ class LiquidationSweepPump:
         if self.oi_growth is not None and self.oi_growth < 1.05:
             return
 
+        local_score = float(latest_score / PUMP_SCORE_THRESHOLD)
+        symbol_return = float(df["close"].pct_change().iloc[-1]) if len(df) > 1 else 0.0
+        btc_return = (
+            float(self.df_btc["close"].pct_change().iloc[-1])
+            if not self.df_btc.empty and len(self.df_btc) > 1
+            else 0.0
+        )
+        ema_fast = df["close"].ewm(span=9, adjust=False).mean().iloc[-1]
+        ema_slow = df["close"].ewm(span=21, adjust=False).mean().iloc[-1]
+        trend_score = (
+            float((ema_fast - ema_slow) / abs(ema_slow))
+            if float(ema_slow) != 0
+            else 0.0
+        )
+
         kucoin_link, terminal_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
         )
@@ -126,19 +155,49 @@ class LiquidationSweepPump:
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
-        value = SignalsConsumer(
-            autotrade=autotrade,
-            current_price=current_price,
-            msg=msg,
+        candidate = SignalCandidate(
             symbol=self.symbol,
             algo=algo,
-            bot_strategy=bot_strategy,
+            direction="LONG",
+            strategy=bot_strategy,
+            autotrade=autotrade,
             market_type=MarketType.FUTURES,
+            score=local_score,
+            current_price=current_price,
+            volume=float(row.volume),
+            msg=msg,
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
                 bb_low=bb_low,
             ),
         )
+        evaluation = score_signal_candidate_with_context(
+            candidate=candidate,
+            market_context=self.latest_market_context,
+            scorer=self.signal_context_scorer,
+            local_features={
+                "relative_strength_vs_btc": symbol_return - btc_return,
+                "trend_score": trend_score,
+            },
+            emit_threshold=1.0,
+        )
+        context_score = evaluation.context_score
+        if (
+            context_score.confidence >= 0.65
+            and context_score.followthrough_score < -0.2
+            and context_score.adverse_excursion_risk > 0.6
+        ):
+            return
+        if not evaluation.emit:
+            return
+
+        msg += f"""
+            - Context confidence: {round_numbers(context_score.confidence, 2)}
+            - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
+            - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
+            - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
+        """
+
         await self.telegram_consumer.send_signal(msg)
-        await self.at_consumer.process_autotrade_restrictions(value)
+        await self.at_consumer.process_autotrade_restrictions(evaluation.candidate)

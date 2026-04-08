@@ -1,35 +1,20 @@
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
-from market_regime_prediction.market_context_model import BaseMarketContextModel
-from market_regime_prediction.models import LiveMarketContext, MarketContextScore
+from market_regime_prediction.models import (
+    LiveMarketContext,
+    SignalContextEvaluation,
+)
 from market_regime_prediction.signal_context_scorer import SignalContextScorer
 
 if TYPE_CHECKING:
-    pass
-
-
-class SignalCandidateLike(Protocol):
-    symbol: str
-    direction: str
-    score: float
-
-
-class SignalContextEvaluation(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
-
-    candidate: Any
-    adjusted_score: float
-    emit: bool = Field(default=True)
-    context_score: MarketContextScore
+    from models.signals import SignalCandidate
 
 
 def score_signal_candidate_with_context(
-    candidate: SignalCandidateLike,
+    candidate: SignalCandidate,
     market_context: LiveMarketContext | None,
-    context_model: BaseMarketContextModel,
     scorer: SignalContextScorer,
     local_features: dict[str, float] | None = None,
     emit_threshold: float | None = None,
@@ -46,7 +31,6 @@ def score_signal_candidate_with_context(
         direction=candidate.direction,
         local_score=candidate.score,
         market_context=market_context,
-        context_model=context_model,
         local_features=local_features,
     )
     candidate.score = adjusted_score

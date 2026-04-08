@@ -27,6 +27,8 @@ def _safe_pct(current: float, previous: float) -> float:
 class LiveMarketContextAccumulator:
     """
     Rebuilds the same timestamp snapshot incrementally as fresh closed candles arrive.
+    This ensures that context becomes available as soon as possible
+    and gets refined with every new candle for the same timestamp.
 
     A context becomes available only when BTC is fresh and the number of fresh
     symbols for that exact timestamp reaches the configured threshold.
@@ -75,6 +77,15 @@ class LiveMarketContextAccumulator:
                 return context
             self._context_order.pop()
         return None
+
+    def refresh_context_for_timestamp(self, timestamp: int) -> LiveMarketContext | None:
+        context = self._build_context(timestamp)
+        if context is None:
+            return None
+        self._contexts_by_timestamp[timestamp] = context
+        if timestamp not in self._context_order:
+            self._context_order.append(timestamp)
+        return context
 
     def _build_context(self, timestamp: int) -> LiveMarketContext | None:
         fresh_symbols = self.state_store.get_fresh_symbols(timestamp)

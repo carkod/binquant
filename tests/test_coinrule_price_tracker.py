@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock, MagicMock
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 
-import pandas as pd
 import pytest
+from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType, MarketDominance, Strategy
 
 from algorithms.coinrule import PriceTracker
 
 
-def make_context(df: pd.DataFrame) -> SimpleNamespace:
+def make_context(df: DataFrame) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
@@ -36,11 +36,11 @@ def make_context(df: pd.DataFrame) -> SimpleNamespace:
     )
 
 
-def make_algo(df: pd.DataFrame) -> PriceTracker:
+def make_algo(df: DataFrame) -> PriceTracker:
     return PriceTracker(cast(Any, make_context(df)))
 
 
-def make_ohlcv_df(n: int = 50, oversold: bool = False) -> pd.DataFrame:
+def make_ohlcv_df(n: int = 50, oversold: bool = False) -> DataFrame:
     """
     Create a minimal OHLCV dataframe.
     When oversold=True, prices trend sharply downward to produce
@@ -79,7 +79,7 @@ def make_ohlcv_df(n: int = 50, oversold: bool = False) -> pd.DataFrame:
                     "number_of_trades": 10,
                 }
             )
-    return pd.DataFrame(rows)
+    return DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
