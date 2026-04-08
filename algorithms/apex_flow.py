@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from pandas import notna, DataFrame, Series
-from pybinbot import Strategy, round_numbers, Indicators
+from pybinbot import Indicators, MarketType, Strategy, round_numbers
 from models.signals import SignalCandidate
 from consumers.signal_collector import SignalCollector
 from shared.enums import direction_type
@@ -501,7 +501,7 @@ class ApexFlow:
             direction=direction,
             strategy=bot_strategy,
             autotrade=autotrade,
-            market_type=self.market_type,
+            market_type=MarketType.FUTURES,
             score=score,
             current_price=current_price,
             atr=float(row.get("atr", 0.0)),

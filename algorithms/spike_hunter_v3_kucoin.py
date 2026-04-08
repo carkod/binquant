@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from pybinbot import (
     HABollinguerSpread,
+    MarketType,
     SignalsConsumer,
     Strategy,
     round_numbers,
@@ -457,6 +458,7 @@ class SpikeHunterV3KuCoin:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,

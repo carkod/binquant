@@ -5,6 +5,7 @@ from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
     HABollinguerSpread,
     KlineSchema,
+    MarketType,
     SignalsConsumer,
     Strategy,
     round_numbers,
@@ -212,6 +213,7 @@ class ActivityBurstPump:
             symbol=self.symbol,
             algo=algo,
             bot_strategy=bot_strategy,
+            market_type=MarketType.FUTURES,
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,

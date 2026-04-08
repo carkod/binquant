@@ -6,6 +6,7 @@ from pybinbot import (
     Strategy,
     round_numbers,
     KlineSchema,
+    MarketType,
 )
 from pandera.typing import DataFrame as TypedDataFrame
 from consumers.signal_collector import SignalCollector
@@ -132,6 +133,7 @@ class LiquidationSweepPump:
             symbol=self.symbol,
             algo=algo,
             bot_strategy=bot_strategy,
+            market_type=MarketType.FUTURES,
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,

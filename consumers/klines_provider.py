@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from kafka import KafkaConsumer
+import pandas as pd
 from pybinbot import (
     BinanceKlineIntervals,
     ExchangeId,
@@ -14,6 +15,7 @@ from pybinbot import (
     KucoinFutures,
 )
 from consumers.autotrade_consumer import AutotradeConsumer
+from market_regime_prediction.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
 from time import time
@@ -56,6 +58,7 @@ class KlinesProvider:
         self.candles: list[list] = []
         self.candles_15m: list[list] = []
         self.btc_candles_15m: list[list] = []
+        self.market_state_store = MarketStateStore(max_bars_per_symbol=self.LIMIT)
         # Open interest cache
         # symbol -> {timestamp: openInterest}
         self.oi_cache: dict[str, tuple[int, float]] = {}
@@ -96,34 +99,101 @@ class KlinesProvider:
             binbot_api=self.binbot_api,
         )
 
+    @staticmethod
+    def _normalize_store_symbol(symbol: str) -> str:
+        return symbol.replace("-", "").strip().upper()
+
+    def _get_benchmark_symbol(self, market_type: MarketType = MarketType.SPOT) -> str:
+        if market_type == MarketType.FUTURES:
+            return self.futures_benchmark_symbol
+        return self.benchmark_symbol
+
+    @classmethod
+    def _raw_kline_to_store_candle(cls, kline: list) -> dict | None:
+        """
+        Convert raw UI kline rows into the store's normalized candle format.
+
+        The APIs in this repo consistently expose the first 6-7 columns as:
+        open_time, open, high, low, close, volume, close_time.
+        """
+        if len(kline) < 6:
+            return None
+
+        close_time = kline[6] if len(kline) > 6 else kline[0]
+        return {
+            "timestamp": close_time,
+            "open": kline[1],
+            "high": kline[2],
+            "low": kline[3],
+            "close": kline[4],
+            "volume": kline[5],
+        }
+
+    def _sync_market_state_from_ui_klines(
+        self, symbol: str, ui_klines: list[list]
+    ) -> None:
+        rows = []
+        for raw_kline in ui_klines:
+            candle = self._raw_kline_to_store_candle(raw_kline)
+            if candle is not None:
+                rows.append(candle)
+
+        if not rows:
+            return
+
+        self.market_state_store.update(
+            symbol=self._normalize_store_symbol(symbol),
+            candle=pd.DataFrame(rows),
+        )
+
+    def _store_btc_history(self, market_type: MarketType) -> None:
+        btc_symbol = self._get_benchmark_symbol(market_type)
+        self._sync_market_state_from_ui_klines(
+            symbol=btc_symbol,
+            ui_klines=self.btc_candles_15m,
+        )
+
+    def _refresh_symbol_histories(
+        self,
+        api_symbol: str,
+        market_type: MarketType,
+    ) -> None:
+        self.candles = self.api.get_ui_klines(
+            symbol=api_symbol,
+            interval=self.interval.value,
+            limit=self.LIMIT,
+        )
+        self.candles_15m = self.api.get_ui_klines(
+            symbol=api_symbol,
+            interval=self.interval_15m.value,
+            limit=self.LIMIT,
+        )
+        self._refresh_btc_candles_15m(market_type)
+        self._sync_market_state_from_ui_klines(
+            symbol=api_symbol,
+            ui_klines=self.candles_15m,
+        )
+        self._store_btc_history(market_type=market_type)
+
     def _refresh_btc_candles_15m(self, market_type: MarketType) -> None:
         """
         Refresh if interval exceeded since last BTC candle.
         """
-        refresh_btc_candles = False
         if len(self.btc_candles_15m) == 0:
             refresh_btc_candles = True
         else:
             last_btc_open_time = self.btc_candles_15m[-1][0]  # open_time in ms
             now_ts = int(time() * 1000)
-            if now_ts - last_btc_open_time > int(self.interval_15m.get_ms()):
-                refresh_btc_candles = True
+            refresh_btc_candles = now_ts - last_btc_open_time > int(
+                self.interval_15m.get_ms()
+            )
 
         if refresh_btc_candles:
-            if market_type == MarketType.FUTURES:
-                symbol = self.futures_benchmark_symbol
-                self.btc_candles_15m = self.api.get_ui_klines(
-                    symbol=symbol,
-                    interval=self.interval_15m.value,
-                    limit=self.LIMIT,
-                )
-            else:
-                symbol = self.benchmark_symbol
-                self.btc_candles_15m = self.api.get_ui_klines(
-                    symbol=symbol,
-                    interval=self.interval_15m.value,
-                    limit=self.LIMIT,
-                )
+            self.btc_candles_15m = self.api.get_ui_klines(
+                symbol=self._get_benchmark_symbol(market_type),
+                interval=self.interval_15m.value,
+                limit=self.LIMIT,
+            )
 
     def retrieve_oi(self, kucoin_symbol: str) -> float:
         """
@@ -163,10 +233,11 @@ class KlinesProvider:
 
         # Load BTC benchmark candles
         self.btc_candles_15m = self.api.get_ui_klines(
-            symbol=self.benchmark_symbol,
+            symbol=self._get_benchmark_symbol(MarketType.SPOT),
             interval=self.interval_15m.value,
             limit=self.LIMIT,
         )
+        self._store_btc_history(MarketType.SPOT)
 
     async def aggregate_data(self, payload: dict):
         """
@@ -193,18 +264,7 @@ class KlinesProvider:
         symbol = kucoin_symbol.replace("-", "")
         api_symbol = kucoin_symbol if self.exchange == ExchangeId.KUCOIN else symbol
 
-        self.candles = self.api.get_ui_klines(
-            symbol=api_symbol,
-            interval=self.interval.value,
-            limit=self.LIMIT,
-        )
-        self.candles_15m = self.api.get_ui_klines(
-            symbol=api_symbol,
-            interval=self.interval_15m.value,
-            limit=self.LIMIT,
-        )
-        # Refresh BTC candles if empty or last open time is more than 15 minutes behind
-        self._refresh_btc_candles_15m(market_type)
+        self._refresh_symbol_histories(api_symbol=api_symbol, market_type=market_type)
 
         all_symbols = [s for s in self.all_symbols if s["id"] == symbol]
         if all_symbols and len(all_symbols) > 0:

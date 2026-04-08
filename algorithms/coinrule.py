@@ -75,6 +75,7 @@ class PriceTracker:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=self.bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -144,6 +145,7 @@ class PriceTracker:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -192,6 +194,7 @@ class PriceTracker:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
