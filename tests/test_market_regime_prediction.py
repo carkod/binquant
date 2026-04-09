@@ -36,7 +36,7 @@ def test_live_context_requires_fresh_btc_and_threshold() -> None:
     store = MarketStateStore()
     accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
 
-    for index in range(9):
+    for index in range(39):
         symbol = f"ALT{index}USDT"
         seed_symbol(store, symbol, 1_000, 100 + index)
         assert (
@@ -48,33 +48,33 @@ def test_live_context_requires_fresh_btc_and_threshold() -> None:
     context = accumulator.on_closed_candle("BTCUSDT", make_candle(2_000, 202.0))
 
     assert context is not None
-    assert context.fresh_count == 10
-    assert context.confidence == 0.35
+    assert context.fresh_count == 40
+    assert context.confidence == 1.0
     assert context.btc_present is True
 
 
 def test_live_context_recomputes_same_timestamp() -> None:
     store = MarketStateStore()
     accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
-    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(24)]
+    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(44)]
 
     for index, symbol in enumerate(symbols):
         seed_symbol(store, symbol, 1_000, 100 + index)
 
     context = None
-    for index, symbol in enumerate(symbols[:25]):
+    for index, symbol in enumerate(symbols[:45]):
         context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
 
     assert context is not None
     assert context.timestamp == 2_000
-    assert context.fresh_count == 25
-    assert context.confidence == 0.65
+    assert context.fresh_count == 45
+    assert context.confidence == 1.0
 
 
 def test_stale_symbols_are_not_mixed_into_next_timestamp() -> None:
     store = MarketStateStore()
     accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
-    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(9)]
+    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(39)]
 
     for index, symbol in enumerate(symbols):
         seed_symbol(store, symbol, 1_000, 100 + index)
@@ -89,7 +89,7 @@ def test_stale_symbols_are_not_mixed_into_next_timestamp() -> None:
 def test_signal_context_scorer_penalizes_weak_long() -> None:
     store = MarketStateStore()
     accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
-    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(9)]
+    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(39)]
     prices = {
         "BTCUSDT": (200.0, 180.0),
         "ALT0USDT": (100.0, 95.0),
@@ -102,6 +102,8 @@ def test_signal_context_scorer_penalizes_weak_long() -> None:
         "ALT7USDT": (100.0, 88.0),
         "ALT8USDT": (100.0, 87.0),
     }
+    for index in range(9, 39):
+        prices[f"ALT{index}USDT"] = (100.0, 86.0 - index)
 
     context = None
     for symbol in symbols:
@@ -128,7 +130,9 @@ def test_signal_candidate_can_be_rescored() -> None:
     accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
 
     context = None
-    for index, symbol in enumerate(["BTCUSDT"] + [f"ALT{idx}USDT" for idx in range(9)]):
+    for index, symbol in enumerate(
+        ["BTCUSDT"] + [f"ALT{idx}USDT" for idx in range(39)]
+    ):
         seed_symbol(store, symbol, 1_000, 100 + index)
         context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
 
@@ -146,6 +150,6 @@ def test_signal_candidate_can_be_rescored() -> None:
         local_features={"relative_strength_vs_btc": 0.03, "trend_score": 0.02},
     )
 
-    assert evaluation.context_score.confidence == 0.35
+    assert evaluation.context_score.confidence == 1.0
     assert evaluation.adjusted_score > 0.8
     assert candidate.score == evaluation.adjusted_score

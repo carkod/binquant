@@ -48,8 +48,8 @@ class ApexFlow:
                 - [{getenv("ENV")}] <strong>#market_regime_prediction</strong>
                 - Timestamp: {ts_to_humandate(context.timestamp)}
                 - Breadth flip: {previous_breadth_bias} -> {current_breadth_bias}
-                - Confidence: {round_numbers(context.confidence, 3)} (tiers: 10/20/40 fresh -> 0.35/0.65/1.0)
-                - Fresh symbols: {context.fresh_count} (min 10 required)
+                - Confidence: {round_numbers(context.confidence, 3)}
+                - Fresh symbols: {context.fresh_count} (min 40 required)
                 - Advancers ratio: {round_numbers(context.advancers_ratio, 3)} (>= 0.55 long bias, <= 0.45 short bias)
                 - Avg return: {round_numbers(context.average_return, 4)}
                 - BTC regime score: {round_numbers(context.btc_regime_score, 3)} (-1 to 1, positive favors longs)

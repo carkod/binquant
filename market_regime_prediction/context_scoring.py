@@ -1,12 +1,5 @@
 from market_regime_prediction.models import LiveMarketContext, MarketContextScore
-
-
-def _clamp(value: float, low: float = -1.0, high: float = 1.0) -> float:
-    return max(low, min(high, float(value)))
-
-
-def _non_negative(value: float) -> float:
-    return max(0.0, float(value))
+from shared.utils import clamp, non_negative
 
 
 class RuleBasedMarketContextModel:
@@ -45,41 +38,39 @@ class RuleBasedMarketContextModel:
 
         if normalized_direction == "SHORT":
             breadth_score = context.short_tailwind
-            btc_alignment_score = _clamp(-context.btc_regime_score)
-            cross_asset_confirmation = _clamp(
-                0.6 * (-symbol_rs) + 0.4 * (-symbol_trend)
-            )
-            override_strength = _clamp(
-                0.6 * _non_negative(-symbol_rs) + 0.4 * _non_negative(-symbol_trend),
+            btc_alignment_score = clamp(-context.btc_regime_score)
+            cross_asset_confirmation = clamp(0.6 * (-symbol_rs) + 0.4 * (-symbol_trend))
+            override_strength = clamp(
+                0.6 * non_negative(-symbol_rs) + 0.4 * non_negative(-symbol_trend),
                 0.0,
                 1.0,
             )
             directional_stress = context.market_stress_score * 0.35
         else:
             breadth_score = context.long_tailwind
-            btc_alignment_score = _clamp(context.btc_regime_score)
-            cross_asset_confirmation = _clamp(0.6 * symbol_rs + 0.4 * symbol_trend)
-            override_strength = _clamp(
-                0.6 * _non_negative(symbol_rs) + 0.4 * _non_negative(symbol_trend),
+            btc_alignment_score = clamp(context.btc_regime_score)
+            cross_asset_confirmation = clamp(0.6 * symbol_rs + 0.4 * symbol_trend)
+            override_strength = clamp(
+                0.6 * non_negative(symbol_rs) + 0.4 * non_negative(symbol_trend),
                 0.0,
                 1.0,
             )
             directional_stress = -context.market_stress_score
 
-        supportiveness_score = _clamp(
+        supportiveness_score = clamp(
             0.35 * breadth_score
             + 0.25 * btc_alignment_score
             + 0.25 * cross_asset_confirmation
             + 0.15 * directional_stress
         )
-        followthrough_score = _clamp(
+        followthrough_score = clamp(
             0.45 * breadth_score
             + 0.3 * btc_alignment_score
             + 0.25 * cross_asset_confirmation
         )
-        adverse_excursion_risk = _clamp(
+        adverse_excursion_risk = clamp(
             0.55 * context.market_stress_score
-            + 0.25 * _non_negative(-supportiveness_score)
+            + 0.25 * non_negative(-supportiveness_score)
             + 0.2 * (1.0 - override_strength),
             0.0,
             1.0,
@@ -90,19 +81,15 @@ class RuleBasedMarketContextModel:
             and breadth_score < 0
             and override_strength > 0
         ):
-            supportiveness_score = _clamp(
-                supportiveness_score + 0.2 * override_strength
-            )
-            followthrough_score = _clamp(followthrough_score + 0.15 * override_strength)
+            supportiveness_score = clamp(supportiveness_score + 0.2 * override_strength)
+            followthrough_score = clamp(followthrough_score + 0.15 * override_strength)
 
         if (
             normalized_direction == "SHORT"
             and breadth_score < 0
             and override_strength > 0
         ):
-            supportiveness_score = _clamp(
-                supportiveness_score + 0.1 * override_strength
-            )
+            supportiveness_score = clamp(supportiveness_score + 0.1 * override_strength)
 
         return MarketContextScore(
             symbol=symbol,

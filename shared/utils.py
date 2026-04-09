@@ -7,6 +7,20 @@ from requests import Response
 from shared.exceptions import BinbotError, InvalidSymbol
 
 
+def clamp(value: float, low: float = -1.0, high: float = 1.0) -> float:
+    return max(low, min(high, float(value)))
+
+
+def non_negative(value: float) -> float:
+    return max(0.0, float(value))
+
+
+def safe_pct(current: float, previous: float) -> float:
+    if previous == 0:
+        return 0.0
+    return (float(current) - float(previous)) / abs(float(previous))
+
+
 def safe_format(value, spec: str = ".2f") -> str:
     """Safely format a value with a numeric format specification.
 
