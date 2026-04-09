@@ -10,7 +10,7 @@ from telegram.helpers import escape
 
 
 class TelegramConsumer:
-    _ALLOWED_HTML_TAGS = ("b", "strong", "i", "em", "u", "s", "code", "pre")
+    _ALLOWED_HTML_TAGS = ("b", "strong", "i", "em", "u", "s", "code", "pre", "a")
 
     def __init__(self):
         self.token = os.getenv("TELEGRAM_BOT_KEY", "")
@@ -40,6 +40,11 @@ class TelegramConsumer:
         sanitized = re.sub(
             r"&lt;(pre|code)\s+([^&]*)&gt;",
             lambda match: f"<{match.group(1)} {match.group(2)}>",
+            sanitized,
+        )
+        sanitized = re.sub(
+            r"&lt;a\s+href=(?:&#x27;|&quot;)(.+?)(?:&#x27;|&quot;)&gt;",
+            lambda match: f'<a href="{match.group(1)}">',
             sanitized,
         )
 

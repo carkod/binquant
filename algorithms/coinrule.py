@@ -36,6 +36,7 @@ class PriceTracker:
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
+        self.should_autotrade = cls.should_autotrade
         self.bot_strategy = cls.bot_strategy
         self.current_market_dominance = cls.current_market_dominance
         self.market_domination_reversal = cls.market_domination_reversal
@@ -69,18 +70,20 @@ class PriceTracker:
 
         if last_twap > close_price and price_decrease > -0.05:
             algo = "coinrule_twap_momentum_sniper"
+            autotrade = self.should_autotrade(self.bot_strategy, False)
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
             - Current price: {close_price}
             - Strategy: {self.bot_strategy.value}
             - TWAP (> current price): {round_numbers(last_twap)}
+            - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
-                autotrade=False,
+                autotrade=autotrade,
                 current_price=close_price,
                 msg=msg,
                 symbol=self.symbol,
@@ -132,6 +135,7 @@ class PriceTracker:
         ):
             algo = "coinrule_supertrend_swing_reversal"
             bot_strategy = Strategy.long
+            autotrade = self.should_autotrade(bot_strategy, True)
             last_timestamp = (
                 to_datetime(self.df["close_time"][-1:], unit="ms")
                 .dt.strftime("%Y-%m-%d %H:%M")
@@ -145,12 +149,13 @@ class PriceTracker:
             - Current price: {close_price}
             - Strategy: {bot_strategy.value}
             - RSI smaller than 30: {self.df["rsi"].iloc[-1]}
+            - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
-                autotrade=True,
+                autotrade=autotrade,
                 current_price=close_price,
                 msg=msg,
                 symbol=self.symbol,
@@ -188,18 +193,20 @@ class PriceTracker:
             algo = "coinrule_buy_low_sell_high"
 
             bot_strategy = Strategy.long
+            autotrade = self.should_autotrade(bot_strategy, False)
             msg = f"""
             - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{self.symbol}
             - Current price: {close_price}
             - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
             - Strategy: {bot_strategy.value}
             - Reversal? {"No reversal" if not self.market_domination_reversal else "Positive" if self.market_domination_reversal else "Negative"}
+            - Autotrade?: {"Yes" if autotrade else "No"}
             - https://www.binance.com/en/trade/{self.symbol}
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
-                autotrade=False,
+                autotrade=autotrade,
                 current_price=close_price,
                 msg=msg,
                 symbol=self.symbol,
@@ -277,6 +284,7 @@ class PriceTracker:
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
             algo = "coinrule_price_tracker"
             bot_strategy = Strategy.long
+            autotrade = self.should_autotrade(bot_strategy, False)
             local_score = (
                 1.0
                 + max(0.0, (30.0 - rsi_value) / 30.0) * 0.35
@@ -301,6 +309,7 @@ class PriceTracker:
             - MACD &lt; 0: {round_numbers(macd_value, 6)}
             - MFI &lt; 20: {round_numbers(mfi_value, 2)}
             - Strategy: {bot_strategy.value}
+            - Autotrade?: {"Yes" if autotrade else "No"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
@@ -310,7 +319,7 @@ class PriceTracker:
                 algo=algo,
                 direction="LONG",
                 strategy=bot_strategy,
-                autotrade=False,
+                autotrade=autotrade,
                 market_type=MarketType.FUTURES,
                 score=local_score,
                 current_price=close_price,

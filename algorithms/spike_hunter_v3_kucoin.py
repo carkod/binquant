@@ -76,6 +76,7 @@ class SpikeHunterV3KuCoin:
         self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
+        self.should_autotrade = cls.should_autotrade
         self.binance_ai_report = BinanceAIReport(cls)
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
@@ -436,6 +437,8 @@ class SpikeHunterV3KuCoin:
             else:
                 streak = "N/A"
                 return
+
+            autotrade = self.should_autotrade(bot_strategy, autotrade)
 
             base_asset = self.current_symbol_data["base_asset"]
             quote_asset = self.current_symbol_data["quote_asset"]

@@ -53,3 +53,15 @@ class TestTelegramConsumer:
         )
 
         assert sanitized == ("<strong>Signal</strong> ratio &lt;= 0.45 and &gt;= 0.55")
+
+    def test_sanitize_html_preserves_anchor_links(self, MockBot):
+        consumer = TelegramConsumer()
+
+        sanitized = consumer._sanitize_html(
+            "<a href='https://www.kucoin.com/trade/futures/TRUTHUSDTM'>KuCoin</a>"
+        )
+
+        assert (
+            sanitized
+            == '<a href="https://www.kucoin.com/trade/futures/TRUTHUSDTM">KuCoin</a>'
+        )

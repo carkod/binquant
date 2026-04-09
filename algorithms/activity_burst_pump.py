@@ -28,6 +28,7 @@ class ActivityBurstPump:
         self.telegram_consumer = cls.telegram_consumer
         self.market_type = cls.market_type
         self.at_consumer = cls.at_consumer
+        self.should_autotrade = cls.should_autotrade
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
@@ -171,6 +172,7 @@ class ActivityBurstPump:
         algo = "activity_burst_pump"
         autotrade = False
         bot_strategy = Strategy.long
+        autotrade = self.should_autotrade(bot_strategy, autotrade)
         base_asset = self.current_symbol_data["base_asset"]
 
         df = self.compute_indicators()

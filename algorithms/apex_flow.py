@@ -37,13 +37,15 @@ class ApexFlow:
             ApexFlow._last_breadth_bias = current_breadth_bias
 
         if (
-            current_breadth_bias is not None
+            current_breadth_bias == "SHORT"
             and previous_breadth_bias is not None
             and current_breadth_bias != previous_breadth_bias
+            and self._last_sent_context_timestamp != context.timestamp
         ):
             self._last_sent_context_timestamp = context.timestamp
             msg = f"""
                 - [{str(self.config.env)}] <strong>#market_regime_prediction</strong>
+                - Regime not favorable for longs -> now favorable for longs
                 - Timestamp: {ts_to_humandate(context.timestamp)}
                 - Breadth flip: {previous_breadth_bias} -> {current_breadth_bias}
                 - Confidence: {round_numbers(context.confidence, 3)}

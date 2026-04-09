@@ -22,6 +22,7 @@ async def top_gainers_drop(
     """
     if float(close_price) < float(open_price) and cls.symbol in cls.top_coins_gainers:
         algo = "top_gainers_drop"
+        autotrade = cls.should_autotrade(cls.bot_strategy, True)
 
         msg = f"""
         - [{os.getenv("ENV")}] Top gainers's drop <strong>#{algo} algorithm</strong> #{cls.symbol}
@@ -30,11 +31,13 @@ async def top_gainers_drop(
         - Reversal? {"Yes" if cls.market_domination_reversal else "No"}
         - Market domination trend: {cls.current_market_dominance}
         - Strategy: {cls.bot_strategy}
+        - Autotrade?: {"Yes" if autotrade else "No"}
         - https://www.binance.com/en/trade/{cls.symbol}
         - <a href='http://terminal.binbot.in/bots/new/{cls.symbol}'>Dashboard trade</a>
         """
 
         value = SignalsConsumer(
+            autotrade=autotrade,
             current_price=close_price,
             msg=msg,
             symbol=cls.symbol,
