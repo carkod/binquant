@@ -11,6 +11,11 @@ from pybinbot import (
     round_numbers,
     Indicators,
 )
+from market_regime_prediction.score_signal_candidate_with_context import (
+    score_signal_candidate_with_context,
+)
+from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from models.signals import SignalCandidate
 
 from shared.utils import build_links_msg
 
@@ -34,6 +39,12 @@ class PriceTracker:
         self.bot_strategy = cls.bot_strategy
         self.current_market_dominance = cls.current_market_dominance
         self.market_domination_reversal = cls.market_domination_reversal
+        self.latest_market_context = getattr(cls, "latest_market_context", None)
+        self.signal_context_scorer = SignalContextScorer(
+            context_weight=0.35,
+            risk_weight=0.35,
+            support_weight=0.2,
+        )
 
     def pre_process(self):
         self.df.dropna(inplace=True)
@@ -75,6 +86,7 @@ class PriceTracker:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=self.bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -144,6 +156,7 @@ class PriceTracker:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -192,6 +205,7 @@ class PriceTracker:
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
+                market_type=MarketType.FUTURES,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -263,6 +277,22 @@ class PriceTracker:
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
             algo = "coinrule_price_tracker"
             bot_strategy = Strategy.long
+            local_score = (
+                1.0
+                + max(0.0, (30.0 - rsi_value) / 30.0) * 0.35
+                + max(0.0, (20.0 - mfi_value) / 20.0) * 0.35
+                + min(abs(macd_value) * 100.0, 1.0) * 0.3
+            )
+            symbol_return = (
+                float(df_5m["close"].pct_change().iloc[-1]) if len(df_5m) > 1 else 0.0
+            )
+            ema_fast = df_5m["close"].ewm(span=9, adjust=False).mean().iloc[-1]
+            ema_slow = df_5m["close"].ewm(span=21, adjust=False).mean().iloc[-1]
+            trend_score = (
+                float((ema_fast - ema_slow) / abs(ema_slow))
+                if float(ema_slow) != 0
+                else 0.0
+            )
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
@@ -275,22 +305,50 @@ class PriceTracker:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
-            value = SignalsConsumer(
-                autotrade=False,
-                current_price=close_price,
-                msg=msg,
+            candidate = SignalCandidate(
                 symbol=self.symbol,
                 algo=algo,
-                bot_strategy=bot_strategy,
+                direction="LONG",
+                strategy=bot_strategy,
+                autotrade=False,
                 market_type=MarketType.FUTURES,
+                score=local_score,
+                current_price=close_price,
+                msg=msg,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
                     bb_low=bb_low,
                 ),
             )
+            evaluation = score_signal_candidate_with_context(
+                candidate=candidate,
+                market_context=self.latest_market_context,
+                scorer=self.signal_context_scorer,
+                local_features={
+                    "relative_strength_vs_btc": symbol_return,
+                    "trend_score": trend_score,
+                },
+                emit_threshold=1.0,
+            )
+            context_score = evaluation.context_score
+            if (
+                context_score.confidence >= 0.65
+                and context_score.followthrough_score < -0.25
+                and context_score.adverse_excursion_risk > 0.65
+            ):
+                return
+            if not evaluation.emit:
+                return
 
-            await self.telegram_consumer.send_signal(msg)
-            await self.at_consumer.process_autotrade_restrictions(value)
+            evaluation.candidate.msg += f"""
+            - Context confidence: {round_numbers(context_score.confidence, 2)}
+            - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
+            - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
+            - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
+            """
+
+            await self.telegram_consumer.send_signal(evaluation.candidate.msg)
+            await self.at_consumer.process_autotrade_restrictions(evaluation.candidate)
 
         pass

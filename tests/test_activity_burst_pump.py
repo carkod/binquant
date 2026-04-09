@@ -2,14 +2,14 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
-import pandas as pd
 import pytest
+from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType
 
 from algorithms.activity_burst_pump import ActivityBurstPump
 
 
-def make_context(df: pd.DataFrame) -> SimpleNamespace:
+def make_context(df: DataFrame) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
@@ -28,11 +28,11 @@ def make_context(df: pd.DataFrame) -> SimpleNamespace:
     )
 
 
-def make_algo(df: pd.DataFrame) -> ActivityBurstPump:
+def make_algo(df: DataFrame) -> ActivityBurstPump:
     return ActivityBurstPump(cast(Any, make_context(df)))
 
 
-def make_low_liquidity_df() -> pd.DataFrame:
+def make_low_liquidity_df() -> DataFrame:
     rows = []
     close = 1.0
 
@@ -57,7 +57,7 @@ def make_low_liquidity_df() -> pd.DataFrame:
         }
     )
 
-    return pd.DataFrame(rows)
+    return DataFrame(rows)
 
 
 def test_compute_indicators_uses_median_baseline():

@@ -2,14 +2,14 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
-import pandas as pd
 import pytest
+from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType
 
 from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
 
 
-def make_context(df: pd.DataFrame) -> SimpleNamespace:
+def make_context(df: DataFrame) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
@@ -28,11 +28,11 @@ def make_context(df: pd.DataFrame) -> SimpleNamespace:
     )
 
 
-def make_algo(df: pd.DataFrame) -> TopGainersReversalDrop:
+def make_algo(df: DataFrame) -> TopGainersReversalDrop:
     return TopGainersReversalDrop(cast(Any, make_context(df)))
 
 
-def make_reversal_df() -> pd.DataFrame:
+def make_reversal_df() -> DataFrame:
     rows = []
     close = 1.0
 
@@ -87,7 +87,7 @@ def make_reversal_df() -> pd.DataFrame:
         ]
     )
 
-    return pd.DataFrame(rows)
+    return DataFrame(rows)
 
 
 @pytest.mark.asyncio

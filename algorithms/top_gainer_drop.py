@@ -1,6 +1,6 @@
 import os
 from typing import TYPE_CHECKING
-from pybinbot import SignalsConsumer, HABollinguerSpread
+from pybinbot import HABollinguerSpread, MarketType, SignalsConsumer
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -40,6 +40,7 @@ async def top_gainers_drop(
             symbol=cls.symbol,
             algo=algo,
             bot_strategy=cls.bot_strategy,
+            market_type=MarketType.FUTURES,
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,

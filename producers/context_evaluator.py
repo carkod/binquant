@@ -19,6 +19,8 @@ from pybinbot import (
     MarketType,
     KucoinFutures,
 )
+from market_regime_prediction.models import LiveMarketContext
+from market_regime_prediction.signal_context_scorer import SignalContextScorer
 
 from algorithms.coinrule import PriceTracker
 from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
@@ -49,6 +51,7 @@ class ContextEvaluator:
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
+        latest_market_context: LiveMarketContext | None = None,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -99,6 +102,12 @@ class ContextEvaluator:
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
         self.oi_data = oi_data
+        self.latest_market_context = latest_market_context
+        self.signal_context_scorer = SignalContextScorer(
+            context_weight=0.35,
+            risk_weight=0.35,
+            support_weight=0.2,
+        )
 
     def days(self, secs):
         return secs * 86400
@@ -266,7 +275,6 @@ class ContextEvaluator:
                 bb_low=spreads.bb_low,
             )
 
-            # uncomment once it's ready
             await self.tgrd.signal(
                 current_price=close_price,
                 bb_high=spreads.bb_high,
@@ -289,11 +297,6 @@ class ContextEvaluator:
             )
 
             # Apex Flow signals
-            await self.af.signal(
-                current_price=close_price,
-                btc_correlation=self.btc_correlation,
-                btc_price_change=self.btc_price_change,
-                btc_beta=self.btc_beta,
-            )
+            await self.af.signal()
 
         return

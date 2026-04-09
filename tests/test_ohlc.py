@@ -1,4 +1,3 @@
-import pandas as pd
 from pandas import DataFrame
 from pandas.api.types import is_numeric_dtype
 import pytest
@@ -6,7 +5,7 @@ from pybinbot.shared.heikin_ashi import HeikinAshi
 
 
 def make_base_df():
-    return pd.DataFrame(
+    return DataFrame(
         {
             "open": [1.0, 2.0, 3.0],
             "high": [1.5, 2.5, 3.5],
