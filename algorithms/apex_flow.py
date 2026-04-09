@@ -1,6 +1,4 @@
-from os import getenv
 from typing import TYPE_CHECKING
-
 from pybinbot import round_numbers, ts_to_humandate
 
 if TYPE_CHECKING:
@@ -11,6 +9,7 @@ class ApexFlow:
     _last_breadth_bias: str | None = None
 
     def __init__(self, cls: "ContextEvaluator") -> None:
+        self.config = cls.config
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
         self.latest_market_context = cls.latest_market_context
@@ -41,11 +40,10 @@ class ApexFlow:
             current_breadth_bias is not None
             and previous_breadth_bias is not None
             and current_breadth_bias != previous_breadth_bias
-            and self._last_sent_context_timestamp != context.timestamp
         ):
             self._last_sent_context_timestamp = context.timestamp
             msg = f"""
-                - [{getenv("ENV")}] <strong>#market_regime_prediction</strong>
+                - [{str(self.config.env)}] <strong>#market_regime_prediction</strong>
                 - Timestamp: {ts_to_humandate(context.timestamp)}
                 - Breadth flip: {previous_breadth_bias} -> {current_breadth_bias}
                 - Confidence: {round_numbers(context.confidence, 3)}

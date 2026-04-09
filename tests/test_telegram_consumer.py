@@ -44,3 +44,12 @@ class TestTelegramConsumer:
         )
         await consumer.send_signal(payload)
         mock_bot_instance.send_message.assert_awaited()
+
+    def test_sanitize_html_preserves_supported_tags(self, MockBot):
+        consumer = TelegramConsumer()
+
+        sanitized = consumer._sanitize_html(
+            "<strong>Signal</strong> ratio <= 0.45 and >= 0.55"
+        )
+
+        assert sanitized == ("<strong>Signal</strong> ratio &lt;= 0.45 and &gt;= 0.55")
