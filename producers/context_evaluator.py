@@ -109,6 +109,7 @@ class ContextEvaluator:
             support_weight=0.2,
         )
         self._breadth_cross_tolerance = 0.05
+        self._autotrade_stress_threshold = 0.35
 
     def days(self, secs):
         return secs * 86400
@@ -124,6 +125,8 @@ class ContextEvaluator:
         context = self.latest_market_context
         if context is None:
             return True
+        if context.market_stress_score >= self._autotrade_stress_threshold:
+            return False
 
         if context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
             market_bias = "LONG"
@@ -132,10 +135,9 @@ class ContextEvaluator:
         else:
             return True
 
-        strategy_value = bot_strategy.value
-        if strategy_value == Strategy.long.value:
+        if bot_strategy == Strategy.long:
             return market_bias == "LONG"
-        if strategy_value == Strategy.margin_short.value:
+        if bot_strategy == Strategy.margin_short:
             return market_bias == "SHORT"
 
         return True
