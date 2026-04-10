@@ -54,6 +54,13 @@ class TestTelegramConsumer:
 
         assert sanitized == ("<strong>Signal</strong> ratio &lt;= 0.45 and &gt;= 0.55")
 
+    def test_sanitize_html_preserves_existing_entities(self, MockBot):
+        consumer = TelegramConsumer()
+
+        sanitized = consumer._sanitize_html("RSI (14) &lt; 30 and MACD &gt; -1")
+
+        assert sanitized == "RSI (14) &lt; 30 and MACD &gt; -1"
+
     def test_sanitize_html_preserves_anchor_links(self, MockBot):
         consumer = TelegramConsumer()
 

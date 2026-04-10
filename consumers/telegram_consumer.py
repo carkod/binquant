@@ -48,6 +48,14 @@ class TelegramConsumer:
             sanitized,
         )
 
+        # Preserve comparison operators and other already-escaped text entities
+        # provided by upstream message builders, e.g. "&lt;" in algorithm text.
+        sanitized = re.sub(
+            r"&amp;(lt|gt|amp|quot|#x27);",
+            lambda match: f"&{match.group(1)};",
+            sanitized,
+        )
+
         return sanitized
 
     async def send_msg(self, result):
