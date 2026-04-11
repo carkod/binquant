@@ -70,14 +70,12 @@ class LiveMarketContextAccumulator:
 
     def _build_context(self, timestamp: int) -> LiveMarketContext | None:
         fresh_symbols = self.state_store.get_fresh_symbols(timestamp)
-        if (
-            self.btc_symbol not in fresh_symbols
-            or len(fresh_symbols) < REQUIRED_FRESH_SYMBOLS
-        ):
+        if len(fresh_symbols) < REQUIRED_FRESH_SYMBOLS:
             return None
 
         symbol_features: dict[str, SymbolMarketFeatures] = {}
-        btc_features: SymbolMarketFeatures | None = None
+        btc_history = self.state_store.get_symbol_history(self.btc_symbol)
+        btc_features = self._compute_symbol_features(self.btc_symbol, btc_history)
 
         for symbol in fresh_symbols:
             history = self.state_store.get_symbol_history(symbol)
@@ -88,15 +86,13 @@ class LiveMarketContextAccumulator:
             if symbol == self.btc_symbol:
                 btc_features = features
 
-        if btc_features is None:
-            return None
-
-        for symbol, features in symbol_features.items():
-            if symbol == self.btc_symbol:
-                continue
-            features.relative_strength_vs_btc = (
-                features.return_pct - btc_features.return_pct
-            )
+        if btc_features is not None:
+            for symbol, features in symbol_features.items():
+                if symbol == self.btc_symbol:
+                    continue
+                features.relative_strength_vs_btc = (
+                    features.return_pct - btc_features.return_pct
+                )
 
         effective_count = len(symbol_features)
         if effective_count < REQUIRED_FRESH_SYMBOLS:
@@ -136,7 +132,12 @@ class LiveMarketContextAccumulator:
         ema_balance = clamp(((pct_above_ema20 + pct_above_ema50) - 1.0) * 1.5)
         average_return_score = clamp(average_return * 12.0)
         btc_regime_score = clamp(
-            btc_features.return_pct * 12.0 + btc_features.trend_score * 6.0
+            (
+                (btc_features.return_pct * 12.0)
+                + (btc_features.trend_score * 6.0)
+            )
+            if btc_features is not None
+            else 0.0
         )
         stress_from_volatility = clamp((average_atr_pct - 0.02) * 12.0, 0.0, 1.0)
         stress_from_bandwidth = clamp((average_bb_width - 0.08) * 4.0, 0.0, 1.0)
@@ -175,7 +176,7 @@ class LiveMarketContextAccumulator:
             total_tracked_symbols=total_tracked_symbols,
             coverage_ratio=coverage_ratio,
             btc_symbol=self.btc_symbol,
-            btc_present=True,
+            btc_present=btc_features is not None,
             confidence=1.0,
             is_provisional=False,
             advancers=advancers,
@@ -190,14 +191,16 @@ class LiveMarketContextAccumulator:
             average_trend_score=average_trend_score,
             average_atr_pct=average_atr_pct,
             average_bb_width=average_bb_width,
-            btc_return=btc_features.return_pct,
-            btc_trend_score=btc_features.trend_score,
+            btc_return=btc_features.return_pct if btc_features is not None else 0.0,
+            btc_trend_score=btc_features.trend_score if btc_features is not None else 0.0,
             btc_regime_score=btc_regime_score,
             market_stress_score=market_stress_score,
             long_tailwind=long_tailwind,
             short_tailwind=short_tailwind,
             symbol_features=symbol_features,
             metadata={
+                "btc_fresh": self.btc_symbol in fresh_symbols,
+                "btc_used_for_regime": btc_features is not None,
                 "fresh_symbols": sorted(symbol_features.keys()),
                 "fresh_symbol_count": effective_count,
             },

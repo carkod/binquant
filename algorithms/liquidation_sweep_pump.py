@@ -203,6 +203,9 @@ class LiquidationSweepPump:
             - Score: {latest_score:.2f}
             - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
             - OI Growth: {self.oi_growth:.2f}
+            - Context available: {"Yes" if self.latest_market_context is not None else "No"}
+            - Context BTC present: {"Yes" if self.latest_market_context and self.latest_market_context.btc_present else "No"}
+            - Context fresh symbols: {self.latest_market_context.fresh_count if self.latest_market_context else 0}
             - Context confidence: {round_numbers(context_score.confidence, 2)}
             - Long regime: {"Yes" if self.latest_market_context and self.latest_market_context.advancers_ratio >= 0.55 and self.latest_market_context.long_tailwind > 0 else "No"}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
