@@ -1,19 +1,13 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
+from pybinbot import SignalsConsumer
 from market_regime_prediction.models import (
     LiveMarketContext,
     SignalContextEvaluation,
 )
 from market_regime_prediction.signal_context_scorer import SignalContextScorer
 
-if TYPE_CHECKING:
-    from models.signals import SignalCandidate
-
 
 def score_signal_candidate_with_context(
-    candidate: SignalCandidate,
+    candidate: SignalsConsumer,
     market_context: LiveMarketContext | None,
     scorer: SignalContextScorer,
     local_features: dict[str, float] | None = None,

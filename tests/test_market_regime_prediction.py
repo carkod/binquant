@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+from pybinbot import SignalsConsumer
 from market_regime_prediction.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
 )
@@ -9,7 +8,6 @@ from market_regime_prediction.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
 from market_regime_prediction.signal_context_scorer import SignalContextScorer
-from models.signals import SignalCandidate
 
 
 def make_candle(timestamp: int, close: float) -> dict[str, float]:
@@ -136,7 +134,7 @@ def test_signal_candidate_can_be_rescored() -> None:
         seed_symbol(store, symbol, 1_000, 100 + index)
         context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
 
-    candidate = SignalCandidate(
+    candidate = SignalsConsumer(
         symbol="ALT0USDT",
         direction="LONG",
         score=0.8,

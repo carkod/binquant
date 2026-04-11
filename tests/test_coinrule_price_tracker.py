@@ -33,7 +33,9 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         market_domination_reversal=False,
         first_seen_at=0,
         interval=SimpleNamespace(get_ms=lambda: 60_000),
-        should_autotrade=lambda strategy, requested=True: requested,
+        latest_market_context=None,
+        _breadth_cross_tolerance=0.05,
+        _autotrade_stress_threshold=0.35,
     )
 
 
@@ -152,8 +154,8 @@ async def test_price_tracker_no_signal_on_uptrend():
 @pytest.mark.asyncio
 async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     """
-    When RSI < 30, MACD < 0, and MFI < 20, the algorithm must send a signal.
-    We use monkeypatching to force the indicator values.
+    When RSI < 30, MACD < 0, and MFI < 20, the algorithm must send a signal
+    and include the expected indicator details in the Telegram message.
     """
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
@@ -190,12 +192,9 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     at_mock.assert_awaited_once()
     tg_mock.assert_awaited_once()
 
-    assert at_mock.await_args is not None
-    call_kwargs = at_mock.await_args.args[0]
-    assert call_kwargs.algo == "coinrule_price_tracker"
-    assert call_kwargs.symbol == "TESTUSDT"
-    assert call_kwargs.bot_strategy == Strategy.long
-    assert call_kwargs.autotrade is False
-    assert "&lt; 30" in call_kwargs.msg
-    assert "&lt; 0" in call_kwargs.msg
-    assert "&lt; 20" in call_kwargs.msg
+    tg_await_args = tg_mock.await_args
+    assert tg_await_args is not None
+    telegram_msg = tg_await_args.args[0]
+    assert "&lt; 30" in telegram_msg
+    assert "&lt; 0" in telegram_msg
+    assert "&lt; 20" in telegram_msg

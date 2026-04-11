@@ -25,7 +25,9 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         df=df,
         first_seen_at=0,
         interval=SimpleNamespace(get_ms=lambda: 60_000),
-        should_autotrade=lambda strategy, requested=True: requested,
+        latest_market_context=None,
+        _breadth_cross_tolerance=0.05,
+        _autotrade_stress_threshold=0.35,
     )
 
 
@@ -100,14 +102,17 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
     process_mock.assert_awaited_once()
 
     await_args = process_mock.await_args
+    telegram_await_args = send_signal_mock.await_args
     assert await_args is not None
+    assert telegram_await_args is not None
     value = await_args.args[0]
+    telegram_msg = telegram_await_args.args[0]
 
     assert value.algo == "activity_burst_pump"
     assert value.symbol == "TESTUSDT"
     assert value.current_price == pytest.approx(1.04)
     assert value.bot_strategy == "long"
-    assert "Score: 0.4" in value.msg
+    assert "Score: 0.4" in telegram_msg
 
 
 @pytest.mark.asyncio

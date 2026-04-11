@@ -114,34 +114,6 @@ class ContextEvaluator:
     def days(self, secs):
         return secs * 86400
 
-    def should_autotrade(
-        self,
-        bot_strategy: Strategy,
-        requested_autotrade: bool = True,
-    ) -> bool:
-        if not requested_autotrade:
-            return False
-
-        context = self.latest_market_context
-        if context is None:
-            return True
-        if context.market_stress_score >= self._autotrade_stress_threshold:
-            return False
-
-        if context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
-            market_bias = "LONG"
-        elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
-            market_bias = "SHORT"
-        else:
-            return True
-
-        if bot_strategy == Strategy.long:
-            return market_bias == "LONG"
-        if bot_strategy == Strategy.margin_short:
-            return market_bias == "SHORT"
-
-        return True
-
     def dynamic_btc_beta_corr(self, window=50) -> tuple[float, float]:
         """
         Rolling beta and correlation of asset returns vs BTC returns

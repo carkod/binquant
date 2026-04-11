@@ -6,12 +6,12 @@ from pybinbot import (
     round_numbers,
     KlineSchema,
     MarketType,
+    SignalsConsumer,
 )
 from market_regime_prediction.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
 from market_regime_prediction.signal_context_scorer import SignalContextScorer
-from models.signals import SignalCandidate
 from pandera.typing import DataFrame as TypedDataFrame
 from consumers.signal_collector import SignalCollector
 from shared.utils import build_links_msg
@@ -31,7 +31,6 @@ class LiquidationSweepPump:
         self.telegram_consumer = cls.telegram_consumer
         self.market_type = cls.market_type
         self.at_consumer = cls.at_consumer
-        self.should_autotrade = cls.should_autotrade
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
@@ -95,9 +94,8 @@ class LiquidationSweepPump:
             return None
 
         algo = "liquidation_sweep_pump"
-        autotrade = True
         bot_strategy = Strategy.long
-        autotrade = self.should_autotrade(bot_strategy, autotrade)
+        autotrade = True
         base_asset = self.current_symbol_data["base_asset"]
 
         df = self.compute_pump_score()
@@ -142,18 +140,7 @@ class LiquidationSweepPump:
             self.config.env, self.exchange, self.market_type, self.symbol
         )
 
-        msg = f"""
-            - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
-            - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-            - Score: {latest_score:.2f}
-            - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
-            - OI Growth: {self.oi_growth:.2f}
-            - Autotrade?: {"Yes" if autotrade else "No"}
-            - <a href='{kucoin_link}'>KuCoin</a>
-            - <a href='{terminal_link}'>Dashboard trade</a>
-        """
-
-        candidate = SignalCandidate(
+        candidate = SignalsConsumer(
             symbol=self.symbol,
             algo=algo,
             direction="LONG",
@@ -163,7 +150,6 @@ class LiquidationSweepPump:
             score=local_score,
             current_price=current_price,
             volume=float(row.volume),
-            msg=msg,
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
@@ -181,33 +167,51 @@ class LiquidationSweepPump:
             emit_threshold=1.0,
         )
         context_score = evaluation.context_score
-        market_context = self.latest_market_context
-        if market_context is not None:
+        if self.latest_market_context is not None:
+            if self.latest_market_context.market_stress_score >= 0.35:
+                autotrade = False
+            elif self.latest_market_context.advancers_ratio >= 0.55:
+                autotrade = bot_strategy == Strategy.long
+            elif self.latest_market_context.advancers_ratio <= 0.45:
+                # liquidation sweep pump is mostly designed as a long bot
+                autotrade = False
+
             in_long_regime = (
-                market_context.advancers_ratio >= 0.55
-                and market_context.long_tailwind > 0
+                self.latest_market_context.advancers_ratio >= 0.55
+                and self.latest_market_context.long_tailwind > 0
             )
-            in_neutral_transition = 0.45 < market_context.advancers_ratio < 0.55
-            high_market_stress = market_context.market_stress_score >= 0.35
+            in_neutral_transition = (
+                0.45 < self.latest_market_context.advancers_ratio < 0.55
+            )
+            high_market_stress = self.latest_market_context.market_stress_score >= 0.35
 
             if not in_long_regime or in_neutral_transition or high_market_stress:
-                return
+                autotrade = False
+
         if (
             context_score.confidence >= 0.65
             and context_score.followthrough_score < -0.35
             and context_score.adverse_excursion_risk > 0.75
         ):
-            return
+            autotrade = False
         if not evaluation.emit:
-            return
+            autotrade = False
 
-        msg += f"""
+        msg = f"""
+            - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
+            - Current price: {round_numbers(current_price, decimals=self.price_precision)}
+            - Score: {latest_score:.2f}
+            - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
+            - OI Growth: {self.oi_growth:.2f}
             - Context confidence: {round_numbers(context_score.confidence, 2)}
-            - Long regime: {"Yes" if market_context and market_context.advancers_ratio >= 0.55 and market_context.long_tailwind > 0 else "No"}
+            - Long regime: {"Yes" if self.latest_market_context and self.latest_market_context.advancers_ratio >= 0.55 and self.latest_market_context.long_tailwind > 0 else "No"}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
-            - Market stress: {round_numbers(market_context.market_stress_score, 3) if market_context else 0}
+            - Market stress: {round_numbers(self.latest_market_context.market_stress_score, 3) if self.latest_market_context else 0}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
+            - {"Autotrade has been enabled due to market context ✅" if autotrade else "Autotrade has been disabled due to market context  (unavailable/unfavorable) ❌"}
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
         await self.telegram_consumer.send_signal(msg)
