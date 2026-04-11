@@ -265,6 +265,7 @@ class PriceTracker:
         BUY $30 of that coin with USDT wallet as limit order
         """
         df_5m = self.df.copy()
+        algo = "coinrule_price_tracker"
 
         if df_5m.isnull().values.any() or len(df_5m) < 30:
             logging.warning(
@@ -290,9 +291,8 @@ class PriceTracker:
         )[1]
 
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
-            algo = "coinrule_price_tracker"
             bot_strategy = Strategy.long
-            autotrade = False
+            autotrade = True
             local_score = (
                 1.0
                 + max(0.0, (30.0 - rsi_value) / 30.0) * 0.35
@@ -310,23 +310,10 @@ class PriceTracker:
                 else 0.0
             )
 
-            msg = f"""
-            - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
-            - Current price: {close_price}
-            - RSI (14) &lt; 30: {round_numbers(rsi_value, 2)}
-            - MACD &lt; 0: {round_numbers(macd_value, 6)}
-            - MFI &lt; 20: {round_numbers(mfi_value, 2)}
-            - Strategy: {bot_strategy.value}
-            - Autotrade?: {"Yes" if autotrade else "No"}
-            - <a href='{kucoin_link}'>KuCoin</a>
-            - <a href='{terminal_link}'>Dashboard trade</a>
-            """
-
             candidate = SignalsConsumer(
                 symbol=self.symbol,
                 algo=algo,
                 direction="LONG",
-                msg=msg,
                 strategy=bot_strategy,
                 autotrade=autotrade,
                 market_type=MarketType.FUTURES,
@@ -353,12 +340,12 @@ class PriceTracker:
             context_score = evaluation.context_score
             if self.latest_market_context is not None:
                 if self.latest_market_context.market_stress_score >= 0.35:
-                    return
+                    autotrade = False
                 elif self.latest_market_context.advancers_ratio >= 0.55:
                     autotrade = bot_strategy == Strategy.long
                 elif self.latest_market_context.advancers_ratio <= 0.45:
                     # liquidation sweep pump is mostly designed as a long bot
-                    return
+                    autotrade = False
 
             if (
                 context_score.confidence >= 0.65
@@ -369,12 +356,22 @@ class PriceTracker:
             if not evaluation.emit:
                 return
 
-            msg += f"""
+            msg = f"""
+            - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Current price: {close_price}
+            - RSI (14) &lt; 30: {round_numbers(rsi_value, 2)}
+            - MACD &lt; 0: {round_numbers(macd_value, 6)}
+            - MFI &lt; 20: {round_numbers(mfi_value, 2)}
+            - Strategy: {bot_strategy.value}
             - Context confidence: {round_numbers(context_score.confidence, 2)}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
+            - {"Autotrade has been enabled ✅" if autotrade is True else "Autotrade has been disabled due to market context (unfavorable/unavailable) ❌"}
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
             """
+
             evaluation.candidate.msg = msg
             await self.telegram_consumer.send_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(evaluation.candidate)

@@ -140,22 +140,10 @@ class LiquidationSweepPump:
             self.config.env, self.exchange, self.market_type, self.symbol
         )
 
-        msg = f"""
-            - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
-            - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-            - Score: {latest_score:.2f}
-            - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
-            - OI Growth: {self.oi_growth:.2f}
-            - Autotrade?: {"Yes" if autotrade else "No"}
-            - <a href='{kucoin_link}'>KuCoin</a>
-            - <a href='{terminal_link}'>Dashboard trade</a>
-        """
-
         candidate = SignalsConsumer(
             symbol=self.symbol,
             algo=algo,
             direction="LONG",
-            msg=msg,
             strategy=bot_strategy,
             autotrade=autotrade,
             market_type=MarketType.FUTURES,
@@ -186,7 +174,7 @@ class LiquidationSweepPump:
                 autotrade = bot_strategy == Strategy.long
             elif self.latest_market_context.advancers_ratio <= 0.45:
                 # liquidation sweep pump is mostly designed as a long bot
-                return
+                autotrade = False
 
             in_long_regime = (
                 self.latest_market_context.advancers_ratio >= 0.55
@@ -198,23 +186,32 @@ class LiquidationSweepPump:
             high_market_stress = self.latest_market_context.market_stress_score >= 0.35
 
             if not in_long_regime or in_neutral_transition or high_market_stress:
-                return
+                autotrade = False
+
         if (
             context_score.confidence >= 0.65
             and context_score.followthrough_score < -0.35
             and context_score.adverse_excursion_risk > 0.75
         ):
-            return
+            autotrade = False
         if not evaluation.emit:
-            return
+            autotrade = False
 
-        msg += f"""
+        msg = f"""
+            - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
+            - Current price: {round_numbers(current_price, decimals=self.price_precision)}
+            - Score: {latest_score:.2f}
+            - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
+            - OI Growth: {self.oi_growth:.2f}
             - Context confidence: {round_numbers(context_score.confidence, 2)}
             - Long regime: {"Yes" if self.latest_market_context and self.latest_market_context.advancers_ratio >= 0.55 and self.latest_market_context.long_tailwind > 0 else "No"}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
             - Market stress: {round_numbers(self.latest_market_context.market_stress_score, 3) if self.latest_market_context else 0}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
+            - {"Autotrade has been enabled due to market context ✅" if autotrade else "Autotrade has been disabled due to market context  (unavailable/unfavorable) ❌"}
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
         await self.telegram_consumer.send_signal(msg)
