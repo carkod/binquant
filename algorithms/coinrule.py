@@ -348,6 +348,8 @@ class PriceTracker:
                     autotrade = False
             else:
                 autotrade = False
+                return
+
             evaluation.candidate.autotrade = autotrade
 
             if (
