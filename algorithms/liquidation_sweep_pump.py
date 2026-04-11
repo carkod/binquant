@@ -6,12 +6,12 @@ from pybinbot import (
     round_numbers,
     KlineSchema,
     MarketType,
+    SignalsConsumer,
 )
 from market_regime_prediction.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
 from market_regime_prediction.signal_context_scorer import SignalContextScorer
-from models.signals import SignalCandidate
 from pandera.typing import DataFrame as TypedDataFrame
 from consumers.signal_collector import SignalCollector
 from shared.utils import build_links_msg
@@ -151,10 +151,11 @@ class LiquidationSweepPump:
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
-        candidate = SignalCandidate(
+        candidate = SignalsConsumer(
             symbol=self.symbol,
             algo=algo,
             direction="LONG",
+            msg=msg,
             strategy=bot_strategy,
             autotrade=autotrade,
             market_type=MarketType.FUTURES,

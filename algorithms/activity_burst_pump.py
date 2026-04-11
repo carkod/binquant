@@ -174,16 +174,19 @@ class ActivityBurstPump:
         algo = "activity_burst_pump"
         autotrade = False
         bot_strategy = Strategy.long
-        if autotrade:
-            context = self.latest_market_context
-            if context is not None:
-                if context.market_stress_score >= self._autotrade_stress_threshold:
-                    autotrade = False
-                elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
-                    autotrade = bot_strategy == Strategy.long
-                elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
-                    autotrade = bot_strategy == Strategy.margin_short
         base_asset = self.current_symbol_data["base_asset"]
+        context = self.latest_market_context
+
+        if context is not None:
+            if context.market_stress_score >= self._autotrade_stress_threshold:
+                # Unstable/vertical market
+                return
+            elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
+                autotrade = bot_strategy == Strategy.long
+            elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
+                # Activity burst pump is a long strategy signal
+                # opening margin short directly likely end up in losses
+                return None
 
         df = self.compute_indicators()
         row = df.iloc[-1]

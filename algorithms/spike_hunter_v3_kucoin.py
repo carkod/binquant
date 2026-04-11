@@ -445,15 +445,9 @@ class SpikeHunterV3KuCoin:
                 if context is not None:
                     if context.market_stress_score >= self._autotrade_stress_threshold:
                         autotrade = False
-                    elif (
-                        context.advancers_ratio
-                        >= 0.5 + self._breadth_cross_tolerance
-                    ):
+                    elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
                         autotrade = bot_strategy == Strategy.long
-                    elif (
-                        context.advancers_ratio
-                        <= 0.5 - self._breadth_cross_tolerance
-                    ):
+                    elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
                         autotrade = bot_strategy == Strategy.margin_short
 
             base_asset = self.current_symbol_data["base_asset"]

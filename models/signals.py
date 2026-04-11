@@ -8,6 +8,7 @@ class SignalCandidate(SignalsConsumer):
     SignalsConsumer but as a candidate for the ranked signals system
     """
 
+    msg: str = Field(default="", description="Message to send on Telegram")
     direction: str = Field(default="", description="Signal direction: buy/sell")
     score: float = Field(default=0, description="Score for ranking signals")
     atr: float = Field(default=0, description="Average True Range for volatility")

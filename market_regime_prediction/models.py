@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from typing import Any
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from models.signals import SignalCandidate
 

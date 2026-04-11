@@ -15,7 +15,6 @@ from market_regime_prediction.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
 from market_regime_prediction.signal_context_scorer import SignalContextScorer
-from models.signals import SignalCandidate
 
 from shared.utils import build_links_msg
 
@@ -39,7 +38,7 @@ class PriceTracker:
         self.bot_strategy = cls.bot_strategy
         self.current_market_dominance = cls.current_market_dominance
         self.market_domination_reversal = cls.market_domination_reversal
-        self.latest_market_context = getattr(cls, "latest_market_context", None)
+        self.latest_market_context = cls.latest_market_context
         self._breadth_cross_tolerance = cls._breadth_cross_tolerance
         self._autotrade_stress_threshold = cls._autotrade_stress_threshold
         self.signal_context_scorer = SignalContextScorer(
@@ -323,16 +322,16 @@ class PriceTracker:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
-            candidate = SignalCandidate(
+            candidate = SignalsConsumer(
                 symbol=self.symbol,
                 algo=algo,
                 direction="LONG",
+                msg=msg,
                 strategy=bot_strategy,
                 autotrade=autotrade,
                 market_type=MarketType.FUTURES,
                 score=local_score,
                 current_price=close_price,
-                msg=msg,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -350,6 +349,17 @@ class PriceTracker:
                 emit_threshold=1.0,
             )
             context_score = evaluation.context_score
+
+            context_score = evaluation.context_score
+            if self.latest_market_context is not None:
+                if self.latest_market_context.market_stress_score >= 0.35:
+                    return
+                elif self.latest_market_context.advancers_ratio >= 0.55:
+                    autotrade = bot_strategy == Strategy.long
+                elif self.latest_market_context.advancers_ratio <= 0.45:
+                    # liquidation sweep pump is mostly designed as a long bot
+                    return
+
             if (
                 context_score.confidence >= 0.65
                 and context_score.followthrough_score < -0.25
@@ -359,14 +369,14 @@ class PriceTracker:
             if not evaluation.emit:
                 return
 
-            evaluation.candidate.msg += f"""
+            msg += f"""
             - Context confidence: {round_numbers(context_score.confidence, 2)}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
             """
-
-            await self.telegram_consumer.send_signal(evaluation.candidate.msg)
+            evaluation.candidate.msg = msg
+            await self.telegram_consumer.send_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(evaluation.candidate)
 
         pass

@@ -192,12 +192,16 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     at_mock.assert_awaited_once()
     tg_mock.assert_awaited_once()
 
-    assert at_mock.await_args is not None
-    call_kwargs = at_mock.await_args.args[0]
+    at_await_args = at_mock.await_args
+    tg_await_args = tg_mock.await_args
+    assert at_await_args is not None
+    assert tg_await_args is not None
+    call_kwargs = at_await_args.args[0]
+    telegram_msg = tg_await_args.args[0]
     assert call_kwargs.algo == "coinrule_price_tracker"
     assert call_kwargs.symbol == "TESTUSDT"
     assert call_kwargs.bot_strategy == Strategy.long
     assert call_kwargs.autotrade is False
-    assert "&lt; 30" in call_kwargs.msg
-    assert "&lt; 0" in call_kwargs.msg
-    assert "&lt; 20" in call_kwargs.msg
+    assert "&lt; 30" in telegram_msg
+    assert "&lt; 0" in telegram_msg
+    assert "&lt; 20" in telegram_msg
