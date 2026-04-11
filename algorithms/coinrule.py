@@ -36,11 +36,12 @@ class PriceTracker:
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
-        self.should_autotrade = cls.should_autotrade
         self.bot_strategy = cls.bot_strategy
         self.current_market_dominance = cls.current_market_dominance
         self.market_domination_reversal = cls.market_domination_reversal
         self.latest_market_context = getattr(cls, "latest_market_context", None)
+        self._breadth_cross_tolerance = cls._breadth_cross_tolerance
+        self._autotrade_stress_threshold = cls._autotrade_stress_threshold
         self.signal_context_scorer = SignalContextScorer(
             context_weight=0.35,
             risk_weight=0.35,
@@ -70,7 +71,7 @@ class PriceTracker:
 
         if last_twap > close_price and price_decrease > -0.05:
             algo = "coinrule_twap_momentum_sniper"
-            autotrade = self.should_autotrade(self.bot_strategy, False)
+            autotrade = False
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
@@ -135,7 +136,15 @@ class PriceTracker:
         ):
             algo = "coinrule_supertrend_swing_reversal"
             bot_strategy = Strategy.long
-            autotrade = self.should_autotrade(bot_strategy, True)
+            autotrade = True
+            context = self.latest_market_context
+            if context is not None:
+                if context.market_stress_score >= self._autotrade_stress_threshold:
+                    autotrade = False
+                elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
+                    autotrade = bot_strategy == Strategy.long
+                elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
+                    autotrade = bot_strategy == Strategy.margin_short
             last_timestamp = (
                 to_datetime(self.df["close_time"][-1:], unit="ms")
                 .dt.strftime("%Y-%m-%d %H:%M")
@@ -193,7 +202,7 @@ class PriceTracker:
             algo = "coinrule_buy_low_sell_high"
 
             bot_strategy = Strategy.long
-            autotrade = self.should_autotrade(bot_strategy, False)
+            autotrade = False
             msg = f"""
             - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{self.symbol}
             - Current price: {close_price}
@@ -284,7 +293,7 @@ class PriceTracker:
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
             algo = "coinrule_price_tracker"
             bot_strategy = Strategy.long
-            autotrade = self.should_autotrade(bot_strategy, False)
+            autotrade = False
             local_score = (
                 1.0
                 + max(0.0, (30.0 - rsi_value) / 30.0) * 0.35

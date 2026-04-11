@@ -27,7 +27,9 @@ class TopGainersReversalDrop:
         self.telegram_consumer = cls.telegram_consumer
         self.market_type = cls.market_type
         self.at_consumer = cls.at_consumer
-        self.should_autotrade = cls.should_autotrade
+        self.latest_market_context = cls.latest_market_context
+        self._breadth_cross_tolerance = cls._breadth_cross_tolerance
+        self._autotrade_stress_threshold = cls._autotrade_stress_threshold
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
@@ -145,7 +147,15 @@ class TopGainersReversalDrop:
         algo = "top_gainers_reversal_drop"
         bot_strategy = Strategy.margin_short
         autotrade = False
-        autotrade = self.should_autotrade(bot_strategy, autotrade)
+        if autotrade:
+            context = self.latest_market_context
+            if context is not None:
+                if context.market_stress_score >= self._autotrade_stress_threshold:
+                    autotrade = False
+                elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
+                    autotrade = bot_strategy == Strategy.long
+                elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
+                    autotrade = bot_strategy == Strategy.margin_short
         base_asset = self.current_symbol_data["base_asset"]
         score = float(row["reversal_drop_score"])
         score_threshold = (

@@ -1,6 +1,6 @@
 import os
 from typing import TYPE_CHECKING
-from pybinbot import HABollinguerSpread, MarketType, SignalsConsumer
+from pybinbot import HABollinguerSpread, MarketType, SignalsConsumer, Strategy
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -22,7 +22,15 @@ async def top_gainers_drop(
     """
     if float(close_price) < float(open_price) and cls.symbol in cls.top_coins_gainers:
         algo = "top_gainers_drop"
-        autotrade = cls.should_autotrade(cls.bot_strategy, True)
+        autotrade = True
+        context = cls.latest_market_context
+        if context is not None:
+            if context.market_stress_score >= cls._autotrade_stress_threshold:
+                autotrade = False
+            elif context.advancers_ratio >= 0.5 + cls._breadth_cross_tolerance:
+                autotrade = cls.bot_strategy == Strategy.long
+            elif context.advancers_ratio <= 0.5 - cls._breadth_cross_tolerance:
+                autotrade = cls.bot_strategy == Strategy.margin_short
 
         msg = f"""
         - [{os.getenv("ENV")}] Top gainers's drop <strong>#{algo} algorithm</strong> #{cls.symbol}
