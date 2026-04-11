@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, MarketType
+from pybinbot import ExchangeId, MarketType, Strategy
 
 from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
 
@@ -25,6 +25,8 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         df=df,
         first_seen_at=0,
         interval=SimpleNamespace(get_ms=lambda: 60_000),
+        should_autotrade=lambda strategy, requested=True: requested,
+        bot_strategy=Strategy.long,
     )
 
 

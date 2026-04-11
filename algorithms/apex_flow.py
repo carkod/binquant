@@ -1,6 +1,4 @@
-from os import getenv
 from typing import TYPE_CHECKING
-
 from pybinbot import round_numbers, ts_to_humandate
 
 if TYPE_CHECKING:
@@ -11,6 +9,7 @@ class ApexFlow:
     _last_breadth_bias: str | None = None
 
     def __init__(self, cls: "ContextEvaluator") -> None:
+        self.config = cls.config
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
         self.latest_market_context = cls.latest_market_context
@@ -38,18 +37,19 @@ class ApexFlow:
             ApexFlow._last_breadth_bias = current_breadth_bias
 
         if (
-            current_breadth_bias is not None
+            current_breadth_bias == "SHORT"
             and previous_breadth_bias is not None
             and current_breadth_bias != previous_breadth_bias
             and self._last_sent_context_timestamp != context.timestamp
         ):
             self._last_sent_context_timestamp = context.timestamp
             msg = f"""
-                - [{getenv("ENV")}] <strong>#market_regime_prediction</strong>
+                - [{str(self.config.env)}] <strong>#market_regime_prediction</strong>
+                - Regime not favorable for longs -> now favorable for longs
                 - Timestamp: {ts_to_humandate(context.timestamp)}
                 - Breadth flip: {previous_breadth_bias} -> {current_breadth_bias}
-                - Confidence: {round_numbers(context.confidence, 3)} (tiers: 10/20/40 fresh -> 0.35/0.65/1.0)
-                - Fresh symbols: {context.fresh_count} (min 10 required)
+                - Confidence: {round_numbers(context.confidence, 3)}
+                - Fresh symbols: {context.fresh_count} (min 40 required)
                 - Advancers ratio: {round_numbers(context.advancers_ratio, 3)} (>= 0.55 long bias, <= 0.45 short bias)
                 - Avg return: {round_numbers(context.average_return, 4)}
                 - BTC regime score: {round_numbers(context.btc_regime_score, 3)} (-1 to 1, positive favors longs)

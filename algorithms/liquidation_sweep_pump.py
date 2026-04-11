@@ -31,6 +31,7 @@ class LiquidationSweepPump:
         self.telegram_consumer = cls.telegram_consumer
         self.market_type = cls.market_type
         self.at_consumer = cls.at_consumer
+        self.should_autotrade = cls.should_autotrade
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
@@ -84,7 +85,7 @@ class LiquidationSweepPump:
 
         return df
 
-    async def signal_generator(
+    async def signal(
         self, current_price: float, bb_high: float, bb_mid: float, bb_low: float
     ) -> None:
         """
@@ -96,6 +97,7 @@ class LiquidationSweepPump:
         algo = "liquidation_sweep_pump"
         autotrade = True
         bot_strategy = Strategy.long
+        autotrade = self.should_autotrade(bot_strategy, autotrade)
         base_asset = self.current_symbol_data["base_asset"]
 
         df = self.compute_pump_score()

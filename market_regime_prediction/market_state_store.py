@@ -1,9 +1,6 @@
-from __future__ import annotations
-
 from typing import Any
 from collections.abc import Mapping
-
-import pandas as pd
+from pandas import DataFrame, Series, concat, to_numeric
 
 
 class MarketStateStore:
@@ -16,17 +13,17 @@ class MarketStateStore:
 
     def __init__(self, max_bars_per_symbol: int = 200) -> None:
         self.max_bars_per_symbol = max_bars_per_symbol
-        self._histories: dict[str, pd.DataFrame] = {}
+        self._histories: dict[str, DataFrame] = {}
         self._last_closed_timestamp: dict[str, int] = {}
 
     def update(
         self,
         symbol: str,
-        candle: Mapping[str, Any] | pd.Series | pd.DataFrame,
-    ) -> pd.DataFrame:
+        candle: Mapping[str, Any] | Series | DataFrame,
+    ) -> DataFrame:
         normalized = self._normalize_input(candle)
-        history = self._histories.get(symbol, pd.DataFrame())
-        history = pd.concat([history, normalized], ignore_index=True)
+        history = self._histories.get(symbol, DataFrame())
+        history = concat([history, normalized], ignore_index=True)
         history = history.drop_duplicates(subset=["timestamp"], keep="last")
         history = history.sort_values("timestamp").tail(self.max_bars_per_symbol)
         history = history.reset_index(drop=True)
@@ -34,13 +31,13 @@ class MarketStateStore:
         self._last_closed_timestamp[symbol] = int(history.iloc[-1]["timestamp"])
         return history.copy()
 
-    def get_symbol_history(self, symbol: str) -> pd.DataFrame:
+    def get_symbol_history(self, symbol: str) -> DataFrame:
         history = self._histories.get(symbol)
         if history is None:
-            return pd.DataFrame()
+            return DataFrame()
         return history.copy()
 
-    def get_all_histories(self) -> dict[str, pd.DataFrame]:
+    def get_all_histories(self) -> dict[str, DataFrame]:
         return {symbol: history.copy() for symbol, history in self._histories.items()}
 
     def get_last_closed_timestamp(self, symbol: str) -> int | None:
@@ -58,14 +55,14 @@ class MarketStateStore:
 
     @staticmethod
     def _normalize_input(
-        candle: Mapping[str, Any] | pd.Series | pd.DataFrame,
-    ) -> pd.DataFrame:
-        if isinstance(candle, pd.DataFrame):
+        candle: Mapping[str, Any] | Series | DataFrame,
+    ) -> DataFrame:
+        if isinstance(candle, DataFrame):
             df = candle.copy()
-        elif isinstance(candle, pd.Series):
+        elif isinstance(candle, Series):
             df = candle.to_frame().T
         else:
-            df = pd.DataFrame([dict(candle)])
+            df = DataFrame([dict(candle)])
 
         if "timestamp" not in df.columns:
             raise ValueError("MarketStateStore.update requires a 'timestamp' column.")
@@ -83,7 +80,7 @@ class MarketStateStore:
                     raise ValueError(f"Missing required candle field '{column}'.")
 
         for column in required:
-            df[column] = pd.to_numeric(df[column], errors="coerce")
+            df[column] = to_numeric(df[column], errors="coerce")
 
         df = df.dropna(subset=["timestamp", "close"])
         df["timestamp"] = df["timestamp"].astype(int)

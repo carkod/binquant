@@ -4,7 +4,7 @@ from os import getenv
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
+from pandas import DataFrame, Series
 from pybinbot import (
     HABollinguerSpread,
     MarketType,
@@ -72,10 +72,11 @@ class SpikeHunterV3KuCoin:
         self.kucoin_symbol = cls.kucoin_symbol
         self.symbol = cls.symbol
         df = cls.df.copy()
-        self.df: pd.DataFrame = HeikinAshi().get_heikin_ashi(df)
+        self.df: DataFrame = HeikinAshi().get_heikin_ashi(df)
         self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
+        self.should_autotrade = cls.should_autotrade
         self.binance_ai_report = BinanceAIReport(cls)
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
@@ -123,8 +124,8 @@ class SpikeHunterV3KuCoin:
         min_volume_ratio: float = 1.3,
         min_price_abs_floor: float = 0.02,
     ):
-        vols = self.df.get("volume_ratio", pd.Series(dtype=float)).dropna()
-        pcs = self.df.get("price_change_abs", pd.Series(dtype=float)).dropna()
+        vols = self.df.get("volume_ratio", Series(dtype=float)).dropna()
+        pcs = self.df.get("price_change_abs", Series(dtype=float)).dropna()
         if vols.empty or pcs.empty:
             logging.info("[AutoCalibrate] Missing distribution data; skipping.")
             return
@@ -225,7 +226,7 @@ class SpikeHunterV3KuCoin:
             else df["price_change_abs"]
         )
         if not self.price_break_use_dynamic:
-            thr_series = pd.Series(self.price_break_base_threshold, index=df.index)
+            thr_series = Series(self.price_break_base_threshold, index=df.index)
         else:
             base_dyn = price_abs_series.rolling(60, min_periods=20).quantile(
                 self.price_break_dynamic_q
@@ -246,7 +247,7 @@ class SpikeHunterV3KuCoin:
                 )
             else:
                 dyn = base_dyn
-            thr_series = pd.Series(
+            thr_series = Series(
                 np.maximum(self.price_break_base_threshold, dyn), index=df.index
             ).ffill()
         self.df["price_break_flag"] = (price_abs_series >= thr_series).astype(int)
@@ -346,7 +347,7 @@ class SpikeHunterV3KuCoin:
         self.df["downward"] = downward_streak.astype(int)
 
     # -------------- Public API -------------- #
-    def detect(self) -> pd.DataFrame | None:
+    def detect(self) -> DataFrame | None:
         if self.df.empty:
             return None
         self.compute_base_features()
@@ -436,6 +437,8 @@ class SpikeHunterV3KuCoin:
             else:
                 streak = "N/A"
                 return
+
+            autotrade = self.should_autotrade(bot_strategy, autotrade)
 
             base_asset = self.current_symbol_data["base_asset"]
             quote_asset = self.current_symbol_data["quote_asset"]

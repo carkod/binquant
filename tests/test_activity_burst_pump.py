@@ -25,6 +25,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         df=df,
         first_seen_at=0,
         interval=SimpleNamespace(get_ms=lambda: 60_000),
+        should_autotrade=lambda strategy, requested=True: requested,
     )
 
 

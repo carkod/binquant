@@ -1,27 +1,14 @@
-from __future__ import annotations
-
 from collections import deque
-from typing import Any
 from collections.abc import Mapping
+from typing import Any
 
-import pandas as pd
+from pandas import DataFrame, Series, concat
 
 from market_regime_prediction.market_state_store import MarketStateStore
 from market_regime_prediction.models import LiveMarketContext, SymbolMarketFeatures
+from shared.utils import clamp, safe_pct
 
-MIN_FRESH_SYMBOLS = 10
-MEDIUM_FRESH_SYMBOLS = 20
-FULL_FRESH_SYMBOLS = 40
-
-
-def _clamp(value: float, low: float = -1.0, high: float = 1.0) -> float:
-    return max(low, min(high, float(value)))
-
-
-def _safe_pct(current: float, previous: float) -> float:
-    if previous == 0:
-        return 0.0
-    return (float(current) - float(previous)) / abs(float(previous))
+REQUIRED_FRESH_SYMBOLS = 40
 
 
 class LiveMarketContextAccumulator:
@@ -30,30 +17,24 @@ class LiveMarketContextAccumulator:
     This ensures that context becomes available as soon as possible
     and gets refined with every new candle for the same timestamp.
 
-    A context becomes available only when BTC is fresh and the number of fresh
-    symbols for that exact timestamp reaches the configured threshold.
+    A context becomes available only when BTC is fresh and at least 40 symbols
+    are fresh for that exact timestamp.
     """
 
     def __init__(
         self,
         state_store: MarketStateStore,
-        btc_symbol: str = "BTCUSDT",
-        min_fresh_symbols: int = MIN_FRESH_SYMBOLS,
-        medium_fresh_symbols: int = MEDIUM_FRESH_SYMBOLS,
-        full_fresh_symbols: int = FULL_FRESH_SYMBOLS,
+        btc_symbol: str,
     ) -> None:
         self.state_store = state_store
         self.btc_symbol = btc_symbol
-        self.min_fresh_symbols = min_fresh_symbols
-        self.medium_fresh_symbols = medium_fresh_symbols
-        self.full_fresh_symbols = full_fresh_symbols
         self._contexts_by_timestamp: dict[int, LiveMarketContext] = {}
         self._context_order: deque[int] = deque(maxlen=64)
 
     def on_closed_candle(
         self,
         symbol: str,
-        candle: Mapping[str, Any] | pd.Series | pd.DataFrame,
+        candle: Mapping[str, Any] | Series | DataFrame,
     ) -> LiveMarketContext | None:
         history = self.state_store.update(symbol=symbol, candle=candle)
         timestamp = int(history.iloc[-1]["timestamp"])
@@ -91,7 +72,7 @@ class LiveMarketContextAccumulator:
         fresh_symbols = self.state_store.get_fresh_symbols(timestamp)
         if (
             self.btc_symbol not in fresh_symbols
-            or len(fresh_symbols) < self.min_fresh_symbols
+            or len(fresh_symbols) < REQUIRED_FRESH_SYMBOLS
         ):
             return None
 
@@ -118,7 +99,7 @@ class LiveMarketContextAccumulator:
             )
 
         effective_count = len(symbol_features)
-        if effective_count < self.min_fresh_symbols:
+        if effective_count < REQUIRED_FRESH_SYMBOLS:
             return None
 
         advancers = sum(1 for item in symbol_features.values() if item.return_pct > 0)
@@ -151,28 +132,28 @@ class LiveMarketContextAccumulator:
             sum(item.bb_width for item in symbol_features.values()) / effective_count
         )
 
-        breadth_balance = _clamp((advancers_ratio - decliners_ratio) * 1.5)
-        ema_balance = _clamp(((pct_above_ema20 + pct_above_ema50) - 1.0) * 1.5)
-        average_return_score = _clamp(average_return * 12.0)
-        btc_regime_score = _clamp(
+        breadth_balance = clamp((advancers_ratio - decliners_ratio) * 1.5)
+        ema_balance = clamp(((pct_above_ema20 + pct_above_ema50) - 1.0) * 1.5)
+        average_return_score = clamp(average_return * 12.0)
+        btc_regime_score = clamp(
             btc_features.return_pct * 12.0 + btc_features.trend_score * 6.0
         )
-        stress_from_volatility = _clamp((average_atr_pct - 0.02) * 12.0, 0.0, 1.0)
-        stress_from_bandwidth = _clamp((average_bb_width - 0.08) * 4.0, 0.0, 1.0)
-        stress_from_selloff = _clamp((-average_return) * 16.0, 0.0, 1.0)
+        stress_from_volatility = clamp((average_atr_pct - 0.02) * 12.0, 0.0, 1.0)
+        stress_from_bandwidth = clamp((average_bb_width - 0.08) * 4.0, 0.0, 1.0)
+        stress_from_selloff = clamp((-average_return) * 16.0, 0.0, 1.0)
         market_stress_score = (
             0.4 * stress_from_volatility
             + 0.25 * stress_from_bandwidth
             + 0.35 * stress_from_selloff
         )
-        long_tailwind = _clamp(
+        long_tailwind = clamp(
             0.4 * breadth_balance
             + 0.2 * ema_balance
             + 0.25 * btc_regime_score
             + 0.15 * average_return_score
             - 0.35 * market_stress_score
         )
-        short_tailwind = _clamp(
+        short_tailwind = clamp(
             -0.35 * breadth_balance
             - 0.15 * ema_balance
             - 0.2 * btc_regime_score
@@ -195,8 +176,8 @@ class LiveMarketContextAccumulator:
             coverage_ratio=coverage_ratio,
             btc_symbol=self.btc_symbol,
             btc_present=True,
-            confidence=self._confidence_for_count(effective_count),
-            is_provisional=effective_count < self.full_fresh_symbols,
+            confidence=1.0,
+            is_provisional=False,
             advancers=advancers,
             decliners=decliners,
             advancers_ratio=advancers_ratio,
@@ -222,19 +203,10 @@ class LiveMarketContextAccumulator:
             },
         )
 
-    def _confidence_for_count(self, fresh_count: int) -> float:
-        if fresh_count < self.min_fresh_symbols:
-            return 0.0
-        if fresh_count < self.medium_fresh_symbols:
-            return 0.35
-        if fresh_count < self.full_fresh_symbols:
-            return 0.65
-        return 1.0
-
     @staticmethod
     def _compute_symbol_features(
         symbol: str,
-        history: pd.DataFrame,
+        history: DataFrame,
     ) -> SymbolMarketFeatures | None:
         if history.empty or len(history) < 2:
             return None
@@ -244,7 +216,7 @@ class LiveMarketContextAccumulator:
         highs = working["high"].astype(float)
         lows = working["low"].astype(float)
         previous_close = closes.shift(1)
-        true_range = pd.concat(
+        true_range = concat(
             [
                 highs - lows,
                 (highs - previous_close).abs(),
@@ -275,7 +247,7 @@ class LiveMarketContextAccumulator:
             symbol=symbol,
             timestamp=int(working.iloc[-1]["timestamp"]),
             close=latest_close,
-            return_pct=_safe_pct(latest_close, prev_close),
+            return_pct=safe_pct(latest_close, prev_close),
             ema20=float(ema20),
             ema50=float(ema50),
             above_ema20=latest_close > float(ema20),

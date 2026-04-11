@@ -108,9 +108,39 @@ class ContextEvaluator:
             risk_weight=0.35,
             support_weight=0.2,
         )
+        self._breadth_cross_tolerance = 0.05
+        self._autotrade_stress_threshold = 0.35
 
     def days(self, secs):
         return secs * 86400
+
+    def should_autotrade(
+        self,
+        bot_strategy: Strategy,
+        requested_autotrade: bool = True,
+    ) -> bool:
+        if not requested_autotrade:
+            return False
+
+        context = self.latest_market_context
+        if context is None:
+            return True
+        if context.market_stress_score >= self._autotrade_stress_threshold:
+            return False
+
+        if context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
+            market_bias = "LONG"
+        elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
+            market_bias = "SHORT"
+        else:
+            return True
+
+        if bot_strategy == Strategy.long:
+            return market_bias == "LONG"
+        if bot_strategy == Strategy.margin_short:
+            return market_bias == "SHORT"
+
+        return True
 
     def dynamic_btc_beta_corr(self, window=50) -> tuple[float, float]:
         """
@@ -258,10 +288,12 @@ class ContextEvaluator:
 
             close_price = float(self.df_15m["close"].iloc[-1])
 
+            await self.af.signal()
+
             # below signals require spreads
             spreads = self.bb_spreads()
 
-            await self.lsp.signal_generator(
+            await self.lsp.signal(
                 current_price=close_price,
                 bb_high=spreads.bb_high,
                 bb_mid=spreads.bb_mid,
@@ -295,8 +327,5 @@ class ContextEvaluator:
                 bb_low=spreads.bb_low,
                 bb_mid=spreads.bb_mid,
             )
-
-            # Apex Flow signals
-            await self.af.signal()
 
         return
