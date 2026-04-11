@@ -132,10 +132,7 @@ class LiveMarketContextAccumulator:
         ema_balance = clamp(((pct_above_ema20 + pct_above_ema50) - 1.0) * 1.5)
         average_return_score = clamp(average_return * 12.0)
         btc_regime_score = clamp(
-            (
-                (btc_features.return_pct * 12.0)
-                + (btc_features.trend_score * 6.0)
-            )
+            ((btc_features.return_pct * 12.0) + (btc_features.trend_score * 6.0))
             if btc_features is not None
             else 0.0
         )
@@ -192,7 +189,9 @@ class LiveMarketContextAccumulator:
             average_atr_pct=average_atr_pct,
             average_bb_width=average_bb_width,
             btc_return=btc_features.return_pct if btc_features is not None else 0.0,
-            btc_trend_score=btc_features.trend_score if btc_features is not None else 0.0,
+            btc_trend_score=btc_features.trend_score
+            if btc_features is not None
+            else 0.0,
             btc_regime_score=btc_regime_score,
             market_stress_score=market_stress_score,
             long_tailwind=long_tailwind,
