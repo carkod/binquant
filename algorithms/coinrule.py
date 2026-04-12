@@ -22,6 +22,124 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
+class GridTrading:
+    def __init__(self, cls: "ContextEvaluator") -> None:
+        self.config = cls.config
+        self.exchange = cls.exchange
+        self.market_type = cls.market_type
+        df_15m = getattr(cls, "df_15m", cls.df)
+        self.df_15m = df_15m.copy()
+        self.symbol = cls.symbol
+        self.telegram_consumer = cls.telegram_consumer
+        self.at_consumer = cls.at_consumer
+        self.latest_market_context = cls.latest_market_context
+
+    async def signal(
+        self,
+        close_price,
+        rsi_value,
+        bb_high,
+        bb_mid,
+        bb_low,
+    ):
+        """
+        Coinrule-inspired grid trading rule for range-bound markets.
+
+        Best when the market is chopping sideways and price repeatedly
+        oscillates around a stable band. The setup buys oversold dips inside
+        the range and proposes scaling out 10% every +2% move while keeping
+        residual exposure open.
+        """
+        context = self.latest_market_context
+        if context is not None:
+            is_vertical_market = context.market_stress_score >= 0.35
+            is_downtrend_market = (
+                context.advancers_ratio <= 0.45 or context.long_tailwind <= 0
+            )
+            if is_vertical_market or is_downtrend_market:
+                return
+
+        if self.df_15m.isnull().values.any() or len(self.df_15m) < 24:
+            logging.warning(
+                f"15m candles grid trading not enough data for symbol: {self.symbol}"
+            )
+            return
+
+        recent_window = self.df_15m.tail(24)
+        recent_high = float(recent_window["high"].max())
+        recent_low = float(recent_window["low"].min())
+        recent_close_base = float(recent_window["close"].iloc[0])
+        range_width = (
+            (recent_high - recent_low) / recent_low if recent_low != 0 else 0.0
+        )
+        range_drift = (
+            abs((close_price - recent_close_base) / recent_close_base)
+            if recent_close_base != 0
+            else 0.0
+        )
+        bb_width = ((bb_high - bb_low) / bb_mid) if bb_mid else 0.0
+        lower_band_position = (
+            (close_price - bb_low) / (bb_high - bb_low) if bb_high != bb_low else 0.5
+        )
+
+        is_range_market = (
+            range_width >= 0.015 and range_drift <= 0.03 and 0.01 <= bb_width <= 0.08
+        )
+        buy_zone = (
+            rsi_value < 35 and close_price <= bb_mid and lower_band_position <= 0.4
+        )
+        reduce_zone = rsi_value > 65
+
+        if not is_range_market or not buy_zone:
+            return
+
+        algo = "coinrule_grid_trading"
+        bot_strategy = Strategy.long
+        autotrade = False
+
+        kucoin_link = build_links_msg(
+            self.config.env, self.exchange, self.market_type, self.symbol
+        )[0]
+        terminal_link = build_links_msg(
+            self.config.env, self.exchange, self.market_type, self.symbol
+        )[1]
+
+        msg = f"""
+            - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Current price: {close_price}
+            - Strategy: {bot_strategy.value}
+            - Market mode: Sideways / range-bound
+            - RSI buy zone (&lt; 35): {round_numbers(rsi_value, 2)}
+            - Range width (24 candles): {round_numbers(range_width * 100, 2)}%
+            - Range drift (24 candles): {round_numbers(range_drift * 100, 2)}%
+            - Bollinger width: {round_numbers(bb_width * 100, 2)}%
+            - Grid action: Buy ladder into weakness below the mid-band
+            - Scale-out plan: Sell 10% every +2% move while keeping position open
+            - Reduce exposure trigger: {"Active" if reduce_zone else "Stand by until RSI > 65"}
+            - {"Autotrade is disabled for testing" if autotrade else "Autotrade is enabled"}
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
+            """
+
+        value = SignalsConsumer(
+            autotrade=autotrade,
+            current_price=close_price,
+            msg=msg,
+            symbol=self.symbol,
+            algo=algo,
+            bot_strategy=bot_strategy,
+            market_type=MarketType.FUTURES,
+            bb_spreads=HABollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+
+        await self.telegram_consumer.send_signal(msg)
+        await self.at_consumer.process_autotrade_restrictions(value)
+
+
 class PriceTracker:
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -264,24 +382,23 @@ class PriceTracker:
         Entry: RSI(14) < 30 AND MACD < 0 AND MFI < 20 using 5-minute candles
         BUY $30 of that coin with USDT wallet as limit order
         """
-        df_5m = self.df.copy()
+        df_15m = self.df.copy()
         algo = "coinrule_price_tracker"
 
-        if df_5m.isnull().values.any() or len(df_5m) < 30:
+        if df_15m.isnull().values.any() or len(df_15m) < 30:
             logging.warning(
                 f"5m candles price tracker not enough data for symbol: {self.symbol}"
             )
             return
 
-        df_5m.dropna(inplace=True)
-        df_5m.reset_index(drop=True, inplace=True)
+        df_15m.dropna(inplace=True)
+        df_15m.reset_index(drop=True, inplace=True)
 
-        df_5m = Indicators.rsi(df=df_5m)
-        df_5m = Indicators.macd(df_5m)
+        self.df = df_15m
 
-        rsi_value = float(df_5m["rsi"].iloc[-1])
-        macd_value = float(df_5m["macd"].iloc[-1])
-        mfi_value = self._compute_mfi(df_5m)
+        rsi_value = float(df_15m["rsi"].iloc[-1])
+        macd_value = float(df_15m["macd"].iloc[-1])
+        mfi_value = self._compute_mfi(df_15m)
 
         kucoin_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
@@ -300,10 +417,10 @@ class PriceTracker:
                 + min(abs(macd_value) * 100.0, 1.0) * 0.3
             )
             symbol_return = (
-                float(df_5m["close"].pct_change().iloc[-1]) if len(df_5m) > 1 else 0.0
+                float(df_15m["close"].pct_change().iloc[-1]) if len(df_15m) > 1 else 0.0
             )
-            ema_fast = df_5m["close"].ewm(span=9, adjust=False).mean().iloc[-1]
-            ema_slow = df_5m["close"].ewm(span=21, adjust=False).mean().iloc[-1]
+            ema_fast = df_15m["close"].ewm(span=9, adjust=False).mean().iloc[-1]
+            ema_slow = df_15m["close"].ewm(span=21, adjust=False).mean().iloc[-1]
             trend_score = (
                 float((ema_fast - ema_slow) / abs(ema_slow))
                 if float(ema_slow) != 0
@@ -348,6 +465,7 @@ class PriceTracker:
                     autotrade = False
             else:
                 autotrade = False
+                return
             evaluation.candidate.autotrade = autotrade
 
             if (

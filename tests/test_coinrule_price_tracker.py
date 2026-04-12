@@ -9,7 +9,7 @@ import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType, MarketDominance, Strategy
 
-from algorithms.coinrule import PriceTracker
+from algorithms.coinrule import GridTrading, PriceTracker
 
 
 def make_context(df: DataFrame) -> SimpleNamespace:
@@ -41,6 +41,10 @@ def make_context(df: DataFrame) -> SimpleNamespace:
 
 def make_algo(df: DataFrame) -> PriceTracker:
     return PriceTracker(cast(Any, make_context(df)))
+
+
+def make_grid_algo(df: DataFrame) -> GridTrading:
+    return GridTrading(cast(Any, make_context(df)))
 
 
 def make_ohlcv_df(n: int = 50, oversold: bool = False) -> DataFrame:
@@ -82,6 +86,38 @@ def make_ohlcv_df(n: int = 50, oversold: bool = False) -> DataFrame:
                     "number_of_trades": 10,
                 }
             )
+    df = DataFrame(rows)
+    df["rsi"] = 25.0 if oversold else 60.0
+    df["macd"] = -0.5 if oversold else 0.5
+    return df
+
+
+def make_range_bound_df(n: int = 50) -> DataFrame:
+    """
+    Create a choppy, range-bound OHLCV dataframe suitable for grid trading.
+    The last candle sits near the lower half of the range to represent a dip.
+    """
+    rows = []
+    base_price = 100.0
+    pattern = [0.6, -0.5, 0.4, -0.6, 0.5, -0.4, 0.3, -0.7]
+    price = base_price
+    for i in range(n):
+        price = base_price + pattern[i % len(pattern)]
+        rows.append(
+            {
+                "open": price * 1.001,
+                "high": price * 1.008,
+                "low": price * 0.992,
+                "close": price,
+                "volume": 150.0,
+                "close_time": i * 300_000,
+                "number_of_trades": 12,
+            }
+        )
+    rows[-1]["close"] = 99.2
+    rows[-1]["open"] = 99.5
+    rows[-1]["high"] = 100.0
+    rows[-1]["low"] = 98.9
     return DataFrame(rows)
 
 
@@ -167,19 +203,29 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
     )
+    algo.latest_market_context = SimpleNamespace(
+        market_stress_score=0.1,
+        advancers_ratio=0.58,
+        btc_present=True,
+        fresh_count=12,
+    )
 
-    # Force indicator values to satisfy all entry conditions
-    monkeypatch.setattr(
-        "algorithms.coinrule.Indicators.rsi",
-        lambda df, **kw: df.copy().assign(rsi=25.0),
-    )
-    monkeypatch.setattr(
-        "algorithms.coinrule.Indicators.macd",
-        lambda df: df.copy().assign(macd=-0.5, macd_signal=-0.3),
-    )
     monkeypatch.setattr(
         "algorithms.coinrule.PriceTracker._compute_mfi",
         staticmethod(lambda df, window=14: 15.0),
+    )
+    monkeypatch.setattr(
+        "algorithms.coinrule.score_signal_candidate_with_context",
+        lambda **kwargs: SimpleNamespace(
+            candidate=kwargs["candidate"],
+            adjusted_score=1.2,
+            emit=True,
+            context_score=SimpleNamespace(
+                confidence=0.7,
+                followthrough_score=0.2,
+                adverse_excursion_risk=0.2,
+            ),
+        ),
     )
 
     await algo.signal(
@@ -198,3 +244,38 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     assert "&lt; 30" in telegram_msg
     assert "&lt; 0" in telegram_msg
     assert "&lt; 20" in telegram_msg
+
+
+@pytest.mark.asyncio
+async def test_grid_trading_emits_signal_for_range_bound_dip():
+    df = make_range_bound_df(n=50)
+    algo = make_grid_algo(df)
+    algo.latest_market_context = SimpleNamespace(
+        market_stress_score=0.1,
+        advancers_ratio=0.58,
+        long_tailwind=0.2,
+    )
+    at_mock = AsyncMock()
+    tg_mock = AsyncMock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+    )
+
+    await algo.signal(
+        close_price=float(df["close"].iloc[-1]),
+        rsi_value=34.0,
+        bb_high=102.0,
+        bb_low=98.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_awaited_once()
+    tg_mock.assert_awaited_once()
+
+    telegram_msg = tg_mock.await_args.args[0]
+    assert "coinrule_grid_trading" in telegram_msg
+    assert "Sell 10% every +2% move" in telegram_msg
+    assert "RSI buy zone" in telegram_msg
