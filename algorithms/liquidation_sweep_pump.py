@@ -180,16 +180,9 @@ class LiquidationSweepPump:
                 # liquidation sweep pump is mostly designed as a long bot
                 autotrade = False
 
-            in_long_regime = (
-                self.latest_market_context.advancers_ratio >= 0.55
-                and self.latest_market_context.long_tailwind > 0
-            )
-            in_neutral_transition = (
-                0.45 < self.latest_market_context.advancers_ratio < 0.55
-            )
             high_market_stress = self.latest_market_context.market_stress_score >= 0.35
 
-            if not in_long_regime or in_neutral_transition or high_market_stress:
+            if high_market_stress:
                 autotrade = False
 
         if (
