@@ -348,6 +348,7 @@ class PriceTracker:
                     autotrade = False
             else:
                 autotrade = False
+            evaluation.candidate.autotrade = autotrade
 
             if (
                 context_score.confidence >= 0.65
