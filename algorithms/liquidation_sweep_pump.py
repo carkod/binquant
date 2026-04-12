@@ -105,23 +105,27 @@ class LiquidationSweepPump:
         recent_scores = df["pump_score_smooth"].iloc[-48:]
         btc_momentum = self.df_btc.close.pct_change().iloc[-1]
 
-        # Compute dynamic threshold
-        # For example, top 5% of historical scores
-        PUMP_SCORE_THRESHOLD = recent_scores.quantile(0.95)
+        # Loosen the trigger a bit so we catch stronger emerging spikes,
+        # not only the most extreme top 5% outliers in the lookback window.
+        PUMP_SCORE_THRESHOLD = recent_scores.quantile(0.85)
         row = df.iloc[-1]
         latest_score = row["pump_score_smooth"]
+        latest_raw_score = row["pump_score"]
+        trigger_score = max(float(latest_score), float(latest_raw_score))
 
-        if btc_momentum < -0.01:
+        # Allow signals while BTC is mildly red; only block under sharper
+        # market-wide selloffs that tend to invalidate breakout follow-through.
+        if btc_momentum < -0.02:
             return
 
-        if latest_score is None or float(latest_score) < PUMP_SCORE_THRESHOLD:
+        if latest_score is None or trigger_score < PUMP_SCORE_THRESHOLD:
             return
 
         # Optional OI confirmation
-        if self.oi_growth is not None and self.oi_growth < 1.05:
+        if self.oi_growth is not None and self.oi_growth < 1.02:
             return
 
-        local_score = float(latest_score / PUMP_SCORE_THRESHOLD)
+        local_score = float(trigger_score / PUMP_SCORE_THRESHOLD)
         symbol_return = float(df["close"].pct_change().iloc[-1]) if len(df) > 1 else 0.0
         btc_return = (
             float(self.df_btc["close"].pct_change().iloc[-1])
@@ -196,11 +200,12 @@ class LiquidationSweepPump:
             autotrade = False
         if not evaluation.emit:
             autotrade = False
+        evaluation.candidate.autotrade = autotrade
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-            - Score: {latest_score:.2f}
+            - Score: {trigger_score:.2f}
             - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
             - OI Growth: {self.oi_growth:.2f}
             - Context available: {"Yes" if self.latest_market_context is not None else "No"}
