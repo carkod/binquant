@@ -346,6 +346,9 @@ class PriceTracker:
                 elif self.latest_market_context.advancers_ratio <= 0.45:
                     # liquidation sweep pump is mostly designed as a long bot
                     autotrade = False
+            else:
+                autotrade = False
+            evaluation.candidate.autotrade = autotrade
 
             if (
                 context_score.confidence >= 0.65
@@ -363,6 +366,9 @@ class PriceTracker:
             - MACD &lt; 0: {round_numbers(macd_value, 6)}
             - MFI &lt; 20: {round_numbers(mfi_value, 2)}
             - Strategy: {bot_strategy.value}
+            - Context available: {"Yes" if self.latest_market_context is not None else "No"}
+            - Context BTC present: {"Yes" if self.latest_market_context and self.latest_market_context.btc_present else "No"}
+            - Context fresh symbols: {self.latest_market_context.fresh_count if self.latest_market_context else 0}
             - Context confidence: {round_numbers(context_score.confidence, 2)}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
@@ -372,7 +378,6 @@ class PriceTracker:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
-            evaluation.candidate.msg = msg
             await self.telegram_consumer.send_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(evaluation.candidate)
 

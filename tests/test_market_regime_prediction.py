@@ -30,25 +30,40 @@ def seed_symbol(
     store.update(symbol, make_candle(previous_timestamp, previous_close))
 
 
-def test_live_context_requires_fresh_btc_and_threshold() -> None:
+def test_live_context_requires_threshold_without_fresh_btc() -> None:
     store = MarketStateStore()
     accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
 
-    for index in range(39):
+    context = None
+    for index in range(40):
         symbol = f"ALT{index}USDT"
         seed_symbol(store, symbol, 1_000, 100 + index)
-        assert (
-            accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
-            is None
-        )
-
-    seed_symbol(store, "BTCUSDT", 1_000, 200.0)
-    context = accumulator.on_closed_candle("BTCUSDT", make_candle(2_000, 202.0))
+        context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
 
     assert context is not None
     assert context.fresh_count == 40
     assert context.confidence == 1.0
+    assert context.btc_present is False
+    assert context.btc_regime_score == 0.0
+
+
+def test_live_context_uses_stale_btc_when_available() -> None:
+    store = MarketStateStore()
+    accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
+
+    seed_symbol(store, "BTCUSDT", 1_000, 200.0)
+    store.update("BTCUSDT", make_candle(1_500, 202.0))
+
+    context = None
+    for index in range(40):
+        symbol = f"ALT{index}USDT"
+        seed_symbol(store, symbol, 1_000, 100 + index)
+        context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
+
+    assert context is not None
     assert context.btc_present is True
+    assert context.metadata["btc_fresh"] is False
+    assert context.metadata["btc_used_for_regime"] is True
 
 
 def test_live_context_recomputes_same_timestamp() -> None:
