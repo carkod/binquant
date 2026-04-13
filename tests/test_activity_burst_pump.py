@@ -67,7 +67,7 @@ def test_compute_indicators_uses_median_baseline():
     df = make_low_liquidity_df()
     algo = make_algo(df)
 
-    indicators = algo.compute_indicators()
+    indicators = algo.compute_indicators(cast(Any, df))
     row = indicators.iloc[-1]
 
     assert row["baseline_volume"] == pytest.approx(1.0)

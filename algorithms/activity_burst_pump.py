@@ -11,7 +11,6 @@ from pybinbot import (
     round_numbers,
 )
 
-from consumers.signal_collector import SignalCollector
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
 
 class ActivityBurstPump:
     def __init__(self, cls: "ContextEvaluator"):
+        self.ti = cls
         self.config = cls.config
         self.symbol = cls.symbol
         self.kucoin_symbol = cls.kucoin_symbol
@@ -34,13 +34,6 @@ class ActivityBurstPump:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
-        self.df: TypedDataFrame[KlineSchema] = cls.df.copy()
-        self.signal_collector = SignalCollector(
-            first_seen_at=cls.first_seen_at,
-            interval=cls.interval,
-            binbot_api=cls.binbot_api,
-        )
-
         self.volume_multiplier = 2.75
         self.quote_volume_multiplier = 2.5
         self.price_threshold = 0.01
@@ -54,8 +47,10 @@ class ActivityBurstPump:
         self.score_lookback = 80
         self.cooldown_bars = 3
 
-    def compute_indicators(self) -> TypedDataFrame[KlineSchema]:
-        df = self.df.copy()
+    def compute_indicators(
+        self, df: TypedDataFrame[KlineSchema]
+    ) -> TypedDataFrame[KlineSchema]:
+        df = df.copy()
         has_quote_asset_volume = "quote_asset_volume" in df.columns
 
         baseline_window = max(self.lookback_window, 2)
@@ -164,11 +159,8 @@ class ActivityBurstPump:
     async def signal(
         self, current_price: float, bb_high: float, bb_mid: float, bb_low: float
     ) -> None:
-        if (
-            self.df is None
-            or self.df.empty
-            or len(self.df) < (self.lookback_window + 1)
-        ):
+        df = self.ti.df
+        if df is None or df.empty or len(df) < (self.lookback_window + 1):
             return None
 
         algo = "activity_burst_pump"
@@ -188,7 +180,7 @@ class ActivityBurstPump:
                 # opening margin short directly likely end up in losses
                 return None
 
-        df = self.compute_indicators()
+        df = self.compute_indicators(df)
         row = df.iloc[-1]
 
         if not bool(row["qualified_signal"]):
@@ -224,7 +216,6 @@ class ActivityBurstPump:
         value = SignalsConsumer(
             autotrade=autotrade,
             current_price=current_price,
-            msg=msg,
             symbol=self.symbol,
             algo=algo,
             bot_strategy=bot_strategy,

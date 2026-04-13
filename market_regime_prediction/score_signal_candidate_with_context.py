@@ -1,4 +1,3 @@
-from pybinbot import SignalsConsumer
 from market_regime_prediction.models import (
     LiveMarketContext,
     SignalContextEvaluation,
@@ -7,7 +6,9 @@ from market_regime_prediction.signal_context_scorer import SignalContextScorer
 
 
 def score_signal_candidate_with_context(
-    candidate: SignalsConsumer,
+    symbol: str,
+    direction: str,
+    score: float,
     market_context: LiveMarketContext | None,
     scorer: SignalContextScorer,
     local_features: dict[str, float] | None = None,
@@ -21,17 +22,20 @@ def score_signal_candidate_with_context(
     """
 
     adjusted_score, context_score = scorer.evaluate_adjusted_score(
-        symbol=candidate.symbol,
-        direction=candidate.direction,
-        local_score=candidate.score,
+        symbol=symbol,
+        direction=direction,
+        local_score=score,
         market_context=market_context,
         local_features=local_features,
     )
-    candidate.score = adjusted_score
     emit = emit_threshold is None or adjusted_score >= emit_threshold
-    return SignalContextEvaluation(
-        candidate=candidate,
+    evaluation = SignalContextEvaluation(
+        symbol=symbol,
+        direction=direction,
+        local_score=score,
+        local_features=local_features,
         adjusted_score=adjusted_score,
-        emit=emit,
         context_score=context_score,
+        emit=emit,
     )
+    return evaluation

@@ -47,7 +47,6 @@ async def top_gainers_drop(
         value = SignalsConsumer(
             autotrade=autotrade,
             current_price=close_price,
-            msg=msg,
             symbol=cls.symbol,
             algo=algo,
             bot_strategy=cls.bot_strategy,

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 class TopGainersReversalDrop:
     def __init__(self, cls: "ContextEvaluator"):
+        self.ti = cls
         self.config = cls.config
         self.symbol = cls.symbol
         self.kucoin_symbol = cls.kucoin_symbol
@@ -33,8 +34,6 @@ class TopGainersReversalDrop:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
-        self.df: TypedDataFrame[KlineSchema] = cls.df.copy()
-
         self.lookback_window = 20
         self.score_lookback = 80
         self.score_quantile = 0.9
@@ -47,8 +46,10 @@ class TopGainersReversalDrop:
         self.min_upper_wick_frac = 0.3
         self.max_close_position = 0.35
 
-    def compute_indicators(self) -> TypedDataFrame[KlineSchema]:
-        df = self.df.copy()
+    def compute_indicators(
+        self, df: TypedDataFrame[KlineSchema]
+    ) -> TypedDataFrame[KlineSchema]:
+        df = df.copy()
         baseline_window = max(self.lookback_window, 2)
 
         df["baseline_volume"] = (
@@ -117,14 +118,15 @@ class TopGainersReversalDrop:
     async def signal(
         self, current_price: float, bb_high: float, bb_mid: float, bb_low: float
     ) -> None:
+        df = self.ti.df
         if (
-            self.df is None
-            or self.df.empty
-            or len(self.df) < (self.lookback_window + self.pump_lookback)
+            df is None
+            or df.empty
+            or len(df) < (self.lookback_window + self.pump_lookback)
         ):
             return None
 
-        df = self.compute_indicators()
+        df = self.compute_indicators(df)
         row = df.iloc[-1]
 
         if not bool(row["qualified_signal"]):
@@ -192,7 +194,6 @@ class TopGainersReversalDrop:
         value = SignalsConsumer(
             autotrade=autotrade,
             current_price=current_price,
-            msg=msg,
             symbol=self.symbol,
             algo=algo,
             bot_strategy=bot_strategy,

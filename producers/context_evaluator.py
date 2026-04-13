@@ -238,26 +238,20 @@ class ContextEvaluator:
         candles_15m = candles_15m if candles_15m is not None else candles
 
         self.df, _, _, _ = heikin_ashi.pre_process(self.exchange, candles)
-        self.df_15m, _, self.df_1h, self.df_4h = heikin_ashi.pre_process(
-            self.exchange, candles_15m
-        )
-        self.df_btc, _, _, _ = heikin_ashi.pre_process(self.exchange, btc_candles_15m)
-
         if not self.df.empty and self.df.close.size > 0:
+            self.load_5m_algorithms()
             self.df = self.indicators_enrichment(self.df)
             self.df = heikin_ashi.post_process(self.df)
-            self.load_5m_algorithms()
 
             if (
-                self.df["ma_7"].size < 7
-                or self.df["ma_25"].size < 25
-                or self.df["ma_100"].size < 100
+                self.df.ma_7.size < 7
+                or self.df.ma_25.size < 25
+                or self.df.ma_100.size < 100
             ):
                 return
 
             close_price = float(self.df["close"].iloc[-1])
             spreads = self.bb_spreads(self.df)
-
 
             await self.abp.signal(
                 current_price=close_price,
@@ -273,13 +267,6 @@ class ContextEvaluator:
                 bb_low=spreads.bb_low,
             )
 
-            await self.sh3.signal(
-                current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
-            )
-
             await self.pt.signal(
                 close_price=close_price,
                 bb_high=spreads.bb_high,
@@ -288,7 +275,14 @@ class ContextEvaluator:
             )
 
         # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
+        self.df_15m, _, self.df_1h, self.df_4h = heikin_ashi.pre_process(
+            self.exchange, candles_15m
+        )
         if not self.df_15m.empty and self.df_15m.close.size > 0:
+            self.load_15m_algorithms()
+            self.df_btc, _, _, _ = heikin_ashi.pre_process(
+                self.exchange, btc_candles_15m
+            )
             self.df_15m = self.indicators_enrichment(self.df_15m)
 
             # Default BTC-derived metrics let downstream algorithms run even
@@ -308,7 +302,6 @@ class ContextEvaluator:
             self.df_15m = heikin_ashi.post_process(self.df_15m)
             self.df_1h = heikin_ashi.post_process(self.df_1h)
             self.df_4h = heikin_ashi.post_process(self.df_4h)
-            self.load_15m_algorithms()
 
             # Dropped NaN values may end up with empty dataframe
             if (
@@ -323,7 +316,20 @@ class ContextEvaluator:
 
             await self.af.signal()
 
+            await self.sh3.signal(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
+
             await self.lsp.signal(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
+            await self.gt.signal(
                 current_price=close_price,
                 bb_high=spreads.bb_high,
                 bb_mid=spreads.bb_mid,
