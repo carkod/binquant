@@ -5,15 +5,9 @@ from pybinbot import (
     Strategy,
     round_numbers,
     KlineSchema,
-    MarketType,
     SignalsConsumer,
 )
-from market_regime_prediction.score_signal_candidate_with_context import (
-    score_signal_candidate_with_context,
-)
-from market_regime_prediction.signal_context_scorer import SignalContextScorer
 from pandera.typing import DataFrame as TypedDataFrame
-from consumers.signal_collector import SignalCollector
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -22,6 +16,7 @@ if TYPE_CHECKING:
 
 class LiquidationSweepPump:
     def __init__(self, cls: "ContextEvaluator"):
+        self.ti = cls
         self.config = cls.config
         # Symbol / context
         self.symbol = cls.symbol
@@ -35,21 +30,11 @@ class LiquidationSweepPump:
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
         self.oi_growth = cls.oi_data
-        self.df: TypedDataFrame[KlineSchema] = cls.df_15m.copy()
-        self.df_btc: TypedDataFrame[KlineSchema] = cls.df_btc.copy()
         self.latest_market_context = cls.latest_market_context
-        self.signal_context_scorer = SignalContextScorer(
-            context_weight=0.12,
-            risk_weight=0.1,
-            support_weight=0.08,
-        )
-        self.signal_collector = SignalCollector(
-            first_seen_at=cls.first_seen_at,
-            interval=cls.interval,
-            binbot_api=cls.binbot_api,
-        )
 
-    def compute_pump_score(self, window_hours=3) -> TypedDataFrame[KlineSchema]:
+    def compute_pump_score(
+        self, df: TypedDataFrame[KlineSchema], window_hours=3
+    ) -> TypedDataFrame[KlineSchema]:
         """
         Compute pump score using:
         - Relative volume
@@ -57,7 +42,7 @@ class LiquidationSweepPump:
         - Price compression
         - OI growth (cached per asset; defaults to 1.0 if unavailable)
         """
-        df = self.df.copy()
+        df = df.copy()
 
         # --- 1. Relative Volume ---
         df["rel_volume"] = df.volume / df.volume.rolling(
@@ -90,7 +75,9 @@ class LiquidationSweepPump:
         """
         Generate signal if pump score exceeds threshold and OI growth filter
         """
-        if self.df is None or self.df.empty:
+        df = self.ti.df_15m
+        df_btc = self.ti.df_btc
+        if df is None or df.empty:
             return None
 
         algo = "liquidation_sweep_pump"
@@ -98,12 +85,16 @@ class LiquidationSweepPump:
         autotrade = True
         base_asset = self.current_symbol_data["base_asset"]
 
-        df = self.compute_pump_score()
+        df = self.compute_pump_score(df)
 
         # --- Filters ---
         # Take last N candles (say 48 for 12h)
         recent_scores = df["pump_score_smooth"].iloc[-48:]
-        btc_momentum = self.df_btc.close.pct_change().iloc[-1]
+        btc_momentum = (
+            df_btc.close.pct_change().iloc[-1]
+            if df_btc is not None and not df_btc.empty and len(df_btc) > 1
+            else 0.0
+        )
 
         # Loosen the trigger a bit so we catch stronger emerging spikes,
         # not only the most extreme top 5% outliers in the lookback window.
@@ -125,33 +116,17 @@ class LiquidationSweepPump:
         if self.oi_growth is not None and self.oi_growth < 1.02:
             return
 
-        local_score = float(trigger_score / PUMP_SCORE_THRESHOLD)
-        symbol_return = float(df["close"].pct_change().iloc[-1]) if len(df) > 1 else 0.0
-        btc_return = (
-            float(self.df_btc["close"].pct_change().iloc[-1])
-            if not self.df_btc.empty and len(self.df_btc) > 1
-            else 0.0
-        )
-        ema_fast = df["close"].ewm(span=9, adjust=False).mean().iloc[-1]
-        ema_slow = df["close"].ewm(span=21, adjust=False).mean().iloc[-1]
-        trend_score = (
-            float((ema_fast - ema_slow) / abs(ema_slow))
-            if float(ema_slow) != 0
-            else 0.0
-        )
-
         kucoin_link, terminal_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
         )
 
-        candidate = SignalsConsumer(
+        value = SignalsConsumer(
             symbol=self.symbol,
             algo=algo,
             direction="LONG",
-            strategy=bot_strategy,
+            bot_strategy=bot_strategy,
             autotrade=autotrade,
-            market_type=MarketType.FUTURES,
-            score=local_score,
+            market_type=self.market_type,
             current_price=current_price,
             volume=float(row.volume),
             bb_spreads=HABollinguerSpread(
@@ -160,17 +135,7 @@ class LiquidationSweepPump:
                 bb_low=bb_low,
             ),
         )
-        evaluation = score_signal_candidate_with_context(
-            candidate=candidate,
-            market_context=self.latest_market_context,
-            scorer=self.signal_context_scorer,
-            local_features={
-                "relative_strength_vs_btc": symbol_return - btc_return,
-                "trend_score": trend_score,
-            },
-            emit_threshold=1.0,
-        )
-        context_score = evaluation.context_score
+
         if self.latest_market_context is not None:
             if self.latest_market_context.market_stress_score >= 0.35:
                 autotrade = False
@@ -180,27 +145,12 @@ class LiquidationSweepPump:
                 # liquidation sweep pump is mostly designed as a long bot
                 autotrade = False
 
-            in_long_regime = (
-                self.latest_market_context.advancers_ratio >= 0.55
-                and self.latest_market_context.long_tailwind > 0
-            )
-            in_neutral_transition = (
-                0.45 < self.latest_market_context.advancers_ratio < 0.55
-            )
             high_market_stress = self.latest_market_context.market_stress_score >= 0.35
 
-            if not in_long_regime or in_neutral_transition or high_market_stress:
+            if high_market_stress:
                 autotrade = False
 
-        if (
-            context_score.confidence >= 0.65
-            and context_score.followthrough_score < -0.35
-            and context_score.adverse_excursion_risk > 0.75
-        ):
-            autotrade = False
-        if not evaluation.emit:
-            autotrade = False
-        evaluation.candidate.autotrade = autotrade
+        value.autotrade = autotrade
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
@@ -211,16 +161,12 @@ class LiquidationSweepPump:
             - Context available: {"Yes" if self.latest_market_context is not None else "No"}
             - Context BTC present: {"Yes" if self.latest_market_context and self.latest_market_context.btc_present else "No"}
             - Context fresh symbols: {self.latest_market_context.fresh_count if self.latest_market_context else 0}
-            - Context confidence: {round_numbers(context_score.confidence, 2)}
             - Long regime: {"Yes" if self.latest_market_context and self.latest_market_context.advancers_ratio >= 0.55 and self.latest_market_context.long_tailwind > 0 else "No"}
-            - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
-            - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
             - Market stress: {round_numbers(self.latest_market_context.market_stress_score, 3) if self.latest_market_context else 0}
-            - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
             - {"Autotrade has been enabled due to market context ✅" if autotrade else "Autotrade has been disabled due to market context  (unavailable/unfavorable) ❌"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
         await self.telegram_consumer.send_signal(msg)
-        await self.at_consumer.process_autotrade_restrictions(evaluation.candidate)
+        await self.at_consumer.process_autotrade_restrictions(value)

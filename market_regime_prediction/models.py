@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from models.signals import SignalCandidate
 
 
 def _normalize_direction(value: str) -> str:
@@ -136,7 +135,10 @@ class MarketContextScore(BaseModel):
 class SignalContextEvaluation(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    candidate: SignalCandidate
+    symbol: str
+    direction: str
+    local_score: float
+    local_features: dict[str, float]
     adjusted_score: float
     emit: bool = Field(default=True)
     context_score: MarketContextScore

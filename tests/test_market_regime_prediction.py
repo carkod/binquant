@@ -1,4 +1,3 @@
-from pybinbot import SignalsConsumer
 from market_regime_prediction.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
 )
@@ -149,15 +148,10 @@ def test_signal_candidate_can_be_rescored() -> None:
         seed_symbol(store, symbol, 1_000, 100 + index)
         context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
 
-    candidate = SignalsConsumer(
+    evaluation = score_signal_candidate_with_context(
         symbol="ALT0USDT",
         direction="LONG",
         score=0.8,
-        msg="",
-        algo="test_market_context",
-    )
-    evaluation = score_signal_candidate_with_context(
-        candidate=candidate,
         market_context=context,
         scorer=SignalContextScorer(),
         local_features={"relative_strength_vs_btc": 0.03, "trend_score": 0.02},
@@ -165,4 +159,3 @@ def test_signal_candidate_can_be_rescored() -> None:
 
     assert evaluation.context_score.confidence == 1.0
     assert evaluation.adjusted_score > 0.8
-    assert candidate.score == evaluation.adjusted_score

@@ -7,12 +7,10 @@ import numpy as np
 from pandas import DataFrame, Series
 from pybinbot import (
     HABollinguerSpread,
-    MarketType,
     SignalsConsumer,
     Strategy,
     round_numbers,
     timestamp_to_datetime,
-    HeikinAshi,
 )
 
 from algorithms.binance_report_ai import BinanceAIReport
@@ -69,10 +67,11 @@ class SpikeHunterV3KuCoin:
         self,
         cls: "ContextEvaluator",
     ):
+        self.ti = cls
         self.kucoin_symbol = cls.kucoin_symbol
         self.symbol = cls.symbol
-        df = cls.df.copy()
-        self.df: DataFrame = HeikinAshi().get_heikin_ashi(df)
+        self.market_type = cls.market_type
+        self.df_15m: DataFrame = cls.df_15m.copy()
         self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
@@ -115,10 +114,6 @@ class SpikeHunterV3KuCoin:
         self.require_bullish_spike = True
         self.body_size_pct_min = 0.0
 
-    def cleanup(self):
-        self.df.dropna(inplace=True)
-        self.df.reset_index(drop=True, inplace=True)
-
     def auto_calibrate(
         self,
         volume_quantile: float = 0.985,
@@ -126,8 +121,8 @@ class SpikeHunterV3KuCoin:
         min_volume_ratio: float = 1.3,
         min_price_abs_floor: float = 0.02,
     ):
-        vols = self.df.get("volume_ratio", Series(dtype=float)).dropna()
-        pcs = self.df.get("price_change_abs", Series(dtype=float)).dropna()
+        vols = self.df_15m.get("volume_ratio", Series(dtype=float)).dropna()
+        pcs = self.df_15m.get("price_change_abs", Series(dtype=float)).dropna()
         if vols.empty or pcs.empty:
             logging.info("[AutoCalibrate] Missing distribution data; skipping.")
             return
@@ -145,9 +140,9 @@ class SpikeHunterV3KuCoin:
 
     # -------- Features -------- #
     def compute_base_features(self, window: int = 12):
-        if self.df.empty:
+        if self.df_15m.empty:
             return
-        df = self.df
+        df = self.df_15m.copy()
         eff = window
         df["price_change"] = df["close"].pct_change()
         df["price_change_abs"] = df["price_change"].abs()
@@ -180,36 +175,40 @@ class SpikeHunterV3KuCoin:
         df["momentum_5"] = df["close"].pct_change(5)
         df["close_to_high"] = (df["high"] - df["close"]) / (df["high"] + 1e-6)
         df["close_to_low"] = (df["close"] - df["low"] + 1e-6) / (df["close"] + 1e-6)
-        self.df = df
+        self.df_15m = df
 
     def compute_early_features(self):
-        df = self.df.copy()
-        df["rolling_price_std_8"] = df["close"].rolling(8).std()
-        df["rolling_price_std_20"] = df["close"].rolling(20).std()
-        df["std_ratio_8_20"] = df["rolling_price_std_8"] / (
-            df["rolling_price_std_20"] + 1e-6
+        self.df_15m["rolling_price_std_8"] = self.df_15m["close"].rolling(8).std()
+        self.df_15m["rolling_price_std_20"] = self.df_15m["close"].rolling(20).std()
+        self.df_15m["std_ratio_8_20"] = self.df_15m["rolling_price_std_8"] / (
+            self.df_15m["rolling_price_std_20"] + 1e-6
         )
-        df["vol_ratio_slope_3"] = df["volume_ratio"].diff(3)
-        df["vol_ratio_accel"] = df["vol_ratio_slope_3"].diff()
-        df["pc_1"] = df["price_change"]
-        df["pc_2c"] = df["price_change"].rolling(2).sum()
-        df["pc_3c"] = df["price_change"].rolling(3).sum()
-        df["pc_pos_count_5"] = (df["price_change"] > 0).rolling(5).sum()
-        df["pc_abs_sum_5"] = df["price_change_abs"].rolling(5).sum()
-        df["body_size_pct_ma_10"] = df["body_size_pct"].rolling(10).mean()
-        df["body_size_pct_std_10"] = df["body_size_pct"].rolling(10).std()
-        df["body_size_pct_z"] = (df["body_size_pct"] - df["body_size_pct_ma_10"]) / (
-            df["body_size_pct_std_10"] + 1e-6
+        self.df_15m["vol_ratio_slope_3"] = self.df_15m["volume_ratio"].diff(3)
+        self.df_15m["vol_ratio_accel"] = self.df_15m["vol_ratio_slope_3"].diff()
+        self.df_15m["pc_1"] = self.df_15m["price_change"]
+        self.df_15m["pc_2c"] = self.df_15m["price_change"].rolling(2).sum()
+        self.df_15m["pc_3c"] = self.df_15m["price_change"].rolling(3).sum()
+        self.df_15m["pc_pos_count_5"] = (
+            (self.df_15m["price_change"] > 0).rolling(5).sum()
         )
-        df["vol_compression_flag"] = (
-            df["rolling_price_std_8"] < df["rolling_price_std_20"] * 0.6
+        self.df_15m["pc_abs_sum_5"] = self.df_15m["price_change_abs"].rolling(5).sum()
+        self.df_15m["body_size_pct_ma_10"] = (
+            self.df_15m["body_size_pct"].rolling(10).mean()
+        )
+        self.df_15m["body_size_pct_std_10"] = (
+            self.df_15m["body_size_pct"].rolling(10).std()
+        )
+        self.df_15m["body_size_pct_z"] = (
+            self.df_15m["body_size_pct"] - self.df_15m["body_size_pct_ma_10"]
+        ) / (self.df_15m["body_size_pct_std_10"] + 1e-6)
+        self.df_15m["vol_compression_flag"] = (
+            self.df_15m["rolling_price_std_8"]
+            < self.df_15m["rolling_price_std_20"] * 0.6
         ).astype(int)
-        self.df = df
 
     # -------- Rule Components -------- #
     def volume_cluster_flag(self):
-        df = self.df
-        cond = df["volume_ratio"] >= self.volume_cluster_min_ratio
+        cond = self.df_15m["volume_ratio"] >= self.volume_cluster_min_ratio
         rolling_count = cond.rolling(self.volume_cluster_window, min_periods=1).sum()
         base_flag = (rolling_count >= self.volume_cluster_min_count) & cond
         if self.volume_cluster_label_mode == "last":
@@ -218,17 +217,21 @@ class SpikeHunterV3KuCoin:
             flag = base_flag & (~(base_flag.shift(1) == True))  # noqa: E712
         else:
             flag = base_flag
-        self.df["volume_cluster_flag"] = flag.astype(int)
+        self.df_15m["volume_cluster_flag"] = flag.astype(int)
 
     def price_break_flag(self):
-        df = self.df
         price_abs_series = (
-            df["raw_price_change_abs"]
-            if (self.use_raw_price_break and "raw_price_change_abs" in df.columns)
-            else df["price_change_abs"]
+            self.df_15m["raw_price_change_abs"]
+            if (
+                self.use_raw_price_break
+                and "raw_price_change_abs" in self.df_15m.columns
+            )
+            else self.df_15m["price_change_abs"]
         )
         if not self.price_break_use_dynamic:
-            thr_series = Series(self.price_break_base_threshold, index=df.index)
+            thr_series = Series(
+                self.price_break_base_threshold, index=self.df_15m.index
+            )
         else:
             base_dyn = price_abs_series.rolling(60, min_periods=20).quantile(
                 self.price_break_dynamic_q
@@ -250,87 +253,92 @@ class SpikeHunterV3KuCoin:
             else:
                 dyn = base_dyn
             thr_series = Series(
-                np.maximum(self.price_break_base_threshold, dyn), index=df.index
+                np.maximum(self.price_break_base_threshold, dyn),
+                index=self.df_15m.index,
             ).ffill()
-        self.df["price_break_flag"] = (price_abs_series >= thr_series).astype(int)
-        self.df["price_break_threshold_series"] = thr_series
+        self.df_15m["price_break_flag"] = (price_abs_series >= thr_series).astype(int)
+        self.df_15m["price_break_threshold_series"] = thr_series
 
     def cumulative_price_break_flag(self):
-        df = self.df
         w = self.cumulative_price_window
         if w <= 1:
-            self.df["cumulative_price_break_flag"] = 0
+            self.df_15m["cumulative_price_break_flag"] = 0
             return
-        pos_pc = df["price_change"].clip(lower=0)
+        pos_pc = self.df_15m["price_change"].clip(lower=0)
         cum_pos = pos_pc.rolling(w).sum()
         vol_cond = (
-            (df["volume_ratio"] >= (self.volume_cluster_min_ratio * 0.8))
+            (self.df_15m["volume_ratio"] >= (self.volume_cluster_min_ratio * 0.8))
             .rolling(w)
             .max()
             .astype(bool)
         )
         flag = (cum_pos >= self.cumulative_price_threshold) & vol_cond
-        self.df["cumulative_price_break_flag"] = flag.astype(int)
+        self.df_15m["cumulative_price_break_flag"] = flag.astype(int)
 
     def acceleration_flag(self):
-        df = self.df
+        df = self.df_15m
         w = self.accel_volume_deriv_window
-        vol_deriv = df["volume_ratio"] - df["volume_ratio"].shift(w)
+        vol_deriv = self.df_15m["volume_ratio"] - self.df_15m["volume_ratio"].shift(w)
         price_abs_now = (
-            df["price_change_abs"]
+            self.df_15m["price_change_abs"]
             if not self.use_raw_price_break
-            else df.get("raw_price_change_abs", df["price_change_abs"])
+            else df.get("raw_price_change_abs", self.df_15m["price_change_abs"])
         )
         flag = (
             (vol_deriv >= self.accel_volume_deriv_min)
             & (price_abs_now >= self.accel_price_change_min)
-            & (df["price_change"] > 0)
+            & (self.df_15m["price_change"] > 0)
         )
-        self.df["accel_spike_flag"] = flag.fillna(False).astype(int)
+        self.df_15m["accel_spike_flag"] = flag.fillna(False).astype(int)
 
     def apply_preliminary_label(self):
         self.volume_cluster_flag()
         self.price_break_flag()
         self.cumulative_price_break_flag()
         self.acceleration_flag()
-        df = self.df
         if self.require_both_patterns:
             base_combo = (
-                (df["volume_cluster_flag"] == 1) & (df["price_break_flag"] == 1)
+                (self.df_15m["volume_cluster_flag"] == 1)
+                & (self.df_15m["price_break_flag"] == 1)
             ).astype(bool)
         else:
             base_combo = (
-                (df["volume_cluster_flag"] == 1) | (df["price_break_flag"] == 1)
+                (self.df_15m["volume_cluster_flag"] == 1)
+                | (self.df_15m["price_break_flag"] == 1)
             ).astype(bool)
-        aux = (df["cumulative_price_break_flag"] == 1) | (df["accel_spike_flag"] == 1)
+        aux = (self.df_15m["cumulative_price_break_flag"] == 1) | (
+            self.df_15m["accel_spike_flag"] == 1
+        )
         label_pre = (base_combo | aux).astype(bool)
         if self.require_bullish_spike:
-            label_pre = label_pre & (df["is_bullish"] == 1)
+            label_pre = label_pre & (self.df_15m["is_bullish"] == 1)
         if self.body_size_pct_min > 0:
-            label_pre = label_pre & (df["body_size_pct"] >= self.body_size_pct_min)
-        self.df["label_pre"] = label_pre.astype(bool)
-        self.df["label"] = self.df["label_pre"].copy()
+            label_pre = label_pre & (
+                self.df_15m["body_size_pct"] >= self.body_size_pct_min
+            )
+        self.df_15m["label_pre"] = label_pre.astype(bool)
+        self.df_15m["label"] = self.df_15m["label_pre"].copy()
 
     def compute_early_proba(self):
         # Disabled: no ML augmentation in KuCoin variant
-        self.df["early_spike_proba"] = np.nan
-        self.df["early_proba_aug_flag"] = 0
+        self.df_15m["early_spike_proba"] = np.nan
+        self.df_15m["early_proba_aug_flag"] = 0
 
     def apply_cooldown(self):
         if self.post_spike_cooldown_bars <= 0:
-            self.df["suppressed_label"] = 0
+            self.df_15m["suppressed_label"] = 0
             return
         last_idx = None
         suppressed = 0
-        self.df["suppressed_label"] = 0
-        for i in self.df.index:
-            if self.df.at[i, "label"] == 1:
+        self.df_15m["suppressed_label"] = 0
+        for i in self.df_15m.index:
+            if self.df_15m.at[i, "label"] == 1:
                 if (
                     last_idx is not None
                     and (i - last_idx) <= self.post_spike_cooldown_bars
                 ):
-                    self.df.at[i, "suppressed_label"] = 1
-                    self.df.at[i, "label"] = 0
+                    self.df_15m.at[i, "suppressed_label"] = 1
+                    self.df_15m.at[i, "label"] = 0
                     suppressed += 1
                 else:
                     last_idx = i
@@ -338,37 +346,36 @@ class SpikeHunterV3KuCoin:
             logging.info(f"[Cooldown] Suppressed {suppressed} labels")
 
     def detect_streaks(self, streak_length: int = 3):
-        green_candles = (self.df["close"] > self.df["open"]).astype(int)
+        green_candles = (self.df_15m["close"] > self.df_15m["open"]).astype(int)
         up_streak = green_candles.rolling(window=streak_length).sum()
         upward_streak = up_streak >= streak_length
 
-        red_candles = (self.df["close"] < self.df["open"]).astype(int)
+        red_candles = (self.df_15m["close"] < self.df_15m["open"]).astype(int)
         down_streak = red_candles.rolling(window=streak_length).sum()
         downward_streak = down_streak >= streak_length
-        self.df["upward"] = upward_streak.astype(int)
-        self.df["downward"] = downward_streak.astype(int)
+        self.df_15m["upward"] = upward_streak.astype(int)
+        self.df_15m["downward"] = downward_streak.astype(int)
 
     # -------------- Public API -------------- #
     def detect(self) -> DataFrame | None:
-        if self.df.empty:
+        self.df_15m = self.ti.df_15m.copy()
+        if self.df_15m.empty:
             return None
         self.compute_base_features()
         self.auto_calibrate()
-        self.compute_base_features()
+        self.compute_early_features()
         self.apply_preliminary_label()
         self.compute_early_proba()
         self.apply_cooldown()
         self.detect_streaks()
-        return self.df
+        return self.df_15m
 
     def latest_signal(self) -> dict | None:
-        if self.df.empty:
-            raise RuntimeError("No data available.")
         is_detected = self.detect()
-        if is_detected is None or self.df.empty:
+        if is_detected is None or self.df_15m.empty:
             return None
 
-        row = self.df.iloc[-1]
+        row = self.df_15m.iloc[-1]
         is_final = bool(row.get("label", 0) == 1)
         is_supp = bool(row.get("suppressed_label", 0) == 1)
         signal_type = (
@@ -381,10 +388,12 @@ class SpikeHunterV3KuCoin:
             else timestamp_to_datetime(int(datetime.now().timestamp() * 1000))
         )
 
-        volume = float(self.df["volume"].iloc[-1]) if "volume" in self.df else 0.0
+        volume = (
+            float(self.df_15m["volume"].iloc[-1]) if "volume" in self.df_15m else 0.0
+        )
         quote_asset_volume = (
-            float(self.df["quote_asset_volume"].iloc[-1])
-            if "quote_asset_volume" in self.df
+            float(self.df_15m["quote_asset_volume"].iloc[-1])
+            if "quote_asset_volume" in self.df_15m
             else 0.0
         )
 
@@ -415,6 +424,8 @@ class SpikeHunterV3KuCoin:
         bb_low: float,
         bb_mid: float,
     ):
+        # Get the updated df_15m
+        self.df_15m = self.ti.df_15m.copy()
         last_spike = self.latest_signal()
 
         if not last_spike:
@@ -467,11 +478,10 @@ class SpikeHunterV3KuCoin:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=current_price,
-                msg=msg,
                 symbol=self.symbol,
                 algo=algo,
                 bot_strategy=bot_strategy,
-                market_type=MarketType.FUTURES,
+                market_type=self.market_type,
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
