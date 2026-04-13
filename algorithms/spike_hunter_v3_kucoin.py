@@ -5,13 +5,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from pandas import DataFrame, Series
-from pybinbot import (
-    HABollinguerSpread,
-    SignalsConsumer,
-    Strategy,
-    round_numbers,
-    timestamp_to_datetime,
-)
+from pybinbot import (HABollinguerSpread, SignalsConsumer, Strategy,
+                      round_numbers, timestamp_to_datetime)
 
 from algorithms.binance_report_ai import BinanceAIReport
 
@@ -144,32 +139,48 @@ class SpikeHunterV3KuCoin:
             return
         df = self.df_15m.copy()
         eff = window
-        df["price_change"] = df["close"].pct_change()
-        df["price_change_abs"] = df["price_change"].abs()
-        if "raw_close" in df.columns:
-            df["raw_price_change"] = df["raw_close"].pct_change()
-            df["raw_price_change_abs"] = df["raw_price_change"].abs()
-        df["body_size"] = (df["close"] - df["open"]).abs()
-        df["body_size_pct"] = df["body_size"] / (df["open"] + 1e-6)
-        df["upper_wick"] = df["high"] - df[["close", "open"]].max(axis=1)
-        df["lower_wick"] = df[["close", "open"]].min(axis=1) - df["low"]
-        df["upper_wick_ratio"] = df["upper_wick"] / (df["body_size"] + 1e-6)
-        df["lower_wick_ratio"] = df["lower_wick"] / (df["body_size"] + 1e-6)
-        df["total_range"] = df["high"] - df["low"]
-        df["range_pct"] = df["total_range"] / (df["open"] + 1e-6)
-        df["is_bullish"] = (df["close"] > df["open"]).astype(int)
-        df["close_open_ratio"] = (df["close"] - df["open"]) / (df["open"] + 1e-6)
-        df["price_ma"] = df["close"].rolling(eff).mean()
-        df["price_std"] = df["close"].rolling(eff).std()
-        df["price_zscore"] = (df["close"] - df["price_ma"]) / (df["price_std"] + 1e-6)
-        df["volume_ma"] = df["volume"].rolling(eff).mean()
-        df["volume_ratio"] = df["volume"] / (df["volume_ma"] + 1e-6)
-        df["volume_zscore"] = (df["volume"] - df["volume_ma"]) / (
-            df["volume"].rolling(eff).std() + 1e-6
+        self.df["price_change"] = self.df["close"].pct_change()
+        self.df["price_change_abs"] = self.df["price_change"].abs()
+        if "raw_close" in self.df.columns:
+            self.df["raw_price_change"] = self.df["raw_close"].pct_change()
+            self.df["raw_price_change_abs"] = self.df["raw_price_change"].abs()
+        self.df["body_size"] = (self.df["close"] - self.df["open"]).abs()
+        self.df["body_size_pct"] = self.df["body_size"] / (self.df["open"] + 1e-6)
+        self.df["upper_wick"] = self.df["high"] - self.df[["close", "open"]].max(axis=1)
+        self.df["lower_wick"] = self.df[["close", "open"]].min(axis=1) - self.df["low"]
+        self.df["upper_wick_ratio"] = self.df["upper_wick"] / (
+            self.df["body_size"] + 1e-6
         )
-        df["quote_volume_ma"] = df["quote_asset_volume"].rolling(eff).mean()
-        df["quote_volume_ratio"] = df["quote_asset_volume"] / (
-            df["quote_volume_ma"] + 1e-6
+        self.df["lower_wick_ratio"] = self.df["lower_wick"] / (
+            self.df["body_size"] + 1e-6
+        )
+        self.df["total_range"] = self.df["high"] - self.df["low"]
+        self.df["range_pct"] = self.df["total_range"] / (self.df["open"] + 1e-6)
+        self.df["is_bullish"] = (self.df["close"] > self.df["open"]).astype(int)
+        self.df["close_open_ratio"] = (self.df["close"] - self.df["open"]) / (
+            self.df["open"] + 1e-6
+        )
+        self.df["price_ma"] = self.df["close"].rolling(eff).mean()
+        self.df["price_std"] = self.df["close"].rolling(eff).std()
+        self.df["price_zscore"] = (self.df["close"] - self.df["price_ma"]) / (
+            self.df["price_std"] + 1e-6
+        )
+        self.df["volume_ma"] = self.df["volume"].rolling(eff).mean()
+        self.df["volume_ratio"] = self.df["volume"] / (self.df["volume_ma"] + 1e-6)
+        self.df["volume_zscore"] = (self.df["volume"] - self.df["volume_ma"]) / (
+            self.df["volume"].rolling(eff).std() + 1e-6
+        )
+        self.df["quote_volume_ma"] = self.df["quote_asset_volume"].rolling(eff).mean()
+        self.df["quote_volume_ratio"] = self.df["quote_asset_volume"] / (
+            self.df["quote_volume_ma"] + 1e-6
+        )
+        self.df["momentum_3"] = self.df["close"].pct_change(3)
+        self.df["momentum_5"] = self.df["close"].pct_change(5)
+        self.df["close_to_high"] = (self.df["high"] - self.df["close"]) / (
+            self.df["high"] + 1e-6
+        )
+        self.df["close_to_low"] = (self.df["close"] - self.df["low"] + 1e-6) / (
+            self.df["close"] + 1e-6
         )
         df["momentum_3"] = df["close"].pct_change(3)
         df["momentum_5"] = df["close"].pct_change(5)
