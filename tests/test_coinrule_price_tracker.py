@@ -2,14 +2,14 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
-from consumers.autotrade_consumer import AutotradeConsumer
-from consumers.telegram_consumer import TelegramConsumer
-
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, MarketType, MarketDominance, Strategy, Indicators
+from pybinbot import ExchangeId, Indicators, MarketDominance, MarketType, Strategy
 
-from algorithms.coinrule import GridTrading, PriceTracker
+from algorithms.coinrule.grid_trading import GridTrading
+from algorithms.coinrule.price_tracker import PriceTracker
+from consumers.autotrade_consumer import AutotradeConsumer
+from consumers.telegram_consumer import TelegramConsumer
 
 
 def make_market_context(**overrides: Any) -> Any:
@@ -223,11 +223,11 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     algo.latest_market_context = make_market_context()
 
     monkeypatch.setattr(
-        "algorithms.coinrule.Indicators.mfi",
+        "algorithms.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.score_signal_candidate_with_context",
+        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -279,11 +279,11 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
         return SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(
-        "algorithms.coinrule.Indicators.mfi",
+        "algorithms.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.score_signal_candidate_with_context",
+        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -294,7 +294,9 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
             ),
         ),
     )
-    monkeypatch.setattr("algorithms.coinrule.SignalsConsumer", fake_signals_consumer)
+    monkeypatch.setattr(
+        "algorithms.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+    )
 
     await algo.signal(
         close_price=float(df["close"].iloc[-1]),
@@ -359,7 +361,9 @@ async def test_grid_trading_uses_context_market_type(monkeypatch):
         captured.update(kwargs)
         return SimpleNamespace(**kwargs)
 
-    monkeypatch.setattr("algorithms.coinrule.SignalsConsumer", fake_signals_consumer)
+    monkeypatch.setattr(
+        "algorithms.coinrule.grid_trading.SignalsConsumer", fake_signals_consumer
+    )
 
     await algo.signal(
         current_price=float(df["close"].iloc[-1]),

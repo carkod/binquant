@@ -1,35 +1,38 @@
-from shared.config import Config
+from numpy import isnan
+from numpy import log as logarithm
+from numpy import nan
 from pandera.typing import DataFrame as TypedDataFrame
-from numpy import isnan, log as logarithm, nan
 from pybinbot import (
+    AsyncProducer,
+    BinanceApi,
     BinanceKlineIntervals,
+    BinbotApi,
     ExchangeId,
     HABollinguerSpread,
+    HeikinAshi,
+    Indicators,
     KlineSchema,
+    KucoinApi,
+    KucoinFutures,
     KucoinKlineIntervals,
     MarketDominance,
+    MarketType,
     Strategy,
     round_numbers,
-    Indicators,
-    HeikinAshi,
-    BinbotApi,
-    KucoinApi,
-    BinanceApi,
-    AsyncProducer,
-    MarketType,
-    KucoinFutures,
 )
-from market_regime_prediction.models import LiveMarketContext
-from market_regime_prediction.signal_context_scorer import SignalContextScorer
 
-from algorithms.coinrule import GridTrading, PriceTracker
-from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
-from algorithms.apex_flow import ApexFlow
 from algorithms.activity_burst_pump import ActivityBurstPump
+from algorithms.apex_flow import ApexFlow
+from algorithms.coinrule.grid_trading import GridTrading
+from algorithms.coinrule.price_tracker import PriceTracker
 from algorithms.liquidation_sweep_pump import LiquidationSweepPump
+from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
+from market_regime_prediction.models import LiveMarketContext
+from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from shared.config import Config
 
 
 class ContextEvaluator:
@@ -71,7 +74,6 @@ class ContextEvaluator:
         self.df_15m: TypedDataFrame[KlineSchema]
         self.df_4h: TypedDataFrame[KlineSchema]
         self.df_1h: TypedDataFrame[KlineSchema]
-        self.df_5m: TypedDataFrame[KlineSchema]
         self.btc_df: TypedDataFrame[KlineSchema]
         self.exchange = exchange
         self.interval = interval
@@ -185,7 +187,6 @@ class ContextEvaluator:
         """
         Initialize algorithms that consume self.df / 5m-enriched data.
         """
-        self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.abp = ActivityBurstPump(cls=self)
         self.tgrd = TopGainersReversalDrop(cls=self)
         self.pt = PriceTracker(cls=self)
@@ -194,6 +195,7 @@ class ContextEvaluator:
         """
         Initialize algorithms that consume self.df_15m and broader market context.
         """
+        self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
         self.gt = GridTrading(cls=self)

@@ -71,7 +71,7 @@ class SpikeHunterV3KuCoin:
         self.kucoin_symbol = cls.kucoin_symbol
         self.symbol = cls.symbol
         self.market_type = cls.market_type
-        self.df_15m: DataFrame = cls.df_15m.copy()
+        self.df_15m = cls.df_15m.copy()
         self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
@@ -140,42 +140,64 @@ class SpikeHunterV3KuCoin:
 
     # -------- Features -------- #
     def compute_base_features(self, window: int = 12):
-        if self.df_15m.empty:
-            return
-        df = self.df_15m.copy()
         eff = window
-        df["price_change"] = df["close"].pct_change()
-        df["price_change_abs"] = df["price_change"].abs()
-        if "raw_close" in df.columns:
-            df["raw_price_change"] = df["raw_close"].pct_change()
-            df["raw_price_change_abs"] = df["raw_price_change"].abs()
-        df["body_size"] = (df["close"] - df["open"]).abs()
-        df["body_size_pct"] = df["body_size"] / (df["open"] + 1e-6)
-        df["upper_wick"] = df["high"] - df[["close", "open"]].max(axis=1)
-        df["lower_wick"] = df[["close", "open"]].min(axis=1) - df["low"]
-        df["upper_wick_ratio"] = df["upper_wick"] / (df["body_size"] + 1e-6)
-        df["lower_wick_ratio"] = df["lower_wick"] / (df["body_size"] + 1e-6)
-        df["total_range"] = df["high"] - df["low"]
-        df["range_pct"] = df["total_range"] / (df["open"] + 1e-6)
-        df["is_bullish"] = (df["close"] > df["open"]).astype(int)
-        df["close_open_ratio"] = (df["close"] - df["open"]) / (df["open"] + 1e-6)
-        df["price_ma"] = df["close"].rolling(eff).mean()
-        df["price_std"] = df["close"].rolling(eff).std()
-        df["price_zscore"] = (df["close"] - df["price_ma"]) / (df["price_std"] + 1e-6)
-        df["volume_ma"] = df["volume"].rolling(eff).mean()
-        df["volume_ratio"] = df["volume"] / (df["volume_ma"] + 1e-6)
-        df["volume_zscore"] = (df["volume"] - df["volume_ma"]) / (
-            df["volume"].rolling(eff).std() + 1e-6
+        self.df_15m["price_change"] = self.df_15m["close"].pct_change()
+        self.df_15m["price_change_abs"] = self.df_15m["price_change"].abs()
+        if "raw_close" in self.df_15m.columns:
+            self.df_15m["raw_price_change"] = self.df_15m["raw_close"].pct_change()
+            self.df_15m["raw_price_change_abs"] = self.df_15m["raw_price_change"].abs()
+        self.df_15m["body_size"] = (self.df_15m["close"] - self.df_15m["open"]).abs()
+        self.df_15m["body_size_pct"] = self.df_15m["body_size"] / (
+            self.df_15m["open"] + 1e-6
         )
-        df["quote_volume_ma"] = df["quote_asset_volume"].rolling(eff).mean()
-        df["quote_volume_ratio"] = df["quote_asset_volume"] / (
-            df["quote_volume_ma"] + 1e-6
+        self.df_15m["upper_wick"] = self.df_15m["high"] - self.df_15m[
+            ["close", "open"]
+        ].max(axis=1)
+        self.df_15m["lower_wick"] = (
+            self.df_15m[["close", "open"]].min(axis=1) - self.df_15m["low"]
         )
-        df["momentum_3"] = df["close"].pct_change(3)
-        df["momentum_5"] = df["close"].pct_change(5)
-        df["close_to_high"] = (df["high"] - df["close"]) / (df["high"] + 1e-6)
-        df["close_to_low"] = (df["close"] - df["low"] + 1e-6) / (df["close"] + 1e-6)
-        self.df_15m = df
+        self.df_15m["upper_wick_ratio"] = self.df_15m["upper_wick"] / (
+            self.df_15m["body_size"] + 1e-6
+        )
+        self.df_15m["lower_wick_ratio"] = self.df_15m["lower_wick"] / (
+            self.df_15m["body_size"] + 1e-6
+        )
+        self.df_15m["total_range"] = self.df_15m["high"] - self.df_15m["low"]
+        self.df_15m["range_pct"] = self.df_15m["total_range"] / (
+            self.df_15m["open"] + 1e-6
+        )
+        self.df_15m["is_bullish"] = (self.df_15m["close"] > self.df_15m["open"]).astype(
+            int
+        )
+        self.df_15m["close_open_ratio"] = (
+            self.df_15m["close"] - self.df_15m["open"]
+        ) / (self.df_15m["open"] + 1e-6)
+        self.df_15m["price_ma"] = self.df_15m["close"].rolling(eff).mean()
+        self.df_15m["price_std"] = self.df_15m["close"].rolling(eff).std()
+        self.df_15m["price_zscore"] = (
+            self.df_15m["close"] - self.df_15m["price_ma"]
+        ) / (self.df_15m["price_std"] + 1e-6)
+        self.df_15m["volume_ma"] = self.df_15m["volume"].rolling(eff).mean()
+        self.df_15m["volume_ratio"] = self.df_15m["volume"] / (
+            self.df_15m["volume_ma"] + 1e-6
+        )
+        self.df_15m["volume_zscore"] = (
+            self.df_15m["volume"] - self.df_15m["volume_ma"]
+        ) / (self.df_15m["volume"].rolling(eff).std() + 1e-6)
+        self.df_15m["quote_volume_ma"] = (
+            self.df_15m["quote_asset_volume"].rolling(eff).mean()
+        )
+        self.df_15m["quote_volume_ratio"] = self.df_15m["quote_asset_volume"] / (
+            self.df_15m["quote_volume_ma"] + 1e-6
+        )
+        self.df_15m["momentum_3"] = self.df_15m["close"].pct_change(3)
+        self.df_15m["momentum_5"] = self.df_15m["close"].pct_change(5)
+        self.df_15m["close_to_high"] = (self.df_15m["high"] - self.df_15m["close"]) / (
+            self.df_15m["high"] + 1e-6
+        )
+        self.df_15m["close_to_low"] = (
+            self.df_15m["close"] - self.df_15m["low"] + 1e-6
+        ) / (self.df_15m["close"] + 1e-6)
 
     def compute_early_features(self):
         self.df_15m["rolling_price_std_8"] = self.df_15m["close"].rolling(8).std()
@@ -276,13 +298,14 @@ class SpikeHunterV3KuCoin:
         self.df_15m["cumulative_price_break_flag"] = flag.astype(int)
 
     def acceleration_flag(self):
-        df = self.df_15m
         w = self.accel_volume_deriv_window
         vol_deriv = self.df_15m["volume_ratio"] - self.df_15m["volume_ratio"].shift(w)
         price_abs_now = (
             self.df_15m["price_change_abs"]
             if not self.use_raw_price_break
-            else df.get("raw_price_change_abs", self.df_15m["price_change_abs"])
+            else self.df_15m.get(
+                "raw_price_change_abs", self.df_15m["price_change_abs"]
+            )
         )
         flag = (
             (vol_deriv >= self.accel_volume_deriv_min)
@@ -358,7 +381,6 @@ class SpikeHunterV3KuCoin:
 
     # -------------- Public API -------------- #
     def detect(self) -> DataFrame | None:
-        self.df_15m = self.ti.df_15m.copy()
         if self.df_15m.empty:
             return None
         self.compute_base_features()
@@ -377,10 +399,7 @@ class SpikeHunterV3KuCoin:
 
         row = self.df_15m.iloc[-1]
         is_final = bool(row.get("label", 0) == 1)
-        is_supp = bool(row.get("suppressed_label", 0) == 1)
-        signal_type = (
-            "FinalSpike" if is_final else ("Suppressed" if is_supp else "None")
-        )
+        signal_type = "FinalSpike" if is_final else "None"
 
         timestamp = (
             row.get("timestamp")
@@ -409,7 +428,6 @@ class SpikeHunterV3KuCoin:
                 row.get("cumulative_price_break_flag", 0) == 1
             ),
             "accel_spike_flag": bool(row.get("accel_spike_flag", 0) == 1),
-            "is_suppressed": is_supp,
             "signal_type": signal_type,
             "volume": volume,
             "quote_asset_volume": quote_asset_volume,
@@ -434,13 +452,11 @@ class SpikeHunterV3KuCoin:
 
         if (
             last_spike["cumulative_price_break_flag"]
-            or last_spike["is_suppressed"]
             or last_spike["volume_cluster_flag"]
             or last_spike["accel_spike_flag"]
         ):
             algo = "spike_hunter_v3_kucoin"
             bot_strategy = Strategy.long
-            autotrade = False
 
             if last_spike["upward"]:
                 streak = "📈"
@@ -451,15 +467,14 @@ class SpikeHunterV3KuCoin:
                 streak = "N/A"
                 return
 
-            if autotrade:
-                context = self.latest_market_context
-                if context is not None:
-                    if context.market_stress_score >= self._autotrade_stress_threshold:
-                        autotrade = False
-                    elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
-                        autotrade = bot_strategy == Strategy.long
-                    elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
-                        autotrade = bot_strategy == Strategy.margin_short
+            context = self.latest_market_context
+            if context is not None:
+                if context.market_stress_score >= self._autotrade_stress_threshold:
+                    autotrade = False
+                elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
+                    autotrade = bot_strategy == Strategy.long
+                elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
+                    autotrade = bot_strategy == Strategy.margin_short
 
             base_asset = self.current_symbol_data["base_asset"]
             quote_asset = self.current_symbol_data["quote_asset"]
@@ -470,7 +485,7 @@ class SpikeHunterV3KuCoin:
                 - Last close timestamp: {last_spike["timestamp"]}
                 - 📊 {base_asset} volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)}
                 - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
-                - Autotrade?: {"Yes" if autotrade else "No"}
+                - {"Autotrade enabled" if autotrade else "Autotrade disabled"}
                 - <a href='https://www.kucoin.com/trade/{self.kucoin_symbol}'>KuCoin</a>
                 - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
                 """
