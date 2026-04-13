@@ -14,6 +14,10 @@ from pybinbot import (
 )
 
 from algorithms.binance_report_ai import BinanceAIReport
+from market_regime.regime_routing import (
+    allows_long_autotrade,
+    allows_short_autotrade,
+)
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -457,6 +461,7 @@ class SpikeHunterV3KuCoin:
         ):
             algo = "spike_hunter_v3_kucoin"
             bot_strategy = Strategy.long
+            autotrade = False
 
             if last_spike["upward"]:
                 streak = "📈"
@@ -469,12 +474,16 @@ class SpikeHunterV3KuCoin:
 
             context = self.latest_market_context
             if context is not None:
-                if context.market_stress_score >= self._autotrade_stress_threshold:
-                    autotrade = False
-                elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
-                    autotrade = bot_strategy == Strategy.long
-                elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
-                    autotrade = bot_strategy == Strategy.margin_short
+                if bot_strategy == Strategy.long:
+                    autotrade = allows_long_autotrade(
+                        context=context,
+                        symbol=self.symbol,
+                    )
+                else:
+                    autotrade = allows_short_autotrade(
+                        context=context,
+                        symbol=self.symbol,
+                    )
 
             base_asset = self.current_symbol_data["base_asset"]
             quote_asset = self.current_symbol_data["quote_asset"]

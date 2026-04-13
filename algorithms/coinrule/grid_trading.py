@@ -4,6 +4,10 @@ from typing import TYPE_CHECKING
 
 from pybinbot import HABollinguerSpread, SignalsConsumer, Strategy, round_numbers
 
+from market_regime.regime_routing import (
+    resolve_symbol_features,
+    supports_grid_trading,
+)
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -38,13 +42,8 @@ class GridTrading:
         residual exposure open.
         """
         context = self.latest_market_context
-        if context is not None:
-            is_vertical_market = context.market_stress_score >= 0.35
-            is_downtrend_market = (
-                context.advancers_ratio <= 0.45 or context.long_tailwind <= 0
-            )
-            if is_vertical_market or is_downtrend_market:
-                return
+        if not supports_grid_trading(context=context, symbol=self.symbol):
+            return
 
         self.df_15m = self.ti.df_15m.copy()
         if len(self.df_15m) < 48:
@@ -82,6 +81,7 @@ class GridTrading:
             rsi_value < 35 and current_price <= bb_mid and lower_band_position <= 0.4
         )
         reduce_zone = rsi_value > 65
+        symbol_features = resolve_symbol_features(context, self.symbol)
 
         if not is_range_market or not buy_zone:
             return
@@ -102,6 +102,10 @@ class GridTrading:
             - Current price: {current_price}
             - Strategy: {bot_strategy.value}
             - Market mode: Sideways / range-bound
+            - Market regime: {context.market_regime if context is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - RSI buy zone (&lt; 35): {round_numbers(rsi_value, 2)}
             - Range width (24 candles): {round_numbers(range_width * 100, 2)}%
             - Range drift (24 candles): {round_numbers(range_drift * 100, 2)}%

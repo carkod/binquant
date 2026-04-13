@@ -1,12 +1,12 @@
-from market_regime_prediction.live_market_context_accumulator import (
+from market_regime.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
 )
-from market_regime_prediction.context_scoring import RuleBasedMarketContextModel
-from market_regime_prediction.market_state_store import MarketStateStore
-from market_regime_prediction.score_signal_candidate_with_context import (
+from market_regime.context_scoring import RuleBasedMarketContextModel
+from market_regime.market_state_store import MarketStateStore
+from market_regime.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
-from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from market_regime.signal_context_scorer import SignalContextScorer
 
 
 def make_candle(timestamp: int, close: float) -> dict[str, float]:
@@ -81,6 +81,7 @@ def test_live_context_recomputes_same_timestamp() -> None:
     assert context.timestamp == 2_000
     assert context.fresh_count == 45
     assert context.confidence == 1.0
+    assert context.market_regime in {"TREND_UP", "RANGE", "TRANSITIONAL", "HIGH_STRESS"}
 
 
 def test_stale_symbols_are_not_mixed_into_next_timestamp() -> None:
@@ -159,3 +160,38 @@ def test_signal_candidate_can_be_rescored() -> None:
 
     assert evaluation.context_score.confidence == 1.0
     assert evaluation.adjusted_score > 0.8
+
+
+def test_live_context_detects_market_regime_transition() -> None:
+    store = MarketStateStore()
+    accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
+    symbols = ["BTCUSDT"] + [f"ALT{idx}USDT" for idx in range(39)]
+
+    for index, symbol in enumerate(symbols):
+        seed_symbol(store, symbol, 1_000, 100 + index)
+
+    first_context = None
+    for index, symbol in enumerate(symbols):
+        first_context = accumulator.on_closed_candle(
+            symbol, make_candle(2_000, 103 + index)
+        )
+
+    assert first_context is not None
+    assert first_context.market_regime == "TREND_UP"
+    assert first_context.market_regime_transition is None
+
+    second_context = None
+    for index, symbol in enumerate(symbols):
+        if symbol == "BTCUSDT":
+            latest_close = 96.0
+        else:
+            latest_close = 95.0 - (index * 0.4)
+        second_context = accumulator.on_closed_candle(
+            symbol,
+            make_candle(3_000, latest_close),
+        )
+
+    assert second_context is not None
+    assert second_context.previous_market_regime == "TREND_UP"
+    assert second_context.market_regime_transition is not None
+    assert second_context.market_regime_transition_strength > 0.0

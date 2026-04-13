@@ -4,8 +4,9 @@ from typing import Any
 
 from pandas import DataFrame, Series, concat
 
-from market_regime_prediction.market_state_store import MarketStateStore
-from market_regime_prediction.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.market_state_store import MarketStateStore
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.regime_transitions import RegimeTransitionDetector
 from shared.utils import clamp, safe_pct
 
 REQUIRED_FRESH_SYMBOLS = 40
@@ -28,6 +29,7 @@ class LiveMarketContextAccumulator:
     ) -> None:
         self.state_store = state_store
         self.btc_symbol = btc_symbol
+        self.regime_transition_detector = RegimeTransitionDetector()
         self._contexts_by_timestamp: dict[int, LiveMarketContext] = {}
         self._context_order: deque[int] = deque(maxlen=64)
 
@@ -41,6 +43,12 @@ class LiveMarketContextAccumulator:
         context = self._build_context(timestamp)
         if context is None:
             return None
+
+        previous_context = self._get_previous_context(timestamp)
+        context = self.regime_transition_detector.annotate_context(
+            context=context,
+            previous_context=previous_context,
+        )
 
         self._contexts_by_timestamp[timestamp] = context
         if timestamp not in self._context_order:
@@ -63,10 +71,24 @@ class LiveMarketContextAccumulator:
         context = self._build_context(timestamp)
         if context is None:
             return None
+        previous_context = self._get_previous_context(timestamp)
+        context = self.regime_transition_detector.annotate_context(
+            context=context,
+            previous_context=previous_context,
+        )
         self._contexts_by_timestamp[timestamp] = context
         if timestamp not in self._context_order:
             self._context_order.append(timestamp)
         return context
+
+    def _get_previous_context(self, timestamp: int) -> LiveMarketContext | None:
+        for known_timestamp in reversed(self._context_order):
+            if known_timestamp >= timestamp:
+                continue
+            previous_context = self._contexts_by_timestamp.get(known_timestamp)
+            if previous_context is not None:
+                return previous_context
+        return None
 
     def _build_context(self, timestamp: int) -> LiveMarketContext | None:
         fresh_symbols = self.state_store.get_fresh_symbols(timestamp)

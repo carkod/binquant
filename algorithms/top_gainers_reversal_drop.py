@@ -11,6 +11,7 @@ from pybinbot import (
     round_numbers,
 )
 
+from market_regime.regime_routing import allows_short_autotrade
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -152,13 +153,10 @@ class TopGainersReversalDrop:
         if autotrade:
             context = self.latest_market_context
             if context is not None:
-                if context.market_stress_score >= self._autotrade_stress_threshold:
-                    autotrade = False
-                elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
-                    # skip margin short if strong bullish breadth
-                    return None
-                elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
-                    autotrade = bot_strategy == Strategy.margin_short
+                autotrade = allows_short_autotrade(
+                    context=context,
+                    symbol=self.symbol,
+                )
 
         base_asset = self.current_symbol_data["base_asset"]
         score = float(row["reversal_drop_score"])

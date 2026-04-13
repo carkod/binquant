@@ -11,6 +11,7 @@ from pybinbot import (
     round_numbers,
 )
 
+from market_regime.regime_routing import allows_long_autotrade
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -170,15 +171,9 @@ class ActivityBurstPump:
         context = self.latest_market_context
 
         if context is not None:
-            if context.market_stress_score >= self._autotrade_stress_threshold:
-                # Unstable/vertical market
+            if not allows_long_autotrade(context=context, symbol=self.symbol):
                 return
-            elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
-                autotrade = bot_strategy == Strategy.long
-            elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
-                # Activity burst pump is a long strategy signal
-                # opening margin short directly likely end up in losses
-                return None
+            autotrade = bot_strategy == Strategy.long
 
         df = self.compute_indicators(df)
         row = df.iloc[-1]

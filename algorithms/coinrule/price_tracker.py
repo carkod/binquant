@@ -10,10 +10,14 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime_prediction.score_signal_candidate_with_context import (
+from market_regime.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
-from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from market_regime.regime_routing import (
+    allows_long_autotrade,
+    resolve_symbol_features,
+)
+from market_regime.signal_context_scorer import SignalContextScorer
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -98,15 +102,16 @@ class PriceTracker:
                 },
                 emit_threshold=1.0,
             )
+            symbol_features = resolve_symbol_features(
+                self.latest_market_context,
+                self.symbol,
+            )
 
             if self.latest_market_context is not None:
-                if self.latest_market_context.market_stress_score >= 0.35:
-                    autotrade = False
-                elif self.latest_market_context.advancers_ratio >= 0.55:
-                    autotrade = bot_strategy == Strategy.long
-                elif self.latest_market_context.advancers_ratio <= 0.45:
-                    # liquidation sweep pump is mostly designed as a long bot
-                    autotrade = False
+                autotrade = allows_long_autotrade(
+                    context=self.latest_market_context,
+                    symbol=self.symbol,
+                )
             else:
                 return
 
@@ -115,6 +120,12 @@ class PriceTracker:
                 context_score.confidence >= 0.65
                 and context_score.followthrough_score < -0.25
                 and context_score.adverse_excursion_risk > 0.65
+            ):
+                return
+            if (
+                symbol_features is not None
+                and symbol_features.micro_regime == "TREND_DOWN"
+                and symbol_features.micro_regime_transition != "RECOVERY"
             ):
                 return
             if not evaluation.emit:
@@ -146,6 +157,10 @@ class PriceTracker:
             - Context available: {"Yes" if self.latest_market_context is not None else "No"}
             - Context BTC present: {"Yes" if self.latest_market_context and self.latest_market_context.btc_present else "No"}
             - Context fresh symbols: {self.latest_market_context.fresh_count if self.latest_market_context else 0}
+            - Market regime: {self.latest_market_context.market_regime if self.latest_market_context else "UNAVAILABLE"}
+            - Market transition: {self.latest_market_context.market_regime_transition if self.latest_market_context and self.latest_market_context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Context confidence: {round_numbers(context_score.confidence, 2)}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}

@@ -7,6 +7,10 @@ def _normalize_direction(value: str) -> str:
     return value.upper().strip()
 
 
+def _canonicalize_symbol(value: str) -> str:
+    return value.upper().strip().replace("-", "").replace("_", "")
+
+
 class SymbolMarketFeatures(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -22,6 +26,10 @@ class SymbolMarketFeatures(BaseModel):
     relative_strength_vs_btc: float
     atr_pct: float
     bb_width: float
+    micro_regime: str = "UNDEFINED"
+    micro_regime_strength: float = Field(default=0.0, ge=0.0, le=1.0)
+    micro_regime_transition: str | None = None
+    micro_regime_transition_strength: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @field_validator("symbol")
     @classmethod
@@ -65,6 +73,15 @@ class LiveMarketContext(BaseModel):
     market_stress_score: float = Field(ge=0.0, le=1.0)
     long_tailwind: float = Field(ge=-1.0, le=1.0)
     short_tailwind: float = Field(ge=-1.0, le=1.0)
+    market_regime: str = "UNDEFINED"
+    previous_market_regime: str | None = None
+    market_regime_transition: str | None = None
+    market_regime_transition_strength: float = Field(default=0.0, ge=0.0, le=1.0)
+    long_regime_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    short_regime_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    range_regime_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    stress_regime_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    regime_is_transitioning: bool = False
     symbol_features: dict[str, SymbolMarketFeatures] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -93,6 +110,18 @@ class LiveMarketContext(BaseModel):
         if self.advancers + self.decliners > self.fresh_count:
             raise ValueError("advancers plus decliners cannot exceed fresh_count")
         return self
+
+    def get_symbol_features(self, symbol: str) -> SymbolMarketFeatures | None:
+        normalized = symbol.strip().upper()
+        direct = self.symbol_features.get(normalized)
+        if direct is not None:
+            return direct
+
+        canonical = _canonicalize_symbol(normalized)
+        for known_symbol, features in self.symbol_features.items():
+            if _canonicalize_symbol(known_symbol) == canonical:
+                return features
+        return None
 
 
 class MarketContextScore(BaseModel):

@@ -8,6 +8,7 @@ from pybinbot import (
     SignalsConsumer,
 )
 from pandera.typing import DataFrame as TypedDataFrame
+from market_regime.regime_routing import allows_long_autotrade
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -137,18 +138,10 @@ class LiquidationSweepPump:
         )
 
         if self.latest_market_context is not None:
-            if self.latest_market_context.market_stress_score >= 0.35:
-                autotrade = False
-            elif self.latest_market_context.advancers_ratio >= 0.55:
-                autotrade = bot_strategy == Strategy.long
-            elif self.latest_market_context.advancers_ratio <= 0.45:
-                # liquidation sweep pump is mostly designed as a long bot
-                autotrade = False
-
-            high_market_stress = self.latest_market_context.market_stress_score >= 0.35
-
-            if high_market_stress:
-                autotrade = False
+            autotrade = allows_long_autotrade(
+                context=self.latest_market_context,
+                symbol=self.symbol,
+            )
 
         value.autotrade = autotrade
 

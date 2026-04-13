@@ -1,8 +1,8 @@
-from market_regime_prediction.models import (
+from market_regime.models import (
     LiveMarketContext,
     SignalContextEvaluation,
 )
-from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from market_regime.signal_context_scorer import SignalContextScorer
 
 
 def score_signal_candidate_with_context(
