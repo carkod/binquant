@@ -19,7 +19,7 @@ class ApexFlow:
         self._last_sent_context_timestamp: int | None = None
 
     @staticmethod
-    def _regime_summary(regime: str) -> str:
+    def _regime_summary(regime: str | None) -> str:
         if regime == "TREND_UP":
             return "market conditions now favor long continuation"
         if regime == "TREND_DOWN":

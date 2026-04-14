@@ -3,6 +3,13 @@ from market_regime.live_market_context_accumulator import (
 )
 from market_regime.context_scoring import RuleBasedMarketContextModel
 from market_regime.market_state_store import MarketStateStore
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.regime_routing import (
+    allows_long_autotrade,
+    allows_short_autotrade,
+    supports_grid_trading,
+)
+from market_regime.regime_transitions import RegimeTransitionDetector
 from market_regime.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
@@ -27,6 +34,73 @@ def seed_symbol(
     previous_close: float,
 ) -> None:
     store.update(symbol, make_candle(previous_timestamp, previous_close))
+
+
+def make_symbol_features(**overrides: object) -> SymbolMarketFeatures:
+    values: dict[str, object] = {
+        "symbol": "ALT0USDT",
+        "timestamp": 2_000,
+        "close": 100.0,
+        "return_pct": 0.01,
+        "ema20": 99.5,
+        "ema50": 99.0,
+        "above_ema20": True,
+        "above_ema50": True,
+        "trend_score": 0.01,
+        "relative_strength_vs_btc": 0.02,
+        "atr_pct": 0.02,
+        "bb_width": 0.04,
+        "micro_regime": "RANGE",
+        "micro_regime_strength": 0.7,
+        "micro_regime_transition": None,
+        "micro_regime_transition_strength": 0.0,
+    }
+    values.update(overrides)
+    return SymbolMarketFeatures(**values)
+
+
+def make_live_context(**overrides: object) -> LiveMarketContext:
+    values: dict[str, object] = {
+        "timestamp": 2_000,
+        "fresh_count": 40,
+        "total_tracked_symbols": 40,
+        "coverage_ratio": 1.0,
+        "btc_symbol": "BTCUSDT",
+        "btc_present": True,
+        "confidence": 1.0,
+        "is_provisional": False,
+        "advancers": 30,
+        "decliners": 10,
+        "advancers_ratio": 0.75,
+        "decliners_ratio": 0.25,
+        "advancers_decliners_ratio": 3.0,
+        "average_return": 0.01,
+        "average_relative_strength_vs_btc": 0.01,
+        "pct_above_ema20": 0.5,
+        "pct_above_ema50": 0.5,
+        "average_trend_score": 0.05,
+        "average_atr_pct": 0.02,
+        "average_bb_width": 0.04,
+        "btc_return": 0.01,
+        "btc_trend_score": 0.01,
+        "btc_regime_score": -1.0,
+        "market_stress_score": 0.2,
+        "long_tailwind": -1.0,
+        "short_tailwind": 0.4,
+        "market_regime": None,
+        "previous_market_regime": None,
+        "market_regime_transition": None,
+        "market_regime_transition_strength": 0.0,
+        "long_regime_score": 0.0,
+        "short_regime_score": 0.0,
+        "range_regime_score": 0.0,
+        "stress_regime_score": 0.0,
+        "regime_is_transitioning": False,
+        "symbol_features": {"ALT0USDT": make_symbol_features()},
+        "metadata": {},
+    }
+    values.update(overrides)
+    return LiveMarketContext(**values)
 
 
 def test_live_context_requires_threshold_without_fresh_btc() -> None:
@@ -195,3 +269,36 @@ def test_live_context_detects_market_regime_transition() -> None:
     assert second_context.previous_market_regime == "TREND_UP"
     assert second_context.market_regime_transition is not None
     assert second_context.market_regime_transition_strength > 0.0
+
+
+def test_transition_flag_stays_true_for_transitional_regime() -> None:
+    detector = RegimeTransitionDetector()
+    previous_context = make_live_context(
+        timestamp=1_000,
+        market_regime="TRANSITIONAL",
+        regime_is_transitioning=True,
+    )
+    current_context = make_live_context(timestamp=2_000)
+
+    detector.annotate_context(
+        context=current_context,
+        previous_context=previous_context,
+    )
+
+    assert current_context.market_regime == "TRANSITIONAL"
+    assert current_context.market_regime_transition is None
+    assert current_context.regime_is_transitioning is True
+
+
+def test_autotrade_routing_blocks_transitioning_context() -> None:
+    context = make_live_context(
+        market_regime="TREND_UP",
+        regime_is_transitioning=True,
+        symbol_features={
+            "ALT0USDT": make_symbol_features(micro_regime="RANGE"),
+        },
+    )
+
+    assert allows_long_autotrade(context=context, symbol="ALT0USDT") is False
+    assert allows_short_autotrade(context=context, symbol="ALT0USDT") is False
+    assert supports_grid_trading(context=context, symbol="ALT0USDT") is False

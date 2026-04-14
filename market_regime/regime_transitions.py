@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.models import (
+    LiveMarketContext,
+    MarketRegime,
+    MarketRegimeTransition,
+    MicroRegime,
+    MicroRegimeTransition,
+    SymbolMarketFeatures,
+)
 from shared.utils import clamp, non_negative
 
 
@@ -82,7 +89,7 @@ class RegimeTransitionDetector:
             1.0,
         )
 
-        regime = "TRANSITIONAL"
+        regime: MarketRegime = "TRANSITIONAL"
         dominant_score = max(long_score, short_score, range_score, stress_score)
         if stress_score >= 0.5 and context.market_stress_score >= 0.35:
             regime = "HIGH_STRESS"
@@ -93,10 +100,12 @@ class RegimeTransitionDetector:
         elif range_score >= 0.5:
             regime = "RANGE"
 
-        previous_regime = previous_context.market_regime if previous_context else None
-        transition = None
+        previous_regime: MarketRegime | None = (
+            previous_context.market_regime if previous_context else None
+        )
+        transition: MarketRegimeTransition | None = None
         transition_strength = 0.0
-        regime_is_transitioning = False
+        regime_is_transitioning = regime == "TRANSITIONAL"
 
         if (
             previous_context is not None
@@ -125,8 +134,8 @@ class RegimeTransitionDetector:
                 1.0,
             )
             regime_is_transitioning = (
-                transition_strength >= self._transition_strength_floor
-                or regime == "TRANSITIONAL"
+                regime_is_transitioning
+                or transition_strength >= self._transition_strength_floor
             )
 
         context.market_regime = regime
@@ -174,7 +183,7 @@ class RegimeTransitionDetector:
             1.0,
         )
 
-        regime = "TRANSITIONAL"
+        regime: MicroRegime = "TRANSITIONAL"
         regime_strength = max(up_score, down_score, range_score, volatile_score)
         if volatile_score >= 0.72 and abs(features.return_pct) >= 0.015:
             regime = "VOLATILE"
@@ -185,8 +194,10 @@ class RegimeTransitionDetector:
         elif range_score >= 0.5:
             regime = "RANGE"
 
-        previous_regime = previous_features.micro_regime if previous_features else None
-        transition = None
+        previous_regime: MicroRegime | None = (
+            previous_features.micro_regime if previous_features else None
+        )
+        transition: MicroRegimeTransition | None = None
         transition_strength = 0.0
         if (
             previous_features is not None
@@ -210,7 +221,10 @@ class RegimeTransitionDetector:
         features.micro_regime_transition_strength = transition_strength
 
     @staticmethod
-    def _market_transition_event(previous_regime: str, current_regime: str) -> str:
+    def _market_transition_event(
+        previous_regime: MarketRegime,
+        current_regime: MarketRegime,
+    ) -> MarketRegimeTransition:
         if current_regime == "HIGH_STRESS":
             return "STRESS_SPIKE"
         if previous_regime == "HIGH_STRESS" and current_regime != "HIGH_STRESS":
@@ -224,7 +238,10 @@ class RegimeTransitionDetector:
         return "LOST_REGIME_EDGE"
 
     @staticmethod
-    def _symbol_transition_event(previous_regime: str, current_regime: str) -> str:
+    def _symbol_transition_event(
+        previous_regime: MicroRegime,
+        current_regime: MicroRegime,
+    ) -> MicroRegimeTransition:
         if current_regime == "VOLATILE":
             return "VOLATILITY_EXPANSION"
         if (
@@ -241,4 +258,10 @@ class RegimeTransitionDetector:
             return "RECOVERY"
         if previous_regime == "TREND_UP" and current_regime == "RANGE":
             return "MEAN_REVERSION"
-        return f"ENTERED_{current_regime}"
+        if current_regime == "TREND_UP":
+            return "ENTERED_TREND_UP"
+        if current_regime == "TREND_DOWN":
+            return "ENTERED_TREND_DOWN"
+        if current_regime == "RANGE":
+            return "ENTERED_RANGE"
+        return "ENTERED_TRANSITIONAL"
