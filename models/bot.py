@@ -1,21 +1,9 @@
-from time import time
 from pybinbot import (
     DealType,
 )
 from pydantic import BaseModel, field_validator, Field
 from pybinbot import BotBase, OrderBase, DealBase
 from uuid import UUID, uuid4
-
-
-def timestamp():
-    return time() * 1000
-
-
-def ensure_float(value: str | int | float) -> float:
-    if isinstance(value, str) or isinstance(value, int):
-        return float(value)
-
-    return value
 
 
 class OrderModel(OrderBase):

@@ -1,4 +1,4 @@
-from market_regime_prediction.models import LiveMarketContext, MarketContextScore
+from market_regime.models import LiveMarketContext, MarketContextScore
 from shared.utils import clamp, non_negative
 
 
@@ -22,7 +22,7 @@ class RuleBasedMarketContextModel:
         if context is None or context.confidence <= 0:
             return self._empty_score(symbol, normalized_direction)
 
-        symbol_features = context.symbol_features.get(symbol)
+        symbol_features = context.get_symbol_features(symbol)
         symbol_rs = self._resolve_feature(
             local_features=local_features,
             feature_name="relative_strength_vs_btc",

@@ -30,8 +30,8 @@ from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
-from market_regime_prediction.models import LiveMarketContext
-from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from market_regime.models import LiveMarketContext
+from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 
 

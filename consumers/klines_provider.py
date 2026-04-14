@@ -15,11 +15,11 @@ from pybinbot import (
     KucoinFutures,
 )
 from consumers.autotrade_consumer import AutotradeConsumer
-from market_regime_prediction.live_market_context_accumulator import (
+from market_regime.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
 )
-from market_regime_prediction.models import LiveMarketContext
-from market_regime_prediction.market_state_store import MarketStateStore
+from market_regime.models import LiveMarketContext
+from market_regime.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
 from time import time

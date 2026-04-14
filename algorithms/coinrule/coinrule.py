@@ -12,7 +12,8 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime_prediction.signal_context_scorer import SignalContextScorer
+from market_regime.regime_routing import allows_long_autotrade
+from market_regime.signal_context_scorer import SignalContextScorer
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -136,12 +137,10 @@ class Coinrule:
             autotrade = True
             context = self.latest_market_context
             if context is not None:
-                if context.market_stress_score >= self._autotrade_stress_threshold:
-                    autotrade = False
-                elif context.advancers_ratio >= 0.5 + self._breadth_cross_tolerance:
-                    autotrade = bot_strategy == Strategy.long
-                elif context.advancers_ratio <= 0.5 - self._breadth_cross_tolerance:
-                    autotrade = bot_strategy == Strategy.margin_short
+                autotrade = allows_long_autotrade(
+                    context=context,
+                    symbol=self.symbol,
+                )
             last_timestamp = (
                 to_datetime(df["close_time"][-1:], unit="ms")
                 .dt.strftime("%Y-%m-%d %H:%M")

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
-from market_regime_prediction.context_scoring import RuleBasedMarketContextModel
-from market_regime_prediction.models import LiveMarketContext, MarketContextScore
+from market_regime.context_scoring import RuleBasedMarketContextModel
+from market_regime.models import LiveMarketContext, MarketContextScore
 
 
 class SignalContextScorer(BaseModel):
