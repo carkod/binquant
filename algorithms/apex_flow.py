@@ -9,8 +9,6 @@ if TYPE_CHECKING:
 
 
 class ApexFlow:
-    _last_regime: str | None = None
-
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.config = cls.config
         self.symbol = cls.symbol
@@ -36,14 +34,13 @@ class ApexFlow:
             return
 
         current_regime = context.market_regime
+        previous_regime = context.previous_market_regime
         long_score = context.long_regime_score
         short_score = context.short_regime_score
-        previous_regime = ApexFlow._last_regime
-        ApexFlow._last_regime = current_regime
 
         if (
             previous_regime is None
-            or current_regime == previous_regime
+            or current_regime is None
             or not context.market_regime_transition
         ):
             return

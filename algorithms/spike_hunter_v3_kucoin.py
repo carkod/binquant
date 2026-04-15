@@ -14,10 +14,9 @@ from pybinbot import (
 )
 
 from algorithms.binance_report_ai import BinanceAIReport
-from market_regime.regime_routing import (
-    allows_long_autotrade,
-    allows_short_autotrade,
-)
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.regime_routing import resolve_symbol_features
+from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -117,6 +116,62 @@ class SpikeHunterV3KuCoin:
         self.post_spike_cooldown_bars = 0
         self.require_bullish_spike = True
         self.body_size_pct_min = 0.0
+
+    @staticmethod
+    def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
+        if context.market_regime != "TRANSITIONAL":
+            return False
+        if context.market_stress_score >= 0.35:
+            return False
+        return context.long_tailwind > 0 and context.long_regime_score > max(
+            context.short_regime_score,
+            context.range_regime_score,
+            context.stress_regime_score,
+        )
+
+    @staticmethod
+    def _has_bullish_transitional_symbol(features: SymbolMarketFeatures) -> bool:
+        if features.micro_regime != "TRANSITIONAL":
+            return False
+        return (
+            features.trend_score > 0
+            and features.above_ema20
+            and features.relative_strength_vs_btc >= 0
+        )
+
+    def regime_routing(
+        self,
+        context: LiveMarketContext | None,
+        symbol_features: SymbolMarketFeatures | None,
+    ) -> tuple[bool, str]:
+        if context is None:
+            return False, "market_context_unavailable"
+
+        if context.market_stress_score >= 0.35:
+            return False, "market_stress_too_high"
+
+        if context.market_regime is None:
+            return False, "market_regime_unavailable"
+
+        if context.market_regime == "TREND_UP":
+            market_route = "market_trend_up"
+        elif self._has_bullish_transitional_market(context):
+            market_route = "market_transitional_bullish"
+        else:
+            return False, f"market_regime_{context.market_regime.lower()}"
+
+        if symbol_features is None:
+            return False, "symbol_regime_unavailable"
+
+        if symbol_features.micro_regime == "TREND_UP":
+            return True, f"{market_route}_symbol_trend_up"
+
+        if self._has_bullish_transitional_symbol(symbol_features):
+            return True, f"{market_route}_symbol_transitional_bullish"
+
+        if symbol_features.micro_regime is None:
+            return False, "symbol_regime_unavailable"
+        return False, f"symbol_regime_{symbol_features.micro_regime.lower()}"
 
     def auto_calibrate(
         self,
@@ -466,27 +521,34 @@ class SpikeHunterV3KuCoin:
             if last_spike["upward"]:
                 streak = "📈"
             elif last_spike["downward"]:
-                streak = "📉"
-                bot_strategy = Strategy.margin_short
+                logging.info(
+                    "Spike Hunter skipped: downward spike is not routed for bullish trend mode."
+                )
+                return
             else:
                 streak = "N/A"
                 return
 
             context = self.latest_market_context
-            if context is not None:
-                if bot_strategy == Strategy.long:
-                    autotrade = allows_long_autotrade(
-                        context=context,
-                        symbol=self.symbol,
-                    )
-                else:
-                    autotrade = allows_short_autotrade(
-                        context=context,
-                        symbol=self.symbol,
-                    )
+            symbol_features = resolve_symbol_features(
+                context=context, symbol=self.symbol
+            )
+            should_emit, route_reason = self.regime_routing(
+                context=context,
+                symbol_features=symbol_features,
+            )
+            if not should_emit:
+                return
+            autotrade = True
 
             base_asset = self.current_symbol_data["base_asset"]
             quote_asset = self.current_symbol_data["quote_asset"]
+            kucoin_link, terminal_link = build_links_msg(
+                self.ti.config.env,
+                self.ti.exchange,
+                self.market_type,
+                self.symbol,
+            )
 
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#spike_hunter_v3_kucoin algorithm</strong> #{self.symbol}
@@ -494,9 +556,14 @@ class SpikeHunterV3KuCoin:
                 - Last close timestamp: {last_spike["timestamp"]}
                 - 📊 {base_asset} volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)}
                 - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
-                - {"Autotrade enabled" if autotrade else "Autotrade disabled"}
-                - <a href='https://www.kucoin.com/trade/{self.kucoin_symbol}'>KuCoin</a>
-                - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
+                - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
+                - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
+                - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+                - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
+                - Route: {route_reason}
+                - Autotrade enabled
+                - <a href='{kucoin_link}'>KuCoin</a>
+                - <a href='{terminal_link}'>Dashboard trade</a>
                 """
 
             value = SignalsConsumer(

@@ -2,13 +2,14 @@ from os import getenv
 from typing import TYPE_CHECKING
 from pybinbot import (
     HABollinguerSpread,
-    Strategy,
-    round_numbers,
     KlineSchema,
     SignalsConsumer,
+    Strategy,
+    round_numbers,
 )
 from pandera.typing import DataFrame as TypedDataFrame
-from market_regime.regime_routing import allows_long_autotrade
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -32,6 +33,62 @@ class LiquidationSweepPump:
         self.qty_precision = cls.qty_precision
         self.oi_growth = cls.oi_data
         self.latest_market_context = cls.latest_market_context
+
+    @staticmethod
+    def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
+        if context.market_regime != "TRANSITIONAL":
+            return False
+        if context.market_stress_score >= 0.35:
+            return False
+        return context.long_tailwind > 0 and context.long_regime_score > max(
+            context.short_regime_score,
+            context.range_regime_score,
+            context.stress_regime_score,
+        )
+
+    @staticmethod
+    def _has_bullish_transitional_symbol(features: SymbolMarketFeatures) -> bool:
+        if features.micro_regime != "TRANSITIONAL":
+            return False
+        return (
+            features.trend_score > 0
+            and features.above_ema20
+            and features.relative_strength_vs_btc >= 0
+        )
+
+    def regime_routing(
+        self,
+        context: LiveMarketContext | None,
+        symbol_features: SymbolMarketFeatures | None,
+    ) -> tuple[bool, str]:
+        if context is None:
+            return False, "market_context_unavailable"
+
+        if context.market_stress_score >= 0.35:
+            return False, "market_stress_too_high"
+
+        if context.market_regime is None:
+            return False, "market_regime_unavailable"
+
+        if context.market_regime == "TREND_UP":
+            market_route = "market_trend_up"
+        elif self._has_bullish_transitional_market(context):
+            market_route = "market_transitional_bullish"
+        else:
+            return False, f"market_regime_{context.market_regime.lower()}"
+
+        if symbol_features is None:
+            return False, "symbol_regime_unavailable"
+
+        if symbol_features.micro_regime == "TREND_UP":
+            return True, f"{market_route}_symbol_trend_up"
+
+        if self._has_bullish_transitional_symbol(symbol_features):
+            return True, f"{market_route}_symbol_transitional_bullish"
+
+        if symbol_features.micro_regime is None:
+            return False, "symbol_regime_unavailable"
+        return False, f"symbol_regime_{symbol_features.micro_regime.lower()}"
 
     def compute_pump_score(
         self, df: TypedDataFrame[KlineSchema], window_hours=3
@@ -83,7 +140,7 @@ class LiquidationSweepPump:
 
         algo = "liquidation_sweep_pump"
         bot_strategy = Strategy.long
-        autotrade = True
+        autotrade = False
         base_asset = self.current_symbol_data["base_asset"]
 
         df = self.compute_pump_score(df)
@@ -117,6 +174,16 @@ class LiquidationSweepPump:
         if self.oi_growth is not None and self.oi_growth < 1.02:
             return
 
+        context = self.latest_market_context
+        symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
+        should_emit, route_reason = self.regime_routing(
+            context=context,
+            symbol_features=symbol_features,
+        )
+        if not should_emit:
+            return
+        autotrade = True
+
         kucoin_link, terminal_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
         )
@@ -137,12 +204,6 @@ class LiquidationSweepPump:
             ),
         )
 
-        if self.latest_market_context is not None:
-            autotrade = allows_long_autotrade(
-                context=self.latest_market_context,
-                symbol=self.symbol,
-            )
-
         value.autotrade = autotrade
 
         msg = f"""
@@ -151,12 +212,16 @@ class LiquidationSweepPump:
             - Score: {trigger_score:.2f}
             - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
             - OI Growth: {self.oi_growth:.2f}
-            - Context available: {"Yes" if self.latest_market_context is not None else "No"}
-            - Context BTC present: {"Yes" if self.latest_market_context and self.latest_market_context.btc_present else "No"}
-            - Context fresh symbols: {self.latest_market_context.fresh_count if self.latest_market_context else 0}
-            - Long regime: {"Yes" if self.latest_market_context and self.latest_market_context.advancers_ratio >= 0.55 and self.latest_market_context.long_tailwind > 0 else "No"}
-            - Market stress: {round_numbers(self.latest_market_context.market_stress_score, 3) if self.latest_market_context else 0}
-            - {"Autotrade has been enabled due to market context ✅" if autotrade else "Autotrade has been disabled due to market context  (unavailable/unfavorable) ❌"}
+            - Context available: {"Yes" if context is not None else "No"}
+            - Context BTC present: {"Yes" if context and context.btc_present else "No"}
+            - Context fresh symbols: {context.fresh_count if context else 0}
+            - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
+            - Route: {route_reason}
+            - Market stress: {round_numbers(context.market_stress_score, 3) if context else 0}
+            - Autotrade has been enabled due to bullish trend routing ✅
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
