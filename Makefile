@@ -31,8 +31,9 @@ format:
 
 upgrade-pybinbot:
 	source ./.venv/bin/activate;
+	@uv cache clean
 	@uv remove pybinbot
-	@uv add pybinbot --upgrade
+	@uv add 'pybinbot~=0.7' --upgrade
 	@uv sync --extra dev
 
 get-models: ## Get AI models from binbot-notebooks
