@@ -71,11 +71,6 @@ def make_algo(context: LiveMarketContext) -> ApexFlow:
     return ApexFlow(cast(Any, cls))
 
 
-@pytest.fixture(autouse=True)
-def reset_apex_flow_regime_state():
-    ApexFlow._last_regime = None
-
-
 @pytest.mark.asyncio
 async def test_apex_flow_bootstraps_without_emitting_transition():
     algo = make_algo(
@@ -95,7 +90,6 @@ async def test_apex_flow_bootstraps_without_emitting_transition():
     await algo.signal()
 
     algo.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
-    assert ApexFlow._last_regime == "TREND_UP"
 
 
 @pytest.mark.asyncio
@@ -130,7 +124,9 @@ async def test_apex_flow_emits_long_to_short_transition():
     await second.signal()
 
     second.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
-    sent_message = second.telegram_consumer.send_signal.await_args.args[0]  # type: ignore[attr-defined]
+    await_args = second.telegram_consumer.send_signal.await_args  # type: ignore[attr-defined]
+    assert await_args is not None
+    sent_message = await_args.args[0]
     assert "Regime transition: TREND_UP -> HIGH_STRESS" in sent_message
     assert "#market_regime_transition" in sent_message
 
@@ -167,6 +163,45 @@ async def test_apex_flow_emits_transition_into_neutral_regime():
     await second.signal()
 
     second.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
-    sent_message = second.telegram_consumer.send_signal.await_args.args[0]  # type: ignore[attr-defined]
+    await_args = second.telegram_consumer.send_signal.await_args  # type: ignore[attr-defined]
+    assert await_args is not None
+    sent_message = await_args.args[0]
     assert "Regime transition: TREND_UP -> RANGE" in sent_message
     assert "mean-reversion and range trading" in sent_message
+
+
+@pytest.mark.asyncio
+async def test_apex_flow_emits_from_annotated_context_without_bootstrap_state():
+    first_context = annotate_context(
+        make_live_context(
+            timestamp=1_000,
+            advancers_ratio=0.67,
+            confidence=0.95,
+            long_tailwind=0.78,
+            short_tailwind=-0.12,
+            btc_regime_score=0.66,
+            market_stress_score=0.2,
+        )
+    )
+    transitioned_context = annotate_context(
+        make_live_context(
+            timestamp=2_000,
+            advancers_ratio=0.35,
+            confidence=0.93,
+            long_tailwind=-0.12,
+            short_tailwind=0.35,
+            btc_regime_score=-0.18,
+            market_stress_score=0.22,
+        ),
+        previous_context=first_context,
+    )
+
+    algo = make_algo(transitioned_context)
+
+    await algo.signal()
+
+    algo.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
+    await_args = algo.telegram_consumer.send_signal.await_args  # type: ignore[attr-defined]
+    assert await_args is not None
+    sent_message = await_args.args[0]
+    assert "Regime transition:" in sent_message
