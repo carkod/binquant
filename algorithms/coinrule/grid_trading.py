@@ -1,9 +1,7 @@
 import logging
 import os
 from typing import TYPE_CHECKING
-
 from pybinbot import HABollinguerSpread, SignalsConsumer, Strategy, round_numbers
-
 from market_regime.regime_routing import (
     resolve_symbol_features,
     supports_grid_trading,
@@ -17,21 +15,24 @@ if TYPE_CHECKING:
 
 class GridTrading:
     """
-    Entry-only range-aware Coinrule-style grid logic for confirmed range markets.
+    Range-aware Coinrule-style grid logic for confirmed range markets.
 
-    This strategy only looks for long-side grid entries when the broader market
-    and the symbol are both behaving as range-bound, non-transitional markets.
-    Transitional regimes are intentionally excluded for this algorithm. Exit
-    logic, profit-taking, stop-losses, and position management are handled
-    elsewhere in the system.
+    This strategy looks for long-side grid entries when the broader market and
+    the symbol are both behaving as range-bound, non-transitional markets. It
+    also restores the legacy upper-band exit rule so the algo can emit a reduce
+    / scale-out alert after a strong move higher inside the range.
 
     Intent:
     - detect a stable sideways/range-bound market
     - detect weakness near the lower edge of the range
     - emit a long-entry signal
+    - detect strength near the upper edge of the range
+    - emit a long reduce / exit signal
     """
 
     BUY_TRIGGER_PCT = 0.02
+    EXIT_TRIGGER_PCT = 0.02
+    EXIT_REDUCE_PCT = 0.10
     CLIP_SIZE_QUOTE = 20.0
     MAX_RUNS = 10
 
@@ -47,12 +48,44 @@ class GridTrading:
         self.ti = cls
         self.df_15m = cls.df_15m
         self.config = cls.config
+        self.binbot_api = cls.binbot_api
         self.exchange = cls.exchange
         self.market_type = cls.market_type
         self.symbol = cls.symbol
+        self.kucoin_symbol = cls.kucoin_symbol
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
+
+    async def handle_exit_signal(
+        self,
+        algo: str,
+    ) -> str:
+        active_bots = self.binbot_api.get_bots_by_name(name=algo, symbol=self.symbol)
+        active_bot = active_bots[0] if active_bots else None
+
+        if active_bot is None or not active_bot.get("id"):
+            logging.error("No active bot found to deactivate for %s", self.symbol)
+            return "No active bot found to deactivate."
+
+        bot_id = str(active_bot["id"])
+
+        try:
+            self.binbot_api.deactivate_bot(bot_id)
+            deactivate_message: str | list[str] = [
+                "Deactivated active bot from Grid Trading signal",
+            ]
+            self.binbot_api.submit_bot_event_logs(
+                bot_id=bot_id, message=deactivate_message
+            )
+            return f"Deactivated active bot {bot_id}."
+        except Exception as exc:
+            logging.exception("Grid exit failed to deactivate bot for %s", self.symbol)
+            deactivate_message = f"Bot deactivation failed: {exc}"
+            self.binbot_api.submit_bot_event_logs(
+                bot_id=bot_id, message=deactivate_message
+            )
+            return f"Failed to deactivate active bot {bot_id}: {exc}"
 
     def evaluate(
         self,
@@ -128,6 +161,12 @@ class GridTrading:
             and band_position <= 0.4
             and current_price <= bb_mid
         )
+        sell_zone = (
+            move_from_anchor >= self.EXIT_TRIGGER_PCT
+            and rsi_value > 65
+            and band_position >= 0.6
+            and current_price >= bb_mid
+        )
 
         if buy_zone:
             return GridSignalDecision(
@@ -147,11 +186,29 @@ class GridTrading:
                 trend_slope_proxy=trend_slope_proxy,
             )
 
+        if sell_zone:
+            return GridSignalDecision(
+                should_trigger=True,
+                action="sell",
+                reason=(
+                    "Sideways market confirmed and price is in an upper-band grid "
+                    f"exit zone after a {move_from_anchor * 100:.2f}% move from "
+                    "the live anchor."
+                ),
+                trigger_move_pct=self.EXIT_TRIGGER_PCT,
+                range_width=range_width,
+                range_drift=range_drift,
+                bb_width=bb_width,
+                band_position=band_position,
+                rsi_value=rsi_value,
+                trend_slope_proxy=trend_slope_proxy,
+            )
+
         return GridSignalDecision(
             should_trigger=False,
             reason=(
                 "Sideways market confirmed, but price is not in a valid lower-band "
-                "grid entry zone."
+                "entry or upper-band exit grid zone."
             ),
             trigger_move_pct=self.BUY_TRIGGER_PCT,
             range_width=range_width,
@@ -170,12 +227,12 @@ class GridTrading:
         bb_low: float,
     ) -> None:
         """
-        Entry-only grid trading signal for stable range-bound markets.
+        Grid trading signal for stable range-bound markets.
 
         Best when the market is chopping sideways and price repeatedly
-        oscillates around a stable band. This module only emits the long-entry
-        side of the grid logic, and it explicitly rejects transitional market
-        states. Exit behavior is delegated to another part of the system.
+        oscillates around a stable band. This module emits long entries near the
+        lower band and reduce / exit alerts near the upper band while
+        explicitly rejecting transitional market states.
         """
         context = self.latest_market_context
         if not supports_grid_trading(context=context, symbol=self.symbol):
@@ -234,6 +291,53 @@ class GridTrading:
             self.symbol,
         )
 
+        exit_rule_text = (
+            f"SELL {self.EXIT_REDUCE_PCT * 100:.0f}% of the open {self.symbol} "
+            f"position every +{self.EXIT_TRIGGER_PCT * 100:.1f}% move while "
+            "keeping the remainder open"
+        )
+
+        if decision.action == "sell":
+            bot_action = await self.handle_exit_signal(
+                algo=algo,
+            )
+            action_label = "LONG EXIT / DEACTIVATE"
+            grid_logic = "Upper-band exit handling inside sideways range"
+            action_text = (
+                f"Reduce / exit {self.symbol} exposure after a +{self.EXIT_TRIGGER_PCT * 100:.1f}% "
+                "move near the upper band"
+            )
+
+            msg = f"""
+            - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Current price: {round_numbers(current_price, 6)}
+            - Strategy: {bot_strategy.value}
+            - Market mode: Sideways / range-bound
+            - Market regime: {context.market_regime if context is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
+            - Grid logic: {grid_logic}
+            - Action: {action_label}
+            - Rule intent: {action_text}
+            - Exit rule: {exit_rule_text}
+            - Bot action: {bot_action}
+            - Max runs configured: {self.MAX_RUNS}
+            - RSI: {round_numbers(decision.rsi_value, 2)}
+            - Range width ({self.LOOKBACK_CANDLES} candles): {round_numbers(decision.range_width * 100, 2)}%
+            - Range drift ({self.LOOKBACK_CANDLES} candles): {round_numbers(decision.range_drift * 100, 2)}%
+            - Bollinger width: {round_numbers(decision.bb_width * 100, 2)}%
+            - Band position: {round_numbers(decision.band_position, 3)}
+            - Trend proxy: {round_numbers(decision.trend_slope_proxy * 100, 2)}%
+            - Reason: {decision.reason}
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
+            """
+            await self.telegram_consumer.send_signal(msg)
+            return
+
+        action_label = "LONG ENTRY"
+        grid_logic = "Fixed-clip grid entries with upper-band exit handling"
         action_text = (
             f"BUY ${self.CLIP_SIZE_QUOTE:.2f} of {self.symbol} with USDT wallet "
             f"as market order after a -{self.BUY_TRIGGER_PCT * 100:.1f}% move"
@@ -248,9 +352,10 @@ class GridTrading:
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
-            - Grid logic: Entry-only fixed-clip grid in sideways markets
-            - Action: LONG ENTRY
+            - Grid logic: {grid_logic}
+            - Action: {action_label}
             - Rule intent: {action_text}
+            - Exit rule: {exit_rule_text}
             - Max runs configured: {self.MAX_RUNS}
             - RSI: {round_numbers(decision.rsi_value, 2)}
             - Range width ({self.LOOKBACK_CANDLES} candles): {round_numbers(decision.range_width * 100, 2)}%
@@ -264,19 +369,19 @@ class GridTrading:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
-        value = SignalsConsumer(
-            autotrade=autotrade,
-            current_price=current_price,
-            symbol=self.symbol,
-            algo=algo,
-            bot_strategy=bot_strategy,
-            market_type=self.market_type,
-            bb_spreads=HABollinguerSpread(
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            ),
-        )
-
         await self.telegram_consumer.send_signal(msg)
+        if decision.action == "buy":
+            value = SignalsConsumer(
+                autotrade=autotrade,
+                current_price=current_price,
+                symbol=self.symbol,
+                algo=algo,
+                bot_strategy=bot_strategy,
+                market_type=self.market_type,
+                bb_spreads=HABollinguerSpread(
+                    bb_high=bb_high,
+                    bb_mid=bb_mid,
+                    bb_low=bb_low,
+                ),
+            )
         await self.at_consumer.process_autotrade_restrictions(value)

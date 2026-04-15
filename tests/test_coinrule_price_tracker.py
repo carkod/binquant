@@ -693,7 +693,11 @@ async def test_grid_trading_emits_signal_for_range_bound_dip():
     telegram_msg = tg_await_args.args[0]
     assert "coinrule_grid_trading" in telegram_msg
     assert "Action: LONG ENTRY" in telegram_msg
-    assert "Entry-only fixed-clip grid" in telegram_msg
+    assert "upper-band exit handling" in telegram_msg
+    assert (
+        "Exit rule: SELL 10% of the open TESTUSDT position every +2.0% move"
+        in telegram_msg
+    )
     assert "Band position" in telegram_msg
 
 
@@ -768,14 +772,22 @@ async def test_grid_trading_skips_when_market_has_left_range() -> None:
 @pytest.mark.asyncio
 async def test_grid_trading_skips_for_range_bound_rally() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 101.0
-    df.loc[df.index[-1], "open"] = 100.8
-    df.loc[df.index[-1], "high"] = 101.3
-    df.loc[df.index[-1], "low"] = 100.4
+    df.loc[df.index[-2], "close"] = 99.0
+    df.loc[df.index[-1], "close"] = 101.5
+    df.loc[df.index[-1], "open"] = 101.1
+    df.loc[df.index[-1], "high"] = 101.8
+    df.loc[df.index[-1], "low"] = 100.9
     df.loc[df.index[-1], "rsi"] = 66.0
 
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
+    binbot_api_mock = cast(MagicMock, algo.binbot_api)
+    binbot_api_mock.get_bots_by_name.return_value = [
+        {
+            "id": "bot-123",
+            "pair": "TESTUSDT",
+        }
+    ]
     at_mock = AsyncMock()
     tg_mock = AsyncMock()
     algo.at_consumer = cast(
@@ -793,7 +805,18 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_not_awaited()
+    tg_mock.assert_awaited_once()
+    binbot_api_mock.get_bots_by_name.assert_called_once_with(
+        name="coinrule_grid_trading", symbol="TESTUSDT"
+    )
+    binbot_api_mock.deactivate_bot.assert_called_once_with("bot-123")
+
+    tg_await_args = tg_mock.await_args
+    assert tg_await_args is not None
+    telegram_msg = tg_await_args.args[0]
+    assert "Action: LONG EXIT / DEACTIVATE" in telegram_msg
+    assert "Upper-band exit handling inside sideways range" in telegram_msg
+    assert "Bot action: Deactivated active bot bot-123." in telegram_msg
 
 
 @pytest.mark.asyncio
