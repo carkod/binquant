@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -287,11 +287,7 @@ requires-dist = [
     { name = "kafka-python", specifier = ">=2.0.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "passlib" },
-<<<<<<< HEAD
-    { name = "pybinbot", specifier = ">=0.7.50" },
-=======
     { name = "pybinbot", specifier = ">=1.1.2" },
->>>>>>> aa94d9f (chore: upgrade pybinbot to 1.1.2)
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "pytest-vcr", marker = "extra == 'dev'", specifier = ">=1.0.2" },
@@ -1505,11 +1501,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-<<<<<<< HEAD
-version = "0.7.50"
-=======
 version = "1.1.2"
->>>>>>> aa94d9f (chore: upgrade pybinbot to 1.1.2)
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1524,15 +1516,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-<<<<<<< HEAD
-sdist = { url = "https://files.pythonhosted.org/packages/2d/1a/880385e4849829484d1f2e86ee4f536c5fcf347aed77c8dce6c9242b2b47/pybinbot-0.7.50.tar.gz", hash = "sha256:bf4da4a002c81bf6954309292b0873b79aa3c5309bc9f3060d0d1e429f48c5d4", size = 56340, upload-time = "2026-04-15T21:27:01.43Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/25/6b/52b15027b8a43a418fa591d90e3e018d73bf7f45f081461dd6e0e8a60c0e/pybinbot-0.7.50-py3-none-any.whl", hash = "sha256:77b924bc7f6d7d81f21b0b585de677e569fc29991a73b2b8f6c9c2c406391c9f", size = 58491, upload-time = "2026-04-15T21:26:59.748Z" },
-=======
 sdist = { url = "https://files.pythonhosted.org/packages/22/dd/218eaaa249e927980498ef78ef8ccf3b7c674855f461edaedec0eeac3172/pybinbot-1.1.2.tar.gz", hash = "sha256:212750cc859324169855368e6da908fa99a15774e87ebce5ba0bb03e93283ce3", size = 56428, upload-time = "2026-04-15T22:57:31.803Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4c/f9/cef339b572acb4c9c2c19c838d3f2f94259f48b8dfdf59e373bf8d4767d4/pybinbot-1.1.2-py3-none-any.whl", hash = "sha256:f364f5c95f4ffe10e3067b661f4dd1ef12152d27e43d1b803e9b355d595c6ea0", size = 58585, upload-time = "2026-04-15T22:57:30.122Z" },
->>>>>>> aa94d9f (chore: upgrade pybinbot to 1.1.2)
 ]
 
 [[package]]

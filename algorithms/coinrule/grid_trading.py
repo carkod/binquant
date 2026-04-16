@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import TYPE_CHECKING
-from pybinbot import HABollinguerSpread, SignalsConsumer, Strategy, round_numbers
+from pybinbot import HABollinguerSpread, SignalsConsumer, Position, round_numbers
 from market_regime.regime_routing import (
     resolve_symbol_features,
     supports_grid_trading,
@@ -281,7 +281,7 @@ class GridTrading:
             return
 
         algo = "coinrule_grid_trading"
-        bot_strategy = Strategy.long
+        bot_strategy = Position.long
         autotrade = False
 
         kucoin_link, terminal_link = build_links_msg(

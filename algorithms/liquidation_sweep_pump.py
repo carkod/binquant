@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING
 from pybinbot import (
     HABollinguerSpread,
     KlineSchema,
+    Position,
     SignalsConsumer,
-    Strategy,
     round_numbers,
 )
 from pandera.typing import DataFrame as TypedDataFrame
@@ -139,7 +139,7 @@ class LiquidationSweepPump:
             return None
 
         algo = "liquidation_sweep_pump"
-        bot_strategy = Strategy.long
+        bot_strategy = Position.long
         autotrade = False
         base_asset = self.current_symbol_data["base_asset"]
 

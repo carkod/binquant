@@ -6,8 +6,8 @@ from pybinbot import (
     HABollinguerSpread,
     KlineSchema,
     MarketType,
+    Position,
     SignalsConsumer,
-    Strategy,
     round_numbers,
 )
 
@@ -166,14 +166,14 @@ class ActivityBurstPump:
 
         algo = "activity_burst_pump"
         autotrade = False
-        bot_strategy = Strategy.long
+        bot_strategy = Position.long
         base_asset = self.current_symbol_data["base_asset"]
         context = self.latest_market_context
 
         if context is not None:
             if not allows_long_autotrade(context=context, symbol=self.symbol):
                 return
-            autotrade = bot_strategy == Strategy.long
+            autotrade = bot_strategy == Position.long
 
         df = self.compute_indicators(df)
         row = df.iloc[-1]

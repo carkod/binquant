@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, Indicators, MarketDominance, MarketType, Strategy
+from pybinbot import ExchangeId, Indicators, MarketDominance, MarketType, Position
 
 from algorithms.coinrule.grid_trading import GridTrading
 from algorithms.coinrule.price_tracker import PriceTracker
@@ -98,7 +98,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         df_1h=df,
         df_btc=df,
         market_breadth_data={"adp": [0, 1, 2]},
-        bot_strategy=Strategy.long,
+        bot_strategy=Position.long,
         current_market_dominance=MarketDominance.NEUTRAL,
         market_domination_reversal=False,
         first_seen_at=0,
