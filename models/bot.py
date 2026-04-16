@@ -81,7 +81,7 @@ class BotModel(BotBase):
                     "trailing_deviation": 0.63,
                     "trailing_profit": 2.3,
                     "margin_short_reversal": False,
-                    "strategy": "long",
+                    "position": "long",
                     "deal": {},
                     "orders": [],
                 }
