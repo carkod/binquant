@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from algorithms.apex_flow import ApexFlow
+from strategies.apex_flow import ApexFlow
 from market_regime.models import LiveMarketContext
 from market_regime.regime_transitions import RegimeTransitionDetector
 

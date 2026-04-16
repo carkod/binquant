@@ -6,7 +6,7 @@ import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType
 
-from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
+from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 
 

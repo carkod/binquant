@@ -6,7 +6,7 @@ import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType
 
-from algorithms.liquidation_sweep_pump import LiquidationSweepPump
+from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 
 
@@ -147,7 +147,7 @@ async def test_signal_emits_in_trend_up_market(monkeypatch):
 
     monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
     monkeypatch.setattr(
-        "algorithms.liquidation_sweep_pump.build_links_msg",
+        "strategies.liquidation_sweep_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
     )
 
@@ -250,7 +250,7 @@ async def test_signal_emits_for_bullish_transitional_market(monkeypatch):
 
     monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
     monkeypatch.setattr(
-        "algorithms.liquidation_sweep_pump.build_links_msg",
+        "strategies.liquidation_sweep_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
     )
 

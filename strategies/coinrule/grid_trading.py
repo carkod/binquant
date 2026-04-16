@@ -6,7 +6,7 @@ from market_regime.regime_routing import (
     resolve_symbol_features,
     supports_grid_trading,
 )
-from models.algorithms import GridSignalDecision
+from models.strategies import GridSignalDecision
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:

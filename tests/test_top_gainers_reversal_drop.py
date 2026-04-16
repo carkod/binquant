@@ -6,7 +6,7 @@ import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType, Position
 
-from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
+from strategies.top_gainers_reversal_drop import TopGainersReversalDrop
 
 
 def make_context(df: DataFrame) -> SimpleNamespace:
