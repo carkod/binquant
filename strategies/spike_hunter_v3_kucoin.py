@@ -13,7 +13,7 @@ from pybinbot import (
     timestamp_to_datetime,
 )
 
-from algorithms.binance_report_ai import BinanceAIReport
+from strategies.binance_report_ai import BinanceAIReport
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg

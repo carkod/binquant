@@ -21,13 +21,13 @@ from pybinbot import (
     round_numbers,
 )
 
-from algorithms.activity_burst_pump import ActivityBurstPump
-from algorithms.apex_flow import ApexFlow
-from algorithms.coinrule.grid_trading import GridTrading
-from algorithms.coinrule.price_tracker import PriceTracker
-from algorithms.liquidation_sweep_pump import LiquidationSweepPump
-from algorithms.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
-from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
+from strategies.activity_burst_pump import ActivityBurstPump
+from strategies.apex_flow import ApexFlow
+from strategies.coinrule.grid_trading import GridTrading
+from strategies.coinrule.price_tracker import PriceTracker
+from strategies.liquidation_sweep_pump import LiquidationSweepPump
+from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
+from strategies.top_gainers_reversal_drop import TopGainersReversalDrop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from market_regime.models import LiveMarketContext

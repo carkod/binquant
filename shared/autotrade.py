@@ -1,5 +1,4 @@
 import logging
-
 from pybinbot import (
     BotBase,
     CloseConditions,
@@ -7,9 +6,12 @@ from pybinbot import (
     SignalsConsumer,
     round_numbers,
     MarketType,
+    ExchangeId,
+    BinanceApi,
+    KucoinApi,
+    BinbotApi,
 )
 from shared.exceptions import AutotradeError
-from pybinbot import ExchangeId, BinanceApi, KucoinApi, BinbotApi
 from shared.config import Config
 
 
@@ -62,7 +64,7 @@ class Autotrade:
             fiat=settings["fiat"],
             fiat_order_size=settings["base_order_size"],
             quote_asset=self.symbol_data["quote_asset"],
-            strategy=Position.long,
+            position=Position.long,
             stop_loss=settings["stop_loss"],
             take_profit=settings["take_profit"],
             trailing=settings["trailing"],
@@ -97,13 +99,13 @@ class Autotrade:
 
             # Otherwise it'll close too soon
             if whole_spread > 2 and whole_spread < 20:
-                if self.default_bot.strategy == Position.long:
+                if self.default_bot.position == Position.long:
                     self.default_bot.stop_loss = round_numbers(whole_spread)
                     self.default_bot.take_profit = round_numbers(top_spread)
                     # too much risk, reduce stop loss
                     self.default_bot.trailing_deviation = round_numbers(bottom_spread)
 
-                if self.default_bot.strategy == Position.short:
+                if self.default_bot.position == Position.short:
                     self.default_bot.stop_loss = round_numbers(whole_spread)
                     self.default_bot.take_profit = round_numbers(bottom_spread)
                     self.default_bot.trailing_deviation = round_numbers(top_spread)
@@ -165,7 +167,7 @@ class Autotrade:
             return
 
         # set common values for both paper and real bots
-        self.default_bot.strategy = Position(data.bot_strategy)
+        self.default_bot.position = Position(data.bot_strategy)
         self.default_bot.market_type = MarketType(data.market_type)
 
         if self.db_collection_name == "paper_trading":
@@ -175,7 +177,7 @@ class Autotrade:
             errors_func = self.binbot_api.submit_paper_trading_event_logs
             delete_func = self.binbot_api.delete_paper_bot
 
-            if self.default_bot.strategy == Position.short:
+            if self.default_bot.position == Position.short:
                 self.set_margin_short_values(data)
                 pass
             else:
@@ -192,7 +194,7 @@ class Autotrade:
             errors_func = self.binbot_api.submit_bot_event_logs
             delete_func = self.binbot_api.delete_bot
 
-            if self.default_bot.strategy == Position.short:
+            if self.default_bot.position == Position.short:
                 initial_price = self.api.get_ticker_price(self.default_bot.pair)
 
                 estimate_qty = float(self.default_bot.fiat_order_size) / float(
@@ -234,7 +236,7 @@ class Autotrade:
         if "error" in bot and bot["error"] > 0:
             message = bot["message"]
             errors_func(bot_id, message)
-            if self.default_bot.strategy == Position.short:
+            if self.default_bot.position == Position.short:
                 self.binbot_api.clean_margin_short(self.default_bot.pair)
             delete_func(bot_id)
             raise AutotradeError(message)

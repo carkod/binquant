@@ -6,7 +6,7 @@ import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType
 
-from algorithms.activity_burst_pump import ActivityBurstPump
+from strategies.activity_burst_pump import ActivityBurstPump
 
 
 def make_context(df: DataFrame) -> SimpleNamespace:
@@ -90,7 +90,7 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
     )
 
     monkeypatch.setattr(
-        "algorithms.activity_burst_pump.build_links_msg",
+        "strategies.activity_burst_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
     )
 

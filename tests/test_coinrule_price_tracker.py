@@ -6,8 +6,8 @@ import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, Indicators, MarketDominance, MarketType, Position
 
-from algorithms.coinrule.grid_trading import GridTrading
-from algorithms.coinrule.price_tracker import PriceTracker
+from strategies.coinrule.grid_trading import GridTrading
+from strategies.coinrule.price_tracker import PriceTracker
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
@@ -279,11 +279,11 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     algo.latest_market_context = make_market_context()
 
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.Indicators.mfi",
+        "strategies.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -336,11 +336,11 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
         return SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.Indicators.mfi",
+        "strategies.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -352,7 +352,7 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+        "strategies.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
     )
 
     await algo.signal(
@@ -389,11 +389,11 @@ async def test_price_tracker_disables_autotrade_in_transitioning_market(monkeypa
         return SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.Indicators.mfi",
+        "strategies.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -405,7 +405,7 @@ async def test_price_tracker_disables_autotrade_in_transitioning_market(monkeypa
         ),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+        "strategies.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
     )
 
     await algo.signal(
@@ -447,11 +447,11 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
         return SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.Indicators.mfi",
+        "strategies.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -463,7 +463,7 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
         ),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+        "strategies.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
     )
 
     await algo.signal(
@@ -505,11 +505,11 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
         return SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.Indicators.mfi",
+        "strategies.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -521,7 +521,7 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
         ),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+        "strategies.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
     )
 
     await algo.signal(
@@ -568,11 +568,11 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
         return SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.Indicators.mfi",
+        "strategies.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -584,7 +584,7 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
         ),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+        "strategies.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
     )
 
     await algo.signal(
@@ -626,11 +626,11 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
         return SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.Indicators.mfi",
+        "strategies.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.score_signal_candidate_with_context",
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
         lambda **kwargs: SimpleNamespace(
             adjusted_score=1.2,
             emit=True,
@@ -642,7 +642,7 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
         ),
     )
     monkeypatch.setattr(
-        "algorithms.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+        "strategies.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
     )
 
     await algo.signal(
@@ -728,7 +728,7 @@ async def test_grid_trading_uses_context_market_type(monkeypatch):
         return SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(
-        "algorithms.coinrule.grid_trading.SignalsConsumer", fake_signals_consumer
+        "strategies.coinrule.grid_trading.SignalsConsumer", fake_signals_consumer
     )
 
     await algo.signal(
