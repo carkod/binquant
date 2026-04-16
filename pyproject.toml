@@ -14,7 +14,11 @@ dependencies = [
     "confluent-kafka>=2.11.1",
     "kafka-python>=2.0.2",
     "passlib",
+<<<<<<< HEAD
     "pybinbot>=0.7.50",
+=======
+    "pybinbot>=1.1.2",
+>>>>>>> aa94d9f (chore: upgrade pybinbot to 1.1.2)
     "pydantic-settings>=2.10.1",
     "python-jose",
     "python-telegram-bot>=22.1",
