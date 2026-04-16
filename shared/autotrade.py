@@ -3,8 +3,8 @@ import logging
 from pybinbot import (
     BotBase,
     CloseConditions,
+    Position,
     SignalsConsumer,
-    Strategy,
     round_numbers,
     MarketType,
 )
@@ -62,15 +62,15 @@ class Autotrade:
             fiat=settings["fiat"],
             fiat_order_size=settings["base_order_size"],
             quote_asset=self.symbol_data["quote_asset"],
-            strategy=Strategy.long,
+            strategy=Position.long,
             stop_loss=settings["stop_loss"],
             take_profit=settings["take_profit"],
-            trailling=settings["trailling"],
-            trailling_deviation=settings["trailling_deviation"],
-            trailling_profit=settings["trailling_profit"],
+            trailing=settings["trailing"],
+            trailing_deviation=settings["trailing_deviation"],
+            trailing_profit=settings["trailing_profit"],
             margin_short_reversal=settings["autoswitch"],
-            close_condition=CloseConditions.dynamic_trailling,
-            dynamic_trailling=True,  # not added to settings yet
+            close_condition=CloseConditions.dynamic_trailing,
+            dynamic_trailing=True,  # not added to settings yet
         )
         self.db_collection_name = db_collection_name
         # restart streams after bot activation
@@ -97,16 +97,16 @@ class Autotrade:
 
             # Otherwise it'll close too soon
             if whole_spread > 2 and whole_spread < 20:
-                if self.default_bot.strategy == Strategy.long:
+                if self.default_bot.strategy == Position.long:
                     self.default_bot.stop_loss = round_numbers(whole_spread)
                     self.default_bot.take_profit = round_numbers(top_spread)
                     # too much risk, reduce stop loss
-                    self.default_bot.trailling_deviation = round_numbers(bottom_spread)
+                    self.default_bot.trailing_deviation = round_numbers(bottom_spread)
 
-                if self.default_bot.strategy == Strategy.margin_short:
+                if self.default_bot.strategy == Position.short:
                     self.default_bot.stop_loss = round_numbers(whole_spread)
                     self.default_bot.take_profit = round_numbers(bottom_spread)
-                    self.default_bot.trailling_deviation = round_numbers(top_spread)
+                    self.default_bot.trailing_deviation = round_numbers(top_spread)
 
     def handle_error(self, msg):
         """
@@ -165,7 +165,7 @@ class Autotrade:
             return
 
         # set common values for both paper and real bots
-        self.default_bot.strategy = Strategy(data.bot_strategy)
+        self.default_bot.strategy = Position(data.bot_strategy)
         self.default_bot.market_type = MarketType(data.market_type)
 
         if self.db_collection_name == "paper_trading":
@@ -175,7 +175,7 @@ class Autotrade:
             errors_func = self.binbot_api.submit_paper_trading_event_logs
             delete_func = self.binbot_api.delete_paper_bot
 
-            if self.default_bot.strategy == Strategy.margin_short:
+            if self.default_bot.strategy == Position.short:
                 self.set_margin_short_values(data)
                 pass
             else:
@@ -192,7 +192,7 @@ class Autotrade:
             errors_func = self.binbot_api.submit_bot_event_logs
             delete_func = self.binbot_api.delete_bot
 
-            if self.default_bot.strategy == Strategy.margin_short:
+            if self.default_bot.strategy == Position.short:
                 initial_price = self.api.get_ticker_price(self.default_bot.pair)
 
                 estimate_qty = float(self.default_bot.fiat_order_size) / float(
@@ -208,7 +208,7 @@ class Autotrade:
                 )
                 if balance_check < transfer_qty:
                     logging.error(
-                        f"Not enough funds to autotrade margin_short bot. Unable to cover potential losses. balances: {balance_check}. transfer qty: {transfer_qty}"
+                        f"Not enough funds to autotrade short bot. Unable to cover potential losses. balances: {balance_check}. transfer qty: {transfer_qty}"
                     )
                     return
                 self.set_margin_short_values(data)
@@ -234,7 +234,7 @@ class Autotrade:
         if "error" in bot and bot["error"] > 0:
             message = bot["message"]
             errors_func(bot_id, message)
-            if self.default_bot.strategy == Strategy.margin_short:
+            if self.default_bot.strategy == Position.short:
                 self.binbot_api.clean_margin_short(self.default_bot.pair)
             delete_func(bot_id)
             raise AutotradeError(message)

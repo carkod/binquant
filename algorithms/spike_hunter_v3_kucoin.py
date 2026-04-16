@@ -7,8 +7,8 @@ import numpy as np
 from pandas import DataFrame, Series
 from pybinbot import (
     HABollinguerSpread,
+    Position,
     SignalsConsumer,
-    Strategy,
     round_numbers,
     timestamp_to_datetime,
 )
@@ -515,7 +515,7 @@ class SpikeHunterV3KuCoin:
             or last_spike["accel_spike_flag"]
         ):
             algo = "spike_hunter_v3_kucoin"
-            bot_strategy = Strategy.long
+            bot_strategy = Position.long
             autotrade = False
 
             if last_spike["upward"]:

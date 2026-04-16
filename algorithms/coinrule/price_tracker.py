@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 from pybinbot import (
     HABollinguerSpread,
     Indicators,
+    Position,
     SignalsConsumer,
-    Strategy,
     round_numbers,
 )
 
@@ -133,7 +133,7 @@ class PriceTracker:
         )[1]
 
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
-            bot_strategy = Strategy.long
+            bot_strategy = Position.long
             autotrade = True
             context = self.latest_market_context
             local_score = (

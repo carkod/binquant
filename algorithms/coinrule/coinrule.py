@@ -7,8 +7,8 @@ from pybinbot import (
     HABollinguerSpread,
     Indicators,
     MarketDominance,
+    Position,
     SignalsConsumer,
-    Strategy,
     round_numbers,
 )
 
@@ -133,7 +133,7 @@ class Coinrule:
             and self.current_market_dominance == MarketDominance.LOSERS
         ):
             algo = "coinrule_supertrend_swing_reversal"
-            bot_strategy = Strategy.long
+            bot_strategy = Position.long
             autotrade = True
             context = self.latest_market_context
             if context is not None:
@@ -196,7 +196,7 @@ class Coinrule:
         if rsi < 35 and close_price > ma_25 and self.market_domination_reversal:
             algo = "coinrule_buy_low_sell_high"
 
-            bot_strategy = Strategy.long
+            bot_strategy = Position.long
             autotrade = False
             msg = f"""
             - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{self.symbol}

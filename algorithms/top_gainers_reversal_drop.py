@@ -6,8 +6,8 @@ from pybinbot import (
     HABollinguerSpread,
     KlineSchema,
     MarketType,
+    Position,
     SignalsConsumer,
-    Strategy,
     round_numbers,
 )
 
@@ -148,7 +148,7 @@ class TopGainersReversalDrop:
             return None
 
         algo = "top_gainers_reversal_drop"
-        bot_strategy = Strategy.margin_short
+        bot_strategy = Position.short
         autotrade = False
         if autotrade:
             context = self.latest_market_context

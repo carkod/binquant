@@ -17,7 +17,7 @@ from pybinbot import (
     KucoinKlineIntervals,
     MarketDominance,
     MarketType,
-    Strategy,
+    Position,
     round_numbers,
 )
 
@@ -81,7 +81,7 @@ class ContextEvaluator:
         self.current_market_dominance: MarketDominance = MarketDominance.NEUTRAL
         # describes whether tide is shifting
         self.market_domination_reversal: bool = False
-        self.bot_strategy: Strategy = Strategy.long
+        self.bot_strategy: Position = Position.long
         self.top_coins_gainers: list[str] = []
         self.top_gainers_day = top_gainers_day
         self.top_losers_day = top_losers_day
@@ -160,7 +160,7 @@ class ContextEvaluator:
 
     def bb_spreads(self, df: TypedDataFrame[KlineSchema]) -> HABollinguerSpread:
         """
-        Calculate Heikin Ashi Bollinguer bands spreads for trailling strategies
+        Calculate Heikin Ashi Bollinguer bands spreads for trailing strategies
 
         This is mainly used to set autotrade bots initial take profit and stop loss levels
         """

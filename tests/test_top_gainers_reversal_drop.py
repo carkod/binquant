@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, MarketType, Strategy
+from pybinbot import ExchangeId, MarketType, Position
 
 from algorithms.top_gainers_reversal_drop import TopGainersReversalDrop
 
@@ -28,7 +28,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         latest_market_context=None,
         _breadth_cross_tolerance=0.05,
         _autotrade_stress_threshold=0.35,
-        bot_strategy=Strategy.long,
+        bot_strategy=Position.long,
     )
 
 
@@ -124,7 +124,7 @@ async def test_signal_dispatches_for_top_gainer_reversal():
     value = await_args.args[0]
     assert value.algo == "top_gainers_reversal_drop"
     assert value.symbol == "TESTUSDT"
-    assert value.bot_strategy == "margin_short"
+    assert value.bot_strategy == "short"
 
 
 @pytest.mark.asyncio
