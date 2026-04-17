@@ -15,7 +15,7 @@ class ApexFlow:
         self.telegram_consumer = cls.telegram_consumer
         self.latest_market_context: LiveMarketContext | None = cls.latest_market_context
         self._last_sent_context_timestamp: int | None = None
-        self.previous_event: str | None = None
+        self.last_market_regime = cls.last_market_regime
 
     @staticmethod
     def _regime_summary(regime: str | None) -> str:
@@ -46,10 +46,10 @@ class ApexFlow:
         ):
             return
 
-        if context.market_regime_transition == self.previous_event:
+        if context.market_regime_transition == self.last_market_regime:
             return
 
-        self.previous_event = context.market_regime_transition
+        self.last_market_regime = context.market_regime_transition
         msg = f"""
             - [{str(self.config.env)}] <strong>#market_regime_transition</strong>
             - Regime transition: {previous_regime} -> {current_regime}

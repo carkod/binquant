@@ -71,7 +71,7 @@ class GridTrading:
         bot_id = str(active_bot["id"])
 
         try:
-            self.binbot_api.deactivate_bot(bot_id)
+            self.binbot_api.deactivate_bot(bot_id, algorithmic_close=True)
             deactivate_message: str | list[str] = [
                 "Deactivated active bot from Grid Trading signal",
             ]
