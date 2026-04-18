@@ -22,7 +22,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         current_symbol_data={"base_asset": "TEST"},
         price_precision=8,
         qty_precision=8,
-        df=df,
+        df_5m=df,
         first_seen_at=0,
         interval=SimpleNamespace(get_ms=lambda: 60_000),
         latest_market_context=None,

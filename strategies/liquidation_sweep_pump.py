@@ -134,7 +134,7 @@ class LiquidationSweepPump:
         Generate signal if pump score exceeds threshold and OI growth filter
         """
         df = self.ti.df_15m
-        df_btc = self.ti.df_btc
+        df_btc = self.ti.df_btc_15m
         if df is None or df.empty:
             return None
 

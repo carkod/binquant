@@ -1,7 +1,7 @@
 from pandas import DataFrame
 from pandas.api.types import is_numeric_dtype
 import pytest
-from pybinbot.shared.heikin_ashi import HeikinAshi
+from pybinbot import Candles, ExchangeId
 
 
 def make_base_df():
@@ -22,9 +22,13 @@ def make_base_df():
     )
 
 
+def make_candles_helper() -> Candles:
+    return Candles(exchange=ExchangeId.BINANCE, candles=[])
+
+
 def test_ensure_ohlc_success():
     df = make_base_df()
-    validated = HeikinAshi().ensure_ohlc(df)
+    validated = make_candles_helper().ensure_ohlc(df)
     assert isinstance(validated, DataFrame)
 
 
@@ -32,7 +36,7 @@ def test_ensure_ohlc_missing_columns():
     # Remove two required columns to trigger validation error
     df = make_base_df().drop(columns=["volume", "close_time"])
     with pytest.raises(ValueError) as exc:
-        HeikinAshi().ensure_ohlc(df)
+        make_candles_helper().ensure_ohlc(df)
     msg = str(exc.value)
     assert "volume" in msg and "close_time" in msg
 
@@ -47,7 +51,7 @@ def test_ensure_ohlc_coercion():
             "close": "string",
         }
     )
-    validated = HeikinAshi().ensure_ohlc(df)
+    validated = make_candles_helper().ensure_ohlc(df)
     for col in ["open", "high", "low", "close"]:
         assert is_numeric_dtype(validated[col])
 
@@ -56,5 +60,5 @@ def test_quote_asset_volume_all_nan():
     df = make_base_df()
     df["quote_asset_volume"] = ["x", "y", "z"]  # coercion -> all NaN
     with pytest.raises(ValueError) as exc:
-        HeikinAshi().ensure_ohlc(df)
+        make_candles_helper().ensure_ohlc(df)
     assert "quote_asset_volume" in str(exc.value)

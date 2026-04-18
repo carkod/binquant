@@ -54,7 +54,7 @@ class Coinrule:
         uses 4 hour candles df_4h
         https://web.coinrule.com/rule/67e2b40bc6e8b64a02e2277c/draft
         """
-        df = self.ti.df
+        df = self.ti.df_5m
         df_1h = self.ti.df_1h
         if df is None or df_1h is None or df.isnull().values.any() or len(df) < 10:
             logging.warning(
@@ -107,7 +107,7 @@ class Coinrule:
 
         Uses 1 hour candles df
         """
-        df = self.ti.df
+        df = self.ti.df_5m
         if df is None or df.isnull().values.any() or df.size == 0:
             logging.warning("1h candles supertrend have null values")
             return

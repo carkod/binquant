@@ -122,7 +122,7 @@ def make_context(
         oi_data=1.05,
         latest_market_context=latest_market_context,
         df_15m=df,
-        df_btc=df,
+        df_btc_15m=df,
     )
 
 
