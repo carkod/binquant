@@ -160,7 +160,7 @@ class ActivityBurstPump:
     async def signal(
         self, current_price: float, bb_high: float, bb_mid: float, bb_low: float
     ) -> None:
-        df = self.ti.df
+        df = self.ti.df_5m
         if df is None or df.empty or len(df) < (self.lookback_window + 1):
             return None
 

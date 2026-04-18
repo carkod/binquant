@@ -1,15 +1,18 @@
+from typing import cast
+
 from numpy import isnan
 from numpy import log as logarithm
 from numpy import nan
+from pandas import DataFrame
 from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
     AsyncProducer,
     BinanceApi,
     BinanceKlineIntervals,
     BinbotApi,
+    Candles,
     ExchangeId,
     HABollinguerSpread,
-    HeikinAshi,
     Indicators,
     KlineSchema,
     KucoinApi,
@@ -70,11 +73,10 @@ class ContextEvaluator:
         self.binbot_api = binbot_api
         self.symbol = symbol
         self.kucoin_symbol = kucoin_symbol
-        self.df: TypedDataFrame[KlineSchema]
+        self.df_5m: TypedDataFrame[KlineSchema]
         self.df_15m: TypedDataFrame[KlineSchema]
-        self.df_4h: TypedDataFrame[KlineSchema]
         self.df_1h: TypedDataFrame[KlineSchema]
-        self.btc_df: TypedDataFrame[KlineSchema]
+        self.df_btc_15m: TypedDataFrame[KlineSchema]
         self.exchange = exchange
         self.interval = interval
         # describes current USDC market: gainers vs losers
@@ -124,9 +126,9 @@ class ContextEvaluator:
         - Correlation = move
         - Beta = magnitude
         """
-        if "returns" not in self.df_btc:
-            self.df_btc["returns"] = logarithm(
-                self.df_btc["close"] / self.df_btc["close"].shift(1)
+        if "returns" not in self.df_btc_15m:
+            self.df_btc_15m["returns"] = logarithm(
+                self.df_btc_15m["close"] / self.df_btc_15m["close"].shift(1)
             )
 
         self.df_15m["returns"] = logarithm(
@@ -136,7 +138,7 @@ class ContextEvaluator:
         # Align returns
         returns = (
             self.df_15m[["returns"]]
-            .join(self.df_btc["returns"], how="inner", rsuffix="_btc")
+            .join(self.df_btc_15m["returns"], how="inner", rsuffix="_btc")
             .dropna()
         )
         returns.columns = ["alt", "btc"]
@@ -160,7 +162,7 @@ class ContextEvaluator:
 
     def bb_spreads(self, df: TypedDataFrame[KlineSchema]) -> HABollinguerSpread:
         """
-        Calculate Heikin Ashi Bollinguer bands spreads for trailing strategies
+        Calculate Bollinger band spreads for trailing strategies.
 
         This is mainly used to set autotrade bots initial take profit and stop loss levels
         """
@@ -185,7 +187,7 @@ class ContextEvaluator:
 
     def load_5m_algorithms(self):
         """
-        Initialize algorithms that consume self.df / 5m-enriched data.
+        Initialize algorithms that consume self.df_5m data.
         """
         self.abp = ActivityBurstPump(cls=self)
         self.tgrd = TopGainersReversalDrop(cls=self)
@@ -227,33 +229,37 @@ class ContextEvaluator:
     async def process_data(
         self,
         candles,
-        candles_15m=None,
+        candles_15m,
         btc_candles_15m=None,
     ):
         """
-        Publish processed data with ma_7, ma_25, ma_100, macd, macd_signal, rsi
+        Create all the dataframes needed for the strategies
+        - Raw candles 5m
+        - Raw candles 15m
+        - Raw candles 1h resampled from 15m
+        - Raw BTC candles 15m
 
         Algorithms should consume this data
         """
         self.symbol_dependent_data()
-        heikin_ashi = HeikinAshi()
-        candles_15m = candles_15m if candles_15m is not None else candles
+        raw_candles_5m = Candles(exchange=self.exchange, candles=candles)
+        raw_candles_15m = Candles(exchange=self.exchange, candles=candles_15m)
 
-        self.df, _, _, _ = heikin_ashi.pre_process(self.exchange, candles)
-        if not self.df.empty and self.df.close.size > 0:
+        self.df_5m = raw_candles_5m.pre_process()
+        if not self.df_5m.empty and self.df_5m.close.size > 0:
             self.load_5m_algorithms()
-            self.df = self.indicators_enrichment(self.df)
-            self.df = heikin_ashi.post_process(self.df)
+            self.df_5m = self.indicators_enrichment(self.df_5m)
+            self.df_5m = raw_candles_5m.post_process(self.df_5m)
 
             if (
-                self.df.ma_7.size < 7
-                or self.df.ma_25.size < 25
-                or self.df.ma_100.size < 100
+                self.df_5m.ma_7.size < 7
+                or self.df_5m.ma_25.size < 25
+                or self.df_5m.ma_100.size < 100
             ):
                 return
 
-            close_price = float(self.df["close"].iloc[-1])
-            spreads = self.bb_spreads(self.df)
+            close_price = float(self.df_5m["close"].iloc[-1])
+            spreads = self.bb_spreads(self.df_5m)
 
             await self.abp.signal(
                 current_price=close_price,
@@ -276,14 +282,18 @@ class ContextEvaluator:
                 bb_mid=spreads.bb_mid,
             )
 
-        # self.df is the smallest interval, so this condition should cover resampled DFs as well as Heikin Ashi DF
-        self.df_15m, _, self.df_1h, self.df_4h = heikin_ashi.pre_process(
-            self.exchange, candles_15m
+        self.df_15m = raw_candles_15m.pre_process()
+        self.df_1h = cast(
+            TypedDataFrame[KlineSchema],
+            raw_candles_15m.resample(self.df_15m, interval="1h"),
         )
+
         if not self.df_15m.empty and self.df_15m.close.size > 0:
             self.load_15m_algorithms()
-            self.df_btc, _, _, _ = heikin_ashi.pre_process(
-                self.exchange, btc_candles_15m
+            self.df_btc_15m = (
+                Candles(exchange=self.exchange, candles=btc_candles_15m).pre_process()
+                if btc_candles_15m
+                else cast(TypedDataFrame[KlineSchema], DataFrame())
             )
             self.df_15m = self.indicators_enrichment(self.df_15m)
 
@@ -294,16 +304,15 @@ class ContextEvaluator:
             self.btc_price_change = 0.0
 
             # correlation with BTC
-            if not self.df_btc.empty and self.df_btc.close.size > 0:
+            if not self.df_btc_15m.empty and self.df_btc_15m.close.size > 0:
                 self.btc_beta, self.btc_correlation = self.dynamic_btc_beta_corr()
-                df_pct_change = self.df_btc["close"].pct_change(periods=96) * 100
+                df_pct_change = self.df_btc_15m["close"].pct_change(periods=96) * 100
                 self.btc_price_change = (
                     df_pct_change[-1:].iloc[0] if not df_pct_change.empty else 0.0
                 )
 
-            self.df_15m = heikin_ashi.post_process(self.df_15m)
-            self.df_1h = heikin_ashi.post_process(self.df_1h)
-            self.df_4h = heikin_ashi.post_process(self.df_4h)
+            self.df_15m = raw_candles_15m.post_process(self.df_15m)
+            self.df_1h = raw_candles_15m.post_process(self.df_1h)
 
             # Dropped NaN values may end up with empty dataframe
             if (

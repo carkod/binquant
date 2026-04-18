@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class PriceTracker:
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
-        self.df_5m = cls.df
+        self.df_5m = cls.df_5m
         self.config = cls.config
         self.exchange = cls.exchange
         self.market_type = cls.market_type
@@ -109,7 +109,7 @@ class PriceTracker:
         Entry: RSI(14) < 30 AND MACD < 0 AND MFI < 20 using 5-minute candles
         BUY $30 of that coin with USDT wallet as limit order
         """
-        self.df_5m = self.ti.df.copy()
+        self.df_5m = self.ti.df_5m.copy()
         algo = "coinrule_price_tracker"
 
         required_cols = ["close", "rsi", "macd", "high", "low", "volume"]
