@@ -7,6 +7,7 @@ from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType
 from unittest.mock import AsyncMock, MagicMock
 
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from strategies.coinrule.buy_the_dip import CoinruleBuyTheDip
 
 
@@ -36,7 +37,77 @@ def make_buy_the_dip_df(
     return DataFrame(rows)
 
 
-def make_algo(df_15m: DataFrame) -> tuple[CoinruleBuyTheDip, SimpleNamespace]:
+def make_symbol_features(**overrides: Any) -> SymbolMarketFeatures:
+    values = {
+        "symbol": "TESTUSDT",
+        "timestamp": 1_000,
+        "close": 97.0,
+        "return_pct": -0.03,
+        "ema20": 98.0,
+        "ema50": 99.0,
+        "above_ema20": False,
+        "above_ema50": False,
+        "trend_score": -0.02,
+        "relative_strength_vs_btc": -0.01,
+        "atr_pct": 0.03,
+        "bb_width": 0.05,
+        "micro_regime": "TREND_DOWN",
+        "micro_regime_strength": 0.8,
+        "micro_regime_transition": None,
+        "micro_regime_transition_strength": 0.0,
+    }
+    values.update(overrides)
+    return SymbolMarketFeatures(**values)
+
+
+def make_market_context(**overrides: Any) -> LiveMarketContext:
+    values = {
+        "timestamp": 1_000,
+        "market_stress_score": 0.1,
+        "advancers_ratio": 0.55,
+        "decliners_ratio": 0.45,
+        "advancers": 28,
+        "decliners": 22,
+        "advancers_decliners_ratio": 28 / 22,
+        "btc_present": True,
+        "fresh_count": 50,
+        "total_tracked_symbols": 50,
+        "coverage_ratio": 1.0,
+        "btc_symbol": "XBTUSDTM",
+        "confidence": 1.0,
+        "is_provisional": False,
+        "average_return": 0.003,
+        "average_relative_strength_vs_btc": 0.001,
+        "pct_above_ema20": 0.58,
+        "pct_above_ema50": 0.52,
+        "average_trend_score": 0.01,
+        "average_atr_pct": 0.02,
+        "average_bb_width": 0.04,
+        "btc_return": 0.004,
+        "btc_trend_score": 0.02,
+        "btc_regime_score": 0.1,
+        "long_tailwind": 0.25,
+        "short_tailwind": 0.1,
+        "market_regime": "RANGE",
+        "previous_market_regime": None,
+        "market_regime_transition": None,
+        "market_regime_transition_strength": 0.0,
+        "long_regime_score": 0.45,
+        "short_regime_score": 0.2,
+        "range_regime_score": 0.7,
+        "stress_regime_score": 0.1,
+        "regime_is_transitioning": False,
+        "symbol_features": {"TESTUSDT": make_symbol_features()},
+        "metadata": {},
+    }
+    values.update(overrides)
+    return LiveMarketContext(**values)
+
+
+def make_algo(
+    df_15m: DataFrame,
+    latest_market_context: LiveMarketContext | None = None,
+) -> tuple[CoinruleBuyTheDip, SimpleNamespace]:
     context = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
@@ -44,7 +115,7 @@ def make_algo(df_15m: DataFrame) -> tuple[CoinruleBuyTheDip, SimpleNamespace]:
         market_type=MarketType.SPOT,
         telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
-        latest_market_context=None,
+        latest_market_context=latest_market_context,
         df_15m=df_15m,
         binbot_api=MagicMock(),
     )
@@ -141,3 +212,39 @@ async def test_buy_the_dip_can_emit_repeated_signals_without_local_cooldown() ->
 
     assert context.telegram_consumer.send_signal.await_count == 2
     assert context.at_consumer.process_autotrade_restrictions.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_skips_when_symbol_micro_regime_is_trend_down() -> None:
+    closes = [100.0] + [99.8] * 23 + [97.0]
+    market_context = make_market_context()
+    algo, context = make_algo(
+        make_buy_the_dip_df(closes),
+        latest_market_context=market_context,
+    )
+
+    await algo.signal(
+        current_price=97.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    context.telegram_consumer.send_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_raises_for_invalid_close_time() -> None:
+    df = make_buy_the_dip_df([100.0] + [99.8] * 23 + [97.0])
+    df["close_time"] = df["close_time"].astype(object)
+    df.loc[df.index[-1], "close_time"] = "invalid"
+    algo, _ = make_algo(df)
+
+    with pytest.raises(ValueError):
+        await algo.signal(
+            current_price=97.0,
+            bb_high=102.0,
+            bb_mid=100.0,
+            bb_low=98.0,
+        )

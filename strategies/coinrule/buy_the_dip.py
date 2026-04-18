@@ -1,12 +1,12 @@
 import logging
 import os
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pybinbot import HABollinguerSpread, Position, SignalsConsumer, round_numbers
 
-from market_regime.regime_routing import allows_long_autotrade
-from shared.utils import build_links_msg
+from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
+from shared.utils import build_links_msg, normalize_timestamp, safe_pct
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -30,34 +30,12 @@ class CoinruleBuyTheDip:
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
 
-    @staticmethod
-    def pct_change(current: float, past: float) -> float:
-        if past <= 0:
-            return 0.0
-        return ((current - past) / past) * 100.0
-
-    @staticmethod
-    def _normalize_timestamp(value: Any) -> datetime | None:
-        if isinstance(value, datetime):
-            if value.tzinfo is None:
-                return value.replace(tzinfo=UTC)
-            return value.astimezone(UTC)
-
-        try:
-            timestamp = float(value)
-        except (TypeError, ValueError):
-            return None
-
-        return datetime.fromtimestamp(timestamp / 1000, tz=UTC)
-
     def _find_reference_price(self, target_time: datetime) -> float | None:
         if "close_time" not in self.df_15m.columns:
             return None
 
         for _, candle in self.df_15m.iloc[::-1].iterrows():
-            candle_time = self._normalize_timestamp(candle.get("close_time"))
-            if candle_time is None:
-                continue
+            candle_time = normalize_timestamp(candle.get("close_time"))
             if candle_time <= target_time:
                 return float(candle["close"])
         return None
@@ -82,11 +60,7 @@ class CoinruleBuyTheDip:
             )
             return
 
-        now = self._normalize_timestamp(self.df_15m["close_time"].iloc[-1])
-        if now is None:
-            logging.info("Buy-the-dip skipped: invalid close_time for %s", self.symbol)
-            return
-
+        now = normalize_timestamp(self.df_15m["close_time"].iloc[-1])
         if now < self.START_TIME:
             return
 
@@ -97,7 +71,7 @@ class CoinruleBuyTheDip:
         if reference_price is None:
             return
 
-        change_6h = self.pct_change(current_price, reference_price)
+        change_6h = safe_pct(current_price, reference_price) * 100.0
         if change_6h > -2.0 or change_6h <= -5.0:
             return
 
@@ -108,6 +82,13 @@ class CoinruleBuyTheDip:
             self.symbol,
         )
         context = self.latest_market_context
+        symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
+        if symbol_features is not None and symbol_features.micro_regime == "TREND_DOWN":
+            logging.info(
+                "Buy-the-dip skipped: %s is in TREND_DOWN micro-regime",
+                self.symbol,
+            )
+            return
         autotrade = (
             allows_long_autotrade(context=context, symbol=self.symbol)
             if context is not None
