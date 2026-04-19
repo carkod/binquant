@@ -1,0 +1,4 @@
+interface:
+  display_name: "Live Strategy Eval"
+  short_description: "Test Binquant strategies on live data"
+  default_prompt: "Use $live-strategy-eval with a Binquant strategy file to test it against fresh KuCoin futures data and explain which regime or filter is blocking it."
