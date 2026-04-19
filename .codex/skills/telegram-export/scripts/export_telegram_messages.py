@@ -41,7 +41,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Export Telegram messages to JSONL.")
     parser.add_argument("--chat", help="Chat username/title/id to export.")
     parser.add_argument("--limit", type=int, default=1000, help="Max messages to export.")
-    parser.add_argument("--out", required=True, help="Output JSONL path.")
+    parser.add_argument("--out", help="Output JSONL path.")
     parser.add_argument("--markdown-out", help="Optional Markdown output path.")
     parser.add_argument("--session", default="telegram-export", help="Telethon session name.")
     parser.add_argument(
@@ -115,6 +115,8 @@ async def _run(args: argparse.Namespace) -> int:
 
         if not args.chat:
             raise RuntimeError("--chat is required unless --list-dialogs is set.")
+        if not args.out:
+            raise RuntimeError("--out is required unless --list-dialogs is set.")
 
         records = await _export_messages(client, args.chat, args.limit)
         _write_jsonl(Path(args.out), records)
