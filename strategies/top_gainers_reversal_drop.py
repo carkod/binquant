@@ -47,6 +47,27 @@ class TopGainersReversalDrop:
         self.min_upper_wick_frac = 0.3
         self.max_close_position = 0.35
 
+    def regime_routing(self) -> tuple[bool, str]:
+        context = self.latest_market_context
+        if context is None:
+            return False, "market_context_unavailable"
+
+        if context.market_regime in {"RANGE", "TREND_UP"}:
+            return False, f"market_regime_{context.market_regime.lower()}"
+
+        autotrade = allows_short_autotrade(
+            context=context,
+            symbol=self.symbol,
+        )
+        if autotrade:
+            return True, "short_autotrade_allowed"
+
+        if context.regime_is_transitioning:
+            return False, "market_transitioning"
+        if context.market_regime is None:
+            return False, "market_regime_unavailable"
+        return False, f"market_regime_{context.market_regime.lower()}"
+
     def compute_indicators(
         self, df: TypedDataFrame[KlineSchema]
     ) -> TypedDataFrame[KlineSchema]:
@@ -149,14 +170,7 @@ class TopGainersReversalDrop:
 
         algo = "top_gainers_reversal_drop"
         bot_strategy = Position.short
-        autotrade = False
-        if autotrade:
-            context = self.latest_market_context
-            if context is not None:
-                autotrade = allows_short_autotrade(
-                    context=context,
-                    symbol=self.symbol,
-                )
+        autotrade, autotrade_route = self.regime_routing()
 
         base_asset = self.current_symbol_data["base_asset"]
         score = float(row["reversal_drop_score"])
@@ -185,6 +199,7 @@ class TopGainersReversalDrop:
             - Dynamic score threshold: {round_numbers(score_threshold, 4)}
             - 📊 {base_asset} volume: {round_numbers(float(row["volume"]), decimals=self.price_precision)}
             - Autotrade?: {"Yes" if autotrade else "No"}
+            - Autotrade route: {autotrade_route}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
