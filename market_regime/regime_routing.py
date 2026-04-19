@@ -41,33 +41,6 @@ def allows_long_autotrade(
     return features.micro_regime in {"TREND_UP", "RANGE", "TRANSITIONAL"}
 
 
-def allows_short_autotrade(
-    context: LiveMarketContext | None,
-    symbol: str | None = None,
-) -> bool:
-    if context is None:
-        return False
-    if context.regime_is_transitioning:
-        return False
-
-    if context.market_regime == "TRANSITIONAL":
-        return False
-
-    if context.market_regime == "TREND_UP" and context.market_stress_score < 0.35:
-        return False
-
-    if symbol is None:
-        return context.market_regime in {"TREND_DOWN", "HIGH_STRESS", "RANGE"}
-
-    features = resolve_symbol_features(context, symbol)
-    if features is None:
-        return context.market_regime in {"TREND_DOWN", "HIGH_STRESS", "RANGE"}
-
-    if features.micro_regime == "TREND_UP":
-        return False
-    return features.micro_regime in {"TREND_DOWN", "RANGE", "VOLATILE", "TRANSITIONAL"}
-
-
 def supports_grid_trading(
     context: LiveMarketContext | None,
     symbol: str | None = None,

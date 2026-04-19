@@ -26,7 +26,7 @@ from pybinbot import (
 
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.apex_flow import ApexFlow
-from strategies.coinrule.buy_the_dip import CoinruleBuyTheDip
+from strategies.coinrule.buy_the_dip import BuyTheDip
 from strategies.coinrule.grid_trading import GridTrading
 from strategies.coinrule.price_tracker import PriceTracker
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
@@ -204,7 +204,7 @@ class ContextEvaluator:
         self.af = ApexFlow(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
         self.gt = GridTrading(cls=self)
-        self.coinrule_buy_the_dip = CoinruleBuyTheDip(cls=self)
+        self.coinrule_buy_the_dip = BuyTheDip(cls=self)
 
     def indicators_enrichment(
         self, df: TypedDataFrame[KlineSchema]

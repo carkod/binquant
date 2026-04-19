@@ -342,3 +342,40 @@ async def test_signal_enables_autotrade_in_trend_down_market():
     assert send_args is not None
     telegram_msg = send_args.args[0]
     assert "Autotrade route: short_autotrade_allowed" in telegram_msg
+
+
+@pytest.mark.asyncio
+async def test_signal_disables_autotrade_when_market_regime_is_unavailable() -> None:
+    df = make_reversal_df()
+    algo = make_algo(
+        df,
+        latest_market_context=make_market_context(
+            market_regime=None,
+            symbol_features={
+                "TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")
+            },
+        ),
+    )
+    get_top_gainers_mock = AsyncMock(
+        return_value=[{"symbol": "TESTUSDT", "priceChangePercent": "15.8"}]
+    )
+    send_signal_mock = AsyncMock()
+    process_mock = AsyncMock()
+    algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
+    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]), bb_high=0, bb_mid=0, bb_low=0
+    )
+
+    process_args = process_mock.await_args
+    assert process_args is not None
+    value = process_args.args[0]
+    assert value.autotrade is False
+    send_args = send_signal_mock.await_args
+    assert send_args is not None
+    telegram_msg = send_args.args[0]
+    assert "Autotrade route: market_regime_unavailable" in telegram_msg

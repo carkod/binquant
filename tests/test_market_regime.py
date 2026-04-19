@@ -6,7 +6,6 @@ from market_regime.market_state_store import MarketStateStore
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import (
     allows_long_autotrade,
-    allows_short_autotrade,
     supports_grid_trading,
 )
 from market_regime.regime_transitions import RegimeTransitionDetector
@@ -300,5 +299,4 @@ def test_autotrade_routing_blocks_transitioning_context() -> None:
     )
 
     assert allows_long_autotrade(context=context, symbol="ALT0USDT") is False
-    assert allows_short_autotrade(context=context, symbol="ALT0USDT") is False
     assert supports_grid_trading(context=context, symbol="ALT0USDT") is False
