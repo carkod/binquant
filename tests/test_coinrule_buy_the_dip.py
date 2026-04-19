@@ -8,7 +8,7 @@ from pybinbot import ExchangeId, MarketType
 from unittest.mock import AsyncMock, MagicMock
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
-from strategies.coinrule.buy_the_dip import CoinruleBuyTheDip
+from strategies.coinrule.buy_the_dip import BuyTheDip
 
 
 def make_buy_the_dip_df(
@@ -107,7 +107,7 @@ def make_market_context(**overrides: Any) -> LiveMarketContext:
 def make_algo(
     df_15m: DataFrame,
     latest_market_context: LiveMarketContext | None = None,
-) -> tuple[CoinruleBuyTheDip, SimpleNamespace]:
+) -> tuple[BuyTheDip, SimpleNamespace]:
     context = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
@@ -119,12 +119,12 @@ def make_algo(
         df_15m=df_15m,
         binbot_api=MagicMock(),
     )
-    return CoinruleBuyTheDip(cast(Any, context)), context
+    return BuyTheDip(cast(Any, context)), context
 
 
 @pytest.mark.asyncio
 async def test_buy_the_dip_enters_on_valid_six_hour_dip() -> None:
-    closes = [100.0] + [99.8] * 23 + [97.0]
+    closes = [100.0] + [96.0] * 23 + [97.0]
     algo, context = make_algo(make_buy_the_dip_df(closes))
 
     await algo.signal(
@@ -194,7 +194,7 @@ async def test_buy_the_dip_skips_when_dip_is_too_deep() -> None:
 
 @pytest.mark.asyncio
 async def test_buy_the_dip_can_emit_repeated_signals_without_local_cooldown() -> None:
-    closes = [100.0] + [99.8] * 23 + [97.0]
+    closes = [100.0] + [96.0] * 23 + [97.0]
     algo, context = make_algo(make_buy_the_dip_df(closes))
 
     await algo.signal(
@@ -216,8 +216,133 @@ async def test_buy_the_dip_can_emit_repeated_signals_without_local_cooldown() ->
 
 @pytest.mark.asyncio
 async def test_buy_the_dip_skips_when_symbol_micro_regime_is_trend_down() -> None:
-    closes = [100.0] + [99.8] * 23 + [97.0]
+    closes = [100.0] + [96.0] * 23 + [97.0]
     market_context = make_market_context()
+    algo, context = make_algo(
+        make_buy_the_dip_df(closes),
+        latest_market_context=market_context,
+    )
+
+    await algo.signal(
+        current_price=97.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    context.telegram_consumer.send_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_skips_when_market_regime_is_trend_up() -> None:
+    closes = [100.0] + [96.0] * 23 + [97.0]
+    market_context = make_market_context(
+        market_regime="TREND_UP",
+        symbol_features={
+            "TESTUSDT": make_symbol_features(
+                micro_regime="RANGE",
+                above_ema20=False,
+                ema20=96.8,
+            )
+        },
+    )
+    algo, context = make_algo(
+        make_buy_the_dip_df(closes),
+        latest_market_context=market_context,
+    )
+
+    await algo.signal(
+        current_price=97.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    context.telegram_consumer.send_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_skips_when_symbol_micro_regime_is_trend_up() -> None:
+    closes = [100.0] + [96.0] * 23 + [97.0]
+    market_context = make_market_context(
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
+    )
+    algo, context = make_algo(
+        make_buy_the_dip_df(closes),
+        latest_market_context=market_context,
+    )
+
+    await algo.signal(
+        current_price=97.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    context.telegram_consumer.send_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_requires_reclaim_above_prior_close_and_ema20() -> None:
+    closes = [100.0] + [96.0] * 22 + [97.6, 97.0]
+    market_context = make_market_context(
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="RANGE")}
+    )
+    algo, context = make_algo(
+        make_buy_the_dip_df(closes),
+        latest_market_context=market_context,
+    )
+
+    await algo.signal(
+        current_price=97.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    context.telegram_consumer.send_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_autotrade_requires_range_or_transitional_context() -> None:
+    closes = [100.0] + [96.0] * 23 + [97.0]
+    market_context = make_market_context(
+        market_regime="TRANSITIONAL",
+        symbol_features={
+            "TESTUSDT": make_symbol_features(
+                micro_regime="TRANSITIONAL",
+            )
+        },
+    )
+    algo, context = make_algo(
+        make_buy_the_dip_df(closes),
+        latest_market_context=market_context,
+    )
+
+    await algo.signal(
+        current_price=97.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    process_args = context.at_consumer.process_autotrade_restrictions.await_args
+    assert process_args is not None
+    value = process_args.args[0]
+    assert value.autotrade is True
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_skips_when_market_regime_is_trend_down() -> None:
+    closes = [100.0] + [96.0] * 23 + [97.0]
+    market_context = make_market_context(
+        market_regime="TREND_DOWN",
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="RANGE")},
+    )
     algo, context = make_algo(
         make_buy_the_dip_df(closes),
         latest_market_context=market_context,

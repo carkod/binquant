@@ -11,7 +11,7 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.regime_routing import allows_short_autotrade
+from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -46,6 +46,49 @@ class TopGainersReversalDrop:
         self.min_volume_ratio = 1.8
         self.min_upper_wick_frac = 0.3
         self.max_close_position = 0.35
+
+    def _allows_strategy_short_autotrade(self) -> bool:
+        context = self.latest_market_context
+        if context is None:
+            return False
+        if context.regime_is_transitioning:
+            return False
+        if context.market_regime is None:
+            return False
+        if context.market_regime == "TRANSITIONAL":
+            return False
+        if context.market_regime == "TREND_UP" and context.market_stress_score < 0.35:
+            return False
+
+        symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
+        if symbol_features is None:
+            return context.market_regime in {"TREND_DOWN", "HIGH_STRESS", "RANGE"}
+        if symbol_features.micro_regime == "TREND_UP":
+            return False
+        return symbol_features.micro_regime in {
+            "TREND_DOWN",
+            "RANGE",
+            "VOLATILE",
+            "TRANSITIONAL",
+        }
+
+    def regime_routing(self) -> tuple[bool, str]:
+        context = self.latest_market_context
+        if context is None:
+            return False, "market_context_unavailable"
+
+        if context.market_regime is None:
+            return False, "market_regime_unavailable"
+
+        if context.market_regime in {"RANGE", "TREND_UP"}:
+            return False, f"market_regime_{context.market_regime.lower()}"
+
+        if self._allows_strategy_short_autotrade():
+            return True, "short_autotrade_allowed"
+
+        if context.regime_is_transitioning:
+            return False, "market_transitioning"
+        return False, f"market_regime_{context.market_regime.lower()}"
 
     def compute_indicators(
         self, df: TypedDataFrame[KlineSchema]
@@ -149,14 +192,7 @@ class TopGainersReversalDrop:
 
         algo = "top_gainers_reversal_drop"
         bot_strategy = Position.short
-        autotrade = False
-        if autotrade:
-            context = self.latest_market_context
-            if context is not None:
-                autotrade = allows_short_autotrade(
-                    context=context,
-                    symbol=self.symbol,
-                )
+        autotrade, autotrade_route = self.regime_routing()
 
         base_asset = self.current_symbol_data["base_asset"]
         score = float(row["reversal_drop_score"])
@@ -185,6 +221,7 @@ class TopGainersReversalDrop:
             - Dynamic score threshold: {round_numbers(score_threshold, 4)}
             - 📊 {base_asset} volume: {round_numbers(float(row["volume"]), decimals=self.price_precision)}
             - Autotrade?: {"Yes" if autotrade else "No"}
+            - Autotrade route: {autotrade_route}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
