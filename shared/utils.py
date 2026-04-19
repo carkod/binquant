@@ -1,5 +1,7 @@
 import logging
+from datetime import UTC, datetime
 from time import sleep
+from typing import Any
 
 from pybinbot import ExchangeId, MarketType
 from requests import Response
@@ -19,6 +21,16 @@ def safe_pct(current: float, previous: float) -> float:
     if previous == 0:
         return 0.0
     return (float(current) - float(previous)) / abs(float(previous))
+
+
+def normalize_timestamp(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    timestamp = float(value)
+    return datetime.fromtimestamp(timestamp / 1000, tz=UTC)
 
 
 def safe_format(value, spec: str = ".2f") -> str:

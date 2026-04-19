@@ -61,12 +61,17 @@ def annotate_context(
     )
 
 
-def make_algo(context: LiveMarketContext) -> ApexFlow:
+def make_algo(
+    context: LiveMarketContext,
+    *,
+    last_market_regime: str | None = None,
+) -> ApexFlow:
     cls = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
         telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
         latest_market_context=context,
+        last_market_regime=last_market_regime,
     )
     return ApexFlow(cast(Any, cls))
 

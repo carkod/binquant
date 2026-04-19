@@ -809,7 +809,9 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
     binbot_api_mock.get_bots_by_name.assert_called_once_with(
         name="coinrule_grid_trading", symbol="TESTUSDT"
     )
-    binbot_api_mock.deactivate_bot.assert_called_once_with("bot-123")
+    binbot_api_mock.deactivate_bot.assert_called_once_with(
+        "bot-123", algorithmic_close=True
+    )
 
     tg_await_args = tg_mock.await_args
     assert tg_await_args is not None

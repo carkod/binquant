@@ -95,6 +95,7 @@ class KlinesProvider:
             btc_symbol=self.futures_benchmark_symbol,
         )
         self.latest_market_context: LiveMarketContext | None = None
+        self.last_market_regime: str | None = None
 
         self.all_symbols = self.binbot_api.get_symbols()
 
@@ -311,6 +312,7 @@ class KlinesProvider:
             oi_data=self.retrieve_oi(kucoin_symbol),
             latest_market_context=self.latest_market_context,
             binbot_api=self.binbot_api,
+            last_market_regime=self.last_market_regime,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

@@ -154,9 +154,9 @@ class LiquidationSweepPump:
             else 0.0
         )
 
-        # Loosen the trigger a bit so we catch stronger emerging spikes,
-        # not only the most extreme top 5% outliers in the lookback window.
-        PUMP_SCORE_THRESHOLD = recent_scores.quantile(0.85)
+        # Keep the trigger selective, but allow strong setups that land in the
+        # top quintile of recent pump-score readings instead of only rarer outliers.
+        PUMP_SCORE_THRESHOLD = recent_scores.quantile(0.80)
         row = df.iloc[-1]
         latest_score = row["pump_score_smooth"]
         latest_raw_score = row["pump_score"]

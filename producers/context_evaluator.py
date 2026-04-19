@@ -26,6 +26,7 @@ from pybinbot import (
 
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.apex_flow import ApexFlow
+from strategies.coinrule.buy_the_dip import CoinruleBuyTheDip
 from strategies.coinrule.grid_trading import GridTrading
 from strategies.coinrule.price_tracker import PriceTracker
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
@@ -58,6 +59,7 @@ class ContextEvaluator:
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
         latest_market_context: LiveMarketContext | None = None,
+        last_market_regime: str | None = None,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -107,6 +109,7 @@ class ContextEvaluator:
         self.first_seen_at = first_seen_at
         self.oi_data = oi_data
         self.latest_market_context = latest_market_context
+        self.last_market_regime = last_market_regime
         self.signal_context_scorer = SignalContextScorer(
             context_weight=0.35,
             risk_weight=0.35,
@@ -201,6 +204,7 @@ class ContextEvaluator:
         self.af = ApexFlow(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
         self.gt = GridTrading(cls=self)
+        self.coinrule_buy_the_dip = CoinruleBuyTheDip(cls=self)
 
     def indicators_enrichment(
         self, df: TypedDataFrame[KlineSchema]
@@ -341,6 +345,12 @@ class ContextEvaluator:
                 bb_low=spreads.bb_low,
             )
             await self.gt.signal(
+                current_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_mid=spreads.bb_mid,
+                bb_low=spreads.bb_low,
+            )
+            await self.coinrule_buy_the_dip.signal(
                 current_price=close_price,
                 bb_high=spreads.bb_high,
                 bb_mid=spreads.bb_mid,
