@@ -1,0 +1,4 @@
+interface:
+  display_name: "Telegram Export"
+  short_description: "Export Telegram messages for analysis."
+  default_prompt: "Export messages from a Telegram chat and save them for analysis."
