@@ -25,3 +25,4 @@ db.dump
 __pycache__
 .pytest_cache
 binquant.egg-info/
+binquant_telegram_user.session
