@@ -8,7 +8,7 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 
 from telethon import TelegramClient
@@ -62,7 +62,7 @@ async def _export_messages(client: TelegramClient, chat: str, limit: int) -> lis
     records: list[ExportRecord] = []
 
     async for message in client.iter_messages(entity, limit=limit):
-        dt = message.date.astimezone(timezone.utc).isoformat() if message.date else None
+        dt = message.date.astimezone(UTC).isoformat() if message.date else None
         sender = await message.get_sender() if message.sender_id else None
         sender_name = getattr(sender, "first_name", None) or getattr(sender, "title", None)
 
