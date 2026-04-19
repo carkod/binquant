@@ -200,13 +200,15 @@ class PriceTracker:
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Action: LONG ENTRY
             - Current price: {close_price}
             - RSI (14) &lt; 30: {round_numbers(rsi_value, 2)}
             - MACD &lt; 0: {round_numbers(macd_value, 6)}
             - MFI &lt; 20: {round_numbers(mfi_value, 2)}
             - Strategy: {bot_strategy.value}
+            - Rule intent: BUY after 5m oversold mean-reversion confirmation in a balanced range market
             - Market regime: {context.market_regime}
-            - Market transitioning: {"Yes" if context.regime_is_transitioning else "No"}
+            - Market transition: {context.market_regime_transition if context.market_regime_transition is not None else "None"}
             - Market stress: {round_numbers(context.market_stress_score, 3)}
             - Advancers ratio: {round_numbers(context.advancers_ratio, 3)}
             - Long tailwind: {round_numbers(context.long_tailwind, 3)}
@@ -219,7 +221,7 @@ class PriceTracker:
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3) if context_score is not None else "UNAVAILABLE"}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3) if evaluation is not None else "UNAVAILABLE"}
             - Autotrade route: {autotrade_route}
-            - {"Autotrade has been enabled ✅" if autotrade else "Autotrade has been disabled due to market context ❌"}
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """

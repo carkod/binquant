@@ -52,23 +52,25 @@ class ApexFlow:
         self.last_market_regime = context.market_regime_transition
         msg = f"""
             - [{str(self.config.env)}] <strong>#market_regime_transition</strong>
-            - Regime transition: {previous_regime} -> {current_regime}
             - Event: {context.market_regime_transition}
+            - Regime transition: {previous_regime} -> {current_regime}
+            - Market regime: {current_regime}
+            - Market transition: {context.market_regime_transition}
             - Interpretation: {self._regime_summary(current_regime)}
             - Timestamp: {ts_to_humandate(context.timestamp)}
             - Confidence: {round_numbers(context.confidence, 3)}
             - Transition strength: {round_numbers(context.market_regime_transition_strength, 3)}
-            - Fresh symbols: {context.fresh_count} (min 40 required)
-            - Advancers ratio: {round_numbers(context.advancers_ratio, 3)} (>= 0.55 long bias, <= 0.45 short bias)
+            - Fresh symbols: {context.fresh_count}
+            - Advancers ratio: {round_numbers(context.advancers_ratio, 3)}
             - Long regime score: {round_numbers(long_score, 3)}
             - Short regime score: {round_numbers(short_score, 3)}
             - Range regime score: {round_numbers(context.range_regime_score, 3)}
             - Stress regime score: {round_numbers(context.stress_regime_score, 3)}
             - Avg return: {round_numbers(context.average_return, 4)}
-            - BTC regime score: {round_numbers(context.btc_regime_score, 3)} (-1 to 1, positive favors longs)
-            - Long tailwind: {round_numbers(context.long_tailwind, 3)} (-1 to 1, positive is supportive)
-            - Short tailwind: {round_numbers(context.short_tailwind, 3)} (-1 to 1, positive is supportive)
-            - Market stress: {round_numbers(context.market_stress_score, 3)} (0 to 1, higher is worse)
+            - BTC regime score: {round_numbers(context.btc_regime_score, 3)}
+            - Long tailwind: {round_numbers(context.long_tailwind, 3)}
+            - Short tailwind: {round_numbers(context.short_tailwind, 3)}
+            - Market stress: {round_numbers(context.market_stress_score, 3)}
         """
 
         await self.telegram_consumer.send_signal(msg)

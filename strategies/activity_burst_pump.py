@@ -11,7 +11,7 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.regime_routing import allows_long_autotrade
+from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -169,11 +169,14 @@ class ActivityBurstPump:
         bot_strategy = Position.long
         base_asset = self.current_symbol_data["base_asset"]
         context = self.latest_market_context
+        symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
+        autotrade_route = "market_context_unavailable"
 
         if context is not None:
             if not allows_long_autotrade(context=context, symbol=self.symbol):
                 return
             autotrade = bot_strategy == Position.long
+            autotrade_route = "long_autotrade_allowed"
 
         df = self.compute_indicators(df)
         row = df.iloc[-1]
@@ -192,8 +195,15 @@ class ActivityBurstPump:
         )
 
         msg = f"""
-            - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
+            - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Action: LONG ENTRY
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
+            - Strategy: {bot_strategy.value}
+            - Rule intent: BUY after a 5m activity burst with volume, quote-volume, and price expansion confirmation
+            - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Baseline volume: {round_numbers(float(row["baseline_volume_safe"]), decimals=self.price_precision)}
             - Volume ratio: {round_numbers(float(row["volume_ratio"]), 2)}
             - Quote volume ratio: {round_numbers(float(row["quote_volume_ratio"]), 2)}
@@ -202,8 +212,9 @@ class ActivityBurstPump:
             - Candle body fraction: {round_numbers(float(row["body_frac"]) * 100, 2)}%
             - Score: {round_numbers(score, 4)}
             - Dynamic score threshold: {round_numbers(score_threshold, 4)}
-            - 📊 {base_asset} volume: {round_numbers(float(row["volume"]), decimals=self.price_precision)}
-            - Autotrade?: {"Yes" if autotrade else "No"}
+            - Volume: {round_numbers(float(row["volume"]), decimals=self.price_precision)} {base_asset}
+            - Autotrade route: {autotrade_route}
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

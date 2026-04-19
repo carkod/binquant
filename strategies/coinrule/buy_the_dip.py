@@ -7,6 +7,7 @@ from pybinbot import HABollinguerSpread, Position, SignalsConsumer, round_number
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
+from shared.bot_exit import deactivate_active_bot
 from shared.utils import build_links_msg, normalize_timestamp, safe_pct
 
 if TYPE_CHECKING:
@@ -41,6 +42,10 @@ class BuyTheDip:
         return None
 
     def _reclaimed_prior_close_and_ema20(self, current_price: float) -> bool:
+        prior_close, ema20 = self._prior_close_and_ema20()
+        return current_price > prior_close and current_price > ema20
+
+    def _prior_close_and_ema20(self) -> tuple[float, float]:
         prior_close = float(self.df_15m["close"].iloc[-2])
         ema20 = float(
             self.df_15m["close"]
@@ -48,7 +53,11 @@ class BuyTheDip:
             .mean()
             .iloc[-1]
         )
-        return current_price > prior_close and current_price > ema20
+        return prior_close, ema20
+
+    def _lost_reclaim_below_prior_close_and_ema20(self, current_price: float) -> bool:
+        prior_close, ema20 = self._prior_close_and_ema20()
+        return current_price < prior_close and current_price < ema20
 
     @staticmethod
     def _allows_entry(
@@ -82,6 +91,41 @@ class BuyTheDip:
         if symbol_features.micro_regime in {"TREND_DOWN", "TREND_UP", "VOLATILE"}:
             return False
         return symbol_features.micro_regime in {"RANGE", "TRANSITIONAL"}
+
+    @staticmethod
+    def _resolve_autotrade_route(
+        context: LiveMarketContext | None,
+        symbol_features: SymbolMarketFeatures | None,
+    ) -> str:
+        if context is None:
+            return "market_context_unavailable"
+        if context.regime_is_transitioning:
+            return "market_transitioning"
+        if context.market_stress_score >= 0.35:
+            return "market_stress_too_high"
+        if context.market_regime not in {"RANGE", "TRANSITIONAL"}:
+            return f"market_regime_{str(context.market_regime).lower()}"
+        if symbol_features is None:
+            return "symbol_regime_unavailable"
+        if symbol_features.micro_regime in {"TREND_DOWN", "TREND_UP", "VOLATILE"}:
+            return f"symbol_regime_{str(symbol_features.micro_regime).lower()}"
+        if symbol_features.micro_regime in {"RANGE", "TRANSITIONAL"}:
+            return f"symbol_regime_{str(symbol_features.micro_regime).lower()}"
+        return "symbol_regime_unavailable"
+
+    def _resolve_exit_reason(
+        self,
+        context: LiveMarketContext | None,
+        symbol_features: SymbolMarketFeatures | None,
+        current_price: float,
+    ) -> str | None:
+        if context is not None and context.market_regime == "TREND_DOWN":
+            return "market_regime_trend_down"
+        if symbol_features is not None and symbol_features.micro_regime == "TREND_DOWN":
+            return "symbol_regime_trend_down"
+        if self._lost_reclaim_below_prior_close_and_ema20(current_price):
+            return "reclaim_lost_below_prior_close_and_ema20"
+        return None
 
     async def signal(
         self,
@@ -126,6 +170,40 @@ class BuyTheDip:
         )
         context = self.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
+        exit_reason = self._resolve_exit_reason(
+            context=context,
+            symbol_features=symbol_features,
+            current_price=current_price,
+        )
+        if exit_reason is not None:
+            bot_action = deactivate_active_bot(
+                binbot_api=self.ti.binbot_api,
+                algo=self.ALGO,
+                symbol=self.symbol,
+                source_label="Buy The Dip exit",
+            )
+            if bot_action != "No active bot found to deactivate.":
+                prior_close, ema20 = self._prior_close_and_ema20()
+                msg = f"""
+                - [{os.getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
+                - Action: LONG EXIT / DEACTIVATE
+                - Current price: {round_numbers(current_price, 6)}
+                - Strategy: {Position.long.value}
+                - Rule intent: EXIT when downside continuation or reclaim failure invalidates the dip-catcher setup
+                - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
+                - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+                - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+                - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
+                - Prior close: {round_numbers(prior_close, 6)}
+                - EMA20: {round_numbers(ema20, 6)}
+                - Exit reason: {exit_reason}
+                - Candle time: {now.isoformat()}
+                - Bot action: {bot_action}
+                - <a href='{kucoin_link}'>KuCoin</a>
+                - <a href='{terminal_link}'>Dashboard trade</a>
+                """
+                await self.telegram_consumer.send_signal(msg)
+            return
         if not self._allows_entry(context=context, symbol_features=symbol_features):
             logging.info(
                 "Buy-the-dip skipped: %s is in a blocked trend regime",
@@ -143,15 +221,25 @@ class BuyTheDip:
             context=context,
             symbol_features=symbol_features,
         )
+        autotrade_route = self._resolve_autotrade_route(
+            context=context,
+            symbol_features=symbol_features,
+        )
 
         msg = f"""
         - [{os.getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
         - Action: LONG ENTRY
         - Current price: {round_numbers(current_price, 6)}
         - Strategy: {Position.long.value}
+        - Rule intent: BUY after a 6h dip between -2.0% and -5.0% once price reclaims the prior close and EMA20
+        - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
+        - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+        - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+        - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
         - 6h reference price: {round_numbers(reference_price, 6)}
         - 6h price change: {round_numbers(change_6h, 2)}%
         - Candle time: {now.isoformat()}
+        - Autotrade route: {autotrade_route}
         - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
         - <a href='{kucoin_link}'>KuCoin</a>
         - <a href='{terminal_link}'>Dashboard trade</a>
