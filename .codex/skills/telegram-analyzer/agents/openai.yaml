@@ -1,4 +1,0 @@
-interface:
-  display_name: "Telegram Analyzer"
-  short_description: "Analyze Telegram messages for themes and sentiment."
-  default_prompt: "Analyze exported Telegram messages and provide insights."
