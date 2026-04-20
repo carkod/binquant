@@ -40,10 +40,14 @@ def _require_env(name: str) -> str:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Export Telegram messages to JSONL.")
     parser.add_argument("--chat", help="Chat username/title/id to export.")
-    parser.add_argument("--limit", type=int, default=1000, help="Max messages to export.")
+    parser.add_argument(
+        "--limit", type=int, default=1000, help="Max messages to export."
+    )
     parser.add_argument("--out", help="Output JSONL path.")
     parser.add_argument("--markdown-out", help="Optional Markdown output path.")
-    parser.add_argument("--session", default="telegram-export", help="Telethon session name.")
+    parser.add_argument(
+        "--session", default="telegram-export", help="Telethon session name."
+    )
     parser.add_argument(
         "--list-dialogs",
         action="store_true",
@@ -57,14 +61,18 @@ async def _list_dialogs(client: TelegramClient) -> None:
         print(f"{dialog.id}\t{dialog.name}")
 
 
-async def _export_messages(client: TelegramClient, chat: str, limit: int) -> list[ExportRecord]:
+async def _export_messages(
+    client: TelegramClient, chat: str, limit: int
+) -> list[ExportRecord]:
     entity = await client.get_entity(chat)
     records: list[ExportRecord] = []
 
     async for message in client.iter_messages(entity, limit=limit):
         dt = message.date.astimezone(UTC).isoformat() if message.date else None
         sender = await message.get_sender() if message.sender_id else None
-        sender_name = getattr(sender, "first_name", None) or getattr(sender, "title", None)
+        sender_name = getattr(sender, "first_name", None) or getattr(
+            sender, "title", None
+        )
 
         records.append(
             ExportRecord(

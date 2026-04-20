@@ -93,7 +93,9 @@ class InversePriceTracker:
             return False, "symbol_regime_unavailable"
         return False, f"symbol_regime_{symbol_features.micro_regime.lower()}"
 
-    async def signal(self, close_price: float, bb_high: float, bb_low: float, bb_mid: float):
+    async def signal(
+        self, close_price: float, bb_high: float, bb_low: float, bb_mid: float
+    ):
         self.df_5m = self.ti.df_5m.copy()
         algo = "inverse_price_tracker"
 
@@ -132,7 +134,9 @@ class InversePriceTracker:
         ema_fast = self.df_5m["close"].ewm(span=9, adjust=False).mean().iloc[-1]
         ema_slow = self.df_5m["close"].ewm(span=21, adjust=False).mean().iloc[-1]
         trend_score = (
-            float((ema_fast - ema_slow) / abs(ema_slow)) if float(ema_slow) != 0 else 0.0
+            float((ema_fast - ema_slow) / abs(ema_slow))
+            if float(ema_slow) != 0
+            else 0.0
         )
 
         evaluation = score_signal_candidate_with_context(

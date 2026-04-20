@@ -256,7 +256,9 @@ async def test_inverse_price_tracker_skips_in_trend_down_or_high_stress(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_inverse_price_tracker_skips_when_context_or_symbol_unavailable(monkeypatch):
+async def test_inverse_price_tracker_skips_when_context_or_symbol_unavailable(
+    monkeypatch,
+):
     monkeypatch.setattr(
         "strategies.inverse_price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
@@ -267,7 +269,9 @@ async def test_inverse_price_tracker_skips_when_context_or_symbol_unavailable(mo
     algo_missing_context.telegram_consumer.send_signal.assert_not_awaited()
 
     context_missing_symbol = make_market_context(symbol_features={})
-    algo_missing_symbol = make_algo(make_ohlcv_df(oversold=True), context_missing_symbol)
+    algo_missing_symbol = make_algo(
+        make_ohlcv_df(oversold=True), context_missing_symbol
+    )
     await algo_missing_symbol.signal(100.0, 101.0, 99.0, 100.0)
     algo_missing_symbol.telegram_consumer.send_signal.assert_not_awaited()
 
@@ -308,7 +312,9 @@ async def test_inverse_price_tracker_uses_context_market_type(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_inverse_price_tracker_telegram_message_contains_expected_text(monkeypatch):
+async def test_inverse_price_tracker_telegram_message_contains_expected_text(
+    monkeypatch,
+):
     context = make_market_context(market_regime_transition="ENTERED_TREND_UP")
     algo = make_algo(make_ohlcv_df(oversold=True), context)
 
