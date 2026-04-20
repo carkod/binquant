@@ -97,7 +97,6 @@ class TestAutotradeConsumer:
 
     # --- KlinesProvider test ---
     def test_klines_provider_init(self):
-
         with patch("consumers.klines_provider.AsyncProducer", MagicMock()):
             provider = KlinesProvider(self.consumer)
             assert provider is not None

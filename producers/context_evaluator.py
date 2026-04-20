@@ -30,6 +30,7 @@ from strategies.coinrule.buy_the_dip import BuyTheDip
 from strategies.coinrule.grid_trading import GridTrading
 from strategies.coinrule.price_tracker import PriceTracker
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
+from strategies.inverse_price_tracker import InversePriceTracker
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from strategies.top_gainers_reversal_drop import TopGainersReversalDrop
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -195,6 +196,7 @@ class ContextEvaluator:
         self.abp = ActivityBurstPump(cls=self)
         self.tgrd = TopGainersReversalDrop(cls=self)
         self.pt = PriceTracker(cls=self)
+        self.ipt = InversePriceTracker(cls=self)
 
     def load_15m_algorithms(self):
         """
@@ -280,6 +282,13 @@ class ContextEvaluator:
             )
 
             await self.pt.signal(
+                close_price=close_price,
+                bb_high=spreads.bb_high,
+                bb_low=spreads.bb_low,
+                bb_mid=spreads.bb_mid,
+            )
+
+            await self.ipt.signal(
                 close_price=close_price,
                 bb_high=spreads.bb_high,
                 bb_low=spreads.bb_low,
