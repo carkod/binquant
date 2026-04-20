@@ -117,12 +117,12 @@ class InversePriceTracker:
 
         context = self.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        autotrade, autotrade_route = self.regime_routing(
+        route_allowed, autotrade_route = self.regime_routing(
             context=context,
             symbol_features=symbol_features,
         )
 
-        if not autotrade or context is None or symbol_features is None:
+        if not route_allowed or context is None or symbol_features is None:
             return
 
         local_score = (
@@ -164,6 +164,8 @@ class InversePriceTracker:
         )
         bot_strategy = Position.long
 
+        autotrade = False
+
         value = SignalsConsumer(
             symbol=self.symbol,
             algo=algo,
@@ -197,7 +199,7 @@ class InversePriceTracker:
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
             - Autotrade route: {autotrade_route}
-            - Autotrade has been enabled due to anti-regime bullish routing ✅
+            - Autotrade has been disabled for testing while inverse routing telemetry is validated 🧪
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
