@@ -12,7 +12,7 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.regime_routing import allows_long_autotrade
+from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
 from market_regime.signal_context_scorer import SignalContextScorer
 
 if TYPE_CHECKING:
@@ -70,13 +70,29 @@ class Coinrule:
         if last_twap > close_price and price_decrease > -0.05:
             algo = "coinrule_twap_momentum_sniper"
             autotrade = False
+            context = self.latest_market_context
+            symbol_features = resolve_symbol_features(
+                context=context, symbol=self.symbol
+            )
+            action = (
+                f"{self.bot_strategy.value.upper()} ENTRY"
+                if self.bot_strategy is not None
+                else "ENTRY"
+            )
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Action: {action}
             - Current price: {close_price}
             - Strategy: {self.bot_strategy.value}
+            - Rule intent: Enter when TWAP stays above price without a sharp recent selloff
+            - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - TWAP (> current price): {round_numbers(last_twap)}
-            - Autotrade?: {"Yes" if autotrade else "No"}
+            - Autotrade route: manual_only
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
             """
@@ -141,6 +157,9 @@ class Coinrule:
                     context=context,
                     symbol=self.symbol,
                 )
+            symbol_features = resolve_symbol_features(
+                context=context, symbol=self.symbol
+            )
             last_timestamp = (
                 to_datetime(df["close_time"][-1:], unit="ms")
                 .dt.strftime("%Y-%m-%d %H:%M")
@@ -149,12 +168,19 @@ class Coinrule:
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
-            - 📅 {last_timestamp}
-            - Number of trades: {df["number_of_trades"].iloc[-1]}
+            - Action: LONG ENTRY
             - Current price: {close_price}
             - Strategy: {bot_strategy.value}
+            - Rule intent: BUY a supertrend swing reversal after oversold conditions and improving breadth
+            - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
+            - Candle time: {last_timestamp}
+            - Number of trades: {df["number_of_trades"].iloc[-1]}
             - RSI smaller than 30: {df["rsi"].iloc[-1]}
-            - Autotrade?: {"Yes" if autotrade else "No"}
+            - Autotrade route: {"long_autotrade_allowed" if autotrade else "manual_only"}
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
             """
@@ -198,14 +224,25 @@ class Coinrule:
 
             bot_strategy = Position.long
             autotrade = False
+            context = self.latest_market_context
+            symbol_features = resolve_symbol_features(
+                context=context, symbol=self.symbol
+            )
             msg = f"""
-            - [{os.getenv("ENV")}] <strong>{algo} #algorithm</strong> #{self.symbol}
+            - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Action: LONG ENTRY
             - Current price: {close_price}
-            - Bollinguer bands spread: {(bb_high - bb_low) / bb_high}
             - Strategy: {bot_strategy.value}
-            - Reversal? {"No reversal" if not self.market_domination_reversal else "Positive" if self.market_domination_reversal else "Negative"}
-            - Autotrade?: {"Yes" if autotrade else "No"}
-            - https://www.binance.com/en/trade/{self.symbol}
+            - Rule intent: BUY low inside a short-term reversal while price stays above the 25-period average
+            - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
+            - Bollinger bands spread: {(bb_high - bb_low) / bb_high}
+            - Reversal state: {"Positive" if self.market_domination_reversal else "Negative"}
+            - Autotrade route: manual_only
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
             - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
             """
 

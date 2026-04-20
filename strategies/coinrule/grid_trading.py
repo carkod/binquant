@@ -7,6 +7,7 @@ from market_regime.regime_routing import (
     supports_grid_trading,
 )
 from models.strategies import GridSignalDecision
+from shared.bot_exit import deactivate_active_bot
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -56,36 +57,6 @@ class GridTrading:
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
-
-    async def handle_exit_signal(
-        self,
-        algo: str,
-    ) -> str:
-        active_bots = self.binbot_api.get_bots_by_name(name=algo, symbol=self.symbol)
-        active_bot = active_bots[0] if active_bots else None
-
-        if active_bot is None or not active_bot.get("id"):
-            logging.error("No active bot found to deactivate for %s", self.symbol)
-            return "No active bot found to deactivate."
-
-        bot_id = str(active_bot["id"])
-
-        try:
-            self.binbot_api.deactivate_bot(bot_id, algorithmic_close=True)
-            deactivate_message: str | list[str] = [
-                "Deactivated active bot from Grid Trading signal",
-            ]
-            self.binbot_api.submit_bot_event_logs(
-                bot_id=bot_id, message=deactivate_message
-            )
-            return f"Deactivated active bot {bot_id}."
-        except Exception as exc:
-            logging.exception("Grid exit failed to deactivate bot for %s", self.symbol)
-            deactivate_message = f"Bot deactivation failed: {exc}"
-            self.binbot_api.submit_bot_event_logs(
-                bot_id=bot_id, message=deactivate_message
-            )
-            return f"Failed to deactivate active bot {bot_id}: {exc}"
 
     def evaluate(
         self,
@@ -298,8 +269,11 @@ class GridTrading:
         )
 
         if decision.action == "sell":
-            bot_action = await self.handle_exit_signal(
+            bot_action = deactivate_active_bot(
+                binbot_api=self.binbot_api,
                 algo=algo,
+                symbol=self.symbol,
+                source_label="Grid Trading",
             )
             action_label = "LONG EXIT / DEACTIVATE"
             grid_logic = "Upper-band exit handling inside sideways range"
@@ -310,16 +284,15 @@ class GridTrading:
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Action: {action_label}
             - Current price: {round_numbers(current_price, 6)}
             - Strategy: {bot_strategy.value}
-            - Market mode: Sideways / range-bound
+            - Rule intent: {action_text}
             - Market regime: {context.market_regime if context is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Grid logic: {grid_logic}
-            - Action: {action_label}
-            - Rule intent: {action_text}
             - Exit rule: {exit_rule_text}
             - Bot action: {bot_action}
             - Max runs configured: {self.MAX_RUNS}
@@ -330,6 +303,8 @@ class GridTrading:
             - Band position: {round_numbers(decision.band_position, 3)}
             - Trend proxy: {round_numbers(decision.trend_slope_proxy * 100, 2)}%
             - Reason: {decision.reason}
+            - Autotrade route: manual_only
+            - Autotrade is disabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
@@ -345,16 +320,15 @@ class GridTrading:
 
         msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Action: {action_label}
             - Current price: {round_numbers(current_price, 6)}
             - Strategy: {bot_strategy.value}
-            - Market mode: Sideways / range-bound
+            - Rule intent: {action_text}
             - Market regime: {context.market_regime if context is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Grid logic: {grid_logic}
-            - Action: {action_label}
-            - Rule intent: {action_text}
             - Exit rule: {exit_rule_text}
             - Max runs configured: {self.MAX_RUNS}
             - RSI: {round_numbers(decision.rsi_value, 2)}
@@ -364,7 +338,8 @@ class GridTrading:
             - Band position: {round_numbers(decision.band_position, 3)}
             - Trend proxy: {round_numbers(decision.trend_slope_proxy * 100, 2)}%
             - Reason: {decision.reason}
-            - {"Autotrade is disabled for testing" if not autotrade else "Autotrade is enabled"}
+            - Autotrade route: manual_only
+            - {"Autotrade is disabled" if not autotrade else "Autotrade is enabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """

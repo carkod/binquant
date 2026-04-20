@@ -193,6 +193,8 @@ class TopGainersReversalDrop:
         algo = "top_gainers_reversal_drop"
         bot_strategy = Position.short
         autotrade, autotrade_route = self.regime_routing()
+        context = self.latest_market_context
+        symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
 
         base_asset = self.current_symbol_data["base_asset"]
         score = float(row["reversal_drop_score"])
@@ -211,17 +213,24 @@ class TopGainersReversalDrop:
             else ""
         )
         msg = f"""
-            - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
+            - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
+            - Strategy: {bot_strategy.value}
+            - Rule intent: SELL after a pumped 5m move shows reversal, retrace, and exhaustion
+            - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Pump return ({self.pump_lookback} bars): {round_numbers(float(row["pump_return"]) * 100, 2)}%{daily_gain_line}
             - Retrace from peak: {round_numbers(float(row["retrace_from_peak"]) * 100, 2)}%
             - Upper wick fraction: {round_numbers(float(row["upper_wick_frac"]) * 100, 2)}%
             - Volume ratio: {round_numbers(float(row["volume_ratio"]), 2)}
             - Score: {round_numbers(score, 4)}
             - Dynamic score threshold: {round_numbers(score_threshold, 4)}
-            - 📊 {base_asset} volume: {round_numbers(float(row["volume"]), decimals=self.price_precision)}
-            - Autotrade?: {"Yes" if autotrade else "No"}
+            - Volume: {round_numbers(float(row["volume"]), decimals=self.price_precision)} {base_asset}
             - Autotrade route: {autotrade_route}
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

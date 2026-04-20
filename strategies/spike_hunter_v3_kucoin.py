@@ -552,16 +552,19 @@ class SpikeHunterV3KuCoin:
 
             msg = f"""
                 - {streak} [{getenv("ENV")}] <strong>#spike_hunter_v3_kucoin algorithm</strong> #{self.symbol}
+                - Action: LONG ENTRY
                 - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-                - Last close timestamp: {last_spike["timestamp"]}
-                - 📊 {base_asset} volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)}
-                - 📊 {quote_asset} volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)}
+                - Strategy: {bot_strategy.value}
+                - Rule intent: BUY after an early spike cluster survives bullish regime routing
+                - Candle time: {last_spike["timestamp"]}
+                - Volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)} {base_asset}
+                - Quote volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)} {quote_asset}
                 - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
                 - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
                 - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
                 - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
-                - Route: {route_reason}
-                - Autotrade enabled
+                - Autotrade route: {route_reason}
+                - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
                 - <a href='{kucoin_link}'>KuCoin</a>
                 - <a href='{terminal_link}'>Dashboard trade</a>
                 """

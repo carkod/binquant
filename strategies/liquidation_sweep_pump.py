@@ -207,21 +207,21 @@ class LiquidationSweepPump:
         value.autotrade = autotrade
 
         msg = f"""
-            - [{getenv("ENV")}] <strong>#{algo}</strong> #{self.symbol}
+            - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - Action: LONG ENTRY
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
+            - Strategy: {bot_strategy.value}
+            - Rule intent: BUY after a liquidation-style pump score breakout in bullish market routing
             - Score: {trigger_score:.2f}
-            - 📊 {base_asset} volume: {round_numbers(float(row.volume), decimals=self.price_precision)}
+            - Volume: {round_numbers(float(row.volume), decimals=self.price_precision)} {base_asset}
             - OI Growth: {self.oi_growth:.2f}
-            - Context available: {"Yes" if context is not None else "No"}
-            - Context BTC present: {"Yes" if context and context.btc_present else "No"}
-            - Context fresh symbols: {context.fresh_count if context else 0}
             - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
             - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
-            - Route: {route_reason}
+            - Autotrade route: {route_reason}
             - Market stress: {round_numbers(context.market_stress_score, 3) if context else 0}
-            - Autotrade has been enabled due to bullish trend routing ✅
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

@@ -169,7 +169,7 @@ async def test_signal_emits_in_trend_up_market(monkeypatch):
     telegram_msg = telegram_await_args.args[0]
     signal_value = process_await_args.args[0]
 
-    assert "Route: market_trend_up_symbol_trend_up" in telegram_msg
+    assert "Autotrade route: market_trend_up_symbol_trend_up" in telegram_msg
     assert signal_value.autotrade is True
 
 
@@ -267,6 +267,7 @@ async def test_signal_emits_for_bullish_transitional_market(monkeypatch):
     assert telegram_await_args is not None
     telegram_msg = telegram_await_args.args[0]
 
-    assert "Route: market_transitional_bullish_symbol_transitional_bullish" in (
-        telegram_msg
+    assert (
+        "Autotrade route: market_transitional_bullish_symbol_transitional_bullish"
+        in (telegram_msg)
     )

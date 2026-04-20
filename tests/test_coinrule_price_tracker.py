@@ -477,7 +477,7 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
     tg_await_args = tg_mock.await_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
-    assert "Market transitioning: Yes" in telegram_msg
+    assert "Market transition: ENTERED_TREND_UP" in telegram_msg
     assert "Market regime: TREND_UP" in telegram_msg
 
 

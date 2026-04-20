@@ -108,6 +108,8 @@ def make_algo(
     df_15m: DataFrame,
     latest_market_context: LiveMarketContext | None = None,
 ) -> tuple[BuyTheDip, SimpleNamespace]:
+    binbot_api = MagicMock()
+    binbot_api.get_bots_by_name.return_value = []
     context = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
@@ -117,7 +119,7 @@ def make_algo(
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
         df_15m=df_15m,
-        binbot_api=MagicMock(),
+        binbot_api=binbot_api,
     )
     return BuyTheDip(cast(Any, context)), context
 
@@ -140,6 +142,7 @@ async def test_buy_the_dip_enters_on_valid_six_hour_dip() -> None:
     telegram_msg = context.telegram_consumer.send_signal.await_args.args[0]
     assert "coinrule_buy_the_dip" in telegram_msg
     assert "Action: LONG ENTRY" in telegram_msg
+    assert "Market regime: UNAVAILABLE" in telegram_msg
     assert "6h price change: -3.0%" in telegram_msg
 
 
@@ -373,3 +376,71 @@ async def test_buy_the_dip_raises_for_invalid_close_time() -> None:
             bb_mid=100.0,
             bb_low=98.0,
         )
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_deactivates_active_bot_when_market_regime_turns_trend_down() -> (
+    None
+):
+    closes = [100.0] + [96.0] * 23 + [97.0]
+    market_context = make_market_context(
+        market_regime="TREND_DOWN",
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="RANGE")},
+    )
+    algo, context = make_algo(
+        make_buy_the_dip_df(closes),
+        latest_market_context=market_context,
+    )
+    context.binbot_api.get_bots_by_name.return_value = [{"id": "bot-123"}]
+
+    await algo.signal(
+        current_price=97.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    context.telegram_consumer.send_signal.assert_awaited_once()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    context.binbot_api.get_bots_by_name.assert_called_once_with(
+        name="coinrule_buy_the_dip",
+        symbol="TESTUSDT",
+    )
+    context.binbot_api.deactivate_bot.assert_called_once_with(
+        "bot-123",
+        algorithmic_close=True,
+    )
+    telegram_msg = context.telegram_consumer.send_signal.await_args.args[0]
+    assert "Action: LONG EXIT / DEACTIVATE" in telegram_msg
+    assert "Exit reason: market_regime_trend_down" in telegram_msg
+    assert "Bot action: Deactivated active bot bot-123." in telegram_msg
+
+
+@pytest.mark.asyncio
+async def test_buy_the_dip_deactivates_active_bot_when_reclaim_is_lost() -> None:
+    closes = [100.0] + [96.0] * 22 + [97.6, 96.0]
+    market_context = make_market_context(
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="RANGE")}
+    )
+    algo, context = make_algo(
+        make_buy_the_dip_df(closes),
+        latest_market_context=market_context,
+    )
+    context.binbot_api.get_bots_by_name.return_value = [{"id": "bot-123"}]
+
+    await algo.signal(
+        current_price=96.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    context.telegram_consumer.send_signal.assert_awaited_once()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    context.binbot_api.deactivate_bot.assert_called_once_with(
+        "bot-123",
+        algorithmic_close=True,
+    )
+    telegram_msg = context.telegram_consumer.send_signal.await_args.args[0]
+    assert "Action: LONG EXIT / DEACTIVATE" in telegram_msg
+    assert "Exit reason: reclaim_lost_below_prior_close_and_ema20" in telegram_msg
