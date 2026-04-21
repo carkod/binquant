@@ -179,7 +179,7 @@ async def test_signal_emits_in_trend_up_market(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_skips_in_range_market(monkeypatch):
+async def test_signal_sends_telegram_only_in_range_market(monkeypatch):
     context = make_market_context(market_regime="RANGE")
     algo, df = make_algo(context)
     send_signal_mock = AsyncMock()
@@ -198,8 +198,13 @@ async def test_signal_skips_in_range_market(monkeypatch):
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_not_awaited()
+    send_signal_mock.assert_awaited_once()
     process_mock.assert_not_awaited()
+    telegram_await_args = send_signal_mock.await_args
+
+    assert telegram_await_args is not None
+    assert "Autotrade route: market_regime_range" in telegram_await_args.args[0]
+    assert "Autotrade is disabled" in telegram_await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -247,6 +252,39 @@ async def test_signal_emits_for_bullish_transitional_market(monkeypatch):
         "Autotrade route: market_transitional_bullish_symbol_transitional_bullish"
         in (telegram_await_args.args[0])
     )
+
+
+@pytest.mark.asyncio
+async def test_signal_emits_without_upward_streak_in_bullish_market(monkeypatch):
+    context = make_market_context()
+    algo, df = make_algo(context)
+    send_signal_mock = AsyncMock()
+    process_mock = AsyncMock()
+    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+
+    monkeypatch.setattr(
+        algo,
+        "latest_signal",
+        lambda: make_last_spike(upward=False, downward=False),
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_awaited_once()
+    process_mock.assert_awaited_once()
+    telegram_await_args = send_signal_mock.await_args
+
+    assert telegram_await_args is not None
+    assert "#spike_hunter_v3_kucoin algorithm" in telegram_await_args.args[0]
+    assert "Autotrade is enabled" in telegram_await_args.args[0]
 
 
 @pytest.mark.asyncio

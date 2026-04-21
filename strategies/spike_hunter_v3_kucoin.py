@@ -87,12 +87,12 @@ class SpikeHunterV3KuCoin:
         self.qty_precision = cls.qty_precision
 
         # Thresholds (v2-like defaults preserved)
-        self.volume_cluster_min_ratio = 2.0
+        self.volume_cluster_min_ratio = 1.6
         self.volume_cluster_window = 8
         self.volume_cluster_min_count = 2
         self.volume_cluster_label_mode = "last"  # last | all | first
-        self.price_break_base_threshold = 0.05
-        self.price_break_dynamic_q = 0.90
+        self.price_break_base_threshold = 0.03
+        self.price_break_dynamic_q = 0.85
         self.price_break_use_dynamic = True
         self.price_break_auto_tune = False
         self.price_break_target_rate = 0.02
@@ -103,10 +103,10 @@ class SpikeHunterV3KuCoin:
         self.use_raw_price_break = False
         # Compound / acceleration thresholds
         self.cumulative_price_window = 3
-        self.cumulative_price_threshold = 0.035
+        self.cumulative_price_threshold = 0.025
         self.accel_volume_deriv_window = 3
-        self.accel_volume_deriv_min = 0.8
-        self.accel_price_change_min = 0.02
+        self.accel_volume_deriv_min = 0.45
+        self.accel_price_change_min = 0.015
         # Early proba (ML) disabled for KuCoin variant
         self.early_proba_augment = False
         self.early_proba_threshold = 0.45
@@ -175,10 +175,10 @@ class SpikeHunterV3KuCoin:
 
     def auto_calibrate(
         self,
-        volume_quantile: float = 0.985,
-        price_base_floor_quantile: float = 0.80,
-        min_volume_ratio: float = 1.3,
-        min_price_abs_floor: float = 0.02,
+        volume_quantile: float = 0.97,
+        price_base_floor_quantile: float = 0.75,
+        min_volume_ratio: float = 1.15,
+        min_price_abs_floor: float = 0.015,
     ):
         vols = self.df_15m.get("volume_ratio", Series(dtype=float)).dropna()
         pcs = self.df_15m.get("price_change_abs", Series(dtype=float)).dropna()
@@ -526,8 +526,7 @@ class SpikeHunterV3KuCoin:
                 )
                 return
             else:
-                streak = "N/A"
-                return
+                streak = "⚡"
 
             context = self.latest_market_context
             symbol_features = resolve_symbol_features(
@@ -537,9 +536,7 @@ class SpikeHunterV3KuCoin:
                 context=context,
                 symbol_features=symbol_features,
             )
-            if not should_emit:
-                return
-            autotrade = True
+            autotrade = should_emit
 
             base_asset = self.current_symbol_data["base_asset"]
             quote_asset = self.current_symbol_data["quote_asset"]
@@ -583,4 +580,5 @@ class SpikeHunterV3KuCoin:
                 ),
             )
             await self.telegram_consumer.send_signal(msg)
-            await self.at_consumer.process_autotrade_restrictions(value)
+            if autotrade:
+                await self.at_consumer.process_autotrade_restrictions(value)
