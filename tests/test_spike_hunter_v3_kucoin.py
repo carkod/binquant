@@ -255,7 +255,7 @@ async def test_signal_emits_for_bullish_transitional_market(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_emits_without_upward_streak_in_bullish_market(monkeypatch):
+async def test_signal_skips_non_upward_spike_even_in_bullish_market(monkeypatch):
     context = make_market_context()
     algo, df = make_algo(context)
     send_signal_mock = AsyncMock()
@@ -278,13 +278,8 @@ async def test_signal_emits_without_upward_streak_in_bullish_market(monkeypatch)
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_awaited_once()
-    process_mock.assert_awaited_once()
-    telegram_await_args = send_signal_mock.await_args
-
-    assert telegram_await_args is not None
-    assert "#spike_hunter_v3_kucoin algorithm" in telegram_await_args.args[0]
-    assert "Autotrade is enabled" in telegram_await_args.args[0]
+    send_signal_mock.assert_not_awaited()
+    process_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -526,7 +526,10 @@ class SpikeHunterV3KuCoin:
                 )
                 return
             else:
-                streak = "⚡"
+                logging.info(
+                    "Spike Hunter skipped: non-upward spike is not routed for bullish trend mode."
+                )
+                return
 
             context = self.latest_market_context
             symbol_features = resolve_symbol_features(
