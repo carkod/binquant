@@ -339,6 +339,7 @@ class ContextEvaluator:
             spreads = self.bb_spreads(self.df_15m)
 
             await self.af.signal()
+            self.last_market_regime = self.af.last_market_regime
 
             await self.sh3.signal(
                 current_price=close_price,

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 class ApexFlow:
     def __init__(self, cls: "ContextEvaluator") -> None:
+        self.context_evaluator = cls
         self.config = cls.config
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
@@ -50,6 +51,7 @@ class ApexFlow:
             return
 
         self.last_market_regime = context.market_regime_transition
+        self.context_evaluator.last_market_regime = context.market_regime_transition
         msg = f"""
             - [{str(self.config.env)}] <strong>#market_regime_transition</strong>
             - Event: {context.market_regime_transition}

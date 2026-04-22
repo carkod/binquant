@@ -319,3 +319,4 @@ class KlinesProvider:
             candles_15m=self.candles_15m,
             btc_candles_15m=self.btc_candles_15m,
         )
+        self.last_market_regime = crypto_analytics.last_market_regime

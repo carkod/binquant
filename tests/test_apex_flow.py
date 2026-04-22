@@ -210,3 +210,78 @@ async def test_apex_flow_emits_from_annotated_context_without_bootstrap_state():
     assert await_args is not None
     sent_message = await_args.args[0]
     assert "Regime transition:" in sent_message
+
+
+@pytest.mark.asyncio
+async def test_apex_flow_skips_duplicate_transition_when_already_seen():
+    first_context = annotate_context(
+        make_live_context(
+            timestamp=1_000,
+            advancers_ratio=0.67,
+            confidence=0.95,
+            long_tailwind=0.78,
+            short_tailwind=-0.12,
+            btc_regime_score=0.66,
+            market_stress_score=0.2,
+        )
+    )
+    transitioned_context = annotate_context(
+        make_live_context(
+            timestamp=2_000,
+            advancers_ratio=0.35,
+            confidence=0.93,
+            long_tailwind=-0.12,
+            short_tailwind=0.35,
+            btc_regime_score=-0.18,
+            market_stress_score=0.22,
+        ),
+        previous_context=first_context,
+    )
+
+    algo = make_algo(
+        transitioned_context,
+        last_market_regime=transitioned_context.market_regime_transition,
+    )
+
+    await algo.signal()
+
+    algo.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_apex_flow_persists_last_transition_on_context_evaluator():
+    first_context = annotate_context(
+        make_live_context(
+            timestamp=1_000,
+            advancers_ratio=0.67,
+            confidence=0.95,
+            long_tailwind=0.78,
+            short_tailwind=-0.12,
+            btc_regime_score=0.66,
+            market_stress_score=0.2,
+        )
+    )
+    transitioned_context = annotate_context(
+        make_live_context(
+            timestamp=2_000,
+            advancers_ratio=0.35,
+            confidence=0.93,
+            long_tailwind=-0.12,
+            short_tailwind=0.35,
+            btc_regime_score=-0.18,
+            market_stress_score=0.22,
+        ),
+        previous_context=first_context,
+    )
+    cls = SimpleNamespace(
+        config=SimpleNamespace(env="test"),
+        symbol="TESTUSDT",
+        telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
+        latest_market_context=transitioned_context,
+        last_market_regime=None,
+    )
+    algo = ApexFlow(cast(Any, cls))
+
+    await algo.signal()
+
+    assert cls.last_market_regime == transitioned_context.market_regime_transition
