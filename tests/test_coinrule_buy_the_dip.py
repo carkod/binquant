@@ -400,7 +400,7 @@ async def test_buy_the_dip_deactivates_active_bot_when_market_regime_turns_trend
         bb_low=98.0,
     )
 
-    context.telegram_consumer.send_signal.assert_awaited_once()
+    context.telegram_consumer.send_signal.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
     context.binbot_api.get_bots_by_name.assert_called_once_with(
         name="coinrule_buy_the_dip",
@@ -410,10 +410,6 @@ async def test_buy_the_dip_deactivates_active_bot_when_market_regime_turns_trend
         "bot-123",
         algorithmic_close=True,
     )
-    telegram_msg = context.telegram_consumer.send_signal.await_args.args[0]
-    assert "Action: LONG EXIT / DEACTIVATE" in telegram_msg
-    assert "Exit reason: market_regime_trend_down" in telegram_msg
-    assert "Bot action: Deactivated active bot bot-123." in telegram_msg
 
 
 @pytest.mark.asyncio
@@ -435,12 +431,9 @@ async def test_buy_the_dip_deactivates_active_bot_when_reclaim_is_lost() -> None
         bb_low=98.0,
     )
 
-    context.telegram_consumer.send_signal.assert_awaited_once()
+    context.telegram_consumer.send_signal.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
     context.binbot_api.deactivate_bot.assert_called_once_with(
         "bot-123",
         algorithmic_close=True,
     )
-    telegram_msg = context.telegram_consumer.send_signal.await_args.args[0]
-    assert "Action: LONG EXIT / DEACTIVATE" in telegram_msg
-    assert "Exit reason: reclaim_lost_below_prior_close_and_ema20" in telegram_msg

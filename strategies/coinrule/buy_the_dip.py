@@ -183,26 +183,12 @@ class BuyTheDip:
                 source_label="Buy The Dip exit",
             )
             if bot_action != "No active bot found to deactivate.":
-                prior_close, ema20 = self._prior_close_and_ema20()
-                msg = f"""
-                - [{os.getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
-                - Action: LONG EXIT / DEACTIVATE
-                - Current price: {round_numbers(current_price, 6)}
-                - Strategy: {Position.long.value}
-                - Rule intent: EXIT when downside continuation or reclaim failure invalidates the dip-catcher setup
-                - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
-                - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
-                - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
-                - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
-                - Prior close: {round_numbers(prior_close, 6)}
-                - EMA20: {round_numbers(ema20, 6)}
-                - Exit reason: {exit_reason}
-                - Candle time: {now.isoformat()}
-                - Bot action: {bot_action}
-                - <a href='{kucoin_link}'>KuCoin</a>
-                - <a href='{terminal_link}'>Dashboard trade</a>
-                """
-                await self.telegram_consumer.send_signal(msg)
+                logging.info(
+                    "Buy-the-dip deactivated active bot for %s: %s (%s)",
+                    self.symbol,
+                    exit_reason,
+                    bot_action,
+                )
             return
         if not self._allows_entry(context=context, symbol_features=symbol_features):
             logging.info(
