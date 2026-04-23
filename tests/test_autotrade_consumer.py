@@ -139,6 +139,16 @@ class TestAutotradeConsumer:
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
 
     @pytest.mark.asyncio
+    async def test_process_autotrade_restrictions_skips_missing_bot_params(self):
+        signal = SignalsConsumer(autotrade=True)
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_activate_autotrade_merges_signal_bot_params_over_settings(self):
         settings = {
             "exchange_id": "binance",

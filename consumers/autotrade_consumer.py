@@ -88,12 +88,19 @@ class AutotradeConsumer:
         5. Check active strategy
         """
         data = result
-        symbol = data.bot_params.pair
-        algorithm_name = data.bot_params.name
-        fiat = data.bot_params.fiat or self.autotrade_settings["fiat"]
+        bot_params = data.bot_params
+        if bot_params is None:
+            logging.info(
+                "Skipping autotrade processing because signal is missing bot_params."
+            )
+            return
+
+        symbol = bot_params.pair
+        algorithm_name = bot_params.name
+        fiat = bot_params.fiat or self.autotrade_settings["fiat"]
         requested_fiat_order_size = (
-            data.bot_params.fiat_order_size
-            if data.bot_params.fiat_order_size is not None
+            bot_params.fiat_order_size
+            if bot_params.fiat_order_size is not None
             else self.autotrade_settings["base_order_size"]
         )
 

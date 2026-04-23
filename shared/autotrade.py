@@ -81,9 +81,13 @@ class Autotrade:
 
     def _apply_signal_bot_overrides(self, data: SignalsConsumer) -> None:
         self.bot_override_fields = set()
+        bot_params = data.bot_params
 
-        for field_name in data.bot_params.model_fields_set:
-            value = getattr(data.bot_params, field_name)
+        if bot_params is None:
+            return
+
+        for field_name in bot_params.model_fields_set:
+            value = getattr(bot_params, field_name)
             if value is None:
                 continue
             if field_name == "position" and value is not None:
