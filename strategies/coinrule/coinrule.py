@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from pandas import to_datetime
 from pybinbot import (
+    BotBase,
     HABollinguerSpread,
     Indicators,
     MarketDominance,
@@ -100,10 +101,12 @@ class Coinrule:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=close_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=self.bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=self.bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -188,10 +191,12 @@ class Coinrule:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=close_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -249,10 +254,12 @@ class Coinrule:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=close_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,

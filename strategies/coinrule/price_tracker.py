@@ -3,6 +3,7 @@ import os
 from typing import TYPE_CHECKING
 
 from pybinbot import (
+    BotBase,
     HABollinguerSpread,
     Indicators,
     Position,
@@ -183,12 +184,14 @@ class PriceTracker:
                 return
 
             value = SignalsConsumer(
-                symbol=self.symbol,
-                algo=algo,
                 direction="LONG",
-                bot_strategy=bot_strategy,
                 autotrade=autotrade,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=bot_strategy,
+                    market_type=self.market_type,
+                ),
                 score=local_score,
                 current_price=close_price,
                 bb_spreads=HABollinguerSpread(

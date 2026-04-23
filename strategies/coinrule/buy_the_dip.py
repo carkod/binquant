@@ -3,7 +3,13 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from pybinbot import HABollinguerSpread, Position, SignalsConsumer, round_numbers
+from pybinbot import (
+    BotBase,
+    HABollinguerSpread,
+    Position,
+    SignalsConsumer,
+    round_numbers,
+)
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
@@ -234,10 +240,13 @@ class BuyTheDip:
         value = SignalsConsumer(
             autotrade=autotrade,
             current_price=current_price,
-            symbol=self.symbol,
-            algo=self.ALGO,
-            bot_strategy=Position.long,
-            market_type=self.market_type,
+            bot_params=BotBase(
+                pair=self.symbol,
+                name=self.ALGO,
+                position=Position.long,
+                market_type=self.market_type,
+                margin_short_reversal=False,
+            ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,

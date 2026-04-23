@@ -1,7 +1,13 @@
 import logging
 import os
 from typing import TYPE_CHECKING
-from pybinbot import HABollinguerSpread, SignalsConsumer, Position, round_numbers
+from pybinbot import (
+    BotBase,
+    HABollinguerSpread,
+    Position,
+    SignalsConsumer,
+    round_numbers,
+)
 from market_regime.regime_routing import (
     resolve_symbol_features,
     supports_grid_trading,
@@ -349,10 +355,12 @@ class GridTrading:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=current_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,

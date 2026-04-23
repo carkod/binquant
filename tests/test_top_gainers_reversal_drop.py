@@ -196,9 +196,9 @@ async def test_signal_dispatches_for_top_gainer_reversal():
     await_args = process_mock.await_args
     assert await_args is not None
     value = await_args.args[0]
-    assert value.algo == "top_gainers_reversal_drop"
-    assert value.symbol == "TESTUSDT"
-    assert value.bot_strategy == "short"
+    assert value.bot_params.name == "top_gainers_reversal_drop"
+    assert value.bot_params.pair == "TESTUSDT"
+    assert value.bot_params.position == "short"
 
 
 @pytest.mark.asyncio

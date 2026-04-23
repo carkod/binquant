@@ -1,6 +1,7 @@
 from os import getenv
 from typing import TYPE_CHECKING
 from pybinbot import (
+    BotBase,
     HABollinguerSpread,
     KlineSchema,
     Position,
@@ -189,12 +190,14 @@ class LiquidationSweepPump:
         )
 
         value = SignalsConsumer(
-            symbol=self.symbol,
-            algo=algo,
             direction="LONG",
-            bot_strategy=bot_strategy,
             autotrade=autotrade,
-            market_type=self.market_type,
+            bot_params=BotBase(
+                pair=self.symbol,
+                name=algo,
+                position=bot_strategy,
+                market_type=self.market_type,
+            ),
             current_price=current_price,
             volume=float(row.volume),
             bb_spreads=HABollinguerSpread(

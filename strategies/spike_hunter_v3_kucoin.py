@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from pandas import DataFrame, Series
 from pybinbot import (
+    BotBase,
     HABollinguerSpread,
     Position,
     SignalsConsumer,
@@ -572,10 +573,12 @@ class SpikeHunterV3KuCoin:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=current_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,

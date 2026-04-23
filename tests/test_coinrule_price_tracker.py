@@ -362,7 +362,7 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
         bb_mid=100.0,
     )
 
-    assert captured["market_type"] == MarketType.SPOT
+    assert captured["bot_params"].market_type == MarketType.SPOT
 
 
 @pytest.mark.asyncio
@@ -738,7 +738,7 @@ async def test_grid_trading_uses_context_market_type(monkeypatch):
         bb_mid=100.0,
     )
 
-    assert captured["market_type"] == MarketType.SPOT
+    assert captured["bot_params"].market_type == MarketType.SPOT
 
 
 @pytest.mark.asyncio

@@ -308,7 +308,7 @@ async def test_inverse_price_tracker_uses_context_market_type(monkeypatch):
     )
 
     await algo.signal(100.0, 101.0, 99.0, 100.0)
-    assert captured["market_type"] == MarketType.SPOT
+    assert captured["bot_params"].market_type == MarketType.SPOT
     assert captured["autotrade"] is False
 
 

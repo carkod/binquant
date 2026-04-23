@@ -108,10 +108,10 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
     value = await_args.args[0]
     telegram_msg = telegram_await_args.args[0]
 
-    assert value.algo == "activity_burst_pump"
-    assert value.symbol == "TESTUSDT"
+    assert value.bot_params.name == "activity_burst_pump"
+    assert value.bot_params.pair == "TESTUSDT"
     assert value.current_price == pytest.approx(1.04)
-    assert value.bot_strategy == "long"
+    assert value.bot_params.position == "long"
     assert "Score: 0.4" in telegram_msg
 
 

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
+    BotBase,
     HABollinguerSpread,
     KlineSchema,
     MarketType,
@@ -222,10 +223,12 @@ class ActivityBurstPump:
         value = SignalsConsumer(
             autotrade=autotrade,
             current_price=current_price,
-            symbol=self.symbol,
-            algo=algo,
-            bot_strategy=bot_strategy,
-            market_type=MarketType.FUTURES,
+            bot_params=BotBase(
+                pair=self.symbol,
+                name=algo,
+                position=bot_strategy,
+                market_type=MarketType.FUTURES,
+            ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,
