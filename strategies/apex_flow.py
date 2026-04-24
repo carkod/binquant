@@ -18,6 +18,14 @@ class ApexFlow:
         self._last_sent_context_timestamp: int | None = None
         self.last_market_regime = cls.last_market_regime
 
+    @property
+    def latest_market_context(self) -> LiveMarketContext | None:
+        return self.context_evaluator.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value: LiveMarketContext | None) -> None:
+        self.context_evaluator.latest_market_context = value
+
     @staticmethod
     def _regime_summary(regime: str | None) -> str:
         if regime == "TREND_UP":

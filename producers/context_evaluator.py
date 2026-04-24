@@ -60,6 +60,7 @@ class ContextEvaluator:
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
         latest_market_context: LiveMarketContext | None = None,
+        latest_market_context_provider=None,
         last_market_regime: str | None = None,
     ) -> None:
         """
@@ -109,7 +110,8 @@ class ContextEvaluator:
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
         self.oi_data = oi_data
-        self.latest_market_context = latest_market_context
+        self._latest_market_context = latest_market_context
+        self._latest_market_context_provider = latest_market_context_provider
         self.last_market_regime = last_market_regime
         self.signal_context_scorer = SignalContextScorer(
             context_weight=0.35,
@@ -118,6 +120,20 @@ class ContextEvaluator:
         )
         self._breadth_cross_tolerance = 0.05
         self._autotrade_stress_threshold = 0.35
+
+    @property
+    def latest_market_context(self) -> LiveMarketContext | None:
+        provider = self._latest_market_context_provider
+        if provider is not None:
+            return provider.latest_market_context
+        return self._latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value: LiveMarketContext | None) -> None:
+        self._latest_market_context = value
+        provider = self._latest_market_context_provider
+        if provider is not None:
+            provider.latest_market_context = value
 
     def days(self, secs):
         return secs * 86400

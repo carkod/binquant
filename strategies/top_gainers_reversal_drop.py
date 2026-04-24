@@ -48,6 +48,14 @@ class TopGainersReversalDrop:
         self.min_upper_wick_frac = 0.3
         self.max_close_position = 0.35
 
+    @property
+    def latest_market_context(self):
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value) -> None:
+        self.ti.latest_market_context = value
+
     def _allows_strategy_short_autotrade(self) -> bool:
         context = self.latest_market_context
         if context is None:

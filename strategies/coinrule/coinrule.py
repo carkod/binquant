@@ -43,6 +43,14 @@ class Coinrule:
             support_weight=0.2,
         )
 
+    @property
+    def latest_market_context(self):
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value) -> None:
+        self.ti.latest_market_context = value
+
     def pre_process(self, df):
         df = df.copy()
         df.dropna(inplace=True)

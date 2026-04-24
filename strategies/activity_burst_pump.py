@@ -49,6 +49,14 @@ class ActivityBurstPump:
         self.score_lookback = 80
         self.cooldown_bars = 3
 
+    @property
+    def latest_market_context(self):
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value) -> None:
+        self.ti.latest_market_context = value
+
     def compute_indicators(
         self, df: TypedDataFrame[KlineSchema]
     ) -> TypedDataFrame[KlineSchema]:

@@ -37,6 +37,14 @@ class BuyTheDip:
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
 
+    @property
+    def latest_market_context(self) -> LiveMarketContext | None:
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value: LiveMarketContext | None) -> None:
+        self.ti.latest_market_context = value
+
     def _find_reference_price(self, target_time: datetime) -> float | None:
         if "close_time" not in self.df_15m.columns:
             return None

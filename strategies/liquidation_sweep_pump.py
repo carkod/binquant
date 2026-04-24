@@ -35,6 +35,14 @@ class LiquidationSweepPump:
         self.oi_growth = cls.oi_data
         self.latest_market_context = cls.latest_market_context
 
+    @property
+    def latest_market_context(self) -> LiveMarketContext | None:
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value: LiveMarketContext | None) -> None:
+        self.ti.latest_market_context = value
+
     @staticmethod
     def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
         if context.market_regime != "TRANSITIONAL":

@@ -41,6 +41,14 @@ class GridTrading:
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
 
+    @property
+    def latest_market_context(self):
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value) -> None:
+        self.ti.latest_market_context = value
+
     def evaluate(
         self,
         recent_window,

@@ -482,6 +482,68 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
 
 
 @pytest.mark.asyncio
+async def test_price_tracker_reads_latest_context_from_evaluator(monkeypatch):
+    df = make_ohlcv_df(n=50, oversold=True)
+    algo = make_algo(df)
+    at_mock = AsyncMock()
+    tg_mock = AsyncMock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+    )
+
+    algo.latest_market_context = make_market_context(market_regime="RANGE")
+    updated_context = make_market_context(
+        market_regime="TREND_UP",
+        market_regime_transition="ENTERED_TREND_UP",
+        regime_is_transitioning=True,
+    )
+    algo.ti.latest_market_context = updated_context
+
+    captured: dict[str, Any] = {}
+
+    def fake_signals_consumer(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.Indicators.mfi",
+        staticmethod(lambda df, window=14: 15.0),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
+        lambda **kwargs: SimpleNamespace(
+            adjusted_score=1.2,
+            emit=True,
+            context_score=SimpleNamespace(
+                confidence=0.7,
+                followthrough_score=0.2,
+                adverse_excursion_risk=0.2,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+    )
+
+    await algo.signal(
+        close_price=float(df["close"].iloc[-1]),
+        bb_high=115.0,
+        bb_low=85.0,
+        bb_mid=100.0,
+    )
+
+    assert captured["autotrade"] is False
+    tg_await_args = tg_mock.await_args
+    assert tg_await_args is not None
+    telegram_msg = tg_await_args.args[0]
+    assert "Market regime: TREND_UP" in telegram_msg
+    assert "Market transition: ENTERED_TREND_UP" in telegram_msg
+
+
+@pytest.mark.asyncio
 async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)

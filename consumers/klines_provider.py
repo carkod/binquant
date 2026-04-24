@@ -311,6 +311,7 @@ class KlinesProvider:
             market_type=market_type,
             oi_data=self.retrieve_oi(kucoin_symbol),
             latest_market_context=self.latest_market_context,
+            latest_market_context_provider=self,
             binbot_api=self.binbot_api,
             last_market_regime=self.last_market_regime,
         )

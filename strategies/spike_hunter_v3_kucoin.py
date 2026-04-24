@@ -98,6 +98,14 @@ class SpikeHunterV3KuCoin:
         self.price_break_auto_tune = False
         self.price_break_target_rate = 0.02
         self.price_break_min_quantile = 0.75
+
+    @property
+    def latest_market_context(self) -> LiveMarketContext | None:
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value: LiveMarketContext | None) -> None:
+        self.ti.latest_market_context = value
         self.price_break_max_quantile = 0.985
         self.price_break_smoothing = 0.5
         self.price_break_auto_lookback = 180
