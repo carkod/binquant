@@ -38,6 +38,7 @@ from consumers.telegram_consumer import TelegramConsumer
 from market_regime.models import LiveMarketContext
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
+from shared.utils import format_context_timestamp_line
 
 
 class ContextEvaluator:
@@ -134,6 +135,12 @@ class ContextEvaluator:
         provider = self._latest_market_context_provider
         if provider is not None:
             provider.latest_market_context = value
+
+    def context_timestamp_line(self, context: LiveMarketContext | None = None) -> str:
+        resolved_context = (
+            context if context is not None else self.latest_market_context
+        )
+        return format_context_timestamp_line(resolved_context)
 
     def days(self, secs):
         return secs * 86400

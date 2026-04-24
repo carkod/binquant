@@ -13,7 +13,7 @@ from pybinbot import (
 )
 
 from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
-from shared.utils import build_links_msg
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -211,6 +211,7 @@ class ActivityBurstPump:
             - Rule intent: BUY after a 5m activity burst with volume, quote-volume, and price expansion confirmation
             - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Baseline volume: {round_numbers(float(row["baseline_volume_safe"]), decimals=self.price_precision)}

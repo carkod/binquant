@@ -7,7 +7,7 @@ from pybinbot import (
 )
 from market_regime.regime_routing import resolve_symbol_features
 from models.strategies import GridSignalDecision
-from shared.utils import build_links_msg
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -207,6 +207,7 @@ class GridTrading:
             - Rule intent: {action_text}
             - Market regime: {context.market_regime if context is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Grid logic: {grid_logic}
@@ -240,6 +241,7 @@ class GridTrading:
             - Rule intent: {action_text}
             - Market regime: {context.market_regime if context is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Grid logic: {grid_logic}

@@ -15,6 +15,7 @@ from pybinbot import (
 
 from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
 from market_regime.signal_context_scorer import SignalContextScorer
+from shared.utils import format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -97,6 +98,7 @@ class Coinrule:
             - Rule intent: Enter when TWAP stays above price without a sharp recent selloff
             - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - TWAP (> current price): {round_numbers(last_twap)}
@@ -185,6 +187,7 @@ class Coinrule:
             - Rule intent: BUY a supertrend swing reversal after oversold conditions and improving breadth
             - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Candle time: {last_timestamp}
@@ -249,6 +252,7 @@ class Coinrule:
             - Rule intent: BUY low inside a short-term reversal while price stays above the 25-period average
             - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Bollinger bands spread: {(bb_high - bb_low) / bb_high}

@@ -17,7 +17,7 @@ from pybinbot import (
 from strategies.binance_report_ai import BinanceAIReport
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
-from shared.utils import build_links_msg
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -570,6 +570,7 @@ class SpikeHunterV3KuCoin:
                 - Quote volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)} {quote_asset}
                 - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
                 - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
+                {format_context_timestamp_line(context)}
                 - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
                 - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
                 - Autotrade route: {route_reason}

@@ -134,6 +134,7 @@ async def test_apex_flow_emits_long_to_short_transition():
     sent_message = await_args.args[0]
     assert "Regime transition: TREND_UP -> HIGH_STRESS" in sent_message
     assert "#market_regime_transition" in sent_message
+    assert "Context timestamp: 1970-01-01 00:00:02 UTC" in sent_message
 
 
 @pytest.mark.asyncio

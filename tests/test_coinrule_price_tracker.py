@@ -479,6 +479,7 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
     telegram_msg = tg_await_args.args[0]
     assert "Market transition: ENTERED_TREND_UP" in telegram_msg
     assert "Market regime: TREND_UP" in telegram_msg
+    assert "Context timestamp: 1970-01-01 00:00:01 UTC" in telegram_msg
 
 
 @pytest.mark.asyncio

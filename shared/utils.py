@@ -33,6 +33,14 @@ def normalize_timestamp(value: Any) -> datetime:
     return datetime.fromtimestamp(timestamp / 1000, tz=UTC)
 
 
+def format_context_timestamp_line(context: Any) -> str:
+    timestamp = getattr(context, "timestamp", None)
+    if timestamp is None:
+        return "- Context timestamp: UNAVAILABLE"
+    formatted = datetime.fromtimestamp(float(timestamp) / 1000, tz=UTC)
+    return f"- Context timestamp: {formatted.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+
+
 def safe_format(value, spec: str = ".2f") -> str:
     """Safely format a value with a numeric format specification.
 

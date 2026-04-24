@@ -19,7 +19,7 @@ from market_regime.regime_routing import (
 )
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.signal_context_scorer import SignalContextScorer
-from shared.utils import build_links_msg
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -220,6 +220,7 @@ class PriceTracker:
             - Rule intent: BUY after 5m oversold mean-reversion confirmation in a balanced range market
             - Market regime: {context.market_regime}
             - Market transition: {context.market_regime_transition if context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Market stress: {round_numbers(context.market_stress_score, 3)}
             - Advancers ratio: {round_numbers(context.advancers_ratio, 3)}
             - Long tailwind: {round_numbers(context.long_tailwind, 3)}

@@ -14,7 +14,12 @@ from pybinbot import (
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.bot_exit import deactivate_active_bot
-from shared.utils import build_links_msg, normalize_timestamp, safe_pct
+from shared.utils import (
+    build_links_msg,
+    format_context_timestamp_line,
+    normalize_timestamp,
+    safe_pct,
+)
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -234,6 +239,7 @@ class BuyTheDip:
         - Rule intent: BUY after a 6h dip between -2.0% and -5.0% once price reclaims the prior close and EMA20
         - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
         - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+        {format_context_timestamp_line(context)}
         - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
         - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
         - 6h reference price: {round_numbers(reference_price, 6)}

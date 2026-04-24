@@ -17,7 +17,7 @@ from market_regime.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
 from market_regime.signal_context_scorer import SignalContextScorer
-from shared.utils import build_links_msg
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -203,6 +203,7 @@ class InversePriceTracker:
             - Rule intent: buy an oversold pullback when the broader market and symbol context favor bullish continuation rather than balanced range mean reversion.
             - Market regime: {context.market_regime}
             - Market transition: {context.market_regime_transition if context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features.micro_regime_transition is not None else "None"}
             - Context confidence: {round_numbers(context_score.confidence, 2)}
