@@ -876,7 +876,8 @@ async def test_grid_trading_deactivates_active_bot_before_buy_entry() -> None:
     df.loc[df.index[-1], "close"] = 98.3
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
-    algo.binbot_api.get_bots_by_name.return_value = [{"id": "bot-123"}]
+    binbot_mock = cast(MagicMock, algo.binbot_api)
+    binbot_mock.get_bots_by_name.return_value = [{"id": "bot-123"}]
     tg_mock = AsyncMock()
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
@@ -889,11 +890,11 @@ async def test_grid_trading_deactivates_active_bot_before_buy_entry() -> None:
         bb_mid=100.0,
     )
 
-    algo.binbot_api.get_bots_by_name.assert_called_once_with(
+    binbot_mock.get_bots_by_name.assert_called_once_with(
         name="coinrule_grid_trading",
         symbol="TESTUSDT",
     )
-    algo.binbot_api.deactivate_bot.assert_called_once_with(
+    binbot_mock.deactivate_bot.assert_called_once_with(
         "bot-123",
         algorithmic_close=True,
     )
@@ -907,7 +908,8 @@ async def test_grid_trading_deactivates_active_bot_before_sell_entry() -> None:
     df.loc[df.index[-1], "close"] = 101.5
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
-    algo.binbot_api.get_bots_by_name.return_value = [{"id": "bot-123"}]
+    binbot_mock = cast(MagicMock, algo.binbot_api)
+    binbot_mock.get_bots_by_name.return_value = [{"id": "bot-123"}]
     tg_mock = AsyncMock()
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
@@ -920,11 +922,11 @@ async def test_grid_trading_deactivates_active_bot_before_sell_entry() -> None:
         bb_mid=100.0,
     )
 
-    algo.binbot_api.get_bots_by_name.assert_called_once_with(
+    binbot_mock.get_bots_by_name.assert_called_once_with(
         name="coinrule_grid_trading",
         symbol="TESTUSDT",
     )
-    algo.binbot_api.deactivate_bot.assert_called_once_with(
+    binbot_mock.deactivate_bot.assert_called_once_with(
         "bot-123",
         algorithmic_close=True,
     )
