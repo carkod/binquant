@@ -1,20 +1,19 @@
 import logging
 import os
 from typing import TYPE_CHECKING
-from pybinbot import (
-    Position,
-    round_numbers,
-)
+
+from pybinbot import Position, round_numbers
+
 from market_regime.regime_routing import resolve_symbol_features
 from models.strategies import GridSignalDecision
-from shared.bot_exit import deactivate_active_bot
+from shared.strategy_mixin import StrategyMixin
 from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class GridTrading:
+class GridTrading(StrategyMixin):
     """
     Simple Coinrule-style manual grid logic.
 
@@ -24,8 +23,6 @@ class GridTrading:
     """
 
     ALGO = "coinrule_grid_trading"
-    BUY_TRIGGER_PCT = 0.02
-    SELL_TRIGGER_PCT = 0.02
     CLIP_SIZE_QUOTE = 20.0
     LEVERAGE = 3
     LOOKBACK_CANDLES = 2
@@ -33,8 +30,8 @@ class GridTrading:
     def __init__(
         self,
         cls: "ContextEvaluator",
-        buy_trigger_pct: float = BUY_TRIGGER_PCT,
-        sell_trigger_pct: float = SELL_TRIGGER_PCT,
+        buy_trigger_pct: float = 0.02,
+        sell_trigger_pct: float = 0.02,
     ) -> None:
         self.ti = cls
         self.df_15m = cls.df_15m
@@ -180,13 +177,9 @@ class GridTrading:
             return
 
         autotrade = False
-        active_bots = self.binbot_api.get_bots_by_name(
-            name=self.ALGO,
-            symbol=self.symbol,
-        )
+        active_bots = self.get_active_bots(algo=self.ALGO, symbol=self.symbol)
         if active_bots:
-            bot_action = deactivate_active_bot(
-                binbot_api=self.binbot_api,
+            bot_action = self.deactivate_active_bot(
                 algo=self.ALGO,
                 symbol=self.symbol,
                 source_label="Grid Trading exit",

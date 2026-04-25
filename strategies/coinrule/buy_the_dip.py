@@ -13,7 +13,7 @@ from pybinbot import (
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
-from shared.bot_exit import deactivate_active_bot
+from shared.strategy_mixin import StrategyMixin
 from shared.utils import (
     build_links_msg,
     format_context_timestamp_line,
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class BuyTheDip:
+class BuyTheDip(StrategyMixin):
     ALGO = "coinrule_buy_the_dip"
     START_TIME = datetime(2026, 4, 12, 23, 21, tzinfo=UTC)
     LOOKBACK_HOURS = 6
@@ -35,6 +35,7 @@ class BuyTheDip:
         self.ti = cls
         self.df_15m = cls.df_15m
         self.config = cls.config
+        self.binbot_api = cls.binbot_api
         self.exchange = cls.exchange
         self.market_type = cls.market_type
         self.symbol = cls.symbol
@@ -195,8 +196,7 @@ class BuyTheDip:
             current_price=current_price,
         )
         if exit_reason is not None:
-            bot_action = deactivate_active_bot(
-                binbot_api=self.ti.binbot_api,
+            bot_action = self.deactivate_active_bot(
                 algo=self.ALGO,
                 symbol=self.symbol,
                 source_label="Buy The Dip exit",
