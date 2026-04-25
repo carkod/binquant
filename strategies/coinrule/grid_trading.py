@@ -7,6 +7,7 @@ from pybinbot import (
 )
 from market_regime.regime_routing import resolve_symbol_features
 from models.strategies import GridSignalDecision
+from shared.bot_exit import deactivate_active_bot
 from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
@@ -22,13 +23,19 @@ class GridTrading:
     the rule easy to inspect while autotrade is intentionally disabled.
     """
 
+    ALGO = "coinrule_grid_trading"
     BUY_TRIGGER_PCT = 0.02
     SELL_TRIGGER_PCT = 0.02
     CLIP_SIZE_QUOTE = 20.0
     LEVERAGE = 3
     LOOKBACK_CANDLES = 2
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(
+        self,
+        cls: "ContextEvaluator",
+        buy_trigger_pct: float = BUY_TRIGGER_PCT,
+        sell_trigger_pct: float = SELL_TRIGGER_PCT,
+    ) -> None:
         self.ti = cls
         self.df_15m = cls.df_15m
         self.config = cls.config
@@ -40,6 +47,8 @@ class GridTrading:
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
+        self.buy_trigger_pct = buy_trigger_pct
+        self.sell_trigger_pct = sell_trigger_pct
 
     @property
     def latest_market_context(self):
@@ -75,8 +84,8 @@ class GridTrading:
             (current_price - live_anchor) / live_anchor if live_anchor > 0 else 0.0
         )
 
-        buy_zone = move_from_anchor <= -self.BUY_TRIGGER_PCT
-        sell_zone = move_from_anchor >= self.SELL_TRIGGER_PCT
+        buy_zone = move_from_anchor <= -self.buy_trigger_pct
+        sell_zone = move_from_anchor >= self.sell_trigger_pct
 
         if buy_zone:
             return GridSignalDecision(
@@ -86,7 +95,7 @@ class GridTrading:
                     "Price is down enough from the live anchor to trigger the "
                     f"manual BUY leg ({move_from_anchor * 100:.2f}%)."
                 ),
-                trigger_move_pct=self.BUY_TRIGGER_PCT,
+                trigger_move_pct=self.buy_trigger_pct,
                 rsi_value=rsi_value,
             )
 
@@ -98,7 +107,7 @@ class GridTrading:
                     "Price is up enough from the live anchor to trigger the "
                     f"manual SELL leg ({move_from_anchor * 100:.2f}%)."
                 ),
-                trigger_move_pct=self.SELL_TRIGGER_PCT,
+                trigger_move_pct=self.sell_trigger_pct,
                 rsi_value=rsi_value,
             )
 
@@ -108,7 +117,7 @@ class GridTrading:
                 "Price has not moved far enough from the live anchor for the "
                 "manual +/-2% grid rule."
             ),
-            trigger_move_pct=self.BUY_TRIGGER_PCT,
+            trigger_move_pct=self.buy_trigger_pct,
             rsi_value=rsi_value,
         )
 
@@ -170,8 +179,26 @@ class GridTrading:
             logging.info("Grid skipped: %s", decision.reason)
             return
 
-        algo = "coinrule_grid_trading"
         autotrade = False
+        active_bots = self.binbot_api.get_bots_by_name(
+            name=self.ALGO,
+            symbol=self.symbol,
+        )
+        if active_bots:
+            bot_action = deactivate_active_bot(
+                binbot_api=self.binbot_api,
+                algo=self.ALGO,
+                symbol=self.symbol,
+                source_label="Grid Trading exit",
+                active_bots=active_bots,
+            )
+            logging.info(
+                "Grid deactivated active bot for %s before new %s entry: %s",
+                self.symbol,
+                decision.action,
+                bot_action,
+            )
+            return
 
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
@@ -190,15 +217,15 @@ class GridTrading:
         if decision.action == "sell":
             action_label = "SHORT SELL ALERT"
             bot_strategy = Position.short
-            grid_logic = "Simple +2% manual contract sell trigger"
+            grid_logic = f"Simple +{self.sell_trigger_pct * 100:.1f}% manual contract sell trigger"
             action_text = (
                 f"SELL ${self.CLIP_SIZE_QUOTE:.2f} of {self.symbol} as market order "
-                f"with {self.LEVERAGE}x leverage after a +{self.SELL_TRIGGER_PCT * 100:.1f}% move "
+                f"with {self.LEVERAGE}x leverage after a +{self.sell_trigger_pct * 100:.1f}% move "
                 "from the live anchor"
             )
 
             msg = f"""
-            - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - [{os.getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: {action_label}
             - Current price: {round_numbers(current_price, 6)}
             - Live anchor price: {round_numbers(live_anchor, 6)}
@@ -224,15 +251,17 @@ class GridTrading:
 
         action_label = "LONG BUY ALERT"
         bot_strategy = Position.long
-        grid_logic = "Simple -2% manual contract buy trigger"
+        grid_logic = (
+            f"Simple -{self.buy_trigger_pct * 100:.1f}% manual contract buy trigger"
+        )
         action_text = (
             f"BUY ${self.CLIP_SIZE_QUOTE:.2f} of {self.symbol} as market order "
             f"using isolated margin with {self.LEVERAGE}x leverage after a "
-            f"-{self.BUY_TRIGGER_PCT * 100:.1f}% move from the live anchor"
+            f"-{self.buy_trigger_pct * 100:.1f}% move from the live anchor"
         )
 
         msg = f"""
-            - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
+            - [{os.getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: {action_label}
             - Current price: {round_numbers(current_price, 6)}
             - Live anchor price: {round_numbers(live_anchor, 6)}

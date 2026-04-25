@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
+
 from pybinbot import BinbotApi
 
 
@@ -10,8 +12,10 @@ def deactivate_active_bot(
     algo: str,
     symbol: str,
     source_label: str,
+    active_bots: list[dict[str, Any]] | None = None,
 ) -> str:
-    active_bots = binbot_api.get_bots_by_name(name=algo, symbol=symbol)
+    if active_bots is None:
+        active_bots = binbot_api.get_bots_by_name(name=algo, symbol=symbol)
     active_bot = active_bots[0] if active_bots else None
 
     if active_bot is None or not active_bot.get("id"):
