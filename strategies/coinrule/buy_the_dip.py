@@ -196,17 +196,19 @@ class BuyTheDip(StrategyMixin):
             current_price=current_price,
         )
         if exit_reason is not None:
-            bot_action = self.deactivate_active_bot(
-                algo=self.ALGO,
-                symbol=self.symbol,
-                source_label="Buy The Dip exit",
-            )
-            if bot_action != "No active bot found to deactivate.":
-                logging.info(
-                    "Buy-the-dip deactivated active bot for %s: %s (%s)",
-                    self.symbol,
-                    exit_reason,
-                    bot_action,
+            active_bots = self.get_active_bots(algo=self.ALGO, symbol=self.symbol)
+            if len(active_bots) > 0:
+                id = active_bots[0]["id"]
+                self.deactivate_active_bot(
+                    bot_id=id,
+                    symbol=self.symbol,
+                    source_label="Buy The Dip exit",
+                )
+                self.binbot_api.submit_bot_event_logs(
+                    bot_id=id,
+                    message=[
+                        f"Deactivated active bot from Buy The Dip exit due to {exit_reason}."
+                    ],
                 )
             return
         if not self._allows_entry(context=context, symbol_features=symbol_features):

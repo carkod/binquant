@@ -189,6 +189,19 @@ def test_live_context_requires_minimum_coverage_ratio() -> None:
     assert context is None
 
 
+def test_live_context_waits_until_fresh_symbols_have_features() -> None:
+    store = MarketStateStore()
+    accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
+
+    context = None
+    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(40)]
+    for index, symbol in enumerate(symbols):
+        context = accumulator.on_closed_candle(symbol, make_candle(2_000, 100 + index))
+
+    assert context is None
+    assert accumulator.get_latest_context() is None
+
+
 def test_signal_context_scorer_penalizes_weak_long() -> None:
     store = MarketStateStore()
     accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")

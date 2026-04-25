@@ -123,7 +123,7 @@ class LiveMarketContextAccumulator:
                 )
 
         effective_count = len(symbol_features)
-        if total_tracked_symbols == 0:
+        if total_tracked_symbols == 0 or effective_count < REQUIRED_FRESH_SYMBOLS:
             return None
 
         advancers = sum(1 for item in symbol_features.values() if item.return_pct > 0)

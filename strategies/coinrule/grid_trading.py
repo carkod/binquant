@@ -178,18 +178,18 @@ class GridTrading(StrategyMixin):
 
         autotrade = False
         active_bots = self.get_active_bots(algo=self.ALGO, symbol=self.symbol)
-        if active_bots:
-            bot_action = self.deactivate_active_bot(
-                algo=self.ALGO,
+        if len(active_bots) > 0:
+            id = active_bots[0]["id"]
+            self.deactivate_active_bot(
+                bot_id=id,
                 symbol=self.symbol,
                 source_label="Grid Trading exit",
-                active_bots=active_bots,
             )
-            logging.info(
-                "Grid deactivated active bot for %s before new %s entry: %s",
-                self.symbol,
-                decision.action,
-                bot_action,
+            self.binbot_api.submit_bot_event_logs(
+                bot_id=id,
+                message=[
+                    f"Deactivated active bot from Grid Trading exit before new {decision.action} entry."
+                ],
             )
             return
 
