@@ -175,7 +175,7 @@ async def test_signal_emits_in_trend_up_market(monkeypatch):
 
     assert "Autotrade route: market_trend_up_symbol_trend_up" in telegram_msg
     assert signal_value.autotrade is True
-    assert signal_value.bot_strategy == "long"
+    assert signal_value.bot_params.position == "long"
 
 
 @pytest.mark.asyncio

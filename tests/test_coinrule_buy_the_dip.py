@@ -337,6 +337,7 @@ async def test_buy_the_dip_autotrade_requires_range_or_transitional_context() ->
     assert process_args is not None
     value = process_args.args[0]
     assert value.autotrade is True
+    assert value.bot_params.margin_short_reversal is False
 
 
 @pytest.mark.asyncio

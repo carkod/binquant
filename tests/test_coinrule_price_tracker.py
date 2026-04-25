@@ -362,7 +362,7 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
         bb_mid=100.0,
     )
 
-    assert captured["market_type"] == MarketType.SPOT
+    assert captured["bot_params"].market_type == MarketType.SPOT
 
 
 @pytest.mark.asyncio
@@ -479,6 +479,69 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
     telegram_msg = tg_await_args.args[0]
     assert "Market transition: ENTERED_TREND_UP" in telegram_msg
     assert "Market regime: TREND_UP" in telegram_msg
+    assert "Context timestamp: 1970-01-01 00:00:01 UTC" in telegram_msg
+
+
+@pytest.mark.asyncio
+async def test_price_tracker_reads_latest_context_from_evaluator(monkeypatch):
+    df = make_ohlcv_df(n=50, oversold=True)
+    algo = make_algo(df)
+    at_mock = AsyncMock()
+    tg_mock = AsyncMock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+    )
+
+    algo.latest_market_context = make_market_context(market_regime="RANGE")
+    updated_context = make_market_context(
+        market_regime="TREND_UP",
+        market_regime_transition="ENTERED_TREND_UP",
+        regime_is_transitioning=True,
+    )
+    algo.ti.latest_market_context = updated_context
+
+    captured: dict[str, Any] = {}
+
+    def fake_signals_consumer(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.Indicators.mfi",
+        staticmethod(lambda df, window=14: 15.0),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
+        lambda **kwargs: SimpleNamespace(
+            adjusted_score=1.2,
+            emit=True,
+            context_score=SimpleNamespace(
+                confidence=0.7,
+                followthrough_score=0.2,
+                adverse_excursion_risk=0.2,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.SignalsConsumer", fake_signals_consumer
+    )
+
+    await algo.signal(
+        close_price=float(df["close"].iloc[-1]),
+        bb_high=115.0,
+        bb_low=85.0,
+        bb_mid=100.0,
+    )
+
+    assert captured["autotrade"] is False
+    tg_await_args = tg_mock.await_args
+    assert tg_await_args is not None
+    telegram_msg = tg_await_args.args[0]
+    assert "Market regime: TREND_UP" in telegram_msg
+    assert "Market transition: ENTERED_TREND_UP" in telegram_msg
 
 
 @pytest.mark.asyncio
@@ -685,33 +748,34 @@ async def test_grid_trading_emits_signal_for_range_bound_dip():
         bb_mid=100.0,
     )
 
-    at_mock.assert_awaited_once()
+    at_mock.assert_not_awaited()
     tg_mock.assert_awaited_once()
 
     tg_await_args = tg_mock.await_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "coinrule_grid_trading" in telegram_msg
-    assert "Action: LONG ENTRY" in telegram_msg
-    assert "upper-band exit handling" in telegram_msg
+    assert "Action: LONG BUY ALERT" in telegram_msg
     assert (
-        "Exit rule: SELL 10% of the open TESTUSDT position every +2.0% move"
+        "BUY $20.00 of TESTUSDT as market order using isolated margin with 3x leverage"
         in telegram_msg
     )
-    assert "Band position" in telegram_msg
+    assert "Move from live anchor" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_uses_context_market_type(monkeypatch):
+async def test_grid_trading_skips_when_market_is_not_range() -> None:
     df = make_range_bound_df(n=50)
     df.loc[df.index[-1], "close"] = 98.3
     df.loc[df.index[-1], "open"] = 98.8
     df.loc[df.index[-1], "high"] = 99.0
     df.loc[df.index[-1], "low"] = 98.0
-    df.loc[df.index[-1], "rsi"] = 34.0
     algo = make_grid_algo(df)
-    algo.market_type = MarketType.SPOT
-    algo.latest_market_context = make_market_context()
+    algo.latest_market_context = make_market_context(
+        market_regime="TREND_UP",
+        market_regime_transition="ENTERED_TREND_UP",
+    )
     at_mock = AsyncMock()
     tg_mock = AsyncMock()
     algo.at_consumer = cast(
@@ -721,16 +785,6 @@ async def test_grid_trading_uses_context_market_type(monkeypatch):
         TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
     )
 
-    captured: dict[str, Any] = {}
-
-    def fake_signals_consumer(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(**kwargs)
-
-    monkeypatch.setattr(
-        "strategies.coinrule.grid_trading.SignalsConsumer", fake_signals_consumer
-    )
-
     await algo.signal(
         current_price=float(df["close"].iloc[-1]),
         bb_high=102.0,
@@ -738,16 +792,20 @@ async def test_grid_trading_uses_context_market_type(monkeypatch):
         bb_mid=100.0,
     )
 
-    assert captured["market_type"] == MarketType.SPOT
+    at_mock.assert_not_awaited()
+    tg_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_skips_when_market_has_left_range() -> None:
+async def test_grid_trading_skips_when_coin_regime_is_not_range() -> None:
     df = make_range_bound_df(n=50)
+    df.loc[df.index[-1], "close"] = 98.3
+    df.loc[df.index[-1], "open"] = 98.8
+    df.loc[df.index[-1], "high"] = 99.0
+    df.loc[df.index[-1], "low"] = 98.0
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context(
-        market_regime="TREND_UP",
-        market_regime_transition="ENTERED_TREND_UP",
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
     )
     at_mock = AsyncMock()
     tg_mock = AsyncMock()
@@ -781,13 +839,6 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
 
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
-    binbot_api_mock = cast(MagicMock, algo.binbot_api)
-    binbot_api_mock.get_bots_by_name.return_value = [
-        {
-            "id": "bot-123",
-            "pair": "TESTUSDT",
-        }
-    ]
     at_mock = AsyncMock()
     tg_mock = AsyncMock()
     algo.at_consumer = cast(
@@ -806,23 +857,17 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
 
     at_mock.assert_not_awaited()
     tg_mock.assert_awaited_once()
-    binbot_api_mock.get_bots_by_name.assert_called_once_with(
-        name="coinrule_grid_trading", symbol="TESTUSDT"
-    )
-    binbot_api_mock.deactivate_bot.assert_called_once_with(
-        "bot-123", algorithmic_close=True
-    )
 
     tg_await_args = tg_mock.await_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
-    assert "Action: LONG EXIT / DEACTIVATE" in telegram_msg
-    assert "Upper-band exit handling inside sideways range" in telegram_msg
-    assert "Bot action: Deactivated active bot bot-123." in telegram_msg
+    assert "Action: SHORT SELL ALERT" in telegram_msg
+    assert "SELL $20.00 of TESTUSDT as market order with 3x leverage" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_skips_when_sideways_but_not_at_range_edge() -> None:
+async def test_grid_trading_skips_when_move_is_below_threshold() -> None:
     df = make_range_bound_df(n=50)
     df.loc[df.index[-1], "close"] = 100.0
     df.loc[df.index[-1], "open"] = 100.0
@@ -850,3 +895,45 @@ async def test_grid_trading_skips_when_sideways_but_not_at_range_edge() -> None:
 
     at_mock.assert_not_awaited()
     tg_mock.assert_not_awaited()
+
+
+def test_grid_trading_buy_threshold_requires_two_percent_drop() -> None:
+    df = make_range_bound_df(n=50)
+    df.loc[df.index[-2], "close"] = 100.6
+    df.loc[df.index[-1], "close"] = 98.5
+    df.loc[df.index[-1], "open"] = 98.8
+    df.loc[df.index[-1], "high"] = 99.0
+    df.loc[df.index[-1], "low"] = 98.2
+
+    algo = make_grid_algo(df)
+    decision = algo.evaluate(
+        recent_window=df.tail(algo.LOOKBACK_CANDLES),
+        current_price=float(df["close"].iloc[-1]),
+        bb_high=102.0,
+        bb_low=98.0,
+        bb_mid=100.0,
+    )
+
+    assert decision.should_trigger is True
+    assert decision.action == "buy"
+
+
+def test_grid_trading_sell_threshold_requires_two_percent_rally() -> None:
+    df = make_range_bound_df(n=50)
+    df.loc[df.index[-2], "close"] = 99.0
+    df.loc[df.index[-1], "close"] = 101.2
+    df.loc[df.index[-1], "open"] = 100.0
+    df.loc[df.index[-1], "high"] = 101.5
+    df.loc[df.index[-1], "low"] = 99.9
+
+    algo = make_grid_algo(df)
+    decision = algo.evaluate(
+        recent_window=df.tail(algo.LOOKBACK_CANDLES),
+        current_price=float(df["close"].iloc[-1]),
+        bb_high=102.0,
+        bb_low=98.0,
+        bb_mid=100.0,
+    )
+
+    assert decision.should_trigger is True
+    assert decision.action == "sell"

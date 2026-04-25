@@ -2,14 +2,14 @@ import logging
 from pybinbot import (
     BotBase,
     CloseConditions,
-    Position,
-    SignalsConsumer,
-    round_numbers,
     MarketType,
     ExchangeId,
     BinanceApi,
     KucoinApi,
     BinbotApi,
+    Position,
+    SignalsConsumer,
+    round_numbers,
 )
 from shared.exceptions import AutotradeError
 from shared.config import Config
@@ -75,8 +75,30 @@ class Autotrade:
             dynamic_trailing=True,  # not added to settings yet
         )
         self.db_collection_name = db_collection_name
+        self.bot_override_fields: set[str] = set()
         # restart streams after bot activation
         super().__init__()
+
+    def _apply_signal_bot_overrides(self, data: SignalsConsumer) -> None:
+        self.bot_override_fields = set()
+        bot_params = data.bot_params
+
+        if bot_params is None:
+            return
+
+        for field_name in bot_params.model_fields_set:
+            value = getattr(bot_params, field_name)
+            if value is None:
+                continue
+            if field_name == "position" and value is not None:
+                value = Position(value)
+            if field_name == "market_type" and value is not None:
+                value = MarketType(value)
+            self.bot_override_fields.add(field_name)
+            setattr(self.default_bot, field_name, value)
+
+    def _is_field_overridden(self, field_name: str) -> bool:
+        return field_name in self.bot_override_fields
 
     def _set_bollinguer_spreads(self, data: SignalsConsumer):
         bb_spreads = data.bb_spreads
@@ -100,15 +122,23 @@ class Autotrade:
             # Otherwise it'll close too soon
             if whole_spread > 2 and whole_spread < 20:
                 if self.default_bot.position == Position.long:
-                    self.default_bot.stop_loss = round_numbers(whole_spread)
-                    self.default_bot.take_profit = round_numbers(top_spread)
+                    if not self._is_field_overridden("stop_loss"):
+                        self.default_bot.stop_loss = round_numbers(whole_spread)
+                    if not self._is_field_overridden("take_profit"):
+                        self.default_bot.take_profit = round_numbers(top_spread)
                     # too much risk, reduce stop loss
-                    self.default_bot.trailing_deviation = round_numbers(bottom_spread)
+                    if not self._is_field_overridden("trailing_deviation"):
+                        self.default_bot.trailing_deviation = round_numbers(
+                            bottom_spread
+                        )
 
                 if self.default_bot.position == Position.short:
-                    self.default_bot.stop_loss = round_numbers(whole_spread)
-                    self.default_bot.take_profit = round_numbers(bottom_spread)
-                    self.default_bot.trailing_deviation = round_numbers(top_spread)
+                    if not self._is_field_overridden("stop_loss"):
+                        self.default_bot.stop_loss = round_numbers(whole_spread)
+                    if not self._is_field_overridden("take_profit"):
+                        self.default_bot.take_profit = round_numbers(bottom_spread)
+                    if not self._is_field_overridden("trailing_deviation"):
+                        self.default_bot.trailing_deviation = round_numbers(top_spread)
 
     def handle_error(self, msg):
         """
@@ -126,7 +156,8 @@ class Autotrade:
         this overrides the settings in research_controller autotrade settings
         """
         # Binances forces isolated pair to go through 24hr deactivation after traded
-        self.default_bot.cooldown = 1440
+        if not self._is_field_overridden("cooldown"):
+            self.default_bot.cooldown = 1440
 
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)
@@ -135,7 +166,8 @@ class Autotrade:
         """
         Set values for default_bot
         """
-        self.default_bot.cooldown = 360  # Avoid cannibalization of profits
+        if not self._is_field_overridden("cooldown"):
+            self.default_bot.cooldown = 360  # Avoid cannibalization of profits
 
         # disable margin short if not available to prevent bot erroring
         if (
@@ -166,9 +198,7 @@ class Autotrade:
             )
             return
 
-        # set common values for both paper and real bots
-        self.default_bot.position = Position(data.bot_strategy)
-        self.default_bot.market_type = MarketType(data.market_type)
+        self._apply_signal_bot_overrides(data)
 
         if self.db_collection_name == "paper_trading":
             # Dynamic switch to real bot URLs

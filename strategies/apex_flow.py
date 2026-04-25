@@ -1,8 +1,9 @@
 from typing import TYPE_CHECKING
 
-from pybinbot import round_numbers, ts_to_humandate
+from pybinbot import round_numbers
 
 from market_regime.models import LiveMarketContext
+from shared.utils import format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -17,6 +18,14 @@ class ApexFlow:
         self.latest_market_context: LiveMarketContext | None = cls.latest_market_context
         self._last_sent_context_timestamp: int | None = None
         self.last_market_regime = cls.last_market_regime
+
+    @property
+    def latest_market_context(self) -> LiveMarketContext | None:
+        return self.context_evaluator.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value: LiveMarketContext | None) -> None:
+        self.context_evaluator.latest_market_context = value
 
     @staticmethod
     def _regime_summary(regime: str | None) -> str:
@@ -59,7 +68,7 @@ class ApexFlow:
             - Market regime: {current_regime}
             - Market transition: {context.market_regime_transition}
             - Interpretation: {self._regime_summary(current_regime)}
-            - Timestamp: {ts_to_humandate(context.timestamp)}
+            {format_context_timestamp_line(context)}
             - Confidence: {round_numbers(context.confidence, 3)}
             - Transition strength: {round_numbers(context.market_regime_transition_strength, 3)}
             - Fresh symbols: {context.fresh_count}

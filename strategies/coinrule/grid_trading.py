@@ -1,14 +1,13 @@
 import logging
 import os
 from typing import TYPE_CHECKING
-from pybinbot import HABollinguerSpread, SignalsConsumer, Position, round_numbers
-from market_regime.regime_routing import (
-    resolve_symbol_features,
-    supports_grid_trading,
+from pybinbot import (
+    Position,
+    round_numbers,
 )
+from market_regime.regime_routing import resolve_symbol_features
 from models.strategies import GridSignalDecision
-from shared.bot_exit import deactivate_active_bot
-from shared.utils import build_links_msg
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -16,34 +15,18 @@ if TYPE_CHECKING:
 
 class GridTrading:
     """
-    Range-aware Coinrule-style grid logic for confirmed range markets.
+    Simple Coinrule-style manual grid logic.
 
-    This strategy looks for long-side grid entries when the broader market and
-    the symbol are both behaving as range-bound, non-transitional markets. It
-    also restores the legacy upper-band exit rule so the algo can emit a reduce
-    / scale-out alert after a strong move higher inside the range.
-
-    Intent:
-    - detect a stable sideways/range-bound market
-    - detect weakness near the lower edge of the range
-    - emit a long-entry signal
-    - detect strength near the upper edge of the range
-    - emit a long reduce / exit signal
+    The strategy compares the current live price against the latest anchor
+    close and emits a manual alert whenever price moves by +/-2%. This keeps
+    the rule easy to inspect while autotrade is intentionally disabled.
     """
 
     BUY_TRIGGER_PCT = 0.02
-    EXIT_TRIGGER_PCT = 0.02
-    EXIT_REDUCE_PCT = 0.10
+    SELL_TRIGGER_PCT = 0.02
     CLIP_SIZE_QUOTE = 20.0
-    MAX_RUNS = 10
-
-    LOOKBACK_CANDLES = 48
-    MIN_RANGE_WIDTH = 0.015
-    MAX_RANGE_WIDTH = 0.08
-    MAX_RANGE_DRIFT = 0.03
-    MIN_BB_WIDTH = 0.01
-    MAX_BB_WIDTH = 0.08
-    MAX_TREND_SLOPE_PROXY = 0.012
+    LEVERAGE = 3
+    LOOKBACK_CANDLES = 2
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -58,6 +41,14 @@ class GridTrading:
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
 
+    @property
+    def latest_market_context(self):
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value) -> None:
+        self.ti.latest_market_context = value
+
     def evaluate(
         self,
         recent_window,
@@ -66,95 +57,37 @@ class GridTrading:
         bb_mid: float,
         bb_low: float,
     ) -> GridSignalDecision:
-        recent_high = float(recent_window["high"].max())
-        recent_low = float(recent_window["low"].min())
-        first_close = float(recent_window["close"].iloc[0])
-        last_close = float(recent_window["close"].iloc[-1])
-        rsi_value = float(recent_window["rsi"].iloc[-1])
-
-        if recent_low <= 0 or first_close <= 0 or bb_mid == 0:
-            return GridSignalDecision(
-                should_trigger=False,
-                reason="Invalid denominator in range or Bollinger calculations.",
-            )
-
-        range_width = (recent_high - recent_low) / recent_low
-        range_drift = abs((last_close - first_close) / first_close)
-        bb_width = (bb_high - bb_low) / bb_mid if bb_high > bb_low else 0.0
-
-        if bb_high == bb_low:
-            band_position = 0.5
-        else:
-            band_position = (current_price - bb_low) / (bb_high - bb_low)
-
-        rolling_mean = recent_window["close"].rolling(8).mean().dropna()
-        if len(rolling_mean) >= 2:
-            trend_slope_proxy = abs(
-                (float(rolling_mean.iloc[-1]) - float(rolling_mean.iloc[0]))
-                / first_close
-            )
-        else:
-            trend_slope_proxy = 0.0
-
-        is_sideways = (
-            self.MIN_RANGE_WIDTH <= range_width <= self.MAX_RANGE_WIDTH
-            and range_drift <= self.MAX_RANGE_DRIFT
-            and self.MIN_BB_WIDTH <= bb_width <= self.MAX_BB_WIDTH
-            and trend_slope_proxy <= self.MAX_TREND_SLOPE_PROXY
+        del bb_high, bb_mid, bb_low
+        live_anchor = float(recent_window["close"].iloc[-2])
+        rsi_value = (
+            float(recent_window["rsi"].iloc[-1])
+            if "rsi" in recent_window.columns
+            else 50.0
         )
 
-        if not is_sideways:
+        if live_anchor <= 0:
             return GridSignalDecision(
                 should_trigger=False,
-                reason=(
-                    "Market rejected: not sufficiently sideways "
-                    f"(range_width={range_width:.4f}, "
-                    f"range_drift={range_drift:.4f}, "
-                    f"bb_width={bb_width:.4f}, "
-                    f"trend_proxy={trend_slope_proxy:.4f})."
-                ),
-                range_width=range_width,
-                range_drift=range_drift,
-                bb_width=bb_width,
-                band_position=band_position,
-                rsi_value=rsi_value,
-                trend_slope_proxy=trend_slope_proxy,
+                reason="Invalid live anchor for percentage move calculation.",
             )
 
-        live_anchor = float(recent_window["close"].iloc[-2])
         move_from_anchor = (
             (current_price - live_anchor) / live_anchor if live_anchor > 0 else 0.0
         )
 
-        buy_zone = (
-            move_from_anchor <= -self.BUY_TRIGGER_PCT
-            and rsi_value < 35
-            and band_position <= 0.4
-            and current_price <= bb_mid
-        )
-        sell_zone = (
-            move_from_anchor >= self.EXIT_TRIGGER_PCT
-            and rsi_value > 65
-            and band_position >= 0.6
-            and current_price >= bb_mid
-        )
+        buy_zone = move_from_anchor <= -self.BUY_TRIGGER_PCT
+        sell_zone = move_from_anchor >= self.SELL_TRIGGER_PCT
 
         if buy_zone:
             return GridSignalDecision(
                 should_trigger=True,
                 action="buy",
                 reason=(
-                    "Sideways market confirmed and price is in a lower-band grid "
-                    f"entry zone after a {move_from_anchor * 100:.2f}% move from "
-                    "the live anchor."
+                    "Price is down enough from the live anchor to trigger the "
+                    f"manual BUY leg ({move_from_anchor * 100:.2f}%)."
                 ),
                 trigger_move_pct=self.BUY_TRIGGER_PCT,
-                range_width=range_width,
-                range_drift=range_drift,
-                bb_width=bb_width,
-                band_position=band_position,
                 rsi_value=rsi_value,
-                trend_slope_proxy=trend_slope_proxy,
             )
 
         if sell_zone:
@@ -162,32 +95,21 @@ class GridTrading:
                 should_trigger=True,
                 action="sell",
                 reason=(
-                    "Sideways market confirmed and price is in an upper-band grid "
-                    f"exit zone after a {move_from_anchor * 100:.2f}% move from "
-                    "the live anchor."
+                    "Price is up enough from the live anchor to trigger the "
+                    f"manual SELL leg ({move_from_anchor * 100:.2f}%)."
                 ),
-                trigger_move_pct=self.EXIT_TRIGGER_PCT,
-                range_width=range_width,
-                range_drift=range_drift,
-                bb_width=bb_width,
-                band_position=band_position,
+                trigger_move_pct=self.SELL_TRIGGER_PCT,
                 rsi_value=rsi_value,
-                trend_slope_proxy=trend_slope_proxy,
             )
 
         return GridSignalDecision(
             should_trigger=False,
             reason=(
-                "Sideways market confirmed, but price is not in a valid lower-band "
-                "entry or upper-band exit grid zone."
+                "Price has not moved far enough from the live anchor for the "
+                "manual +/-2% grid rule."
             ),
             trigger_move_pct=self.BUY_TRIGGER_PCT,
-            range_width=range_width,
-            range_drift=range_drift,
-            bb_width=bb_width,
-            band_position=band_position,
             rsi_value=rsi_value,
-            trend_slope_proxy=trend_slope_proxy,
         )
 
     async def signal(
@@ -198,29 +120,26 @@ class GridTrading:
         bb_low: float,
     ) -> None:
         """
-        Grid trading signal for stable range-bound markets.
-
-        Best when the market is chopping sideways and price repeatedly
-        oscillates around a stable band. This module emits long entries near the
-        lower band and reduce / exit alerts near the upper band while
-        explicitly rejecting transitional market states.
+        Manual-only Coinrule grid signal based on a simple +/-2% move.
         """
         context = self.latest_market_context
-        if not supports_grid_trading(context=context, symbol=self.symbol):
-            logging.info("Grid skipped: regime router does not support grid trading.")
-            return
-
-        symbol_features = resolve_symbol_features(context, self.symbol)
-        if context is not None and context.market_regime != "RANGE":
+        if context is None:
             logging.info(
-                "Grid skipped: algorithm requires RANGE market regime, got %s.",
-                context.market_regime,
+                "Grid skipped: market context unavailable, RANGE/RANGE match required."
             )
             return
 
-        if symbol_features is not None and symbol_features.micro_regime != "RANGE":
+        symbol_features = resolve_symbol_features(context, self.symbol)
+        if symbol_features is None:
             logging.info(
-                "Grid skipped: algorithm requires RANGE symbol regime, got %s.",
+                "Grid skipped: symbol regime unavailable, RANGE/RANGE match required."
+            )
+            return
+
+        if context.market_regime != "RANGE" or symbol_features.micro_regime != "RANGE":
+            logging.info(
+                "Grid skipped: requires RANGE market and RANGE coin regime, got market=%s coin=%s.",
+                context.market_regime,
                 symbol_features.micro_regime,
             )
             return
@@ -233,7 +152,7 @@ class GridTrading:
             )
             return
 
-        required_cols = ["high", "low", "close", "rsi"]
+        required_cols = ["close"]
         recent_window = self.df_15m.tail(self.LOOKBACK_CANDLES)
         if recent_window[required_cols].isnull().any().any():
             logging.info("Grid skipped: recent data contains nulls.")
@@ -252,7 +171,6 @@ class GridTrading:
             return
 
         algo = "coinrule_grid_trading"
-        bot_strategy = Position.long
         autotrade = False
 
         kucoin_link, terminal_link = build_links_msg(
@@ -262,46 +180,39 @@ class GridTrading:
             self.symbol,
         )
 
-        exit_rule_text = (
-            f"SELL {self.EXIT_REDUCE_PCT * 100:.0f}% of the open {self.symbol} "
-            f"position every +{self.EXIT_TRIGGER_PCT * 100:.1f}% move while "
-            "keeping the remainder open"
+        live_anchor = float(recent_window["close"].iloc[-2])
+        move_from_anchor = (
+            (float(current_price) - live_anchor) / live_anchor
+            if live_anchor > 0
+            else 0.0
         )
 
         if decision.action == "sell":
-            bot_action = deactivate_active_bot(
-                binbot_api=self.binbot_api,
-                algo=algo,
-                symbol=self.symbol,
-                source_label="Grid Trading",
-            )
-            action_label = "LONG EXIT / DEACTIVATE"
-            grid_logic = "Upper-band exit handling inside sideways range"
+            action_label = "SHORT SELL ALERT"
+            bot_strategy = Position.short
+            grid_logic = "Simple +2% manual contract sell trigger"
             action_text = (
-                f"Reduce / exit {self.symbol} exposure after a +{self.EXIT_TRIGGER_PCT * 100:.1f}% "
-                "move near the upper band"
+                f"SELL ${self.CLIP_SIZE_QUOTE:.2f} of {self.symbol} as market order "
+                f"with {self.LEVERAGE}x leverage after a +{self.SELL_TRIGGER_PCT * 100:.1f}% move "
+                "from the live anchor"
             )
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
             - Action: {action_label}
             - Current price: {round_numbers(current_price, 6)}
+            - Live anchor price: {round_numbers(live_anchor, 6)}
+            - Move from live anchor: {round_numbers(move_from_anchor * 100, 2)}%
             - Strategy: {bot_strategy.value}
             - Rule intent: {action_text}
             - Market regime: {context.market_regime if context is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Grid logic: {grid_logic}
-            - Exit rule: {exit_rule_text}
-            - Bot action: {bot_action}
-            - Max runs configured: {self.MAX_RUNS}
+            - Order setup: market order, isolated margin, {self.LEVERAGE}x leverage
             - RSI: {round_numbers(decision.rsi_value, 2)}
-            - Range width ({self.LOOKBACK_CANDLES} candles): {round_numbers(decision.range_width * 100, 2)}%
-            - Range drift ({self.LOOKBACK_CANDLES} candles): {round_numbers(decision.range_drift * 100, 2)}%
-            - Bollinger width: {round_numbers(decision.bb_width * 100, 2)}%
-            - Band position: {round_numbers(decision.band_position, 3)}
-            - Trend proxy: {round_numbers(decision.trend_slope_proxy * 100, 2)}%
             - Reason: {decision.reason}
             - Autotrade route: manual_only
             - Autotrade is disabled
@@ -311,32 +222,31 @@ class GridTrading:
             await self.telegram_consumer.send_signal(msg)
             return
 
-        action_label = "LONG ENTRY"
-        grid_logic = "Fixed-clip grid entries with upper-band exit handling"
+        action_label = "LONG BUY ALERT"
+        bot_strategy = Position.long
+        grid_logic = "Simple -2% manual contract buy trigger"
         action_text = (
-            f"BUY ${self.CLIP_SIZE_QUOTE:.2f} of {self.symbol} with USDT wallet "
-            f"as market order after a -{self.BUY_TRIGGER_PCT * 100:.1f}% move"
+            f"BUY ${self.CLIP_SIZE_QUOTE:.2f} of {self.symbol} as market order "
+            f"using isolated margin with {self.LEVERAGE}x leverage after a "
+            f"-{self.BUY_TRIGGER_PCT * 100:.1f}% move from the live anchor"
         )
 
         msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
             - Action: {action_label}
             - Current price: {round_numbers(current_price, 6)}
+            - Live anchor price: {round_numbers(live_anchor, 6)}
+            - Move from live anchor: {round_numbers(move_from_anchor * 100, 2)}%
             - Strategy: {bot_strategy.value}
             - Rule intent: {action_text}
             - Market regime: {context.market_regime if context is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Grid logic: {grid_logic}
-            - Exit rule: {exit_rule_text}
-            - Max runs configured: {self.MAX_RUNS}
+            - Order setup: market order, isolated margin, {self.LEVERAGE}x leverage
             - RSI: {round_numbers(decision.rsi_value, 2)}
-            - Range width ({self.LOOKBACK_CANDLES} candles): {round_numbers(decision.range_width * 100, 2)}%
-            - Range drift ({self.LOOKBACK_CANDLES} candles): {round_numbers(decision.range_drift * 100, 2)}%
-            - Bollinger width: {round_numbers(decision.bb_width * 100, 2)}%
-            - Band position: {round_numbers(decision.band_position, 3)}
-            - Trend proxy: {round_numbers(decision.trend_slope_proxy * 100, 2)}%
             - Reason: {decision.reason}
             - Autotrade route: manual_only
             - {"Autotrade is disabled" if not autotrade else "Autotrade is enabled"}
@@ -345,18 +255,3 @@ class GridTrading:
             """
 
         await self.telegram_consumer.send_signal(msg)
-        if decision.action == "buy":
-            value = SignalsConsumer(
-                autotrade=autotrade,
-                current_price=current_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                market_type=self.market_type,
-                bb_spreads=HABollinguerSpread(
-                    bb_high=bb_high,
-                    bb_mid=bb_mid,
-                    bb_low=bb_low,
-                ),
-            )
-        await self.at_consumer.process_autotrade_restrictions(value)

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
+    BotBase,
     HABollinguerSpread,
     KlineSchema,
     MarketType,
@@ -12,7 +13,7 @@ from pybinbot import (
 )
 
 from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
-from shared.utils import build_links_msg
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -47,6 +48,14 @@ class ActivityBurstPump:
         self.score_quantile = 0.92
         self.score_lookback = 80
         self.cooldown_bars = 3
+
+    @property
+    def latest_market_context(self):
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value) -> None:
+        self.ti.latest_market_context = value
 
     def compute_indicators(
         self, df: TypedDataFrame[KlineSchema]
@@ -202,6 +211,7 @@ class ActivityBurstPump:
             - Rule intent: BUY after a 5m activity burst with volume, quote-volume, and price expansion confirmation
             - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Baseline volume: {round_numbers(float(row["baseline_volume_safe"]), decimals=self.price_precision)}
@@ -222,10 +232,12 @@ class ActivityBurstPump:
         value = SignalsConsumer(
             autotrade=autotrade,
             current_price=current_price,
-            symbol=self.symbol,
-            algo=algo,
-            bot_strategy=bot_strategy,
-            market_type=MarketType.FUTURES,
+            bot_params=BotBase(
+                pair=self.symbol,
+                name=algo,
+                position=bot_strategy,
+                market_type=MarketType.FUTURES,
+            ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
                 bb_mid=bb_mid,

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from pandas import to_datetime
 from pybinbot import (
+    BotBase,
     HABollinguerSpread,
     Indicators,
     MarketDominance,
@@ -14,6 +15,7 @@ from pybinbot import (
 
 from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
 from market_regime.signal_context_scorer import SignalContextScorer
+from shared.utils import format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -41,6 +43,14 @@ class Coinrule:
             risk_weight=0.35,
             support_weight=0.2,
         )
+
+    @property
+    def latest_market_context(self):
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value) -> None:
+        self.ti.latest_market_context = value
 
     def pre_process(self, df):
         df = df.copy()
@@ -88,6 +98,7 @@ class Coinrule:
             - Rule intent: Enter when TWAP stays above price without a sharp recent selloff
             - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - TWAP (> current price): {round_numbers(last_twap)}
@@ -100,10 +111,12 @@ class Coinrule:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=close_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=self.bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=self.bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -174,6 +187,7 @@ class Coinrule:
             - Rule intent: BUY a supertrend swing reversal after oversold conditions and improving breadth
             - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Candle time: {last_timestamp}
@@ -188,10 +202,12 @@ class Coinrule:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=close_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
@@ -236,6 +252,7 @@ class Coinrule:
             - Rule intent: BUY low inside a short-term reversal while price stays above the 25-period average
             - Market regime: {context.market_regime if context is not None and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context is not None and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Bollinger bands spread: {(bb_high - bb_low) / bb_high}
@@ -249,10 +266,12 @@ class Coinrule:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=close_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,

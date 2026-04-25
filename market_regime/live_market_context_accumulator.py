@@ -1,4 +1,5 @@
 from collections import deque
+from math import ceil
 from collections.abc import Mapping
 from typing import Any
 
@@ -10,6 +11,7 @@ from market_regime.regime_transitions import RegimeTransitionDetector
 from shared.utils import clamp, safe_pct
 
 REQUIRED_FRESH_SYMBOLS = 40
+MIN_COVERAGE_RATIO = 0.70
 
 
 class LiveMarketContextAccumulator:
@@ -18,8 +20,8 @@ class LiveMarketContextAccumulator:
     This ensures that context becomes available as soon as possible
     and gets refined with every new candle for the same timestamp.
 
-    A context becomes available only when BTC is fresh and at least 40 symbols
-    are fresh for that exact timestamp.
+    A context becomes available only when snapshot participation clears both
+    a minimum absolute symbol count and a minimum tracked-universe coverage.
     """
 
     def __init__(
@@ -92,7 +94,11 @@ class LiveMarketContextAccumulator:
 
     def _build_context(self, timestamp: int) -> LiveMarketContext | None:
         fresh_symbols = self.state_store.get_fresh_symbols(timestamp)
-        if len(fresh_symbols) < REQUIRED_FRESH_SYMBOLS:
+        total_tracked_symbols = max(len(self.state_store.get_tracked_symbols()), 0)
+        min_symbols_for_coverage = ceil(total_tracked_symbols * MIN_COVERAGE_RATIO)
+        required_fresh_symbols = max(REQUIRED_FRESH_SYMBOLS, min_symbols_for_coverage)
+
+        if len(fresh_symbols) < required_fresh_symbols:
             return None
 
         symbol_features: dict[str, SymbolMarketFeatures] = {}
@@ -117,7 +123,7 @@ class LiveMarketContextAccumulator:
                 )
 
         effective_count = len(symbol_features)
-        if effective_count < REQUIRED_FRESH_SYMBOLS:
+        if total_tracked_symbols == 0:
             return None
 
         advancers = sum(1 for item in symbol_features.values() if item.return_pct > 0)
@@ -181,13 +187,15 @@ class LiveMarketContextAccumulator:
             + 0.45 * market_stress_score
         )
 
-        total_tracked_symbols = max(
-            len(self.state_store.get_tracked_symbols()),
-            effective_count,
-        )
+        total_tracked_symbols = max(total_tracked_symbols, effective_count)
         coverage_ratio = (
             effective_count / total_tracked_symbols if total_tracked_symbols else 0.0
         )
+        if (
+            effective_count < REQUIRED_FRESH_SYMBOLS
+            or coverage_ratio < MIN_COVERAGE_RATIO
+        ):
+            return None
 
         return LiveMarketContext(
             timestamp=timestamp,

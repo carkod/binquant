@@ -88,7 +88,21 @@ class AutotradeConsumer:
         5. Check active strategy
         """
         data = result
-        symbol = data.symbol
+        bot_params = data.bot_params
+        if bot_params is None:
+            logging.info(
+                "Skipping autotrade processing because signal is missing bot_params."
+            )
+            return
+
+        symbol = bot_params.pair
+        algorithm_name = bot_params.name
+        fiat = bot_params.fiat or self.autotrade_settings["fiat"]
+        requested_fiat_order_size = (
+            bot_params.fiat_order_size
+            if bot_params.fiat_order_size is not None
+            else self.autotrade_settings["base_order_size"]
+        )
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
@@ -106,16 +120,16 @@ class AutotradeConsumer:
                 test_autotrade = Autotrade(
                     pair=symbol,
                     settings=self.test_autotrade_settings,
-                    algorithm_name=data.algo,
+                    algorithm_name=algorithm_name,
                     binbot_api=self.binbot_api,
                 )
                 await test_autotrade.activate_autotrade(data)
 
         # Check balance to avoid failed autotrades
         balance_check = self.binbot_api.get_available_fiat(
-            exchange=self.exchange, fiat=self.autotrade_settings["fiat"]
+            exchange=self.exchange, fiat=fiat
         )
-        if balance_check < float(self.autotrade_settings["base_order_size"]):
+        if balance_check < float(requested_fiat_order_size):
             logging.info("Not enough funds to autotrade [bots].")
             return
 
@@ -135,7 +149,7 @@ class AutotradeConsumer:
                 autotrade = Autotrade(
                     pair=symbol,
                     settings=self.autotrade_settings,
-                    algorithm_name=data.algo,
+                    algorithm_name=algorithm_name,
                     db_collection_name="bots",
                     binbot_api=self.binbot_api,
                 )

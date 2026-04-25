@@ -172,6 +172,23 @@ def test_stale_symbols_are_not_mixed_into_next_timestamp() -> None:
     assert accumulator.get_context(3_000) is None
 
 
+def test_live_context_requires_minimum_coverage_ratio() -> None:
+    store = MarketStateStore()
+    accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
+
+    tracked_symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(59)]
+    fresh_symbols = tracked_symbols[:40]
+
+    for index, symbol in enumerate(tracked_symbols):
+        seed_symbol(store, symbol, 1_000, 100 + index)
+
+    context = None
+    for index, symbol in enumerate(fresh_symbols):
+        context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
+
+    assert context is None
+
+
 def test_signal_context_scorer_penalizes_weak_long() -> None:
     store = MarketStateStore()
     accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from pandas import DataFrame, Series
 from pybinbot import (
+    BotBase,
     HABollinguerSpread,
     Position,
     SignalsConsumer,
@@ -16,7 +17,7 @@ from pybinbot import (
 from strategies.binance_report_ai import BinanceAIReport
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
-from shared.utils import build_links_msg
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -116,6 +117,14 @@ class SpikeHunterV3KuCoin:
         self.post_spike_cooldown_bars = 0
         self.require_bullish_spike = True
         self.body_size_pct_min = 0.0
+
+    @property
+    def latest_market_context(self) -> LiveMarketContext | None:
+        return self.ti.latest_market_context
+
+    @latest_market_context.setter
+    def latest_market_context(self, value: LiveMarketContext | None) -> None:
+        self.ti.latest_market_context = value
 
     @staticmethod
     def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
@@ -561,6 +570,7 @@ class SpikeHunterV3KuCoin:
                 - Quote volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)} {quote_asset}
                 - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
                 - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
+                {format_context_timestamp_line(context)}
                 - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
                 - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
                 - Autotrade route: {route_reason}
@@ -572,10 +582,12 @@ class SpikeHunterV3KuCoin:
             value = SignalsConsumer(
                 autotrade=autotrade,
                 current_price=current_price,
-                symbol=self.symbol,
-                algo=algo,
-                bot_strategy=bot_strategy,
-                market_type=self.market_type,
+                bot_params=BotBase(
+                    pair=self.symbol,
+                    name=algo,
+                    position=bot_strategy,
+                    market_type=self.market_type,
+                ),
                 bb_spreads=HABollinguerSpread(
                     bb_high=bb_high,
                     bb_mid=bb_mid,
