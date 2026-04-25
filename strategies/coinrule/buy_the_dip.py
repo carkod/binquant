@@ -75,10 +75,6 @@ class BuyTheDip(StrategyMixin):
         )
         return prior_close, ema20
 
-    def _lost_reclaim_below_prior_close_and_ema20(self, current_price: float) -> bool:
-        prior_close, ema20 = self._prior_close_and_ema20()
-        return current_price < prior_close and current_price < ema20
-
     @staticmethod
     def _allows_entry(
         context: LiveMarketContext | None,
@@ -133,20 +129,6 @@ class BuyTheDip(StrategyMixin):
             return f"symbol_regime_{str(symbol_features.micro_regime).lower()}"
         return "symbol_regime_unavailable"
 
-    def _resolve_exit_reason(
-        self,
-        context: LiveMarketContext | None,
-        symbol_features: SymbolMarketFeatures | None,
-        current_price: float,
-    ) -> str | None:
-        if context is not None and context.market_regime == "TREND_DOWN":
-            return "market_regime_trend_down"
-        if symbol_features is not None and symbol_features.micro_regime == "TREND_DOWN":
-            return "symbol_regime_trend_down"
-        if self._lost_reclaim_below_prior_close_and_ema20(current_price):
-            return "reclaim_lost_below_prior_close_and_ema20"
-        return None
-
     async def signal(
         self,
         current_price: float,
@@ -190,27 +172,6 @@ class BuyTheDip(StrategyMixin):
         )
         context = self.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        exit_reason = self._resolve_exit_reason(
-            context=context,
-            symbol_features=symbol_features,
-            current_price=current_price,
-        )
-        if exit_reason is not None:
-            active_bots = self.get_active_bots(algo=self.ALGO, symbol=self.symbol)
-            if len(active_bots) > 0:
-                id = active_bots[0]["id"]
-                self.deactivate_active_bot(
-                    bot_id=id,
-                    symbol=self.symbol,
-                    source_label="Buy The Dip exit",
-                )
-                self.binbot_api.submit_bot_event_logs(
-                    bot_id=id,
-                    message=[
-                        f"Deactivated active bot from Buy The Dip exit due to {exit_reason}."
-                    ],
-                )
-            return
         if not self._allows_entry(context=context, symbol_features=symbol_features):
             logging.info(
                 "Buy-the-dip skipped: %s is in a blocked trend regime",

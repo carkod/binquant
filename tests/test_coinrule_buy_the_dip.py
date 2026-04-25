@@ -361,6 +361,8 @@ async def test_buy_the_dip_skips_when_market_regime_is_trend_down() -> None:
 
     context.telegram_consumer.send_signal.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    context.binbot_api.get_bots_by_name.assert_not_called()
+    context.binbot_api.deactivate_bot.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -380,7 +382,7 @@ async def test_buy_the_dip_raises_for_invalid_close_time() -> None:
 
 
 @pytest.mark.asyncio
-async def test_buy_the_dip_deactivates_active_bot_when_market_regime_turns_trend_down() -> (
+async def test_buy_the_dip_does_not_deactivate_active_bot_when_market_regime_turns_trend_down() -> (
     None
 ):
     closes = [100.0] + [96.0] * 23 + [97.0]
@@ -403,18 +405,14 @@ async def test_buy_the_dip_deactivates_active_bot_when_market_regime_turns_trend
 
     context.telegram_consumer.send_signal.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
-    context.binbot_api.get_bots_by_name.assert_called_once_with(
-        name="coinrule_buy_the_dip",
-        symbol="TESTUSDT",
-    )
-    context.binbot_api.deactivate_bot.assert_called_once_with(
-        "bot-123",
-        algorithmic_close=True,
-    )
+    context.binbot_api.get_bots_by_name.assert_not_called()
+    context.binbot_api.deactivate_bot.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_buy_the_dip_deactivates_active_bot_when_reclaim_is_lost() -> None:
+async def test_buy_the_dip_does_not_deactivate_active_bot_when_reclaim_is_lost() -> (
+    None
+):
     closes = [100.0] + [96.0] * 22 + [97.6, 96.0]
     market_context = make_market_context(
         symbol_features={"TESTUSDT": make_symbol_features(micro_regime="RANGE")}
@@ -434,7 +432,5 @@ async def test_buy_the_dip_deactivates_active_bot_when_reclaim_is_lost() -> None
 
     context.telegram_consumer.send_signal.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
-    context.binbot_api.deactivate_bot.assert_called_once_with(
-        "bot-123",
-        algorithmic_close=True,
-    )
+    context.binbot_api.get_bots_by_name.assert_not_called()
+    context.binbot_api.deactivate_bot.assert_not_called()
