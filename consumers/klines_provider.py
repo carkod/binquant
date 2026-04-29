@@ -136,17 +136,13 @@ class KlinesProvider:
             "volume": kline[5],
         }
 
-    @staticmethod
-    def _is_closed_store_candle(candle: dict) -> bool:
-        return int(candle["timestamp"]) <= int(time() * 1000)
-
     def _sync_market_state_from_ui_klines(
         self, symbol: str, ui_klines: list[list]
     ) -> list[dict]:
         rows = []
         for raw_kline in ui_klines:
             candle = self._raw_kline_to_store_candle(raw_kline)
-            if candle is not None and self._is_closed_store_candle(candle):
+            if candle is not None and int(candle["timestamp"]) <= int(time() * 1000):
                 rows.append(candle)
 
         if not rows:

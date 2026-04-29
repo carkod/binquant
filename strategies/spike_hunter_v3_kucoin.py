@@ -148,6 +148,22 @@ class SpikeHunterV3KuCoin:
             and features.relative_strength_vs_btc >= 0
         )
 
+    @staticmethod
+    def _is_leading_in_range_symbol(features: SymbolMarketFeatures) -> bool:
+        """
+        Symbol-level confirmation for the 'leading coin in a sleepy market'
+        path: a coin in genuine TREND_UP with positive trend score, above
+        EMA20, and not lagging BTC. Stricter than the bullish_transitional
+        check because we have no market-level confirmation backing it.
+        """
+        if features.micro_regime != "TREND_UP":
+            return False
+        return bool(
+            features.trend_score > 0
+            and features.above_ema20
+            and features.relative_strength_vs_btc >= 0
+        )
+
     def regime_routing(
         self,
         context: LiveMarketContext | None,
@@ -162,10 +178,24 @@ class SpikeHunterV3KuCoin:
         if context.market_regime is None:
             return False, "market_regime_unavailable"
 
+        # Standard market-level routes (TREND_UP / bullish TRANSITIONAL).
+        # The 'RANGE + leading coin' path is handled separately below
+        # because it demands a stricter symbol-level confirmation.
         if context.market_regime == "TREND_UP":
             market_route = "market_trend_up"
         elif self._has_bullish_transitional_market(context):
             market_route = "market_transitional_bullish"
+        elif context.market_regime == "RANGE":
+            if symbol_features is None:
+                return False, "symbol_regime_unavailable"
+            if not self._is_leading_in_range_symbol(symbol_features):
+                if symbol_features.micro_regime is None:
+                    return False, "symbol_regime_unavailable"
+                return (
+                    False,
+                    f"range_symbol_regime_{symbol_features.micro_regime.lower()}",
+                )
+            return True, "market_range_symbol_leading"
         else:
             return False, f"market_regime_{context.market_regime.lower()}"
 

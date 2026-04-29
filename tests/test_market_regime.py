@@ -59,6 +59,16 @@ def make_symbol_features(**overrides: object) -> SymbolMarketFeatures:
 
 
 def make_live_context(**overrides: object) -> LiveMarketContext:
+    # Default regime_stable_since so tests treat the regime as stable unless
+    # they override it; production callers go through annotate_context which
+    # sets this explicitly.
+    timestamp_override = overrides.get("timestamp", 2_000)
+    default_timestamp = (
+        int(timestamp_override)
+        if isinstance(timestamp_override, (int, float))
+        else 2_000
+    )
+    overrides.setdefault("regime_stable_since", default_timestamp - 60 * 60 * 1000)
     values: dict[str, object] = {
         "timestamp": 2_000,
         "fresh_count": 40,

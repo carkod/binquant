@@ -179,7 +179,12 @@ async def test_signal_emits_in_trend_up_market(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_sends_telegram_only_in_range_market(monkeypatch):
+async def test_signal_autotrades_when_range_market_has_leading_symbol(monkeypatch):
+    """
+    RANGE market + symbol micro_regime=TREND_UP with positive trend score and
+    relative strength >= 0: the relaxed regime gate should let autotrade fire
+    via the 'market_range_symbol_leading' route.
+    """
     context = make_market_context(market_regime="RANGE")
     algo, df = make_algo(context)
     send_signal_mock = AsyncMock()
@@ -199,12 +204,61 @@ async def test_signal_sends_telegram_only_in_range_market(monkeypatch):
     )
 
     send_signal_mock.assert_awaited_once()
-    process_mock.assert_not_awaited()
-    telegram_await_args = send_signal_mock.await_args
+    process_mock.assert_awaited_once()
+    telegram_args = send_signal_mock.await_args
+    process_args = process_mock.await_args
+    assert telegram_args is not None
+    assert process_args is not None
+    telegram_msg = telegram_args.args[0]
+    signal_value = process_args.args[0]
+    assert "Autotrade route: market_range_symbol_leading" in telegram_msg
+    assert "Autotrade is enabled" in telegram_msg
+    assert signal_value.autotrade is True
+    assert signal_value.bot_params.position == "long"
 
-    assert telegram_await_args is not None
-    assert "Autotrade route: market_regime_range" in telegram_await_args.args[0]
-    assert "Autotrade is disabled" in telegram_await_args.args[0]
+
+@pytest.mark.asyncio
+async def test_signal_blocks_autotrade_in_range_when_symbol_not_leading(monkeypatch):
+    """
+    RANGE market with the symbol also flat (micro_regime=RANGE) must still
+    reject autotrade — the relaxation only opens the door for genuinely
+    leading coins.
+    """
+    flat_symbol = make_symbol_features(
+        micro_regime="RANGE",
+        micro_regime_transition=None,
+        trend_score=0.0,
+        relative_strength_vs_btc=-0.01,
+        above_ema20=False,
+    )
+    context = make_market_context(
+        market_regime="RANGE",
+        symbol_features={"TESTUSDT": flat_symbol},
+    )
+    algo, df = make_algo(context)
+    send_signal_mock = AsyncMock()
+    process_mock = AsyncMock()
+    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+
+    monkeypatch.setattr(algo, "latest_signal", lambda: make_last_spike())
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_awaited_once()
+    process_mock.assert_not_awaited()
+    telegram_args = send_signal_mock.await_args
+    assert telegram_args is not None
+    telegram_msg = telegram_args.args[0]
+    assert "Autotrade route: range_symbol_regime_range" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,10 @@ from pybinbot import (
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.strategy_mixin import StrategyMixin
+from shared.time_of_day_filter import (
+    build_quiet_hours_signal_msg,
+    is_autotrade_suppressed,
+)
 from shared.utils import (
     build_links_msg,
     format_context_timestamp_line,
@@ -193,6 +197,18 @@ class BuyTheDip(StrategyMixin):
             context=context,
             symbol_features=symbol_features,
         )
+
+        if autotrade and is_autotrade_suppressed(context=context):
+            autotrade = False
+            autotrade_route = "time_of_day_quiet_hours"
+            await self.telegram_consumer.send_signal(
+                build_quiet_hours_signal_msg(
+                    symbol=self.symbol,
+                    algo=self.ALGO,
+                    side=Position.long.value,
+                    context=context,
+                )
+            )
 
         msg = f"""
         - [{os.getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}

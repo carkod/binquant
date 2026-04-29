@@ -121,6 +121,10 @@ class LiveMarketContext(BaseModel):
     range_regime_score: float = Field(default=0.0, ge=0.0, le=1.0)
     stress_regime_score: float = Field(default=0.0, ge=0.0, le=1.0)
     regime_is_transitioning: bool = False
+    regime_stable_since: int | None = Field(
+        default=None,
+        description="Timestamp (ms) when the current market_regime was first entered; used to derive regime stability.",
+    )
     symbol_features: dict[str, SymbolMarketFeatures] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 

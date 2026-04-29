@@ -123,7 +123,13 @@ class LiveMarketContextAccumulator:
                 )
 
         effective_count = len(symbol_features)
-        if total_tracked_symbols == 0 or effective_count < REQUIRED_FRESH_SYMBOLS:
+        # Two failure paths prevented here:
+        #   1) total_tracked_symbols == 0  -> coverage_ratio division below
+        #   2) effective_count < required_fresh_symbols -> a cold-start window
+        #      where the entry check passed (enough fresh_symbols) but
+        #      _compute_symbol_features returned None for most/all of them,
+        #      leaving effective_count = 0 and breaking advancers/effective_count.
+        if total_tracked_symbols == 0 or effective_count < required_fresh_symbols:
             return None
 
         advancers = sum(1 for item in symbol_features.values() if item.return_pct > 0)
