@@ -4,9 +4,7 @@ import logging
 
 from pybinbot import (
     BinanceKlineIntervals,
-    KafkaTopics,
     BinbotApi,
-    AsyncProducer,
     AsyncSpotWebsocketStreamClient,
     KlineProduceModel,
 )
@@ -15,20 +13,20 @@ from shared.config import Config
 
 class KlinesConnector:
     """
-    Klines/Candlestick Streams
+    Binance Kline/Candlestick streams.
 
-    Uses 5m interval data to produce data for analytics
-    which eventually create signals.
-    It's the interface between Binance websocket streams and Kafka producer.
+    Subscribes to the configured interval across all USDT pairs in chunks of
+    ``MAX_MARKETS_PER_CLIENT`` and pushes each closed kline onto the shared
+    in-process producer queue.
     """
 
     MAX_MARKETS_PER_CLIENT = 400
 
     def __init__(
         self,
+        queue: asyncio.Queue,
         interval: BinanceKlineIntervals = BinanceKlineIntervals.five_minutes,
     ) -> None:
-        logging.debug("Started Kafka producer SignalsInbound")
         super().__init__()
         self.config = Config()
         self.binbot_api = BinbotApi(
@@ -37,10 +35,7 @@ class KlinesConnector:
             service_password=self.config.service_password,
         )
         self.interval = interval
-        # Async Kafka producer wrapper (AIOKafkaProducer) – start in start_stream
-        self.producer = AsyncProducer(
-            host=self.config.kafka_host, port=self.config.kafka_port
-        )
+        self.queue = queue
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.clients: list[AsyncSpotWebsocketStreamClient] = []
 
@@ -105,8 +100,6 @@ class KlinesConnector:
 
         Split symbols into chunks of MAX_MARKETS_PER_CLIENT
         """
-        # Initialize async Kafka producer (AIOKafkaProducer)
-        await self.producer.start()
         symbols = self._filter_usdt_symbols(self.binbot_api.get_symbols())
         symbol_chunks = [
             symbols[i : i + self.MAX_MARKETS_PER_CLIENT]
@@ -168,10 +161,5 @@ class KlinesConnector:
                 close_price=str(data["c"]),
                 volume=str(data["v"]),
             )
-            await self.producer.send(
-                topic=KafkaTopics.klines_store_topic.value,
-                value=message.model_dump_json(),
-                key=data["s"],
-                timestamp=int(data["t"]),
-            )
+            await self.queue.put(message.model_dump())
         return

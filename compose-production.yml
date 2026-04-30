@@ -1,90 +1,19 @@
 networks:
-  kafka_network:
+  binquant_network:
     driver: bridge
 
 services:
-  kafka:
-    image: confluentinc/cp-kafka:7.6.0
-    container_name: binquant_kafka
-    hostname: kafka
-    restart: always
-    networks:
-      - kafka_network
-    ports:
-      - "9092:9092"     # host can reach broker
-      - "29092:29092"   # extra port for host-only listener
-    environment:
-      KAFKA_KRAFT_MODE: "true"
-      KAFKA_NODE_ID: 1
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
-      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
-      KAFKA_PROCESS_ROLES: "broker,controller"
-
-      # General defaults
-      KAFKA_NUM_PARTITIONS: 10
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_RETENTION_HOURS: 24
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-
-      # Cluster ID
-      CLUSTER_ID: "hTzWlZq0S--NoF0U9H7uQA"
-
-      # Single-broker safe replication configs
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
-      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: "6"
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
-      KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
-      KAFKA_MIN_INSYNC_REPLICAS: "1"
-
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 9092"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-
-  kafka_producer:
+  binquant:
     build: ./binquant
-    image: binquant_producer
-    container_name: binquant_producer
+    image: binquant
+    container_name: binquant
     restart: always
     networks:
-      - kafka_network
-    depends_on:
-      - kafka
-    env_file:
-      - .env
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=binquant_kafka:9092
-      - BACKEND_DOMAIN=https://api.terminal.binbot.in
-      - FRONTEND_DOMAIN=https://terminal.binbot.in
-      - ENV=production
-      # - KAFKA_TOPIC=${KAFKA_TOPIC}
-    volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-    command: ["python3", "-m", "producer"]
-
-  kafka_consumer:
-    build: ./binquant
-    image: binquant_consumer
-    container_name: binquant_consumer
-    restart: always
-    networks:
-      - kafka_network
-    depends_on:
-      - kafka
+      - binquant_network
     env_file:
       - .env
     environment:
       - BACKEND_DOMAIN=https://api.terminal.binbot.in
       - FRONTEND_DOMAIN=https://terminal.binbot.in
       - ENV=production
-    command: ["python3", "-m", "consumer"]
-
-volumes:
-  mongo_data:
+    command: ["python3", "main.py"]

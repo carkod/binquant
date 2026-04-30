@@ -6,55 +6,22 @@ env:
   ENV: ci
   FLASK_DOMAIN: https://api.terminal.binbot.in/
   FRONTEND_DOMAIN: https://terminal.binbot.in/
-  MONGO_AUTH_USERNAME: root
-  MONGO_AUTH_PASSWORD: rootPassXXX
-  MONGO_APP_DATABASE: binbot
-  MONGO_AUTH_DATABASE: admin
-  MONGO_HOSTNAME: db
-  MONGO_KAFKA_DATABASE: kafka
-  MONGO_PORT: 27017
-  KAFKA_HOST: "localhost"
-  KAFKA_PORT: 9092
   PYARROW_IGNORE_TIMEZONE: "1"
-  
+
 jobs:
-  deploy_producer:
-    name: Test and deploy producer
+  deploy_binquant:
+    name: Test and deploy binquant
     runs-on: ubuntu-latest
     env:
-      IMAGE: binquant_producer:latest
+      IMAGE: binquant:latest
 
     steps:
       - name: Check out the repo
         uses: actions/checkout@v3
       - name: Build image
         run: docker build --tag $IMAGE .
-      - name: Test producer
-        run: docker run --name producer -d $IMAGE
-      - name: Tag images
-        if: ${{ github.actor != 'dependabot[bot]' }}
-        run: |
-          docker commit $IMAGE carloswufei/$IMAGE &
-          docker tag $IMAGE carloswufei/$IMAGE
-      - name: Push to Docker Hub
-        if: ${{ github.actor != 'dependabot[bot]' }}
-        run: |
-          docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
-          docker push carloswufei/$IMAGE
-  
-  deploy_consumer:
-    name: Test and deploy consumer
-    runs-on: ubuntu-latest
-    env:
-      IMAGE: binquant_consumer:latest
-
-    steps:
-      - name: Check out the repo
-        uses: actions/checkout@v3
-      - name: Build image
-        run: docker build --tag $IMAGE .
-      - name: Test consumer
-        run: docker run --name consumer -d $IMAGE
+      - name: Test container starts
+        run: docker run --name binquant -d $IMAGE
       - name: Tag images
         if: ${{ github.actor != 'dependabot[bot]' }}
         run: |
@@ -69,33 +36,10 @@ jobs:
   python-tests:
     name: 🐍 Python tests
     runs-on: ubuntu-latest
-    services:
-      db:
-        image: mongo:latest
-        options: >-
-          --health-cmd mongosh
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        env:
-          MONGO_INITDB_ROOT_USERNAME: ${{ env.MONGO_AUTH_USERNAME }}
-          MONGO_INITDB_ROOT_PASSWORD: ${{ env.MONGO_AUTH_PASSWORD }}
-          MONGO_INITDB_DATABASE: ${{ env.MONGO_KAFKA_DATABASE }}
-        ports:
-          - 27017:27017
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Run tests
-        env:
-          MONGO_HOSTNAME: "localhost"
-          MONGO_PORT: 27017
-          MONGO_AUTH_USERNAME: ${{ env.MONGO_AUTH_USERNAME }}
-          MONGO_AUTH_PASSWORD: ${{ env.MONGO_AUTH_PASSWORD }}
-          MONGO_KAFKA_DATABASE: ${{ env.MONGO_KAFKA_DATABASE }}
-          KAFKA_HOST: "localhost"
-          KAFKA_PORT: 9092
         run: |
           python -m pip install uv --upgrade pip
           uv venv && source .venv/bin/activate

@@ -5,7 +5,6 @@ from pybinbot import (
     KucoinKlineIntervals,
     BinanceKlineIntervals,
     BinbotApi,
-    AsyncProducer,
     AsyncSpotWebsocketStreamClient,
     AsyncKucoinWebsocketClient,
     MarketType,
@@ -20,9 +19,13 @@ configure_logging()
 class WebsocketClientFactory:
     """
     Factory class for creating websocket clients for different exchanges.
+
+    Takes a shared `asyncio.Queue` so all clients (Binance, KuCoin spot,
+    KuCoin futures) push klines onto the same in-process queue consumed by
+    the strategies pipeline.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, queue: asyncio.Queue) -> None:
         self.config = Config()
         self.binbot_api = BinbotApi(
             base_url=self.config.backend_domain,
@@ -32,10 +35,7 @@ class WebsocketClientFactory:
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.fiat = self.autotrade_settings["fiat"]
         self.exchange = ExchangeId(self.autotrade_settings["exchange_id"])
-        self.producer = AsyncProducer(
-            host=self.config.kafka_host,
-            port=self.config.kafka_port,
-        )
+        self.queue = queue
         self.interval = (
             KucoinKlineIntervals.FIFTEEN_MINUTES
             if self.exchange == ExchangeId.KUCOIN
@@ -54,7 +54,6 @@ class WebsocketClientFactory:
         max_per_client is 400 for websockets, but to be safe we use 300 to avoid hitting limits.
         If there are more than 300 symbols, we will create multiple websocket clients.
         """
-        await self.producer.start()
         all_symbols = self.binbot_api.get_symbols()
         symbols = self.filter_fiat_symbols(all_symbols)
         total = len(symbols)
@@ -68,7 +67,7 @@ class WebsocketClientFactory:
                 key=self.config.kucoin_key,
                 secret=self.config.kucoin_secret,
                 passpharse=self.config.kucoin_passphrase,
-                producer=self.producer,
+                queue=self.queue,
                 market_type=MarketType.SPOT,
             )
             # Give the websocket a moment to be ready before subscribing
@@ -87,7 +86,6 @@ class WebsocketClientFactory:
         Start websocket stream for KuCoin Futures.
         It has different endpoints and needs to be separated from SPOT streaming.
         """
-        await self.producer.start()
         all_symbols = self.binbot_api.get_symbols()
         symbols = self.filter_fiat_symbols(all_symbols)
         futures_symbols = [s for s in symbols if s["id"].endswith("USDTM")]
@@ -102,7 +100,7 @@ class WebsocketClientFactory:
                 key=self.config.kucoin_key,
                 secret=self.config.kucoin_secret,
                 passpharse=self.config.kucoin_passphrase,
-                producer=self.producer,
+                queue=self.queue,
                 market_type=MarketType.FUTURES,
             )
             # Give the websocket a moment to be ready before subscribing
@@ -126,6 +124,6 @@ class WebsocketClientFactory:
             clients = await self.start_future_stream()
             return clients
         else:
-            connector = KlinesConnector()
+            connector = KlinesConnector(queue=self.queue)
             await connector.start_stream()
             return connector.clients

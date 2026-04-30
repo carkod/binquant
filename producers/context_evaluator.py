@@ -1,4 +1,6 @@
+import logging
 from typing import cast
+from collections.abc import Awaitable
 
 from numpy import isnan
 from numpy import log as logarithm
@@ -6,7 +8,6 @@ from numpy import nan
 from pandas import DataFrame
 from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
-    AsyncProducer,
     BinanceApi,
     BinanceKlineIntervals,
     BinbotApi,
@@ -44,7 +45,6 @@ from shared.utils import format_context_timestamp_line
 class ContextEvaluator:
     def __init__(
         self,
-        producer: AsyncProducer,
         api: KucoinApi | BinanceApi | KucoinFutures,
         symbol: str,
         current_symbol_data,
@@ -71,7 +71,6 @@ class ContextEvaluator:
         Network requested data that doesn't require reloading/real-time/updating
         should be on klines_provider instance
         """
-        self.producer = producer
         self.api = api
         self.config = Config()
         self.market_type = market_type
@@ -255,6 +254,21 @@ class ContextEvaluator:
 
         return df
 
+    async def _safe_signal(self, name: str, coro: Awaitable[None]) -> None:
+        """
+        Run a single strategy's signal coroutine with crash isolation: any
+        exception is logged and swallowed so one bad strategy can't take down
+        the entire pipeline for the current kline.
+        """
+        try:
+            await coro
+        except Exception:
+            logging.exception(
+                "Strategy %s raised while processing %s; continuing.",
+                name,
+                self.symbol,
+            )
+
     async def process_data(
         self,
         candles,
@@ -290,32 +304,44 @@ class ContextEvaluator:
             close_price = float(self.df_5m["close"].iloc[-1])
             spreads = self.bb_spreads(self.df_5m)
 
-            await self.abp.signal(
-                current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
+            await self._safe_signal(
+                "ActivityBurstPump",
+                self.abp.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
             )
 
-            await self.tgrd.signal(
-                current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
+            await self._safe_signal(
+                "TopGainersReversalDrop",
+                self.tgrd.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
             )
 
-            await self.pt.signal(
-                close_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_low=spreads.bb_low,
-                bb_mid=spreads.bb_mid,
+            await self._safe_signal(
+                "PriceTracker",
+                self.pt.signal(
+                    close_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_low=spreads.bb_low,
+                    bb_mid=spreads.bb_mid,
+                ),
             )
 
-            await self.ipt.signal(
-                close_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_low=spreads.bb_low,
-                bb_mid=spreads.bb_mid,
+            await self._safe_signal(
+                "InversePriceTracker",
+                self.ipt.signal(
+                    close_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_low=spreads.bb_low,
+                    bb_mid=spreads.bb_mid,
+                ),
             )
 
         self.df_15m = raw_candles_15m.pre_process()
@@ -361,33 +387,45 @@ class ContextEvaluator:
             close_price = float(self.df_15m["close"].iloc[-1])
             spreads = self.bb_spreads(self.df_15m)
 
-            await self.af.signal()
+            await self._safe_signal("ApexFlow", self.af.signal())
             self.last_market_regime = self.af.last_market_regime
 
-            await self.sh3.signal(
-                current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
+            await self._safe_signal(
+                "SpikeHunterV3KuCoin",
+                self.sh3.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
             )
 
-            await self.lsp.signal(
-                current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
+            await self._safe_signal(
+                "LiquidationSweepPump",
+                self.lsp.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
             )
-            await self.gt.signal(
-                current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
+            await self._safe_signal(
+                "GridTrading",
+                self.gt.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
             )
-            await self.coinrule_buy_the_dip.signal(
-                current_price=close_price,
-                bb_high=spreads.bb_high,
-                bb_mid=spreads.bb_mid,
-                bb_low=spreads.bb_low,
+            await self._safe_signal(
+                "BuyTheDip",
+                self.coinrule_buy_the_dip.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
             )
 
         return

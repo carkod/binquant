@@ -101,9 +101,8 @@ class TestAutotradeConsumer:
 
     # --- KlinesProvider test ---
     def test_klines_provider_init(self):
-        with patch("consumers.klines_provider.AsyncProducer", MagicMock()):
-            provider = KlinesProvider(self.consumer)
-            assert provider is not None
+        provider = KlinesProvider()
+        assert provider is not None
 
     @pytest.mark.asyncio
     async def test_process_autotrade_restrictions_uses_signal_bot_params(self):

@@ -1,5 +1,8 @@
-import pytest
+from asyncio import Queue
 from os import environ
+from typing import Any
+
+import pytest
 from producers.klines_connector import KlinesConnector
 
 
@@ -20,7 +23,7 @@ def klines_connector(monkeypatch):
 
         self.symbol_partitions = []
         self.partition_count = 0
-        self.producer = producer
+        self.queue = producer
         self.blacklist_data = []
         self.autotrade_settings = {"fiat": "USDC"}
         self.exchange_info = {"symbols": []}
@@ -103,8 +106,7 @@ async def test_usdt_filtering():
 
     mock_client = MagicMock()
     mock_client.send_message_to_server = AsyncMock()
-    mock_producer = AsyncMock()
-    mock_producer.start = AsyncMock()
+    mock_queue: Queue[dict[str, Any]] = Queue()
 
     with (
         patch.object(BinbotApi, "get_symbols", return_value=mock_symbols),
@@ -114,10 +116,8 @@ async def test_usdt_filtering():
         patch.object(
             KlinesConnector, "connect_client", AsyncMock(return_value=mock_client)
         ),
-        patch("producers.klines_connector.AsyncProducer", MagicMock()),
     ):
-        connector = KlinesConnector()
-        connector.producer = mock_producer
+        connector = KlinesConnector(queue=mock_queue)
         await connector.start_stream()
         # Manually add the mock client if not already present (simulate connect_client)
         if not connector.clients:

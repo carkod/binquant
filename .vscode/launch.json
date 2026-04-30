@@ -2,23 +2,13 @@
   "version": "0.0.2",
   "configurations": [
     {
-      "name": "Producer",
+      "name": "Binquant",
       "type": "debugpy",
       "request": "launch",
-      "program": "producer.py",
+      "program": "main.py",
       "console": "internalConsole",
       "justMyCode": false,
       "envFile": "${workspaceFolder}/.env"
-    },
-    {
-      "name": "Consumer",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "consumer.py",
-      "console": "internalConsole",
-      "envFile": "${workspaceFolder}/.env",
-      "justMyCode": false
     }
   ]
 }
-
