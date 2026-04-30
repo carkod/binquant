@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pandas import DataFrame
@@ -106,7 +106,7 @@ def make_context(df: DataFrame, context: LiveMarketContext | None) -> SimpleName
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,
         binbot_api=SimpleNamespace(),
-        telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data={"base_asset": "TEST"},
@@ -136,7 +136,7 @@ async def test_inverse_price_tracker_skips_when_insufficient_rows(monkeypatch):
         staticmethod(lambda df, window=14: 15.0),
     )
     await algo.signal(close_price=100.0, bb_high=101.0, bb_low=99.0, bb_mid=100.0)
-    algo.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
     algo.at_consumer.process_autotrade_restrictions.assert_not_awaited()  # type: ignore[attr-defined]
 
 
@@ -148,7 +148,7 @@ async def test_inverse_price_tracker_skips_when_not_oversold(monkeypatch):
         staticmethod(lambda df, window=14: 60.0),
     )
     await algo.signal(close_price=100.0, bb_high=101.0, bb_low=99.0, bb_mid=100.0)
-    algo.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -176,7 +176,7 @@ async def test_inverse_price_tracker_emits_in_trend_up_market(monkeypatch):
     )
 
     await algo.signal(close_price=100.0, bb_high=101.0, bb_low=99.0, bb_mid=100.0)
-    algo.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
     algo.at_consumer.process_autotrade_restrictions.assert_awaited_once()  # type: ignore[attr-defined]
 
 
@@ -217,7 +217,7 @@ async def test_inverse_price_tracker_emits_in_bullish_transitional_market(monkey
     )
 
     await algo.signal(close_price=100.0, bb_high=101.0, bb_low=99.0, bb_mid=100.0)
-    algo.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -230,7 +230,7 @@ async def test_inverse_price_tracker_skips_in_range_market(monkeypatch):
     )
 
     await algo.signal(close_price=100.0, bb_high=101.0, bb_low=99.0, bb_mid=100.0)
-    algo.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -245,14 +245,14 @@ async def test_inverse_price_tracker_skips_in_trend_down_or_high_stress(monkeypa
         make_market_context(market_regime="TREND_DOWN"),
     )
     await algo_trend_down.signal(100.0, 101.0, 99.0, 100.0)
-    algo_trend_down.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo_trend_down.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
     algo_high_stress = make_algo(
         make_ohlcv_df(oversold=True),
         make_market_context(market_stress_score=0.5),
     )
     await algo_high_stress.signal(100.0, 101.0, 99.0, 100.0)
-    algo_high_stress.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo_high_stress.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -266,14 +266,14 @@ async def test_inverse_price_tracker_skips_when_context_or_symbol_unavailable(
 
     algo_missing_context = make_algo(make_ohlcv_df(oversold=True), None)
     await algo_missing_context.signal(100.0, 101.0, 99.0, 100.0)
-    algo_missing_context.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo_missing_context.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
     context_missing_symbol = make_market_context(symbol_features={})
     algo_missing_symbol = make_algo(
         make_ohlcv_df(oversold=True), context_missing_symbol
     )
     await algo_missing_symbol.signal(100.0, 101.0, 99.0, 100.0)
-    algo_missing_symbol.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo_missing_symbol.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -336,7 +336,7 @@ async def test_inverse_price_tracker_telegram_message_contains_expected_text(
     )
 
     await algo.signal(100.0, 101.0, 99.0, 100.0)
-    msg = algo.telegram_consumer.send_signal.await_args.args[0]  # type: ignore[attr-defined]
+    msg = algo.telegram_consumer.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
     assert "inverse_price_tracker" in msg
     assert "Action: LONG ENTRY" in msg
     assert "favor bullish continuation rather than balanced range mean reversion" in msg

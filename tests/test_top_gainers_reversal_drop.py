@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pandas import DataFrame
@@ -87,7 +87,7 @@ def make_context(
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,
         binbot_api=SimpleNamespace(get_top_gainers=AsyncMock(return_value=[])),
-        telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data={"base_asset": "TEST"},
@@ -178,10 +178,12 @@ async def test_signal_dispatches_for_top_gainer_reversal():
             {"symbol": "ABCUSDT", "priceChangePercent": "9.2"},
         ]
     )
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
     algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -190,7 +192,7 @@ async def test_signal_dispatches_for_top_gainer_reversal():
         current_price=float(df.close.iloc[-1]), bb_high=0, bb_mid=0, bb_low=0
     )
 
-    send_signal_mock.assert_awaited_once()
+    send_signal_mock.assert_called_once()
     process_mock.assert_awaited_once()
 
     await_args = process_mock.await_args
@@ -208,10 +210,12 @@ async def test_signal_generator_skips_when_symbol_is_not_a_top_gainer():
     get_top_gainers_mock = AsyncMock(
         return_value=[{"symbol": "ABCUSDT", "priceChangePercent": "15.8"}]
     )
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
     algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -220,7 +224,7 @@ async def test_signal_generator_skips_when_symbol_is_not_a_top_gainer():
         current_price=float(df.close.iloc[-1]), bb_high=0, bb_mid=0, bb_low=0
     )
 
-    send_signal_mock.assert_not_awaited()
+    send_signal_mock.assert_not_called()
     process_mock.assert_not_awaited()
 
 
@@ -231,10 +235,12 @@ async def test_signal_skips_when_price_change_percent_is_invalid():
     get_top_gainers_mock = AsyncMock(
         return_value=[{"symbol": "TESTUSDT", "priceChangePercent": None}]
     )
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
     algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -243,7 +249,7 @@ async def test_signal_skips_when_price_change_percent_is_invalid():
         current_price=float(df.close.iloc[-1]), bb_high=0, bb_mid=0, bb_low=0
     )
 
-    send_signal_mock.assert_not_awaited()
+    send_signal_mock.assert_not_called()
     process_mock.assert_not_awaited()
 
 
@@ -256,10 +262,12 @@ async def test_signal_disables_autotrade_in_range_market():
     get_top_gainers_mock = AsyncMock(
         return_value=[{"symbol": "TESTUSDT", "priceChangePercent": "15.8"}]
     )
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
     algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -272,7 +280,7 @@ async def test_signal_disables_autotrade_in_range_market():
     assert process_args is not None
     value = process_args.args[0]
     assert value.autotrade is False
-    send_args = send_signal_mock.await_args
+    send_args = send_signal_mock.call_args
     assert send_args is not None
     telegram_msg = send_args.args[0]
     assert "Autotrade route: market_regime_range" in telegram_msg
@@ -293,10 +301,12 @@ async def test_signal_disables_autotrade_in_trend_up_market():
     get_top_gainers_mock = AsyncMock(
         return_value=[{"symbol": "TESTUSDT", "priceChangePercent": "15.8"}]
     )
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
     algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -309,7 +319,7 @@ async def test_signal_disables_autotrade_in_trend_up_market():
     assert process_args is not None
     value = process_args.args[0]
     assert value.autotrade is False
-    send_args = send_signal_mock.await_args
+    send_args = send_signal_mock.call_args
     assert send_args is not None
     telegram_msg = send_args.args[0]
     assert "Autotrade route: market_regime_trend_up" in telegram_msg
@@ -322,10 +332,12 @@ async def test_signal_enables_autotrade_in_trend_down_market():
     get_top_gainers_mock = AsyncMock(
         return_value=[{"symbol": "TESTUSDT", "priceChangePercent": "15.8"}]
     )
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
     algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -338,7 +350,7 @@ async def test_signal_enables_autotrade_in_trend_down_market():
     assert process_args is not None
     value = process_args.args[0]
     assert value.autotrade is True
-    send_args = send_signal_mock.await_args
+    send_args = send_signal_mock.call_args
     assert send_args is not None
     telegram_msg = send_args.args[0]
     assert "Autotrade route: short_autotrade_allowed" in telegram_msg
@@ -359,10 +371,12 @@ async def test_signal_disables_autotrade_when_market_regime_is_unavailable() -> 
     get_top_gainers_mock = AsyncMock(
         return_value=[{"symbol": "TESTUSDT", "priceChangePercent": "15.8"}]
     )
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
     algo.binbot_api = cast(Any, SimpleNamespace(get_top_gainers=get_top_gainers_mock))
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -375,7 +389,7 @@ async def test_signal_disables_autotrade_when_market_regime_is_unavailable() -> 
     assert process_args is not None
     value = process_args.args[0]
     assert value.autotrade is False
-    send_args = send_signal_mock.await_args
+    send_args = send_signal_mock.call_args
     assert send_args is not None
     telegram_msg = send_args.args[0]
     assert "Autotrade route: market_regime_unavailable" in telegram_msg

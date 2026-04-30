@@ -198,7 +198,7 @@ class PriceTracker:
             if autotrade and is_autotrade_suppressed(context=context):
                 autotrade = False
                 autotrade_route = "time_of_day_quiet_hours"
-                await self.telegram_consumer.send_signal(
+                self.telegram_consumer.dispatch_signal(
                     build_quiet_hours_signal_msg(
                         symbol=self.symbol,
                         algo=algo,
@@ -255,7 +255,7 @@ class PriceTracker:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
-            await self.telegram_consumer.send_signal(msg)
+            self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         pass

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 
@@ -69,7 +69,7 @@ def make_algo(
     cls = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
-        telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         latest_market_context=context,
         last_market_regime=last_market_regime,
     )
@@ -94,7 +94,7 @@ async def test_apex_flow_bootstraps_without_emitting_transition():
 
     await algo.signal()
 
-    algo.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -128,8 +128,8 @@ async def test_apex_flow_emits_long_to_short_transition():
     await first.signal()
     await second.signal()
 
-    second.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
-    await_args = second.telegram_consumer.send_signal.await_args  # type: ignore[attr-defined]
+    second.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    await_args = second.telegram_consumer.dispatch_signal.call_args  # type: ignore[attr-defined]
     assert await_args is not None
     sent_message = await_args.args[0]
     assert "Regime transition: TREND_UP -> HIGH_STRESS" in sent_message
@@ -168,8 +168,8 @@ async def test_apex_flow_emits_transition_into_neutral_regime():
     await first.signal()
     await second.signal()
 
-    second.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
-    await_args = second.telegram_consumer.send_signal.await_args  # type: ignore[attr-defined]
+    second.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    await_args = second.telegram_consumer.dispatch_signal.call_args  # type: ignore[attr-defined]
     assert await_args is not None
     sent_message = await_args.args[0]
     assert "Regime transition: TREND_UP -> RANGE" in sent_message
@@ -206,8 +206,8 @@ async def test_apex_flow_emits_from_annotated_context_without_bootstrap_state():
 
     await algo.signal()
 
-    algo.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
-    await_args = algo.telegram_consumer.send_signal.await_args  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    await_args = algo.telegram_consumer.dispatch_signal.call_args  # type: ignore[attr-defined]
     assert await_args is not None
     sent_message = await_args.args[0]
     assert "Regime transition:" in sent_message
@@ -246,7 +246,7 @@ async def test_apex_flow_skips_duplicate_transition_when_already_seen():
 
     await algo.signal()
 
-    algo.telegram_consumer.send_signal.assert_not_awaited()  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -277,7 +277,7 @@ async def test_apex_flow_persists_last_transition_on_context_evaluator():
     cls = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
-        telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         latest_market_context=transitioned_context,
         last_market_regime=None,
     )
@@ -319,8 +319,8 @@ async def test_apex_flow_reads_latest_context_from_context_evaluator():
 
     await algo.signal()
 
-    algo.telegram_consumer.send_signal.assert_awaited_once()  # type: ignore[attr-defined]
-    await_args = algo.telegram_consumer.send_signal.await_args  # type: ignore[attr-defined]
+    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    await_args = algo.telegram_consumer.dispatch_signal.call_args  # type: ignore[attr-defined]
     assert await_args is not None
     sent_message = await_args.args[0]
     assert "Regime transition: RANGE -> TREND_UP" in sent_message

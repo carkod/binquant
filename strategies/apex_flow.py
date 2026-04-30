@@ -84,4 +84,4 @@ class ApexFlow:
             - Market stress: {round_numbers(context.market_stress_score, 3)}
         """
 
-        await self.telegram_consumer.send_signal(msg)
+        self.telegram_consumer.dispatch_signal(msg)

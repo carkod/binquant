@@ -239,7 +239,7 @@ class GridTrading(StrategyMixin):
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
-            await self.telegram_consumer.send_signal(msg)
+            self.telegram_consumer.dispatch_signal(msg)
             return
 
         action_label = "LONG BUY ALERT"
@@ -276,4 +276,4 @@ class GridTrading(StrategyMixin):
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
-        await self.telegram_consumer.send_signal(msg)
+        self.telegram_consumer.dispatch_signal(msg)
