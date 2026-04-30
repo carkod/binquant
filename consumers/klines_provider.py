@@ -138,20 +138,21 @@ class KlinesProvider:
 
     def _sync_market_state_from_ui_klines(
         self, symbol: str, ui_klines: list[list]
-    ) -> None:
+    ) -> list[dict]:
         rows = []
         for raw_kline in ui_klines:
             candle = self._raw_kline_to_store_candle(raw_kline)
-            if candle is not None:
+            if candle is not None and int(candle["timestamp"]) <= int(time() * 1000):
                 rows.append(candle)
 
         if not rows:
-            return
+            return []
 
         self.market_state_store.update(
             symbol=symbol,
             candle=DataFrame(rows),
         )
+        return rows
 
     def _store_btc_history(self, market_type: MarketType) -> None:
         btc_symbol = self._get_benchmark_symbol(market_type)
@@ -176,22 +177,21 @@ class KlinesProvider:
             limit=self.LIMIT,
         )
         self._refresh_btc_candles_15m(market_type)
-        self._sync_market_state_from_ui_klines(
+        closed_symbol_candles = self._sync_market_state_from_ui_klines(
             symbol=api_symbol,
             ui_klines=self.candles_15m,
         )
         self._store_btc_history(market_type=market_type)
-        if self.candles_15m:
-            latest_candle = self._raw_kline_to_store_candle(self.candles_15m[-1])
-            if latest_candle is not None:
-                self.market_context_accumulator.btc_symbol = self._get_benchmark_symbol(
-                    market_type
+        if closed_symbol_candles:
+            latest_candle = closed_symbol_candles[-1]
+            self.market_context_accumulator.btc_symbol = self._get_benchmark_symbol(
+                market_type
+            )
+            self.latest_market_context = (
+                self.market_context_accumulator.refresh_context_for_timestamp(
+                    int(latest_candle["timestamp"])
                 )
-                self.latest_market_context = (
-                    self.market_context_accumulator.refresh_context_for_timestamp(
-                        int(latest_candle["timestamp"])
-                    )
-                )
+            )
 
     def _refresh_btc_candles_15m(self, market_type: MarketType) -> None:
         """

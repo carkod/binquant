@@ -85,3 +85,41 @@ class TestKlinesProvider:
         assert len(history) == 2
         assert int(history.iloc[-1]["timestamp"]) == 2999
         assert float(history.iloc[-1]["close"]) == 1.2
+
+    @patch("consumers.klines_provider.time", return_value=3.0)
+    @patch("consumers.klines_provider.AsyncProducer")
+    @patch(
+        "consumers.klines_provider.BinbotApi.get_autotrade_settings",
+        return_value={"exchange_id": "binance"},
+    )
+    @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
+    @patch("consumers.klines_provider.BinbotApi.get_active_pairs", return_value=set())
+    @patch(
+        "consumers.klines_provider.BinbotApi.get_test_autotrade_settings",
+        return_value={},
+    )
+    def test_sync_market_state_ignores_unclosed_ui_kline(
+        self,
+        mock_get_test_autotrade,
+        mock_get_active_pairs,
+        mock_get_symbols,
+        mock_get_settings,
+        mock_async_producer,
+        mock_time,
+    ):
+        consumer = MagicMock()
+        provider = KlinesProvider(consumer)
+        provider.candles_15m = [
+            [1000, "1.0", "1.2", "0.9", "1.1", "100", 2999],
+            [3000, "1.1", "1.3", "1.0", "1.2", "120", 3999],
+        ]
+
+        closed_candles = provider._sync_market_state_from_ui_klines(
+            "eth-usdt", provider.candles_15m
+        )
+        history = provider.market_state_store.get_symbol_history("eth-usdt")
+
+        assert len(closed_candles) == 1
+        assert len(history) == 1
+        assert int(history.iloc[-1]["timestamp"]) == 2999
+        assert float(history.iloc[-1]["close"]) == 1.1

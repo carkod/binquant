@@ -59,6 +59,16 @@ def make_symbol_features(**overrides: object) -> SymbolMarketFeatures:
 
 
 def make_live_context(**overrides: object) -> LiveMarketContext:
+    # Default regime_stable_since so tests treat the regime as stable unless
+    # they override it; production callers go through annotate_context which
+    # sets this explicitly.
+    timestamp_override = overrides.get("timestamp", 2_000)
+    default_timestamp = (
+        int(timestamp_override)
+        if isinstance(timestamp_override, (int, float))
+        else 2_000
+    )
+    overrides.setdefault("regime_stable_since", default_timestamp - 60 * 60 * 1000)
     values: dict[str, object] = {
         "timestamp": 2_000,
         "fresh_count": 40,
@@ -187,6 +197,19 @@ def test_live_context_requires_minimum_coverage_ratio() -> None:
         context = accumulator.on_closed_candle(symbol, make_candle(2_000, 101 + index))
 
     assert context is None
+
+
+def test_live_context_waits_until_fresh_symbols_have_features() -> None:
+    store = MarketStateStore()
+    accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
+
+    context = None
+    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(40)]
+    for index, symbol in enumerate(symbols):
+        context = accumulator.on_closed_candle(symbol, make_candle(2_000, 100 + index))
+
+    assert context is None
+    assert accumulator.get_latest_context() is None
 
 
 def test_signal_context_scorer_penalizes_weak_long() -> None:

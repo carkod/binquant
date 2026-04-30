@@ -19,6 +19,10 @@ from market_regime.regime_routing import (
 )
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.signal_context_scorer import SignalContextScorer
+from shared.time_of_day_filter import (
+    build_quiet_hours_signal_msg,
+    is_autotrade_suppressed,
+)
 from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
@@ -191,6 +195,18 @@ class PriceTracker:
             if bad_followthrough or high_risk or low_confidence:
                 return
 
+            if autotrade and is_autotrade_suppressed(context=context):
+                autotrade = False
+                autotrade_route = "time_of_day_quiet_hours"
+                await self.telegram_consumer.send_signal(
+                    build_quiet_hours_signal_msg(
+                        symbol=self.symbol,
+                        algo=algo,
+                        side=bot_strategy.value,
+                        context=context,
+                    )
+                )
+
             value = SignalsConsumer(
                 direction="LONG",
                 autotrade=autotrade,
@@ -199,6 +215,7 @@ class PriceTracker:
                     name=algo,
                     position=bot_strategy,
                     market_type=self.market_type,
+                    margin_short_reversal=False,
                 ),
                 score=local_score,
                 current_price=close_price,

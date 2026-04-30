@@ -13,7 +13,11 @@ from pybinbot import (
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
-from shared.bot_exit import deactivate_active_bot
+from shared.strategy_mixin import StrategyMixin
+from shared.time_of_day_filter import (
+    build_quiet_hours_signal_msg,
+    is_autotrade_suppressed,
+)
 from shared.utils import (
     build_links_msg,
     format_context_timestamp_line,
@@ -25,7 +29,7 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class BuyTheDip:
+class BuyTheDip(StrategyMixin):
     ALGO = "coinrule_buy_the_dip"
     START_TIME = datetime(2026, 4, 12, 23, 21, tzinfo=UTC)
     LOOKBACK_HOURS = 6
@@ -35,6 +39,7 @@ class BuyTheDip:
         self.ti = cls
         self.df_15m = cls.df_15m
         self.config = cls.config
+        self.binbot_api = cls.binbot_api
         self.exchange = cls.exchange
         self.market_type = cls.market_type
         self.symbol = cls.symbol
@@ -73,10 +78,6 @@ class BuyTheDip:
             .iloc[-1]
         )
         return prior_close, ema20
-
-    def _lost_reclaim_below_prior_close_and_ema20(self, current_price: float) -> bool:
-        prior_close, ema20 = self._prior_close_and_ema20()
-        return current_price < prior_close and current_price < ema20
 
     @staticmethod
     def _allows_entry(
@@ -132,20 +133,6 @@ class BuyTheDip:
             return f"symbol_regime_{str(symbol_features.micro_regime).lower()}"
         return "symbol_regime_unavailable"
 
-    def _resolve_exit_reason(
-        self,
-        context: LiveMarketContext | None,
-        symbol_features: SymbolMarketFeatures | None,
-        current_price: float,
-    ) -> str | None:
-        if context is not None and context.market_regime == "TREND_DOWN":
-            return "market_regime_trend_down"
-        if symbol_features is not None and symbol_features.micro_regime == "TREND_DOWN":
-            return "symbol_regime_trend_down"
-        if self._lost_reclaim_below_prior_close_and_ema20(current_price):
-            return "reclaim_lost_below_prior_close_and_ema20"
-        return None
-
     async def signal(
         self,
         current_price: float,
@@ -189,26 +176,6 @@ class BuyTheDip:
         )
         context = self.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        exit_reason = self._resolve_exit_reason(
-            context=context,
-            symbol_features=symbol_features,
-            current_price=current_price,
-        )
-        if exit_reason is not None:
-            bot_action = deactivate_active_bot(
-                binbot_api=self.ti.binbot_api,
-                algo=self.ALGO,
-                symbol=self.symbol,
-                source_label="Buy The Dip exit",
-            )
-            if bot_action != "No active bot found to deactivate.":
-                logging.info(
-                    "Buy-the-dip deactivated active bot for %s: %s (%s)",
-                    self.symbol,
-                    exit_reason,
-                    bot_action,
-                )
-            return
         if not self._allows_entry(context=context, symbol_features=symbol_features):
             logging.info(
                 "Buy-the-dip skipped: %s is in a blocked trend regime",
@@ -230,6 +197,18 @@ class BuyTheDip:
             context=context,
             symbol_features=symbol_features,
         )
+
+        if autotrade and is_autotrade_suppressed(context=context):
+            autotrade = False
+            autotrade_route = "time_of_day_quiet_hours"
+            await self.telegram_consumer.send_signal(
+                build_quiet_hours_signal_msg(
+                    symbol=self.symbol,
+                    algo=self.ALGO,
+                    side=Position.long.value,
+                    context=context,
+                )
+            )
 
         msg = f"""
         - [{os.getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}

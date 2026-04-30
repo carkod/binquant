@@ -148,6 +148,17 @@ class RegimeTransitionDetector:
         context.stress_regime_score = stress_score
         context.regime_is_transitioning = regime_is_transitioning
 
+        # Track when the current regime was first entered so downstream
+        # consumers can gate on regime stability (see is_regime_stable).
+        if (
+            previous_context is None
+            or previous_context.market_regime != regime
+            or previous_context.regime_stable_since is None
+        ):
+            context.regime_stable_since = context.timestamp
+        else:
+            context.regime_stable_since = previous_context.regime_stable_since
+
     def _annotate_symbol_regime(
         self,
         features: SymbolMarketFeatures,
