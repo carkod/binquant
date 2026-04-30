@@ -26,4 +26,5 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
 COPY . .
 
 STOPSIGNAL SIGTERM
-EXPOSE 8080 80 9092 9093 9094
+
+CMD ["python3", "main.py"]

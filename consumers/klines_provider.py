@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-from kafka import KafkaConsumer
 from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
@@ -9,7 +8,6 @@ from pybinbot import (
     BinbotApi,
     KucoinApi,
     BinanceApi,
-    AsyncProducer,
     KlineProduceModel,
     MarketType,
     KucoinFutures,
@@ -35,7 +33,7 @@ class KlinesProvider:
 
     LIMIT = 400
 
-    def __init__(self, consumer: KafkaConsumer) -> None:
+    def __init__(self) -> None:
         self.config = Config()
         self.binbot_api = BinbotApi(
             base_url=self.config.backend_domain,
@@ -52,10 +50,6 @@ class KlinesProvider:
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.interval_15m: BinanceKlineIntervals | KucoinKlineIntervals
-        self.consumer = consumer
-        self.producer = AsyncProducer(
-            host=self.config.kafka_host, port=self.config.kafka_port
-        )
         # Apex Flow starting point for scoring signals
         self.first_seen_at = int(time() * 1000)
         # Candles/btc candles storage
@@ -241,8 +235,6 @@ class KlinesProvider:
 
     async def load_data_on_start(self):
         """Load initial BTC benchmark candles and market data."""
-        self.producer = await self.producer.start()
-
         # Load market-level data
         self.active_pairs = self.binbot_api.get_active_pairs()
         self.top_gainers_day = await self.binbot_api.get_top_gainers()
@@ -295,7 +287,6 @@ class KlinesProvider:
 
         # Pass candles to ContextEvaluator for processing
         crypto_analytics = ContextEvaluator(
-            producer=self.producer,
             api=self.api,
             kucoin_symbol=kucoin_symbol,
             symbol=symbol,

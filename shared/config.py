@@ -61,7 +61,6 @@ class Config:
             "TZ",
             "SECRET_KEY",
             "ENV",
-            "KAFKA_HOST",
             "USER",
             "PASSWORD",
             "EMAIL",
@@ -107,11 +106,6 @@ class Config:
     @property
     def backend_domain(self) -> str:
         return self._get_required("BACKEND_DOMAIN")
-
-    # Kafka settings
-    @property
-    def kafka_host(self) -> str:
-        return self._get_required("KAFKA_HOST")
 
     # PostgreSQL settings
     @property
@@ -173,15 +167,6 @@ class Config:
     @property
     def telegram_user_id(self) -> str:
         return self._get_required("TELEGRAM_USER_ID")
-
-    # Optional properties moved to the bottom
-    @property
-    def mongo_port(self) -> int:
-        return int(self._get_optional("MONGO_PORT", "27018"))
-
-    @property
-    def kafka_port(self) -> int:
-        return int(self._get_optional("KAFKA_PORT", "29092"))
 
     @property
     def service_email(self) -> str:

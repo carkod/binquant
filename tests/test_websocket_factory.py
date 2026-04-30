@@ -1,5 +1,7 @@
 """Tests for WebSocket factory using KuCoin Universal SDK."""
 
+from asyncio import Queue
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -108,13 +110,11 @@ class TestWebsocketFactory:
         }
         mock_binbot_api.return_value.get_symbols.return_value = mock_symbols
 
-        # Create factory (will use patched BinbotApi)
-        factory = WebsocketClientFactory()
-
         # Mock producer
-        mock_producer = AsyncMock()
-        mock_producer.start = AsyncMock()
-        factory.producer = mock_producer
+        mock_queue: Queue[dict[str, Any]] = Queue()
+
+        # Create factory (will use patched BinbotApi)
+        factory = WebsocketClientFactory(queue=mock_queue)
 
         # Mock AsyncKucoinWebsocketClient to avoid real connection
         mock_client = AsyncMock()
@@ -153,9 +153,9 @@ class TestKucoinWebsocketSDK:
         """
         Test that Kucoin client can be initialized with a producer.
         """
-        test_producer = AsyncMock()
+        test_queue: Queue[dict[str, Any]] = Queue()
         client = AsyncKucoinWebsocketClient(
-            producer=test_producer, key="test", secret="test", passpharse="test"
+            queue=test_queue, key="test", secret="test", passpharse="test"
         )
         assert client is not None
 
@@ -164,9 +164,9 @@ class TestKucoinWebsocketSDK:
         """
         Test that Kucoin spot client can be initialized with a producer.
         """
-        test_producer = AsyncMock()
+        test_queue: Queue[dict[str, Any]] = Queue()
         client = AsyncKucoinWebsocketClient(
-            producer=test_producer,
+            queue=test_queue,
             key="test",
             secret="test",
             passpharse="test",
