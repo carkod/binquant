@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pandas import DataFrame
@@ -89,7 +89,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,
         binbot_api=binbot_api,
-        telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data={"base_asset": "TEST"},
@@ -249,7 +249,7 @@ async def test_price_tracker_no_signal_on_uptrend():
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=AsyncMock())
+        TelegramConsumer, SimpleNamespace(dispatch_signal=Mock())
     )
 
     await algo.signal(
@@ -271,12 +271,12 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.latest_market_context = make_market_context()
 
@@ -305,9 +305,9 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     )
 
     at_mock.assert_awaited_once()
-    tg_mock.assert_awaited_once()
+    tg_mock.assert_called_once()
 
-    tg_await_args = tg_mock.await_args
+    tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "&lt; 30" in telegram_msg
@@ -322,12 +322,12 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
     algo = make_algo(df)
     algo.market_type = MarketType.SPOT
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.latest_market_context = make_market_context()
 
@@ -372,12 +372,12 @@ async def test_price_tracker_disables_autotrade_in_transitioning_market(monkeypa
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.latest_market_context = make_market_context(
         market_regime="TRANSITIONAL",
@@ -427,12 +427,12 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
     context = make_market_context(
         market_regime="TREND_UP",
@@ -476,7 +476,7 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
     )
 
     assert captured["autotrade"] is False
-    tg_await_args = tg_mock.await_args
+    tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "Market transition: ENTERED_TREND_UP" in telegram_msg
@@ -489,12 +489,12 @@ async def test_price_tracker_reads_latest_context_from_evaluator(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     algo.latest_market_context = make_market_context(market_regime="RANGE")
@@ -539,7 +539,7 @@ async def test_price_tracker_reads_latest_context_from_evaluator(monkeypatch):
     )
 
     assert captured["autotrade"] is False
-    tg_await_args = tg_mock.await_args
+    tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "Market regime: TREND_UP" in telegram_msg
@@ -551,12 +551,12 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.latest_market_context = make_market_context(
         market_regime="TREND_UP",
@@ -597,7 +597,7 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
     )
 
     assert captured["autotrade"] is False
-    tg_await_args = tg_mock.await_args
+    tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "Autotrade route: market_regime_trend_up" in telegram_msg
@@ -610,12 +610,12 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.latest_market_context = make_market_context(
         symbol_features={
@@ -660,7 +660,7 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
     )
 
     assert captured["autotrade"] is False
-    tg_await_args = tg_mock.await_args
+    tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "Autotrade route: symbol_regime_transitional" in telegram_msg
@@ -671,12 +671,12 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.latest_market_context = make_market_context(
         advancers_ratio=0.74,
@@ -718,7 +718,7 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
     )
 
     assert captured["autotrade"] is False
-    tg_await_args = tg_mock.await_args
+    tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "Autotrade route: breadth_not_stable_for_mean_reversion" in telegram_msg
@@ -735,12 +735,12 @@ async def test_grid_trading_emits_signal_for_range_bound_dip():
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -751,9 +751,9 @@ async def test_grid_trading_emits_signal_for_range_bound_dip():
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_awaited_once()
+    tg_mock.assert_called_once()
 
-    tg_await_args = tg_mock.await_args
+    tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "coinrule_grid_trading" in telegram_msg
@@ -780,12 +780,12 @@ async def test_grid_trading_skips_when_market_is_not_range() -> None:
         market_regime_transition="ENTERED_TREND_UP",
     )
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -796,7 +796,7 @@ async def test_grid_trading_skips_when_market_is_not_range() -> None:
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_not_awaited()
+    tg_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -811,12 +811,12 @@ async def test_grid_trading_skips_when_coin_regime_is_not_range() -> None:
         symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
     )
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -827,7 +827,7 @@ async def test_grid_trading_skips_when_coin_regime_is_not_range() -> None:
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_not_awaited()
+    tg_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -843,12 +843,12 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -859,9 +859,9 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_awaited_once()
+    tg_mock.assert_called_once()
 
-    tg_await_args = tg_mock.await_args
+    tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
     assert "Action: SHORT SELL ALERT" in telegram_msg
@@ -878,9 +878,9 @@ async def test_grid_trading_deactivates_active_bot_before_buy_entry() -> None:
     algo.latest_market_context = make_market_context()
     binbot_mock = cast(MagicMock, algo.binbot_api)
     binbot_mock.get_bots_by_name.return_value = [{"id": "bot-123"}]
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -898,7 +898,7 @@ async def test_grid_trading_deactivates_active_bot_before_buy_entry() -> None:
         "bot-123",
         algorithmic_close=True,
     )
-    tg_mock.assert_not_awaited()
+    tg_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -910,9 +910,9 @@ async def test_grid_trading_deactivates_active_bot_before_sell_entry() -> None:
     algo.latest_market_context = make_market_context()
     binbot_mock = cast(MagicMock, algo.binbot_api)
     binbot_mock.get_bots_by_name.return_value = [{"id": "bot-123"}]
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -930,7 +930,7 @@ async def test_grid_trading_deactivates_active_bot_before_sell_entry() -> None:
         "bot-123",
         algorithmic_close=True,
     )
-    tg_mock.assert_not_awaited()
+    tg_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -945,12 +945,12 @@ async def test_grid_trading_skips_when_move_is_below_threshold() -> None:
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = AsyncMock()
+    tg_mock = Mock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(send_signal=tg_mock)
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -961,7 +961,7 @@ async def test_grid_trading_skips_when_move_is_below_threshold() -> None:
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_not_awaited()
+    tg_mock.assert_not_called()
 
 
 def test_grid_trading_buy_threshold_requires_two_percent_drop() -> None:

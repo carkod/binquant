@@ -244,5 +244,5 @@ class ActivityBurstPump:
                 bb_low=bb_low,
             ),
         )
-        await self.telegram_consumer.send_signal(msg)
+        self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

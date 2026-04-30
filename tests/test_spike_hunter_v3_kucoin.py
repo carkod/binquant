@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pandas import DataFrame
@@ -88,7 +88,7 @@ def make_context(
         market_type=MarketType.SPOT,
         df_15m=df,
         binbot_api=MagicMock(),
-        telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
         _breadth_cross_tolerance=0.05,
@@ -146,9 +146,11 @@ def make_last_spike(
 async def test_signal_emits_in_trend_up_market(monkeypatch):
     context = make_market_context()
     algo, df = make_algo(context)
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -162,9 +164,9 @@ async def test_signal_emits_in_trend_up_market(monkeypatch):
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_awaited_once()
+    send_signal_mock.assert_called_once()
     process_mock.assert_awaited_once()
-    telegram_await_args = send_signal_mock.await_args
+    telegram_await_args = send_signal_mock.call_args
     process_await_args = process_mock.await_args
 
     assert telegram_await_args is not None
@@ -187,9 +189,11 @@ async def test_signal_autotrades_when_range_market_has_leading_symbol(monkeypatc
     """
     context = make_market_context(market_regime="RANGE")
     algo, df = make_algo(context)
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -203,9 +207,9 @@ async def test_signal_autotrades_when_range_market_has_leading_symbol(monkeypatc
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_awaited_once()
+    send_signal_mock.assert_called_once()
     process_mock.assert_awaited_once()
-    telegram_args = send_signal_mock.await_args
+    telegram_args = send_signal_mock.call_args
     process_args = process_mock.await_args
     assert telegram_args is not None
     assert process_args is not None
@@ -236,9 +240,11 @@ async def test_signal_blocks_autotrade_in_range_when_symbol_not_leading(monkeypa
         symbol_features={"TESTUSDT": flat_symbol},
     )
     algo, df = make_algo(context)
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -252,9 +258,9 @@ async def test_signal_blocks_autotrade_in_range_when_symbol_not_leading(monkeypa
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_awaited_once()
+    send_signal_mock.assert_called_once()
     process_mock.assert_not_awaited()
-    telegram_args = send_signal_mock.await_args
+    telegram_args = send_signal_mock.call_args
     assert telegram_args is not None
     telegram_msg = telegram_args.args[0]
     assert "Autotrade route: range_symbol_regime_range" in telegram_msg
@@ -281,9 +287,11 @@ async def test_signal_emits_for_bullish_transitional_market(monkeypatch):
         symbol_features={"TESTUSDT": transitional_symbol},
     )
     algo, df = make_algo(context)
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -297,9 +305,9 @@ async def test_signal_emits_for_bullish_transitional_market(monkeypatch):
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_awaited_once()
+    send_signal_mock.assert_called_once()
     process_mock.assert_awaited_once()
-    telegram_await_args = send_signal_mock.await_args
+    telegram_await_args = send_signal_mock.call_args
 
     assert telegram_await_args is not None
     assert (
@@ -312,9 +320,11 @@ async def test_signal_emits_for_bullish_transitional_market(monkeypatch):
 async def test_signal_skips_non_upward_spike_even_in_bullish_market(monkeypatch):
     context = make_market_context()
     algo, df = make_algo(context)
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -332,7 +342,7 @@ async def test_signal_skips_non_upward_spike_even_in_bullish_market(monkeypatch)
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_not_awaited()
+    send_signal_mock.assert_not_called()
     process_mock.assert_not_awaited()
 
 
@@ -340,9 +350,11 @@ async def test_signal_skips_non_upward_spike_even_in_bullish_market(monkeypatch)
 async def test_signal_skips_downward_spike_even_in_bullish_market(monkeypatch):
     context = make_market_context()
     algo, df = make_algo(context)
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -360,5 +372,5 @@ async def test_signal_skips_downward_spike_even_in_bullish_market(monkeypatch):
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_not_awaited()
+    send_signal_mock.assert_not_called()
     process_mock.assert_not_awaited()

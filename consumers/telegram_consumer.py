@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -16,6 +17,9 @@ class TelegramConsumer:
         self.token = os.getenv("TELEGRAM_BOT_KEY", "")
         self.chat_id = os.getenv("TELEGRAM_USER_ID", "")
         self.bot = Bot(os.getenv("TELEGRAM_BOT_KEY", ""))
+        # Tasks held here so create_task results aren't garbage-collected
+        # before the Telegram round-trip completes.
+        self._background_tasks: set[asyncio.Task] = set()
 
     def parse_signal(self, result):
         payload = json.loads(result)
@@ -84,3 +88,14 @@ class TelegramConsumer:
         except Exception as e:
             logging.error(f"Error sending telegram signal: {e}")
             logging.error(f"Original message: {message}")
+
+    def dispatch_signal(self, message: str) -> asyncio.Task:
+        """
+        Fire-and-forget Telegram send. Returns immediately so the caller
+        (autotrade path) can run in parallel. Errors are swallowed inside
+        send_signal, so the task never propagates exceptions.
+        """
+        task = asyncio.create_task(self.send_signal(message))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task

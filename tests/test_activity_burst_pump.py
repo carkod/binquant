@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pandas import DataFrame
@@ -16,7 +16,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,
         binbot_api=MagicMock(),
-        telegram_consumer=SimpleNamespace(send_signal=AsyncMock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data={"base_asset": "TEST"},
@@ -82,9 +82,11 @@ def test_compute_indicators_uses_median_baseline():
 async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch):
     df = make_low_liquidity_df()
     algo = make_algo(df)
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -98,11 +100,11 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
         current_price=float(df.close.iloc[-1]), bb_high=1.05, bb_mid=1.03, bb_low=1.01
     )
 
-    send_signal_mock.assert_awaited_once()
+    send_signal_mock.assert_called_once()
     process_mock.assert_awaited_once()
 
     await_args = process_mock.await_args
-    telegram_await_args = send_signal_mock.await_args
+    telegram_await_args = send_signal_mock.call_args
     assert await_args is not None
     assert telegram_await_args is not None
     value = await_args.args[0]
@@ -121,9 +123,11 @@ async def test_signal_generator_skips_when_price_jump_is_too_small():
     df.loc[df.index[-1], "close"] = 1.005
     df.loc[df.index[-1], "high"] = 1.006
     algo = make_algo(df)
-    send_signal_mock = AsyncMock()
+    send_signal_mock = Mock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(Any, SimpleNamespace(send_signal=send_signal_mock))
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
@@ -132,5 +136,5 @@ async def test_signal_generator_skips_when_price_jump_is_too_small():
         current_price=float(df.close.iloc[-1]), bb_high=1.05, bb_mid=1.03, bb_low=1.01
     )
 
-    send_signal_mock.assert_not_awaited()
+    send_signal_mock.assert_not_called()
     process_mock.assert_not_awaited()
