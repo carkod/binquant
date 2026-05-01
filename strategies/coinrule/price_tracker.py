@@ -255,6 +255,7 @@ class PriceTracker:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
+            self.ti.dispatch_signal_record(value=value)
             self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
