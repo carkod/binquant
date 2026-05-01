@@ -86,6 +86,7 @@ def make_context(
         symbol="TESTUSDT",
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,
+        dispatch_signal_record=Mock(),
         binbot_api=SimpleNamespace(get_top_gainers=AsyncMock(return_value=[])),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,

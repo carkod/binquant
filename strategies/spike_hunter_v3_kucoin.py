@@ -624,6 +624,7 @@ class SpikeHunterV3KuCoin:
                     bb_low=bb_low,
                 ),
             )
+            self.ti.dispatch_signal_record(value=value)
             self.telegram_consumer.dispatch_signal(msg)
             if autotrade:
                 await self.at_consumer.process_autotrade_restrictions(value)

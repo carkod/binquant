@@ -15,6 +15,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         symbol="TESTUSDT",
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,
+        dispatch_signal_record=Mock(),
         binbot_api=MagicMock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,

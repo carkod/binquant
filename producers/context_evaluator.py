@@ -1,5 +1,6 @@
 import logging
-from typing import cast
+from datetime import datetime, UTC
+from typing import Any, cast
 from collections.abc import Awaitable
 
 from numpy import isnan
@@ -22,6 +23,7 @@ from pybinbot import (
     MarketDominance,
     MarketType,
     Position,
+    SignalsConsumer,
     round_numbers,
 )
 
@@ -266,6 +268,63 @@ class ContextEvaluator:
             logging.exception(
                 "Strategy %s raised while processing %s; continuing.",
                 name,
+                self.symbol,
+            )
+
+    def dispatch_signal_record(
+        self,
+        value: SignalsConsumer,
+        indicators: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Fire-and-forget POST /signals so every strategy emission lands in the
+        analytics table, regardless of whether autotrade actually fires.
+
+        Wrapped in a defensive try/except: an analytics-write failure must
+        never abort the trading path. HTTP errors are already handled inside
+        BinbotApi.create_signal; this guard covers the synchronous prep work
+        (model_dump, attribute access) so a malformed payload can't bubble
+        up and short-circuit telegram/autotrade dispatch for this kline.
+        """
+        try:
+            bot_params = value.bot_params
+            if bot_params is None:
+                return
+
+            context = self.latest_market_context
+            direction = (
+                bot_params.position.value
+                if bot_params.position is not None
+                else value.direction or "UNKNOWN"
+            )
+            regime = (
+                context.market_regime if context and context.market_regime else None
+            )
+
+            merged_indicators: dict[str, Any] = dict(indicators or {})
+            if value.bb_spreads is not None:
+                merged_indicators.setdefault(
+                    "bb_spreads", value.bb_spreads.model_dump()
+                )
+            if value.current_price:
+                merged_indicators.setdefault("current_price", value.current_price)
+            if value.score:
+                merged_indicators.setdefault("score", value.score)
+
+            self.binbot_api.dispatch_create_signal(
+                algorithm_name=bot_params.name,
+                symbol=self.symbol,
+                generated_at=datetime.now(UTC),
+                direction=direction,
+                autotrade=value.autotrade,
+                current_regime=regime,
+                context=context.model_dump() if context else {},
+                bot_params=bot_params.model_dump(),
+                indicators=merged_indicators,
+            )
+        except Exception:
+            logging.exception(
+                "dispatch_signal_record failed for %s; trade path continues.",
                 self.symbol,
             )
 

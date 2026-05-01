@@ -119,6 +119,7 @@ def make_algo(
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
         df_15m=df_15m,
+        dispatch_signal_record=Mock(),
         binbot_api=binbot_api,
     )
     return BuyTheDip(cast(Any, context)), context

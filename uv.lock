@@ -1375,7 +1375,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "1.6.0"
+version = "1.8.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1388,9 +1388,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/11/b1/6f9fe49b8c58ce897b75675b681de4ba6d710fba9f6243404fb50caf22c5/pybinbot-1.6.0.tar.gz", hash = "sha256:8b9672d7cd2075c9a06f284fb6efc3314b98abe6909ae9a97d5cf16b643e0b05", size = 55728, upload-time = "2026-04-30T20:58:48.897Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/73/ab2f3bd98a7140f7b608db78cee255911afdeed053815f63d378c1f0f969/pybinbot-1.8.2.tar.gz", hash = "sha256:2b71e54aefe16b9fb29d353c6688b7af566d88ef55ee8f8702616808557775c8", size = 56541, upload-time = "2026-05-01T00:43:04.381Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cf/fb/e0724c47080160bacbb01e20bad6243c90cba59dc7a1ea88b30b26bcfb91/pybinbot-1.6.0-py3-none-any.whl", hash = "sha256:eec0c0a5b1f205c9754eb12ad687a1ae904b05d0a888baee4bf7cf90e84129f9", size = 57980, upload-time = "2026-04-30T20:58:47.16Z" },
+    { url = "https://files.pythonhosted.org/packages/62/7d/a785f8685a8c7637f765e17432399096a42ecb8fb78c14208be5cb4f405b/pybinbot-1.8.2-py3-none-any.whl", hash = "sha256:7a06e300a09c63a6d5b1a63543a32324e730f4cf69d96af81839fb87b8e768d9", size = 58762, upload-time = "2026-05-01T00:43:02.924Z" },
 ]
 
 [[package]]
