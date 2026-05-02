@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -1079,3 +1080,102 @@ def test_grid_trading_sell_threshold_can_be_configured_at_instantiation() -> Non
     assert configured_decision.should_trigger is True
     assert configured_decision.action == "sell"
     assert configured_decision.trigger_move_pct == 0.01
+
+
+def test_grid_trading_loads_runtime_threshold_override(tmp_path, monkeypatch) -> None:
+    config_dir = tmp_path / "config"
+    runtime_dir = tmp_path / ".runtime"
+    config_dir.mkdir()
+    runtime_dir.mkdir()
+    default_path = config_dir / "grid_thresholds.default.json"
+    override_path = runtime_dir / "grid_thresholds.json"
+    default_path.write_text(
+        json.dumps(
+            {
+                "coinrule_grid_trading": {
+                    "buy_trigger_pct": 0.02,
+                    "sell_trigger_pct": 0.02,
+                    "anchor_window_candles": 8,
+                }
+            }
+        )
+    )
+    override_path.write_text(
+        json.dumps(
+            {
+                "coinrule_grid_trading": {
+                    "buy_trigger_pct": 0.015,
+                    "sell_trigger_pct": 0.025,
+                    "anchor_window_candles": 12,
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(GridTrading, "DEFAULT_CONFIG_PATH", default_path)
+    monkeypatch.setattr(GridTrading, "DEFAULT_OVERRIDE_CONFIG_PATH", override_path)
+    monkeypatch.setattr(GridTrading, "_config_cache", None)
+    monkeypatch.setattr(GridTrading, "_config_cache_key", None)
+
+    algo = make_grid_algo(make_range_bound_df(n=50))
+
+    assert algo.buy_trigger_pct == 0.015
+    assert algo.sell_trigger_pct == 0.025
+    assert algo.ANCHOR_WINDOW_CANDLES == 12
+    assert algo.LOOKBACK_CANDLES == 13
+
+
+def test_grid_trading_refresh_picks_up_rewritten_runtime_file(
+    tmp_path, monkeypatch
+) -> None:
+    config_dir = tmp_path / "config"
+    runtime_dir = tmp_path / ".runtime"
+    config_dir.mkdir()
+    runtime_dir.mkdir()
+    default_path = config_dir / "grid_thresholds.default.json"
+    override_path = runtime_dir / "grid_thresholds.json"
+    default_path.write_text(
+        json.dumps(
+            {
+                "coinrule_grid_trading": {
+                    "buy_trigger_pct": 0.02,
+                    "sell_trigger_pct": 0.02,
+                    "anchor_window_candles": 8,
+                }
+            }
+        )
+    )
+    override_path.write_text(
+        json.dumps(
+            {
+                "coinrule_grid_trading": {
+                    "buy_trigger_pct": 0.02,
+                    "sell_trigger_pct": 0.02,
+                    "anchor_window_candles": 8,
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(GridTrading, "DEFAULT_CONFIG_PATH", default_path)
+    monkeypatch.setattr(GridTrading, "DEFAULT_OVERRIDE_CONFIG_PATH", override_path)
+    monkeypatch.setattr(GridTrading, "_config_cache", None)
+    monkeypatch.setattr(GridTrading, "_config_cache_key", None)
+
+    algo = make_grid_algo(make_range_bound_df(n=50))
+    override_path.write_text(
+        json.dumps(
+            {
+                "coinrule_grid_trading": {
+                    "buy_trigger_pct": 0.03,
+                    "sell_trigger_pct": 0.03,
+                    "anchor_window_candles": 10,
+                }
+            }
+        )
+    )
+
+    algo.refresh_runtime_config()
+
+    assert algo.buy_trigger_pct == 0.03
+    assert algo.sell_trigger_pct == 0.03
+    assert algo.ANCHOR_WINDOW_CANDLES == 10
+    assert algo.LOOKBACK_CANDLES == 11
