@@ -39,6 +39,7 @@ def make_symbol_features(**overrides: Any) -> SymbolMarketFeatures:
 def make_market_context(**overrides: Any) -> LiveMarketContext:
     values = {
         "timestamp": 1_000,
+        "regime_stable_since": -3_600_000,
         "market_stress_score": 0.1,
         "advancers_ratio": 7 / 12,
         "decliners_ratio": 5 / 12,
@@ -728,7 +729,7 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
 @pytest.mark.asyncio
 async def test_grid_trading_emits_signal_for_range_bound_dip():
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 98.3
+    df.loc[df.index[-1], "close"] = 97.8
     df.loc[df.index[-1], "open"] = 98.8
     df.loc[df.index[-1], "high"] = 99.0
     df.loc[df.index[-1], "low"] = 98.0
@@ -760,18 +761,22 @@ async def test_grid_trading_emits_signal_for_range_bound_dip():
     assert "coinrule_grid_trading" in telegram_msg
     assert "Action: LONG BUY ALERT" in telegram_msg
     assert "Strategy: long" in telegram_msg
+    assert "Anchor window: 8 candles" in telegram_msg
+    assert "Autotrade candidate: Yes" in telegram_msg
+    assert "Autotrade route: range_range_stable" in telegram_msg
     assert (
         "BUY $20.00 of TESTUSDT as market order using isolated margin with 3x leverage"
         in telegram_msg
     )
     assert "Move from live anchor" in telegram_msg
-    assert "Autotrade is disabled" in telegram_msg
+    assert "Autotrade is disabled for forward testing" in telegram_msg
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_skips_when_market_is_not_range() -> None:
+async def test_grid_trading_emits_signal_when_market_is_not_range() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 98.3
+    df.loc[df.index[-1], "close"] = 97.8
     df.loc[df.index[-1], "open"] = 98.8
     df.loc[df.index[-1], "high"] = 99.0
     df.loc[df.index[-1], "low"] = 98.0
@@ -797,13 +802,17 @@ async def test_grid_trading_skips_when_market_is_not_range() -> None:
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_not_called()
+    tg_mock.assert_called_once()
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "Autotrade candidate: No" in telegram_msg
+    assert "Autotrade route: market_regime_trend_up" in telegram_msg
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_skips_when_coin_regime_is_not_range() -> None:
+async def test_grid_trading_emits_signal_when_coin_regime_is_not_range() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 98.3
+    df.loc[df.index[-1], "close"] = 97.8
     df.loc[df.index[-1], "open"] = 98.8
     df.loc[df.index[-1], "high"] = 99.0
     df.loc[df.index[-1], "low"] = 98.0
@@ -828,16 +837,20 @@ async def test_grid_trading_skips_when_coin_regime_is_not_range() -> None:
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_not_called()
+    tg_mock.assert_called_once()
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "Autotrade candidate: No" in telegram_msg
+    assert "Autotrade route: symbol_regime_trend_up" in telegram_msg
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_grid_trading_skips_for_range_bound_rally() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 99.0
-    df.loc[df.index[-1], "close"] = 101.5
+    df.loc[df.index[-2], "close"] = 100.1
+    df.loc[df.index[-1], "close"] = 102.3
     df.loc[df.index[-1], "open"] = 101.1
-    df.loc[df.index[-1], "high"] = 101.8
+    df.loc[df.index[-1], "high"] = 102.6
     df.loc[df.index[-1], "low"] = 100.9
     df.loc[df.index[-1], "rsi"] = 66.0
 
@@ -868,13 +881,14 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
     assert "Action: SHORT SELL ALERT" in telegram_msg
     assert "Strategy: short" in telegram_msg
     assert "SELL $20.00 of TESTUSDT as market order with 3x leverage" in telegram_msg
-    assert "Autotrade is disabled" in telegram_msg
+    assert "Autotrade is disabled for forward testing" in telegram_msg
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_grid_trading_deactivates_active_bot_before_buy_entry() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 98.3
+    df.loc[df.index[-1], "close"] = 97.8
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
     binbot_mock = cast(MagicMock, algo.binbot_api)
@@ -905,8 +919,8 @@ async def test_grid_trading_deactivates_active_bot_before_buy_entry() -> None:
 @pytest.mark.asyncio
 async def test_grid_trading_deactivates_active_bot_before_sell_entry() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 99.0
-    df.loc[df.index[-1], "close"] = 101.5
+    df.loc[df.index[-2], "close"] = 100.1
+    df.loc[df.index[-1], "close"] = 102.3
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
     binbot_mock = cast(MagicMock, algo.binbot_api)
@@ -967,8 +981,7 @@ async def test_grid_trading_skips_when_move_is_below_threshold() -> None:
 
 def test_grid_trading_buy_threshold_requires_two_percent_drop() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 100.6
-    df.loc[df.index[-1], "close"] = 98.5
+    df.loc[df.index[-1], "close"] = 97.9
     df.loc[df.index[-1], "open"] = 98.8
     df.loc[df.index[-1], "high"] = 99.0
     df.loc[df.index[-1], "low"] = 98.2
@@ -988,8 +1001,7 @@ def test_grid_trading_buy_threshold_requires_two_percent_drop() -> None:
 
 def test_grid_trading_buy_threshold_can_be_configured_at_instantiation() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 100.0
-    df.loc[df.index[-1], "close"] = 99.0
+    df.loc[df.index[-1], "close"] = 98.9
 
     default_algo = make_grid_algo(df)
     configured_algo = GridTrading(
@@ -1020,10 +1032,9 @@ def test_grid_trading_buy_threshold_can_be_configured_at_instantiation() -> None
 
 def test_grid_trading_sell_threshold_requires_two_percent_rally() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 99.0
-    df.loc[df.index[-1], "close"] = 101.2
+    df.loc[df.index[-1], "close"] = 102.3
     df.loc[df.index[-1], "open"] = 100.0
-    df.loc[df.index[-1], "high"] = 101.5
+    df.loc[df.index[-1], "high"] = 102.6
     df.loc[df.index[-1], "low"] = 99.9
 
     algo = make_grid_algo(df)
@@ -1041,7 +1052,6 @@ def test_grid_trading_sell_threshold_requires_two_percent_rally() -> None:
 
 def test_grid_trading_sell_threshold_can_be_configured_at_instantiation() -> None:
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 100.0
     df.loc[df.index[-1], "close"] = 101.0
 
     default_algo = make_grid_algo(df)
