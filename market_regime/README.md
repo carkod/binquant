@@ -181,7 +181,6 @@ Strategies should not consume the raw regime labels directly unless they have a 
 - `resolve_symbol_features(...)`
 - `allows_long_autotrade(...)`
 - `allows_short_autotrade(...)`
-- `supports_grid_trading(...)`
 
 These helpers combine:
 

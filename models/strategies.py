@@ -7,6 +7,10 @@ class GridSignalDecision(BaseModel):
     should_trigger: bool
     action: str | None = None
     reason: str = ""
+    anchor_price: float = 0.0
+    anchor_high: float = 0.0
+    anchor_low: float = 0.0
+    anchor_window_candles: int = 0
     trigger_move_pct: float = 0.02
     range_width: float = 0.0
     range_drift: float = 0.0
