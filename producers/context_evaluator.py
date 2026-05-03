@@ -292,9 +292,12 @@ class ContextEvaluator:
                 return
 
             context = self.latest_market_context
+            position = bot_params.position
             direction = (
-                bot_params.position.value
-                if bot_params.position is not None
+                position.value
+                if hasattr(position, "value")
+                else position
+                if position is not None
                 else value.direction or "UNKNOWN"
             )
             regime = (
@@ -304,7 +307,7 @@ class ContextEvaluator:
             merged_indicators: dict[str, Any] = dict(indicators or {})
             if value.bb_spreads is not None:
                 merged_indicators.setdefault(
-                    "bb_spreads", value.bb_spreads.model_dump()
+                    "bb_spreads", value.bb_spreads.model_dump(mode="json")
                 )
             if value.current_price:
                 merged_indicators.setdefault("current_price", value.current_price)
@@ -318,8 +321,8 @@ class ContextEvaluator:
                 direction=direction,
                 autotrade=value.autotrade,
                 current_regime=regime,
-                context=context.model_dump() if context else {},
-                bot_params=bot_params.model_dump(),
+                context=context.model_dump(mode="json") if context else {},
+                bot_params=bot_params.model_dump(mode="json"),
                 indicators=merged_indicators,
             )
         except Exception:
