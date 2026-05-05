@@ -10,7 +10,7 @@ from pybinbot import (
     SignalsConsumer,
     round_numbers,
 )
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.models import LiveMarketContext
 from market_regime.regime_routing import is_regime_stable, resolve_symbol_features
 from models.strategies import GridSignalDecision
 from shared.strategy_mixin import StrategyMixin
@@ -207,11 +207,11 @@ class GridTrading(StrategyMixin):
     def supports_grid_trading(
         cls,
         context: LiveMarketContext | None,
-        symbol_features: SymbolMarketFeatures | None,
     ) -> tuple[bool, str]:
         """
-        Keep grid autotrade gating local to the strategy so the forward-test
-        signal path can evolve independently from eventual automation.
+        Keep grid autotrade gating focused on broad market range quality. Grid
+        entries should stay available across symbol-level micro regimes as long
+        as the broader market is calm, stable, and range-bound.
         """
         if context is None:
             return False, "market_context_unavailable"
@@ -223,22 +223,7 @@ class GridTrading(StrategyMixin):
             return False, "market_stress_too_high"
         if context.market_regime != "RANGE":
             return False, f"market_regime_{str(context.market_regime).lower()}"
-        if symbol_features is None:
-            return False, "symbol_regime_unavailable"
-        if symbol_features.micro_regime_transition in {
-            "BREAKDOWN",
-            "BREAKOUT_UP",
-            "VOLATILITY_EXPANSION",
-        }:
-            return (
-                False,
-                f"symbol_transition_{str(symbol_features.micro_regime_transition).lower()}",
-            )
-        if symbol_features.micro_regime != "RANGE":
-            if symbol_features.micro_regime is None:
-                return False, "symbol_regime_unavailable"
-            return False, f"symbol_regime_{str(symbol_features.micro_regime).lower()}"
-        return True, "range_range_stable"
+        return True, "market_range_stable"
 
     def _anchor_metrics(
         self,
@@ -402,7 +387,6 @@ class GridTrading(StrategyMixin):
         symbol_features = resolve_symbol_features(context, self.symbol)
         autotrade_eligible, autotrade_route = self.supports_grid_trading(
             context=context,
-            symbol_features=symbol_features,
         )
 
         self.df_15m = self.ti.df_15m.copy()
