@@ -155,6 +155,26 @@ class KlinesProvider:
             ui_klines=self.btc_candles_15m,
         )
 
+    def _refresh_latest_market_context(
+        self,
+        *,
+        timestamp: int,
+        market_type: MarketType,
+    ) -> LiveMarketContext | None:
+        self.market_context_accumulator.btc_symbol = self._get_benchmark_symbol(
+            market_type
+        )
+        context = self.market_context_accumulator.refresh_context_for_timestamp(
+            timestamp
+        )
+        if context is not None:
+            self.latest_market_context = context
+        elif self.latest_market_context is None:
+            self.latest_market_context = (
+                self.market_context_accumulator.get_latest_context()
+            )
+        return self.latest_market_context
+
     def _refresh_symbol_histories(
         self,
         api_symbol: str,
@@ -178,13 +198,9 @@ class KlinesProvider:
         self._store_btc_history(market_type=market_type)
         if closed_symbol_candles:
             latest_candle = closed_symbol_candles[-1]
-            self.market_context_accumulator.btc_symbol = self._get_benchmark_symbol(
-                market_type
-            )
-            self.latest_market_context = (
-                self.market_context_accumulator.refresh_context_for_timestamp(
-                    int(latest_candle["timestamp"])
-                )
+            self._refresh_latest_market_context(
+                timestamp=int(latest_candle["timestamp"]),
+                market_type=market_type,
             )
 
     def _refresh_btc_candles_15m(self, market_type: MarketType) -> None:

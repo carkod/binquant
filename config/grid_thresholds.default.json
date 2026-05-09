@@ -1,0 +1,7 @@
+{
+  "coinrule_grid_trading": {
+    "buy_trigger_pct": 0.02,
+    "sell_trigger_pct": 0.02,
+    "anchor_window_candles": 8
+  }
+}

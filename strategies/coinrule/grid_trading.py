@@ -1,6 +1,8 @@
+import json
 import logging
 import os
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
@@ -8,7 +10,7 @@ from pybinbot import (
     SignalsConsumer,
     round_numbers,
 )
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.models import LiveMarketContext
 from market_regime.regime_routing import is_regime_stable, resolve_symbol_features
 from models.strategies import GridSignalDecision
 from shared.strategy_mixin import StrategyMixin
@@ -31,15 +33,24 @@ class GridTrading(StrategyMixin):
     ALGO = "coinrule_grid_trading"
     CLIP_SIZE_QUOTE = 20.0
     LEVERAGE = 3
-    ANCHOR_WINDOW_CANDLES = 8
-    LOOKBACK_CANDLES = ANCHOR_WINDOW_CANDLES + 1
+    DEFAULT_BUY_TRIGGER_PCT = 0.02
+    DEFAULT_SELL_TRIGGER_PCT = 0.02
+    DEFAULT_ANCHOR_WINDOW_CANDLES = 8
+    ANCHOR_WINDOW_CANDLES = DEFAULT_ANCHOR_WINDOW_CANDLES
+    LOOKBACK_CANDLES = DEFAULT_ANCHOR_WINDOW_CANDLES + 1
     AUTOTRADE_STRESS_THRESHOLD = 0.35
+    REPO_ROOT = Path(__file__).resolve().parents[2]
+    DEFAULT_CONFIG_PATH = REPO_ROOT / "config" / "grid_thresholds.default.json"
+    DEFAULT_OVERRIDE_CONFIG_PATH = REPO_ROOT / ".runtime" / "grid_thresholds.json"
+    _config_cache_key: tuple[str, int | None, int | None] | None = None
+    _config_cache: dict[str, Any] | None = None
 
     def __init__(
         self,
         cls: "ContextEvaluator",
-        buy_trigger_pct: float = 0.02,
-        sell_trigger_pct: float = 0.02,
+        buy_trigger_pct: float | None = None,
+        sell_trigger_pct: float | None = None,
+        anchor_window_candles: int | None = None,
     ) -> None:
         self.ti = cls
         self.df_15m = cls.df_15m
@@ -52,8 +63,16 @@ class GridTrading(StrategyMixin):
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
-        self.buy_trigger_pct = buy_trigger_pct
-        self.sell_trigger_pct = sell_trigger_pct
+        self.runtime_config_path = self._resolve_override_config_path()
+        self.buy_trigger_pct = self.DEFAULT_BUY_TRIGGER_PCT
+        self.sell_trigger_pct = self.DEFAULT_SELL_TRIGGER_PCT
+        self.ANCHOR_WINDOW_CANDLES = self.DEFAULT_ANCHOR_WINDOW_CANDLES
+        self.LOOKBACK_CANDLES = self.DEFAULT_ANCHOR_WINDOW_CANDLES + 1
+        self.refresh_runtime_config(
+            buy_trigger_pct=buy_trigger_pct,
+            sell_trigger_pct=sell_trigger_pct,
+            anchor_window_candles=anchor_window_candles,
+        )
 
     @property
     def latest_market_context(self):
@@ -64,14 +83,135 @@ class GridTrading(StrategyMixin):
         self.ti.latest_market_context = value
 
     @classmethod
+    def _resolve_override_config_path(cls) -> Path:
+        configured = os.getenv("GRID_TRADING_CONFIG_PATH")
+        if configured:
+            return Path(configured).expanduser()
+        return cls.DEFAULT_OVERRIDE_CONFIG_PATH
+
+    @classmethod
+    def _read_json_file(cls, path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            logging.exception("Failed to read grid config file: %s", path)
+            return {}
+        if not isinstance(data, dict):
+            logging.warning("Grid config file must contain a JSON object: %s", path)
+            return {}
+        return data
+
+    @classmethod
+    def _get_strategy_config(cls) -> dict[str, Any]:
+        override_path = cls._resolve_override_config_path()
+        default_mtime = (
+            cls.DEFAULT_CONFIG_PATH.stat().st_mtime_ns
+            if cls.DEFAULT_CONFIG_PATH.exists()
+            else None
+        )
+        override_mtime = (
+            override_path.stat().st_mtime_ns if override_path.exists() else None
+        )
+        cache_key = (str(override_path), default_mtime, override_mtime)
+        if cls._config_cache_key == cache_key and cls._config_cache is not None:
+            return dict(cls._config_cache)
+
+        default_config = cls._read_json_file(cls.DEFAULT_CONFIG_PATH)
+        override_config = cls._read_json_file(override_path)
+        merged = dict(default_config.get(cls.ALGO, {}))
+        merged.update(override_config.get(cls.ALGO, {}))
+        cls._config_cache_key = cache_key
+        cls._config_cache = dict(merged)
+        return merged
+
+    def refresh_runtime_config(
+        self,
+        buy_trigger_pct: float | None = None,
+        sell_trigger_pct: float | None = None,
+        anchor_window_candles: int | None = None,
+    ) -> None:
+        runtime_config = self._get_strategy_config()
+        resolved_buy = (
+            runtime_config.get("buy_trigger_pct")
+            if buy_trigger_pct is None
+            else buy_trigger_pct
+        )
+        resolved_sell = (
+            runtime_config.get("sell_trigger_pct")
+            if sell_trigger_pct is None
+            else sell_trigger_pct
+        )
+        resolved_anchor_window = (
+            runtime_config.get("anchor_window_candles")
+            if anchor_window_candles is None
+            else anchor_window_candles
+        )
+
+        self.buy_trigger_pct = self._coerce_positive_float(
+            resolved_buy,
+            fallback=self.DEFAULT_BUY_TRIGGER_PCT,
+            label="buy_trigger_pct",
+        )
+        self.sell_trigger_pct = self._coerce_positive_float(
+            resolved_sell,
+            fallback=self.DEFAULT_SELL_TRIGGER_PCT,
+            label="sell_trigger_pct",
+        )
+        self.ANCHOR_WINDOW_CANDLES = self._coerce_anchor_window(resolved_anchor_window)
+        self.LOOKBACK_CANDLES = self.ANCHOR_WINDOW_CANDLES + 1
+
+    @staticmethod
+    def _coerce_positive_float(
+        value: Any,
+        *,
+        fallback: float,
+        label: str,
+    ) -> float:
+        if value is None:
+            return fallback
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            logging.warning(
+                "Invalid grid config for %s=%r, using %s", label, value, fallback
+            )
+            return fallback
+        if parsed <= 0:
+            logging.warning("Grid config for %s must be > 0, using %s", label, fallback)
+            return fallback
+        return parsed
+
+    def _coerce_anchor_window(self, value: Any) -> int:
+        if value is None:
+            return self.DEFAULT_ANCHOR_WINDOW_CANDLES
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            logging.warning(
+                "Invalid grid config for anchor_window_candles=%r, using %s",
+                value,
+                self.DEFAULT_ANCHOR_WINDOW_CANDLES,
+            )
+            return self.DEFAULT_ANCHOR_WINDOW_CANDLES
+        if parsed < 2:
+            logging.warning(
+                "Grid config for anchor_window_candles must be >= 2, using %s",
+                self.DEFAULT_ANCHOR_WINDOW_CANDLES,
+            )
+            return self.DEFAULT_ANCHOR_WINDOW_CANDLES
+        return parsed
+
+    @classmethod
     def supports_grid_trading(
         cls,
         context: LiveMarketContext | None,
-        symbol_features: SymbolMarketFeatures | None,
     ) -> tuple[bool, str]:
         """
-        Keep grid autotrade gating local to the strategy so the forward-test
-        signal path can evolve independently from eventual automation.
+        Keep grid autotrade gating focused on broad market range quality. Grid
+        entries should stay available across symbol-level micro regimes as long
+        as the broader market is calm, stable, and range-bound.
         """
         if context is None:
             return False, "market_context_unavailable"
@@ -83,22 +223,7 @@ class GridTrading(StrategyMixin):
             return False, "market_stress_too_high"
         if context.market_regime != "RANGE":
             return False, f"market_regime_{str(context.market_regime).lower()}"
-        if symbol_features is None:
-            return False, "symbol_regime_unavailable"
-        if symbol_features.micro_regime_transition in {
-            "BREAKDOWN",
-            "BREAKOUT_UP",
-            "VOLATILITY_EXPANSION",
-        }:
-            return (
-                False,
-                f"symbol_transition_{str(symbol_features.micro_regime_transition).lower()}",
-            )
-        if symbol_features.micro_regime != "RANGE":
-            if symbol_features.micro_regime is None:
-                return False, "symbol_regime_unavailable"
-            return False, f"symbol_regime_{str(symbol_features.micro_regime).lower()}"
-        return True, "range_range_stable"
+        return True, "market_range_stable"
 
     def _anchor_metrics(
         self,
@@ -257,11 +382,11 @@ class GridTrading(StrategyMixin):
         Manual-only Coinrule grid signal based on a +/-2% move from a broader
         rolling anchor.
         """
+        self.refresh_runtime_config()
         context = self.latest_market_context
         symbol_features = resolve_symbol_features(context, self.symbol)
         autotrade_eligible, autotrade_route = self.supports_grid_trading(
             context=context,
-            symbol_features=symbol_features,
         )
 
         self.df_15m = self.ti.df_15m.copy()

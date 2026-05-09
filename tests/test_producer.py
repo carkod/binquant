@@ -1,9 +1,12 @@
 from asyncio import Queue
 from os import environ
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
+from producers.context_evaluator import ContextEvaluator
 from producers.klines_connector import KlinesConnector
+from pybinbot import BotBase, HABollinguerSpread, MarketType, Position, SignalsConsumer
 
 
 @pytest.fixture
@@ -129,3 +132,45 @@ async def test_usdt_filtering():
             for market in markets:
                 symbol = market.split("@")[0].upper()
                 assert symbol in ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+
+
+def test_dispatch_signal_record_uses_json_mode_payloads():
+    evaluator = object.__new__(ContextEvaluator)
+    evaluator.symbol = "MOVEUSDTM"
+    evaluator._latest_market_context = None
+    evaluator._latest_market_context_provider = None
+    evaluator.binbot_api = Mock()
+
+    value = SignalsConsumer(
+        autotrade=True,
+        current_price=0.01785,
+        score=0.91,
+        bb_spreads=HABollinguerSpread(
+            bb_high=0.019,
+            bb_mid=0.018,
+            bb_low=0.017,
+        ),
+        bot_params=BotBase(
+            pair="MOVEUSDTM",
+            fiat="USDT",
+            name="coinrule_price_tracker",
+            position=Position.long,
+            market_type=MarketType.FUTURES,
+        ),
+    )
+
+    evaluator.dispatch_signal_record(value=value)
+
+    evaluator.binbot_api.dispatch_create_signal.assert_called_once()
+    payload = evaluator.binbot_api.dispatch_create_signal.call_args.kwargs
+    assert payload["algorithm_name"] == "coinrule_price_tracker"
+    assert payload["symbol"] == "MOVEUSDTM"
+    assert payload["direction"] == "long"
+    assert payload["bot_params"]["market_type"] == "FUTURES"
+    assert payload["bot_params"]["position"] == "long"
+    assert payload["bot_params"]["quote_asset"] == "USDC"
+    assert payload["indicators"]["bb_spreads"] == {
+        "bb_high": 0.019,
+        "bb_mid": 0.018,
+        "bb_low": 0.017,
+    }
