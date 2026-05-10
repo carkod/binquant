@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 from pybinbot import BinbotApi
 
 
 class StrategyMixin:
     binbot_api: BinbotApi
-
-    def get_active_bots(self, algo: str, symbol: str) -> list[dict[str, Any]]:
-        return self.binbot_api.get_bots_by_name(name=algo, symbol=symbol)
 
     def deactivate_active_bot(
         self,

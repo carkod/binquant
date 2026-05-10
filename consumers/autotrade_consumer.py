@@ -1,11 +1,21 @@
 import logging
 
-from pybinbot import SignalsConsumer, BinbotApi
+from pybinbot import (
+    BinbotApi,
+    BotBase,
+    ExchangeId,
+    KucoinFutures,
+    MarketType,
+    SignalsConsumer,
+    round_numbers,
+)
 from shared.autotrade import Autotrade
 from shared.config import Config
 
 
 class AutotradeConsumer:
+    FUTURES_REVERSAL_BUFFER = 1.40
+
     def __init__(
         self,
         autotrade_settings,
@@ -30,6 +40,117 @@ class AutotradeConsumer:
         self.exchange = autotrade_settings["exchange_id"]
         self.config = Config()
         self.binbot_api = binbot_api
+        self.kucoin_futures_api = KucoinFutures(
+            key=self.config.kucoin_key,
+            secret=self.config.kucoin_secret,
+            passphrase=self.config.kucoin_passphrase,
+        )
+
+    @staticmethod
+    def _signal_value(bot_params: BotBase, field_name: str, fallback):
+        if field_name in bot_params.model_fields_set:
+            value = getattr(bot_params, field_name)
+            if value is not None:
+                return value
+
+        return fallback
+
+    @staticmethod
+    def _required_margin_for_contracts(
+        contracts: float,
+        price: float,
+        multiplier: float,
+        futures_leverage: float,
+        taker_fee_rate: float,
+    ) -> float:
+        if contracts <= 0 or price <= 0:
+            return 0.0
+
+        notional = contracts * price * multiplier
+        initial_margin = notional / futures_leverage
+        fees = 2 * notional * taker_fee_rate
+        return round_numbers(initial_margin + fees, 8)
+
+    def _has_required_futures_margin(
+        self,
+        *,
+        symbol: str,
+        price: float,
+        stop_loss: float,
+        fiat_order_size: float,
+        available_balance: float,
+    ) -> bool:
+        if price <= 0:
+            logging.info(
+                "Skipping futures autotrade margin check because signal price is missing."
+            )
+            return True
+
+        stop_loss_ratio = stop_loss / 100
+        if stop_loss_ratio <= 0:
+            logging.info(
+                "Skipping futures autotrade because stop loss is not configured."
+            )
+            return False
+
+        symbol_info = self.binbot_api.get_single_symbol(symbol)
+        futures_symbol_info = self.kucoin_futures_api.get_symbol_info(symbol)
+
+        multiplier = float(futures_symbol_info.multiplier)
+        lot_size = float(futures_symbol_info.lot_size)
+        taker_fee_rate = float(futures_symbol_info.taker_fee_rate)
+        futures_leverage = float(symbol_info["futures_leverage"])
+        qty_precision = int(symbol_info["qty_precision"])
+
+        risk_sized_contracts = int(
+            round_numbers(
+                fiat_order_size / (stop_loss_ratio * price * multiplier),
+                qty_precision,
+            )
+        )
+        if risk_sized_contracts <= 0:
+            logging.info(
+                "Skipping futures autotrade because calculated contracts is 0."
+            )
+            return False
+
+        min_step_margin = self._required_margin_for_contracts(
+            lot_size,
+            price,
+            multiplier,
+            futures_leverage,
+            taker_fee_rate,
+        )
+        if min_step_margin > available_balance:
+            logging.info(
+                "Not enough funds to autotrade futures bot. "
+                "Minimum contract margin %s exceeds available balance %s.",
+                min_step_margin,
+                available_balance,
+            )
+            return False
+
+        reversal_reserve = min_step_margin + self.FUTURES_REVERSAL_BUFFER
+        required_margin = self._required_margin_for_contracts(
+            risk_sized_contracts,
+            price,
+            multiplier,
+            futures_leverage,
+            taker_fee_rate,
+        )
+        spendable_balance = available_balance - reversal_reserve
+
+        if spendable_balance <= 0 or required_margin > spendable_balance:
+            logging.info(
+                "Not enough funds to autotrade futures bot. "
+                "Required margin %s plus reversal reserve %s exceeds available balance %s.",
+                required_margin,
+                reversal_reserve,
+                available_balance,
+            )
+            return False
+
+        return True
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -97,11 +218,17 @@ class AutotradeConsumer:
 
         symbol = bot_params.pair
         algorithm_name = bot_params.name
-        fiat = bot_params.fiat or self.autotrade_settings["fiat"]
-        requested_fiat_order_size = (
-            bot_params.fiat_order_size
-            if bot_params.fiat_order_size is not None
-            else self.autotrade_settings["base_order_size"]
+        fiat = self._signal_value(bot_params, "fiat", self.autotrade_settings["fiat"])
+        requested_fiat_order_size = self._signal_value(
+            bot_params,
+            "fiat_order_size",
+            self.autotrade_settings["base_order_size"],
+        )
+        stop_loss = self._signal_value(
+            bot_params, "stop_loss", self.autotrade_settings["stop_loss"]
+        )
+        market_type = MarketType(
+            self._signal_value(bot_params, "market_type", MarketType.FUTURES)
         )
 
         # Includes both test and non-test autotrade
@@ -129,8 +256,23 @@ class AutotradeConsumer:
         balance_check = self.binbot_api.get_available_fiat(
             exchange=self.exchange, fiat=fiat
         )
-        if balance_check < float(requested_fiat_order_size):
+        if market_type != MarketType.FUTURES and balance_check < float(
+            requested_fiat_order_size
+        ):
             logging.info("Not enough funds to autotrade [bots].")
+            return
+
+        if (
+            ExchangeId(self.exchange) == ExchangeId.KUCOIN
+            and market_type == MarketType.FUTURES
+            and not self._has_required_futures_margin(
+                symbol=symbol,
+                price=float(data.current_price),
+                stop_loss=float(stop_loss),
+                fiat_order_size=float(requested_fiat_order_size),
+                available_balance=float(balance_check),
+            )
+        ):
             return
 
         """

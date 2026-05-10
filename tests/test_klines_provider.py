@@ -39,8 +39,6 @@ class TestKlinesProvider:
         api_instance = MagicMock()
         api_instance.get_symbols.return_value = []
         api_instance.get_active_pairs.return_value = set()
-        api_instance.get_top_gainers = AsyncMock(return_value=[])
-        api_instance.get_top_losers = AsyncMock(return_value=[])
         api_instance.get_market_breadth = AsyncMock(return_value={})
         api_instance.get_autotrade_settings.return_value = {"exchange_id": "kucoin"}
         api_instance.get_test_autotrade_settings.return_value = {}

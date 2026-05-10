@@ -253,8 +253,6 @@ class KlinesProvider:
         """Load initial BTC benchmark candles and market data."""
         # Load market-level data
         self.active_pairs = self.binbot_api.get_active_pairs()
-        self.top_gainers_day = await self.binbot_api.get_top_gainers()
-        self.top_losers_day = await self.binbot_api.get_top_losers()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
         # Load BTC benchmark candles
@@ -272,8 +270,6 @@ class KlinesProvider:
         """
         current_time = datetime.now()
         if current_time.minute == 0:
-            self.top_gainers_day = await self.binbot_api.get_top_gainers()
-            self.top_losers_day = await self.binbot_api.get_top_losers()
             self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
         # Convert payload into standardized candle dict
@@ -307,9 +303,7 @@ class KlinesProvider:
             kucoin_symbol=kucoin_symbol,
             symbol=symbol,
             current_symbol_data=current_symbol_data,
-            top_gainers_day=self.top_gainers_day,
             market_breadth_data=self.market_breadth_data,
-            top_losers_day=self.top_losers_day,
             all_symbols=self.all_symbols,
             ac_api=self.ac_api,
             exchange=self.exchange,

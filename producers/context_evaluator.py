@@ -35,7 +35,6 @@ from strategies.coinrule.price_tracker import PriceTracker
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.inverse_price_tracker import InversePriceTracker
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
-from strategies.top_gainers_reversal_drop import TopGainersReversalDrop
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from market_regime.models import LiveMarketContext
@@ -50,9 +49,7 @@ class ContextEvaluator:
         api: KucoinApi | BinanceApi | KucoinFutures,
         symbol: str,
         current_symbol_data,
-        top_gainers_day,
         market_breadth_data,
-        top_losers_day,
         all_symbols,
         ac_api: AutotradeConsumer,
         exchange: ExchangeId,
@@ -90,9 +87,6 @@ class ContextEvaluator:
         # describes whether tide is shifting
         self.market_domination_reversal: bool = False
         self.bot_strategy: Position = Position.long
-        self.top_coins_gainers: list[str] = []
-        self.top_gainers_day = top_gainers_day
-        self.top_losers_day = top_losers_day
         self.market_breadth_data = market_breadth_data
         self.btc_correlation: float = 0
         self.btc_beta: float = 0
@@ -218,7 +212,6 @@ class ContextEvaluator:
         Initialize algorithms that consume self.df_5m data.
         """
         self.abp = ActivityBurstPump(cls=self)
-        self.tgrd = TopGainersReversalDrop(cls=self)
         self.pt = PriceTracker(cls=self)
         self.ipt = InversePriceTracker(cls=self)
 
@@ -369,16 +362,6 @@ class ContextEvaluator:
             await self._safe_signal(
                 "ActivityBurstPump",
                 self.abp.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-
-            await self._safe_signal(
-                "TopGainersReversalDrop",
-                self.tgrd.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,

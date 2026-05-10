@@ -416,7 +416,9 @@ class GridTrading(StrategyMixin):
             return
 
         autotrade = False
-        active_bots = self.get_active_bots(algo=self.ALGO, symbol=self.symbol)
+        active_bots = self.binbot_api.get_bots_by_name(
+            name=self.ALGO, symbol=self.symbol
+        )
         if len(active_bots) > 0:
             id = active_bots[0]["id"]
             self.deactivate_active_bot(
