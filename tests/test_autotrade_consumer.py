@@ -65,8 +65,6 @@ class TestAutotradeConsumer:
         self.mock_binbot_api.get_test_autotrade_settings.return_value = (
             self.test_settings
         )
-        self.mock_binbot_api.get_top_gainers.return_value = []
-        self.mock_binbot_api.get_top_losers.return_value = []
         self.mock_binbot_api.get_market_breadth.return_value = []
         self.mock_binbot_api.get_symbols.return_value = [
             {
