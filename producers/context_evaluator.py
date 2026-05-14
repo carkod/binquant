@@ -34,6 +34,7 @@ from strategies.coinrule.grid_trading import GridTrading
 from strategies.coinrule.price_tracker import PriceTracker
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.inverse_price_tracker import InversePriceTracker
+from strategies.range_failed_breakout_fade import RangeFailedBreakoutFade
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -224,6 +225,7 @@ class ContextEvaluator:
         self.lsp = LiquidationSweepPump(cls=self)
         self.gt = GridTrading(cls=self)
         self.coinrule_buy_the_dip = BuyTheDip(cls=self)
+        self.rfbf = RangeFailedBreakoutFade(cls=self)
 
     def indicators_enrichment(
         self, df: TypedDataFrame[KlineSchema]
@@ -438,6 +440,16 @@ class ContextEvaluator:
             await self._safe_signal(
                 "SpikeHunterV3KuCoin",
                 self.sh3.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            await self._safe_signal(
+                "RangeFailedBreakoutFade",
+                self.rfbf.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
