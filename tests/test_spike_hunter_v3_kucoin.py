@@ -130,11 +130,15 @@ def make_last_spike(
         "close": 100.8,
         "label": 1,
         "label_pre": 1,
+        "label_short": 0,
+        "label_short_pre": 0,
         "early_proba_aug_flag": 0,
         "volume_cluster_flag": True,
         "price_break_flag": False,
         "cumulative_price_break_flag": True,
         "accel_spike_flag": False,
+        "cumulative_price_break_short_flag": False,
+        "accel_spike_short_flag": False,
         "signal_type": "FinalSpike",
         "volume": 120.0,
         "quote_asset_volume": 12_000.0,
@@ -348,7 +352,7 @@ async def test_signal_skips_non_upward_spike_even_in_bullish_market(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_signal_skips_downward_spike_even_in_bullish_market(monkeypatch):
+async def test_signal_blocks_short_autotrade_in_bullish_market(monkeypatch):
     context = make_market_context()
     algo, df = make_algo(context)
     send_signal_mock = Mock()
@@ -373,5 +377,8 @@ async def test_signal_skips_downward_spike_even_in_bullish_market(monkeypatch):
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_not_called()
+    send_signal_mock.assert_called_once()
     process_mock.assert_not_awaited()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    assert "Autotrade route: breadth_short_conditions_unmet" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg

@@ -164,6 +164,52 @@ class SpikeHunterV3KuCoin:
             and features.relative_strength_vs_btc >= 0
         )
 
+    @staticmethod
+    def _has_breadth_short_market(context: LiveMarketContext) -> bool:
+        """
+        Market-level breadth gate for short entries: requires an actual
+        TREND_DOWN regime (or transition into one), with deteriorating
+        advancers, positive short-side tailwind, BTC neutral-or-down,
+        and stress below the crisis range where mean-reversion bounces
+        dominate.
+
+        The TREND_DOWN requirement is deliberately strict: in RANGE
+        markets a low advancers_ratio mean-reverts hard, so level-based
+        gating without a confirmed bearish regime has anti-edge.
+
+        Note: short_regime_score is *structurally* lower than
+        long_regime_score in observed data even during periods where
+        shorts outperform — so we do not gate on their relative ordering.
+        """
+        if context.market_regime != "TREND_DOWN" and (
+            context.market_regime_transition != "ENTERED_TREND_DOWN"
+        ):
+            return False
+        if context.advancers_ratio >= 0.45:
+            return False
+        if context.short_tailwind <= 0:
+            return False
+        if context.market_stress_score >= 0.65:
+            return False
+        if context.btc_regime_score > 0:
+            return False
+        return True
+
+    @staticmethod
+    def _is_weak_short_symbol(features: SymbolMarketFeatures) -> bool:
+        """
+        Symbol-level confirmation for short entries: lagging BTC AND
+        either in a TREND_DOWN/VOLATILE micro_regime or trading below
+        its 20EMA. Symmetric to _is_leading_in_range_symbol.
+        """
+        if features.relative_strength_vs_btc > 0:
+            return False
+        if features.micro_regime in ("TREND_DOWN", "VOLATILE"):
+            return True
+        if not features.above_ema20:
+            return True
+        return False
+
     def regime_routing(
         self,
         context: LiveMarketContext | None,
@@ -186,6 +232,14 @@ class SpikeHunterV3KuCoin:
         elif self._has_bullish_transitional_market(context):
             market_route = "market_transitional_bullish"
         elif context.market_regime == "RANGE":
+            # In a RANGE market, BTC weakness propagates to alts even when
+            # a symbol's relative strength looks positive. Require BTC to
+            # not be fading and the range regime to not be deeply entrenched
+            # (deep ranges revert hard against breakouts).
+            if context.btc_regime_score < 0:
+                return False, "range_btc_regime_negative"
+            if context.range_regime_score > 0.6:
+                return False, "range_regime_too_strong"
             if symbol_features is None:
                 return False, "symbol_regime_unavailable"
             if not self._is_leading_in_range_symbol(symbol_features):
@@ -211,6 +265,21 @@ class SpikeHunterV3KuCoin:
         if symbol_features.micro_regime is None:
             return False, "symbol_regime_unavailable"
         return False, f"symbol_regime_{symbol_features.micro_regime.lower()}"
+
+    def regime_routing_short(
+        self,
+        context: LiveMarketContext | None,
+        symbol_features: SymbolMarketFeatures | None,
+    ) -> tuple[bool, str]:
+        if context is None:
+            return False, "market_context_unavailable"
+        if not self._has_breadth_short_market(context):
+            return False, "breadth_short_conditions_unmet"
+        if symbol_features is None:
+            return False, "symbol_regime_unavailable"
+        if not self._is_weak_short_symbol(symbol_features):
+            return False, "symbol_not_weak_enough"
+        return True, "breadth_short_symbol_weak"
 
     def auto_calibrate(
         self,
@@ -383,9 +452,12 @@ class SpikeHunterV3KuCoin:
         w = self.cumulative_price_window
         if w <= 1:
             self.df_15m["cumulative_price_break_flag"] = 0
+            self.df_15m["cumulative_price_break_short_flag"] = 0
             return
         pos_pc = self.df_15m["price_change"].clip(lower=0)
         cum_pos = pos_pc.rolling(w).sum()
+        neg_pc = self.df_15m["price_change"].clip(upper=0).abs()
+        cum_neg = neg_pc.rolling(w).sum()
         vol_cond = (
             (self.df_15m["volume_ratio"] >= (self.volume_cluster_min_ratio * 0.8))
             .rolling(w)
@@ -393,7 +465,9 @@ class SpikeHunterV3KuCoin:
             .astype(bool)
         )
         flag = (cum_pos >= self.cumulative_price_threshold) & vol_cond
+        flag_short = (cum_neg >= self.cumulative_price_threshold) & vol_cond
         self.df_15m["cumulative_price_break_flag"] = flag.astype(int)
+        self.df_15m["cumulative_price_break_short_flag"] = flag_short.astype(int)
 
     def acceleration_flag(self):
         w = self.accel_volume_deriv_window
@@ -410,7 +484,13 @@ class SpikeHunterV3KuCoin:
             & (price_abs_now >= self.accel_price_change_min)
             & (self.df_15m["price_change"] > 0)
         )
+        flag_short = (
+            (vol_deriv >= self.accel_volume_deriv_min)
+            & (price_abs_now >= self.accel_price_change_min)
+            & (self.df_15m["price_change"] < 0)
+        )
         self.df_15m["accel_spike_flag"] = flag.fillna(False).astype(int)
+        self.df_15m["accel_spike_short_flag"] = flag_short.fillna(False).astype(int)
 
     def apply_preliminary_label(self):
         self.volume_cluster_flag()
@@ -440,6 +520,22 @@ class SpikeHunterV3KuCoin:
         self.df_15m["label_pre"] = label_pre.astype(bool)
         self.df_15m["label"] = self.df_15m["label_pre"].copy()
 
+        # Short-side parallel label: same volume/price-break magnitude
+        # filter, but auxiliary flags are bearish equivalents and the
+        # candle must be bearish.
+        aux_short = (self.df_15m["cumulative_price_break_short_flag"] == 1) | (
+            self.df_15m["accel_spike_short_flag"] == 1
+        )
+        label_short_pre = (base_combo | aux_short).astype(bool)
+        is_bearish = (self.df_15m["close"] < self.df_15m["open"]).astype(int)
+        label_short_pre = label_short_pre & (is_bearish == 1)
+        if self.body_size_pct_min > 0:
+            label_short_pre = label_short_pre & (
+                self.df_15m["body_size_pct"] >= self.body_size_pct_min
+            )
+        self.df_15m["label_short_pre"] = label_short_pre.astype(bool)
+        self.df_15m["label_short"] = self.df_15m["label_short_pre"].copy()
+
     def compute_early_proba(self):
         # Disabled: no ML augmentation in KuCoin variant
         self.df_15m["early_spike_proba"] = np.nan
@@ -448,23 +544,29 @@ class SpikeHunterV3KuCoin:
     def apply_cooldown(self):
         if self.post_spike_cooldown_bars <= 0:
             self.df_15m["suppressed_label"] = 0
+            self.df_15m["suppressed_label_short"] = 0
             return
-        last_idx = None
-        suppressed = 0
         self.df_15m["suppressed_label"] = 0
-        for i in self.df_15m.index:
-            if self.df_15m.at[i, "label"] == 1:
-                if (
-                    last_idx is not None
-                    and (i - last_idx) <= self.post_spike_cooldown_bars
-                ):
-                    self.df_15m.at[i, "suppressed_label"] = 1
-                    self.df_15m.at[i, "label"] = 0
-                    suppressed += 1
-                else:
-                    last_idx = i
-        if suppressed:
-            logging.info(f"[Cooldown] Suppressed {suppressed} labels")
+        self.df_15m["suppressed_label_short"] = 0
+        for label_col, suppressed_col in (
+            ("label", "suppressed_label"),
+            ("label_short", "suppressed_label_short"),
+        ):
+            last_idx = None
+            suppressed = 0
+            for i in self.df_15m.index:
+                if self.df_15m.at[i, label_col] == 1:
+                    if (
+                        last_idx is not None
+                        and (i - last_idx) <= self.post_spike_cooldown_bars
+                    ):
+                        self.df_15m.at[i, suppressed_col] = 1
+                        self.df_15m.at[i, label_col] = 0
+                        suppressed += 1
+                    else:
+                        last_idx = i
+            if suppressed:
+                logging.info(f"[Cooldown] Suppressed {suppressed} {label_col}s")
 
     def detect_streaks(self, streak_length: int = 3):
         green_candles = (self.df_15m["close"] > self.df_15m["open"]).astype(int)
@@ -519,6 +621,8 @@ class SpikeHunterV3KuCoin:
             "close": float(row.get("close", 0)),
             "label": int(row.get("label", 0) == 1),
             "label_pre": int(row.get("label_pre", 0) == 1),
+            "label_short": int(row.get("label_short", 0) == 1),
+            "label_short_pre": int(row.get("label_short_pre", 0) == 1),
             "early_proba_aug_flag": 0,
             "volume_cluster_flag": bool(row.get("volume_cluster_flag", 0) == 1),
             "price_break_flag": bool(row.get("price_break_flag", 0) == 1),
@@ -526,6 +630,10 @@ class SpikeHunterV3KuCoin:
                 row.get("cumulative_price_break_flag", 0) == 1
             ),
             "accel_spike_flag": bool(row.get("accel_spike_flag", 0) == 1),
+            "cumulative_price_break_short_flag": bool(
+                row.get("cumulative_price_break_short_flag", 0) == 1
+            ),
+            "accel_spike_short_flag": bool(row.get("accel_spike_short_flag", 0) == 1),
             "signal_type": signal_type,
             "volume": volume,
             "quote_asset_volume": quote_asset_volume,
@@ -548,83 +656,97 @@ class SpikeHunterV3KuCoin:
             logging.info("No recent spike detected for breakout.")
             return
 
-        if (
+        long_flags = (
             last_spike["cumulative_price_break_flag"]
             or last_spike["volume_cluster_flag"]
             or last_spike["accel_spike_flag"]
-        ):
-            algo = "spike_hunter_v3_kucoin"
+        )
+        short_flags = (
+            last_spike["cumulative_price_break_short_flag"]
+            or last_spike["volume_cluster_flag"]
+            or last_spike["accel_spike_short_flag"]
+        )
+
+        long_triggered = bool(long_flags and last_spike["upward"])
+        short_triggered = bool(short_flags and last_spike["downward"])
+
+        if not (long_triggered or short_triggered):
+            return
+
+        algo = "spike_hunter_v3_kucoin"
+        context = self.latest_market_context
+        symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
+
+        if long_triggered:
             bot_strategy = Position.long
-            autotrade = False
-
-            if last_spike["upward"]:
-                streak = "📈"
-            elif last_spike["downward"]:
-                logging.info(
-                    "Spike Hunter skipped: downward spike is not routed for bullish trend mode."
-                )
-                return
-            else:
-                logging.info(
-                    "Spike Hunter skipped: non-upward spike is not routed for bullish trend mode."
-                )
-                return
-
-            context = self.latest_market_context
-            symbol_features = resolve_symbol_features(
-                context=context, symbol=self.symbol
+            streak = "📈"
+            action_label = "LONG ENTRY"
+            rule_intent = (
+                "BUY after an early spike cluster survives bullish regime routing"
             )
             should_emit, route_reason = self.regime_routing(
                 context=context,
                 symbol_features=symbol_features,
             )
-            autotrade = should_emit
-
-            base_asset = self.current_symbol_data["base_asset"]
-            quote_asset = self.current_symbol_data["quote_asset"]
-            kucoin_link, terminal_link = build_links_msg(
-                self.ti.config.env,
-                self.ti.exchange,
-                self.market_type,
-                self.symbol,
+        else:
+            bot_strategy = Position.short
+            streak = "📉"
+            action_label = "SHORT ENTRY"
+            rule_intent = (
+                "SELL after a downward spike cluster on deteriorating market breadth"
+            )
+            should_emit, route_reason = self.regime_routing_short(
+                context=context,
+                symbol_features=symbol_features,
             )
 
-            msg = f"""
-                - {streak} [{getenv("ENV")}] <strong>#spike_hunter_v3_kucoin algorithm</strong> #{self.symbol}
-                - Action: LONG ENTRY
-                - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-                - Strategy: {bot_strategy.value}
-                - Rule intent: BUY after an early spike cluster survives bullish regime routing
-                - Candle time: {last_spike["timestamp"]}
-                - Volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)} {base_asset}
-                - Quote volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)} {quote_asset}
-                - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
-                - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
-                {format_context_timestamp_line(context)}
-                - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
-                - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
-                - Autotrade route: {route_reason}
-                - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
-                - <a href='{kucoin_link}'>KuCoin</a>
-                - <a href='{terminal_link}'>Dashboard trade</a>
-                """
+        autotrade = should_emit
 
-            value = SignalsConsumer(
-                autotrade=autotrade,
-                current_price=current_price,
-                bot_params=BotBase(
-                    pair=self.symbol,
-                    name=algo,
-                    position=bot_strategy,
-                    market_type=self.market_type,
-                ),
-                bb_spreads=HABollinguerSpread(
-                    bb_high=bb_high,
-                    bb_mid=bb_mid,
-                    bb_low=bb_low,
-                ),
-            )
-            self.ti.dispatch_signal_record(value=value)
-            self.telegram_consumer.dispatch_signal(msg)
-            if autotrade:
-                await self.at_consumer.process_autotrade_restrictions(value)
+        base_asset = self.current_symbol_data["base_asset"]
+        quote_asset = self.current_symbol_data["quote_asset"]
+        kucoin_link, terminal_link = build_links_msg(
+            self.ti.config.env,
+            self.ti.exchange,
+            self.market_type,
+            self.symbol,
+        )
+
+        msg = f"""
+            - {streak} [{getenv("ENV")}] <strong>#spike_hunter_v3_kucoin algorithm</strong> #{self.symbol}
+            - Action: {action_label}
+            - Current price: {round_numbers(current_price, decimals=self.price_precision)}
+            - Strategy: {bot_strategy.value}
+            - Rule intent: {rule_intent}
+            - Candle time: {last_spike["timestamp"]}
+            - Volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)} {base_asset}
+            - Quote volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)} {quote_asset}
+            - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
+            - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
+            {format_context_timestamp_line(context)}
+            - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
+            - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
+            - Autotrade route: {route_reason}
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
+            """
+
+        value = SignalsConsumer(
+            autotrade=autotrade,
+            current_price=current_price,
+            bot_params=BotBase(
+                pair=self.symbol,
+                name=algo,
+                position=bot_strategy,
+                market_type=self.market_type,
+            ),
+            bb_spreads=HABollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+        self.ti.dispatch_signal_record(value=value)
+        self.telegram_consumer.dispatch_signal(msg)
+        if autotrade:
+            await self.at_consumer.process_autotrade_restrictions(value)
