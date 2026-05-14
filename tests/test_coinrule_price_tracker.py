@@ -753,7 +753,7 @@ async def test_grid_trading_emits_signal_for_range_bound_dip():
         bb_mid=100.0,
     )
 
-    at_mock.assert_not_awaited()
+    at_mock.assert_awaited_once()
     tg_mock.assert_called_once()
 
     tg_await_args = tg_mock.call_args
@@ -770,7 +770,7 @@ async def test_grid_trading_emits_signal_for_range_bound_dip():
         in telegram_msg
     )
     assert "Move from live anchor" in telegram_msg
-    assert "Autotrade is disabled for forward testing" in telegram_msg
+    assert "Autotrade is enabled" in telegram_msg
     cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
@@ -811,6 +811,39 @@ async def test_grid_trading_emits_signal_when_market_is_not_range() -> None:
 
 
 @pytest.mark.asyncio
+async def test_grid_trading_emits_candidate_for_unstable_range_market() -> None:
+    df = make_range_bound_df(n=50)
+    df.loc[df.index[-1], "close"] = 97.8
+    df.loc[df.index[-1], "open"] = 98.8
+    df.loc[df.index[-1], "high"] = 99.0
+    df.loc[df.index[-1], "low"] = 98.0
+    algo = make_grid_algo(df)
+    algo.latest_market_context = make_market_context(regime_stable_since=500)
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
+
+    await algo.signal(
+        current_price=float(df["close"].iloc[-1]),
+        bb_high=102.0,
+        bb_low=98.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_awaited_once()
+    tg_mock.assert_called_once()
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "Autotrade candidate: Yes" in telegram_msg
+    assert "Autotrade route: market_range_unstable_allowed" in telegram_msg
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_grid_trading_emits_candidate_when_coin_regime_is_not_range() -> None:
     df = make_range_bound_df(n=50)
     df.loc[df.index[-1], "close"] = 97.8
@@ -837,7 +870,7 @@ async def test_grid_trading_emits_candidate_when_coin_regime_is_not_range() -> N
         bb_mid=100.0,
     )
 
-    at_mock.assert_not_awaited()
+    at_mock.assert_awaited_once()
     tg_mock.assert_called_once()
     telegram_msg = tg_mock.call_args.args[0]
     assert "Autotrade candidate: Yes" in telegram_msg
@@ -873,7 +906,7 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
         bb_mid=100.0,
     )
 
-    at_mock.assert_not_awaited()
+    at_mock.assert_awaited_once()
     tg_mock.assert_called_once()
 
     tg_await_args = tg_mock.call_args
@@ -882,7 +915,7 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
     assert "Action: SHORT SELL ALERT" in telegram_msg
     assert "Strategy: short" in telegram_msg
     assert "SELL $20.00 of TESTUSDT as market order with 3x leverage" in telegram_msg
-    assert "Autotrade is disabled for forward testing" in telegram_msg
+    assert "Autotrade is enabled" in telegram_msg
     cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 

@@ -210,19 +210,21 @@ class GridTrading(StrategyMixin):
     ) -> tuple[bool, str]:
         """
         Keep grid autotrade gating focused on broad market range quality. Grid
-        entries should stay available across symbol-level micro regimes as long
-        as the broader market is calm, stable, and range-bound.
+        entries should stay available across symbol-level micro regimes when
+        the broader market is calm and range-bound. A fresh RANGE label is
+        allowed through before the stability timer matures; explicit
+        transitions, stress, and non-range regimes remain hard blockers.
         """
         if context is None:
             return False, "market_context_unavailable"
         if context.regime_is_transitioning:
             return False, "market_transitioning"
-        if not is_regime_stable(context):
-            return False, "market_regime_unstable"
         if context.market_stress_score >= cls.AUTOTRADE_STRESS_THRESHOLD:
             return False, "market_stress_too_high"
         if context.market_regime != "RANGE":
             return False, f"market_regime_{str(context.market_regime).lower()}"
+        if not is_regime_stable(context):
+            return True, "market_range_unstable_allowed"
         return True, "market_range_stable"
 
     def _anchor_metrics(
@@ -415,7 +417,7 @@ class GridTrading(StrategyMixin):
             logging.info("Grid skipped: %s", decision.reason)
             return
 
-        autotrade = False
+        autotrade = autotrade_eligible
         active_bots = self.binbot_api.get_bots_by_name(
             name=self.ALGO, symbol=self.symbol
         )
@@ -498,7 +500,7 @@ class GridTrading(StrategyMixin):
             - Reason: {decision.reason}
             - Autotrade candidate: {"Yes" if autotrade_eligible else "No"}
             - Autotrade route: {autotrade_route}
-            - Autotrade is disabled for forward testing
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
@@ -535,3 +537,5 @@ class GridTrading(StrategyMixin):
             },
         )
         self.telegram_consumer.dispatch_signal(msg)
+        if autotrade:
+            await self.at_consumer.process_autotrade_restrictions(value)
