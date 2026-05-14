@@ -238,7 +238,7 @@ class BuyTheDip(StrategyMixin):
                 name=self.ALGO,
                 position=Position.long,
                 market_type=self.market_type,
-                margin_short_reversal=False,
+                margin_short_reversal=True,
             ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
