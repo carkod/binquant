@@ -222,7 +222,7 @@ class TestAutotradeConsumer:
                 market_type=MarketType.FUTURES,
                 position=Position.short,
                 fiat="USDT",
-                fiat_order_size=8,
+                fiat_order_size=200,
                 stop_loss=1,
             ),
         )
@@ -250,6 +250,61 @@ class TestAutotradeConsumer:
             binbot_api=self.mock_binbot_api,
         )
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+        assert signal.bot_params is not None
+        assert signal.bot_params.fiat_order_size == 200
+
+    @pytest.mark.asyncio
+    async def test_process_autotrade_restrictions_scales_futures_order_size_down(
+        self,
+    ):
+        self.consumer.exchange = "kucoin"
+        self.mock_binbot_api.get_available_fiat.return_value = 60
+        self.mock_binbot_api.get_single_symbol.return_value = {
+            "price_precision": 2,
+            "qty_precision": 0,
+            "quote_asset": "USDT",
+            "is_margin_trading_allowed": True,
+            "id": "BTCUSDTM",
+            "active": True,
+            "futures_leverage": 10,
+        }
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=10,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="coinrule_buy_the_dip",
+                market_type=MarketType.FUTURES,
+                position=Position.short,
+                fiat="USDT",
+                fiat_order_size=500,
+                stop_loss=1,
+            ),
+        )
+
+        self.consumer.kucoin_futures_api.DEFAULT_MULTIPLIER = 1
+        cast(
+            Any, self.consumer.kucoin_futures_api.get_symbol_info
+        ).return_value = SimpleNamespace(
+            multiplier=0.001,
+            lot_size=1,
+            taker_fee_rate=0.0006,
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        # min_step_margin = 1*10*0.001/10 + 2*0.01*0.0006 ≈ 0.001012
+        # reversal_reserve ≈ 1.401, spendable ≈ 58.599
+        # requested 500 > spendable → scaled to 58.599.
+        autotrade_cls.assert_called_once()
+        assert signal.bot_params is not None
+        assert signal.bot_params.fiat_order_size is not None
+        assert signal.bot_params.fiat_order_size < 500
+        assert signal.bot_params.fiat_order_size > 0
 
     @pytest.mark.asyncio
     async def test_activate_autotrade_merges_signal_bot_params_over_settings(self):

@@ -71,7 +71,7 @@ class AutotradeConsumer:
         fees = 2 * notional * taker_fee_rate
         return round_numbers(initial_margin + fees, 8)
 
-    def _has_required_futures_margin(
+    def _resolve_futures_order_size(
         self,
         *,
         symbol: str,
@@ -79,19 +79,28 @@ class AutotradeConsumer:
         stop_loss: float,
         fiat_order_size: float,
         available_balance: float,
-    ) -> bool:
+    ) -> float | None:
+        """
+        Resolve the effective futures fiat_order_size, interpreted as the
+        target margin committed to the trade. Auto-scales down to fit
+        available_balance after reserving margin for a reversal trade.
+
+        Returns the effective fiat_order_size, or None to skip autotrade.
+        Contract count is derived downstream from this margin and current
+        price, so a higher price simply means fewer contracts at the same
+        committed cash.
+        """
         if price <= 0:
             logging.info(
                 "Skipping futures autotrade margin check because signal price is missing."
             )
-            return True
+            return fiat_order_size
 
-        stop_loss_ratio = stop_loss / 100
-        if stop_loss_ratio <= 0:
+        if stop_loss / 100 <= 0:
             logging.info(
                 "Skipping futures autotrade because stop loss is not configured."
             )
-            return False
+            return None
 
         symbol_info = self.binbot_api.get_single_symbol(symbol)
         futures_symbol_info = self.kucoin_futures_api.get_symbol_info(symbol)
@@ -100,19 +109,6 @@ class AutotradeConsumer:
         lot_size = float(futures_symbol_info.lot_size)
         taker_fee_rate = float(futures_symbol_info.taker_fee_rate)
         futures_leverage = float(symbol_info["futures_leverage"])
-        qty_precision = int(symbol_info["qty_precision"])
-
-        risk_sized_contracts = int(
-            round_numbers(
-                fiat_order_size / (stop_loss_ratio * price * multiplier),
-                qty_precision,
-            )
-        )
-        if risk_sized_contracts <= 0:
-            logging.info(
-                "Skipping futures autotrade because calculated contracts is 0."
-            )
-            return False
 
         min_step_margin = self._required_margin_for_contracts(
             lot_size,
@@ -121,36 +117,45 @@ class AutotradeConsumer:
             futures_leverage,
             taker_fee_rate,
         )
-        if min_step_margin > available_balance:
+        if min_step_margin <= 0:
             logging.info(
-                "Not enough funds to autotrade futures bot. "
-                "Minimum contract margin %s exceeds available balance %s.",
-                min_step_margin,
-                available_balance,
+                "Skipping futures autotrade because lot margin is non-positive."
             )
-            return False
+            return None
 
         reversal_reserve = min_step_margin + self.FUTURES_REVERSAL_BUFFER
-        required_margin = self._required_margin_for_contracts(
-            risk_sized_contracts,
-            price,
-            multiplier,
-            futures_leverage,
-            taker_fee_rate,
-        )
         spendable_balance = available_balance - reversal_reserve
-
-        if spendable_balance <= 0 or required_margin > spendable_balance:
+        if spendable_balance < min_step_margin:
             logging.info(
                 "Not enough funds to autotrade futures bot. "
-                "Required margin %s plus reversal reserve %s exceeds available balance %s.",
-                required_margin,
+                "One-lot margin %s plus reversal reserve %s exceeds available balance %s.",
+                min_step_margin,
                 reversal_reserve,
                 available_balance,
             )
-            return False
+            return None
 
-        return True
+        if fiat_order_size < min_step_margin:
+            logging.info(
+                "Skipping futures autotrade because requested fiat_order_size %s "
+                "is below one-lot margin %s for %s.",
+                fiat_order_size,
+                min_step_margin,
+                symbol,
+            )
+            return None
+
+        effective_margin = min(fiat_order_size, spendable_balance)
+
+        if effective_margin < fiat_order_size:
+            logging.info(
+                "Scaling futures fiat_order_size from %s to %s to fit available balance %s.",
+                fiat_order_size,
+                effective_margin,
+                available_balance,
+            )
+
+        return round_numbers(effective_margin, 8)
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -265,15 +270,19 @@ class AutotradeConsumer:
         if (
             ExchangeId(self.exchange) == ExchangeId.KUCOIN
             and market_type == MarketType.FUTURES
-            and not self._has_required_futures_margin(
+        ):
+            effective_fiat_order_size = self._resolve_futures_order_size(
                 symbol=symbol,
                 price=float(data.current_price),
                 stop_loss=float(stop_loss),
                 fiat_order_size=float(requested_fiat_order_size),
                 available_balance=float(balance_check),
             )
-        ):
-            return
+            if effective_fiat_order_size is None:
+                return
+            # Propagate the (possibly scaled) margin to the bot via signal
+            # overrides so downstream sizing matches what the gate approved.
+            bot_params.fiat_order_size = effective_fiat_order_size
 
         """
         Real autotrade starts
