@@ -103,9 +103,7 @@ class RangeFailedBreakoutFade:
         if not should_emit:
             return
 
-        # Per request: keep autotrade off while telemetry on this fade
-        # variant is collected before going live.
-        autotrade = False
+        autotrade = True
         bot_strategy = Position.short
 
         base_asset = self.current_symbol_data["base_asset"]
