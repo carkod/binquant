@@ -164,17 +164,16 @@ async def test_emits_short_when_range_market_failing_and_symbol_outperforming():
 
     evaluator.telegram_consumer.dispatch_signal.assert_called_once()
     evaluator.dispatch_signal_record.assert_called_once()
-    # autotrade is kept off for telemetry — process must NOT be awaited.
-    evaluator.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    evaluator.at_consumer.process_autotrade_restrictions.assert_awaited_once()
 
     telegram_msg = evaluator.telegram_consumer.dispatch_signal.call_args.args[0]
     assert "Autotrade route: range_failed_breakout_fade" in telegram_msg
-    assert "Autotrade is disabled" in telegram_msg
+    assert "Autotrade is enabled" in telegram_msg
     assert "SHORT ENTRY" in telegram_msg
 
     signal_value = evaluator.dispatch_signal_record.call_args.kwargs["value"]
     assert signal_value.direction == "SHORT"
-    assert signal_value.autotrade is False
+    assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "short"
 
 

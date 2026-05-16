@@ -34,6 +34,7 @@ from strategies.coinrule.grid_trading import GridTrading
 from strategies.coinrule.price_tracker import PriceTracker
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.inverse_price_tracker import InversePriceTracker
+from strategies.range_bb_rsi_mean_reversion import RangeBbRsiMeanReversion
 from strategies.range_failed_breakout_fade import RangeFailedBreakoutFade
 from strategies.relative_strength_reversal_range import RelativeStrengthReversalRange
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
@@ -226,6 +227,7 @@ class ContextEvaluator:
         self.lsp = LiquidationSweepPump(cls=self)
         self.gt = GridTrading(cls=self)
         self.coinrule_buy_the_dip = BuyTheDip(cls=self)
+        self.rbrmr = RangeBbRsiMeanReversion(cls=self)
         self.rfbf = RangeFailedBreakoutFade(cls=self)
         self.rsrr = RelativeStrengthReversalRange(cls=self)
 
@@ -452,6 +454,16 @@ class ContextEvaluator:
             await self._safe_signal(
                 "RangeFailedBreakoutFade",
                 self.rfbf.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            await self._safe_signal(
+                "RangeBbRsiMeanReversion",
+                self.rbrmr.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
