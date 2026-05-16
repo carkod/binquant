@@ -22,12 +22,12 @@ if TYPE_CHECKING:
 
 class GridTrading(StrategyMixin):
     """
-    Manual-first Coinrule-style grid logic.
+    Coinrule-style grid logic.
 
     Signals are intentionally allowed to forward-test outside the strict
     RANGE/RANGE gate so we can study how often the Coinrule-style 2% move
     appears in production. Autotrade routing remains stricter and is reported
-    in the alert payload, but actual autotrade is still disabled.
+    in the alert payload.
     """
 
     ALGO = "coinrule_grid_trading"
@@ -227,6 +227,22 @@ class GridTrading(StrategyMixin):
             return True, "market_range_unstable_allowed"
         return True, "market_range_stable"
 
+    @staticmethod
+    def _resolve_directional_autotrade(
+        *,
+        action: str,
+        base_autotrade_eligible: bool,
+        base_autotrade_route: str,
+        symbol_features: Any,
+    ) -> tuple[bool, str]:
+        if not base_autotrade_eligible:
+            return False, base_autotrade_route
+        if action == "sell" and (
+            symbol_features is None or symbol_features.micro_regime != "TREND_DOWN"
+        ):
+            return False, "symbol_regime_not_trend_down_for_short"
+        return True, base_autotrade_route
+
     def _anchor_metrics(
         self,
         recent_window,
@@ -381,8 +397,7 @@ class GridTrading(StrategyMixin):
         bb_low: float,
     ) -> None:
         """
-        Manual-only Coinrule grid signal based on a +/-2% move from a broader
-        rolling anchor.
+        Coinrule grid signal based on a +/-2% move from a broader rolling anchor.
         """
         self.refresh_runtime_config()
         context = self.latest_market_context
@@ -417,24 +432,12 @@ class GridTrading(StrategyMixin):
             logging.info("Grid skipped: %s", decision.reason)
             return
 
-        autotrade = autotrade_eligible
-        active_bots = self.binbot_api.get_bots_by_name(
-            name=self.ALGO, symbol=self.symbol
+        autotrade, autotrade_route = self._resolve_directional_autotrade(
+            action=decision.action,
+            base_autotrade_eligible=autotrade_eligible,
+            base_autotrade_route=autotrade_route,
+            symbol_features=symbol_features,
         )
-        if len(active_bots) > 0:
-            id = active_bots[0]["id"]
-            self.deactivate_active_bot(
-                bot_id=id,
-                symbol=self.symbol,
-                source_label="Grid Trading exit",
-            )
-            self.binbot_api.submit_bot_event_logs(
-                bot_id=id,
-                message=[
-                    f"Deactivated active bot from Grid Trading exit before new {decision.action} entry."
-                ],
-            )
-            return
 
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
@@ -498,7 +501,7 @@ class GridTrading(StrategyMixin):
             - Band position: {round_numbers(decision.band_position, 3)}
             - RSI: {round_numbers(decision.rsi_value, 2)}
             - Reason: {decision.reason}
-            - Autotrade candidate: {"Yes" if autotrade_eligible else "No"}
+            - Autotrade candidate: {"Yes" if autotrade else "No"}
             - Autotrade route: {autotrade_route}
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
@@ -532,7 +535,7 @@ class GridTrading(StrategyMixin):
                 "grid_range_drift": decision.range_drift,
                 "grid_bb_width": decision.bb_width,
                 "grid_band_position": decision.band_position,
-                "grid_autotrade_candidate": autotrade_eligible,
+                "grid_autotrade_candidate": autotrade,
                 "grid_autotrade_route": autotrade_route,
             },
         )
