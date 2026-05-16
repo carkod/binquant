@@ -12,6 +12,7 @@ from pybinbot import (
     MarketType,
     KucoinFutures,
 )
+from calibrators.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer
 from market_regime.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
@@ -103,6 +104,11 @@ class KlinesProvider:
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
             binbot_api=self.binbot_api,
         )
+
+        self.leverage_calibrator = LeverageCalibrator(
+            binbot_api=self.binbot_api, exchange=self.exchange
+        )
+        self._last_calibration_bucket: int | None = None
 
     def _get_benchmark_symbol(self, market_type: MarketType = MarketType.SPOT) -> str:
         if market_type == MarketType.FUTURES:
@@ -271,6 +277,24 @@ class KlinesProvider:
         current_time = datetime.now()
         if current_time.minute == 0:
             self.market_breadth_data = await self.binbot_api.get_market_breadth()
+
+        # Recalibrate per-symbol futures_leverage on each 15m boundary, but
+        # only once per bucket so multiple kline payloads in the same minute
+        # don't trigger duplicate PUT cycles.
+        bucket = int(current_time.timestamp() // (15 * 60))
+        if (
+            bucket != self._last_calibration_bucket
+            and self.latest_market_context is not None
+        ):
+            self._last_calibration_bucket = bucket
+            try:
+                self.leverage_calibrator.calibrate_all(
+                    self.latest_market_context, self.all_symbols
+                )
+            except Exception:
+                logging.exception(
+                    "[LeverageCalibrator] cycle failed; continuing kline processing."
+                )
 
         # Convert payload into standardized candle dict
         klines = KlineProduceModel.model_validate(payload)
