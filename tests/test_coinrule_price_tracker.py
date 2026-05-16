@@ -879,7 +879,9 @@ async def test_grid_trading_emits_candidate_when_coin_regime_is_not_range() -> N
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_skips_for_range_bound_rally() -> None:
+async def test_grid_trading_sell_signal_requires_symbol_trend_down_for_autotrade() -> (
+    None
+):
     df = make_range_bound_df(n=50)
     df.loc[df.index[-2], "close"] = 100.1
     df.loc[df.index[-1], "close"] = 102.3
@@ -906,7 +908,7 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
         bb_mid=100.0,
     )
 
-    at_mock.assert_awaited_once()
+    at_mock.assert_not_awaited()
     tg_mock.assert_called_once()
 
     tg_await_args = tg_mock.call_args
@@ -915,19 +917,72 @@ async def test_grid_trading_skips_for_range_bound_rally() -> None:
     assert "Action: SHORT SELL ALERT" in telegram_msg
     assert "Strategy: short" in telegram_msg
     assert "SELL $20.00 of TESTUSDT as market order with 3x leverage" in telegram_msg
+    assert "Autotrade candidate: No" in telegram_msg
+    assert "Autotrade route: symbol_regime_not_trend_down_for_short" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_grid_trading_autotrades_short_when_symbol_regime_is_trend_down() -> None:
+    df = make_range_bound_df(n=50)
+    df.loc[df.index[-2], "close"] = 100.1
+    df.loc[df.index[-1], "close"] = 102.3
+    df.loc[df.index[-1], "open"] = 101.1
+    df.loc[df.index[-1], "high"] = 102.6
+    df.loc[df.index[-1], "low"] = 100.9
+    df.loc[df.index[-1], "rsi"] = 66.0
+
+    algo = make_grid_algo(df)
+    algo.latest_market_context = make_market_context(
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
+    )
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
+
+    await algo.signal(
+        current_price=float(df["close"].iloc[-1]),
+        bb_high=102.0,
+        bb_low=98.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_awaited_once()
+    at_await_args = at_mock.await_args
+    assert at_await_args is not None
+    signal_value = at_await_args.args[0]
+    assert signal_value.bot_params.position == Position.short
+    tg_mock.assert_called_once()
+    tg_await_args = tg_mock.call_args
+    assert tg_await_args is not None
+    telegram_msg = tg_await_args.args[0]
+    assert "Action: SHORT SELL ALERT" in telegram_msg
+    assert "Strategy: short" in telegram_msg
+    assert "Autotrade candidate: Yes" in telegram_msg
+    assert "Autotrade route: market_range_stable" in telegram_msg
     assert "Autotrade is enabled" in telegram_msg
     cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_deactivates_active_bot_before_buy_entry() -> None:
+async def test_grid_trading_active_bot_does_not_block_buy_entry() -> None:
     df = make_range_bound_df(n=50)
     df.loc[df.index[-1], "close"] = 97.8
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context()
     binbot_mock = cast(MagicMock, algo.binbot_api)
     binbot_mock.get_bots_by_name.return_value = [{"id": "bot-123"}]
+    at_mock = AsyncMock()
     tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
@@ -939,27 +994,30 @@ async def test_grid_trading_deactivates_active_bot_before_buy_entry() -> None:
         bb_mid=100.0,
     )
 
-    binbot_mock.get_bots_by_name.assert_called_once_with(
-        name="coinrule_grid_trading",
-        symbol="TESTUSDT",
-    )
-    binbot_mock.deactivate_bot.assert_called_once_with(
-        "bot-123",
-        algorithmic_close=True,
-    )
-    tg_mock.assert_not_called()
+    binbot_mock.get_bots_by_name.assert_not_called()
+    binbot_mock.deactivate_bot.assert_not_called()
+    binbot_mock.submit_bot_event_logs.assert_not_called()
+    at_mock.assert_awaited_once()
+    tg_mock.assert_called_once()
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_deactivates_active_bot_before_sell_entry() -> None:
+async def test_grid_trading_active_bot_does_not_block_short_reversal_entry() -> None:
     df = make_range_bound_df(n=50)
     df.loc[df.index[-2], "close"] = 100.1
     df.loc[df.index[-1], "close"] = 102.3
     algo = make_grid_algo(df)
-    algo.latest_market_context = make_market_context()
+    algo.latest_market_context = make_market_context(
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
+    )
     binbot_mock = cast(MagicMock, algo.binbot_api)
     binbot_mock.get_bots_by_name.return_value = [{"id": "bot-123"}]
+    at_mock = AsyncMock()
     tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
@@ -971,15 +1029,16 @@ async def test_grid_trading_deactivates_active_bot_before_sell_entry() -> None:
         bb_mid=100.0,
     )
 
-    binbot_mock.get_bots_by_name.assert_called_once_with(
-        name="coinrule_grid_trading",
-        symbol="TESTUSDT",
-    )
-    binbot_mock.deactivate_bot.assert_called_once_with(
-        "bot-123",
-        algorithmic_close=True,
-    )
-    tg_mock.assert_not_called()
+    binbot_mock.get_bots_by_name.assert_not_called()
+    binbot_mock.deactivate_bot.assert_not_called()
+    binbot_mock.submit_bot_event_logs.assert_not_called()
+    at_mock.assert_awaited_once()
+    at_await_args = at_mock.await_args
+    assert at_await_args is not None
+    signal_value = at_await_args.args[0]
+    assert signal_value.bot_params.position == Position.short
+    tg_mock.assert_called_once()
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio

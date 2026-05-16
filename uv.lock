@@ -273,7 +273,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=1.8.15" },
+    { name = "pybinbot", specifier = ">=1.8.18" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "pytest-vcr", marker = "extra == 'dev'", specifier = ">=1.0.2" },
@@ -1426,7 +1426,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "1.8.15"
+version = "1.8.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1439,9 +1439,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/cc/371fbefb2895a1d00f3f79a3bb9286bcfeedbaa7171ab3726e4457af5292/pybinbot-1.8.15.tar.gz", hash = "sha256:3cf0f799b7afc85bacc7c8c213c0b8aa44eb0b93dac5ac1d053f37392939b9c6", size = 59801, upload-time = "2026-05-16T12:57:20.745Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/6e/60956204128b3a5477278f97dbb4e613efe4fd964e050224c892f7af7237/pybinbot-1.8.18.tar.gz", hash = "sha256:945957edfc9ff4e261a9096c4ea18e37f8634989e24931ce21e45616e92e4781", size = 59871, upload-time = "2026-05-16T13:49:33.689Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/a6/bbc7e62bc0b387d6b657f1ccdc9084e98d9ffc9824e2eb64ea799e2f47a6/pybinbot-1.8.15-py3-none-any.whl", hash = "sha256:aeab18a295a46264ed3d6dbe6902b1b29ae244ad90242bce716f1f99ee3042b8", size = 61093, upload-time = "2026-05-16T12:57:19.364Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/73/d8f253e02219b56f52254989632516933bea027d7772941ac259e1ffbdaa/pybinbot-1.8.18-py3-none-any.whl", hash = "sha256:661ea3fb0cf8bd9bfec58e6843659d93c14501fbaa379b11f073bf547e905cf8", size = 61118, upload-time = "2026-05-16T13:49:32.451Z" },
 ]
 
 [[package]]
