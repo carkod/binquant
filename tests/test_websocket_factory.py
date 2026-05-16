@@ -1,8 +1,8 @@
 """Tests for WebSocket factory using KuCoin Universal SDK."""
 
 from asyncio import Queue
-from typing import Any
-from unittest.mock import AsyncMock
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pybinbot import ExchangeId, AsyncKucoinWebsocketClient, MarketType
@@ -141,6 +141,105 @@ class TestWebsocketFactory:
                 assert quote_asset == "USDT", (
                     f"Non-USDT symbol subscribed: {symbol_name}"
                 )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("symbol_count", "expected_client_count"),
+        [
+            (300, 1),
+            (301, 2),
+            (600, 2),
+            (601, 3),
+            (609, 3),
+        ],
+    )
+    async def test_kucoin_futures_subscriptions_are_chunked(
+        self,
+        monkeypatch,
+        symbol_count: int,
+        expected_client_count: int,
+    ):
+        mock_symbols = [
+            {
+                "id": f"SYM{i}USDTM",
+                "base_asset": f"SYM{i}",
+                "quote_asset": "USDT",
+            }
+            for i in range(symbol_count)
+        ]
+        mock_symbols.extend(
+            [
+                {"id": "BTC-USDT", "base_asset": "BTC", "quote_asset": "USDT"},
+                {"id": "ETHUSDCM", "base_asset": "ETH", "quote_asset": "USDC"},
+            ]
+        )
+
+        mock_config = MagicMock()
+        mock_config.kucoin_key = "key"
+        mock_config.kucoin_secret = "secret"
+        mock_config.kucoin_passphrase = "passphrase"
+        mock_config.backend_domain = "https://example.test"
+        mock_config.service_email = "service@example.test"
+        mock_config.service_password = "password"
+        monkeypatch.setattr(
+            "shared.streaming.websocket_factory.Config",
+            MagicMock(return_value=mock_config),
+        )
+
+        mock_binbot_api = MagicMock()
+        mock_binbot_api.get_autotrade_settings.return_value = {
+            "exchange_id": "kucoin",
+            "fiat": "USDT",
+        }
+        mock_binbot_api.get_symbols.return_value = mock_symbols
+        monkeypatch.setattr(
+            "shared.streaming.websocket_factory.BinbotApi",
+            MagicMock(return_value=mock_binbot_api),
+        )
+        monkeypatch.setattr(
+            "shared.streaming.websocket_factory.asyncio.sleep",
+            AsyncMock(),
+        )
+
+        created_clients = []
+
+        def fake_client(*_args, **_kwargs):
+            client = MagicMock()
+            client.subscribe_klines = AsyncMock()
+            created_clients.append(client)
+            return client
+
+        monkeypatch.setattr(
+            "shared.streaming.websocket_factory.AsyncKucoinWebsocketClient",
+            fake_client,
+        )
+
+        factory = WebsocketClientFactory(queue=Queue())
+        clients = await factory.start_future_stream()
+
+        assert clients == created_clients
+        assert len(clients) == expected_client_count
+
+        subscribed_symbols = [
+            call.args[0]
+            for client in clients
+            for call in cast(Any, client.subscribe_klines).call_args_list
+        ]
+        assert len(subscribed_symbols) == symbol_count
+        assert subscribed_symbols == [f"SYM{i}USDTM" for i in range(symbol_count)]
+        assert subscribed_symbols[:3] == ["SYM0USDTM", "SYM1USDTM", "SYM2USDTM"]
+
+        for client in clients:
+            assert cast(Any, client.subscribe_klines).await_count <= 300
+
+        if symbol_count == 609:
+            assert [
+                cast(Any, client.subscribe_klines).await_count for client in clients
+            ] == [
+                300,
+                300,
+                9,
+            ]
 
 
 class TestKucoinWebsocketSDK:
