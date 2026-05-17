@@ -441,16 +441,8 @@ class ContextEvaluator:
             await self._safe_signal("ApexFlow", self.af.signal())
             self.last_market_regime = self.af.last_market_regime
 
-            await self._safe_signal(
-                "SpikeHunterV3KuCoin",
-                self.sh3.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-
+            # Keep 15m entry strategies ordered from rarest/selective to broadest.
+            # The first matching autotrade setup gets the cleanest chance to fire.
             await self._safe_signal(
                 "RangeFailedBreakoutFade",
                 self.rfbf.signal(
@@ -460,7 +452,6 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
-
             await self._safe_signal(
                 "RangeBbRsiMeanReversion",
                 self.rbrmr.signal(
@@ -470,7 +461,6 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
-
             await self._safe_signal(
                 "RelativeStrengthReversalRange",
                 self.rsrr.signal(
@@ -480,7 +470,6 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
-
             await self._safe_signal(
                 "LiquidationSweepPump",
                 self.lsp.signal(
@@ -491,8 +480,8 @@ class ContextEvaluator:
                 ),
             )
             await self._safe_signal(
-                "GridTrading",
-                self.gt.signal(
+                "SpikeHunterV3KuCoin",
+                self.sh3.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
@@ -502,6 +491,15 @@ class ContextEvaluator:
             await self._safe_signal(
                 "BuyTheDip",
                 self.coinrule_buy_the_dip.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+            await self._safe_signal(
+                "GridTrading",
+                self.gt.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,

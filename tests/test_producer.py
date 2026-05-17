@@ -1,3 +1,5 @@
+from inspect import getsource
+from re import findall
 from asyncio import Queue
 from os import environ
 from typing import Any
@@ -174,3 +176,23 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
         "bb_mid": 0.018,
         "bb_low": 0.017,
     }
+
+
+def test_process_data_keeps_15m_entry_strategies_in_rarity_order():
+    source = getsource(ContextEvaluator.process_data)
+    safe_signal_names = findall(
+        r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
+        source,
+    )
+
+    apex_index = safe_signal_names.index("ApexFlow")
+    assert safe_signal_names[apex_index:] == [
+        "ApexFlow",
+        "RangeFailedBreakoutFade",
+        "RangeBbRsiMeanReversion",
+        "RelativeStrengthReversalRange",
+        "LiquidationSweepPump",
+        "SpikeHunterV3KuCoin",
+        "BuyTheDip",
+        "GridTrading",
+    ]

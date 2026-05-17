@@ -8,6 +8,8 @@ event loop, connected by an in-memory `asyncio.Queue`.
 
 import asyncio
 import logging
+from collections.abc import Sequence
+from typing import Protocol
 
 from pybinbot import configure_logging
 from consumers.klines_provider import KlinesProvider
@@ -16,9 +18,12 @@ from shared.streaming.websocket_factory import WebsocketClientFactory
 configure_logging(force=True)
 
 
-async def ingest_loop(factory: WebsocketClientFactory) -> None:
-    """Connect WS clients; each client pushes klines onto the producer queue."""
-    clients = await factory.create_connector()
+class WebsocketClient(Protocol):
+    async def run_forever(self) -> None: ...
+
+
+async def ingest_loop(clients: Sequence[WebsocketClient]) -> None:
+    """Keep connected WS clients running after subscription bootstrap."""
     await asyncio.gather(*(c.run_forever() for c in clients))
 
 
@@ -44,9 +49,10 @@ async def main() -> None:
 
     factory = WebsocketClientFactory(queue=queue)
     klines_provider = KlinesProvider()
+    clients = await factory.create_connector()
 
     await asyncio.gather(
-        ingest_loop(factory),
+        ingest_loop(clients),
         consume_loop(klines_provider, queue),
     )
 

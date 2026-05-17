@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from pybinbot import (
     ExchangeId,
     configure_logging,
@@ -24,6 +25,8 @@ class WebsocketClientFactory:
     KuCoin futures) push klines onto the same in-process queue consumed by
     the strategies pipeline.
     """
+
+    MAX_TOPICS_PER_CONNECTION = 300
 
     def __init__(self, queue: asyncio.Queue) -> None:
         self.config = Config()
@@ -58,11 +61,9 @@ class WebsocketClientFactory:
         symbols = self.filter_fiat_symbols(all_symbols)
         total = len(symbols)
         clients: list[AsyncKucoinWebsocketClient] = []
-        max_per_client = 300
-
         # Create multiple clients, each subscribing to a chunk of symbols
-        for i in range(0, total, max_per_client):
-            chunk = symbols[i : i + max_per_client]
+        for i in range(0, total, self.MAX_TOPICS_PER_CONNECTION):
+            chunk = symbols[i : i + self.MAX_TOPICS_PER_CONNECTION]
             client = AsyncKucoinWebsocketClient(
                 key=self.config.kucoin_key,
                 secret=self.config.kucoin_secret,
@@ -91,11 +92,24 @@ class WebsocketClientFactory:
         futures_symbols = [s for s in symbols if s["id"].endswith("USDTM")]
         total = len(futures_symbols)
         clients: list[AsyncKucoinWebsocketClient] = []
-        max_per_client = 300
+        chunk_count = (
+            (total + self.MAX_TOPICS_PER_CONNECTION - 1)
+            // self.MAX_TOPICS_PER_CONNECTION
+            if total
+            else 0
+        )
+        logging.info(
+            "Preparing KuCoin futures websocket subscriptions: symbols=%s, "
+            "clients=%s, max_topics_per_connection=%s",
+            total,
+            chunk_count,
+            self.MAX_TOPICS_PER_CONNECTION,
+        )
 
         # Create multiple clients, each subscribing to a chunk of symbols
-        for i in range(0, total, max_per_client):
-            chunk = futures_symbols[i : i + max_per_client]
+        total_subscriptions = 0
+        for idx, i in enumerate(range(0, total, self.MAX_TOPICS_PER_CONNECTION)):
+            chunk = futures_symbols[i : i + self.MAX_TOPICS_PER_CONNECTION]
             client = AsyncKucoinWebsocketClient(
                 key=self.config.kucoin_key,
                 secret=self.config.kucoin_secret,
@@ -106,10 +120,24 @@ class WebsocketClientFactory:
             # Give the websocket a moment to be ready before subscribing
             await asyncio.sleep(0.5)
 
-        for s in chunk:
-            await client.subscribe_klines(s["id"], interval=self.interval.value)
+            logging.info(
+                "Subscribing KuCoin futures websocket client %s/%s to %s symbols",
+                idx + 1,
+                chunk_count,
+                len(chunk),
+            )
+            for s in chunk:
+                await client.subscribe_klines(s["id"], interval=self.interval.value)
+                total_subscriptions += 1
 
-        clients.append(client)
+            clients.append(client)
+
+        logging.info(
+            "KuCoin futures websocket subscriptions ready: clients=%s, "
+            "subscriptions=%s",
+            len(clients),
+            total_subscriptions,
+        )
 
         return clients
 
