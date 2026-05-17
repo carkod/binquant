@@ -15,7 +15,7 @@ from pybinbot import (
 
 from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
 from market_regime.signal_context_scorer import SignalContextScorer
-from shared.utils import format_context_timestamp_line
+from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -84,6 +84,9 @@ class Coinrule:
             symbol_features = resolve_symbol_features(
                 context=context, symbol=self.symbol
             )
+            exchange_link, terminal_link = build_links_msg(
+                self.config.env, self.exchange, self.market_type, self.symbol
+            )
             action = (
                 f"{self.bot_strategy.value.upper()} ENTRY"
                 if self.bot_strategy is not None
@@ -104,8 +107,8 @@ class Coinrule:
             - TWAP (> current price): {round_numbers(last_twap)}
             - Autotrade route: manual_only
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
-            - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
-            - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
+            - <a href='{exchange_link}'>Exchange</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
@@ -174,6 +177,9 @@ class Coinrule:
             symbol_features = resolve_symbol_features(
                 context=context, symbol=self.symbol
             )
+            exchange_link, terminal_link = build_links_msg(
+                self.config.env, self.exchange, self.market_type, self.symbol
+            )
             last_timestamp = (
                 to_datetime(df["close_time"][-1:], unit="ms")
                 .dt.strftime("%Y-%m-%d %H:%M")
@@ -196,8 +202,8 @@ class Coinrule:
             - RSI smaller than 30: {df["rsi"].iloc[-1]}
             - Autotrade route: {"long_autotrade_allowed" if autotrade else "manual_only"}
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
-            - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
-            - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
+            - <a href='{exchange_link}'>Exchange</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
@@ -246,6 +252,9 @@ class Coinrule:
             symbol_features = resolve_symbol_features(
                 context=context, symbol=self.symbol
             )
+            exchange_link, terminal_link = build_links_msg(
+                self.config.env, self.exchange, self.market_type, self.symbol
+            )
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
@@ -261,8 +270,8 @@ class Coinrule:
             - Reversal state: {"Positive" if self.market_domination_reversal else "Negative"}
             - Autotrade route: manual_only
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
-            - <a href='https://www.binance.com/en/trade/{self.symbol}'>Binance</a>
-            - <a href='http://terminal.binbot.in/bots/new/{self.symbol}'>Dashboard trade</a>
+            - <a href='{exchange_link}'>Exchange</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(

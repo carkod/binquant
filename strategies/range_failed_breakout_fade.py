@@ -27,7 +27,7 @@ class RangeFailedBreakoutFade:
     streak) and shorts them when the broader market is *not* rallying:
 
         - market_regime == RANGE
-        - context.average_return < -0.01 (broad market failing to rally)
+        - context.average_return < -0.005 (broad market failing to rally)
         - symbol relative_strength_vs_btc >= 0 (outperformer during selloff)
 
     The thesis is that in a sleepy/red market, fresh breakouts on
@@ -35,7 +35,7 @@ class RangeFailedBreakoutFade:
     they tend to fade hardest on reversal.
     """
 
-    AVG_RETURN_MAX = -0.01
+    AVG_RETURN_MAX = -0.005
 
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
@@ -89,6 +89,7 @@ class RangeFailedBreakoutFade:
         long_flags = (
             last_spike["cumulative_price_break_flag"]
             or last_spike["volume_cluster_flag"]
+            or last_spike["price_break_flag"]
             or last_spike["accel_spike_flag"]
         )
         if not (long_flags and last_spike["upward"]):
@@ -137,8 +138,9 @@ class RangeFailedBreakoutFade:
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - Strategy: {bot_strategy.value}
-            - Rule intent: fade a bullish spike that fires while the broader market is failing to rally and this symbol is leading the tape — likely exhaustion, not momentum.
+            - Rule intent: fade a bullish spike or price break while the broader market is failing to rally and this symbol is leading the tape
             - Candle time: {last_spike["timestamp"]}
+            - Trigger flags: volume={last_spike["volume_cluster_flag"]}, price_break={last_spike["price_break_flag"]}, cumulative={last_spike["cumulative_price_break_flag"]}, accel={last_spike["accel_spike_flag"]}
             - Volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)} {base_asset}
             - Quote volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)} {quote_asset}
             - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}

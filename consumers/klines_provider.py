@@ -64,6 +64,7 @@ class KlinesProvider:
         self.oi_cache: dict[str, tuple[int, float]] = {}
         self.CACHE_TTL_MS = 5000
         self.telegram_consumer = TelegramConsumer()
+        self.strategy_cooldowns: dict[tuple[str, str], int] = {}
 
         # Determine exchange
         if self.autotrade_settings["exchange_id"] == "kucoin":
@@ -342,6 +343,7 @@ class KlinesProvider:
             binbot_api=self.binbot_api,
             last_market_regime=self.last_market_regime,
             telegram_consumer=self.telegram_consumer,
+            strategy_cooldowns=self.strategy_cooldowns,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

@@ -110,6 +110,7 @@ def make_last_spike(
     volume_cluster: bool = True,
     cumulative: bool = False,
     accel: bool = False,
+    price_break: bool = False,
 ) -> dict[str, Any]:
     return {
         "timestamp": "2026-05-14 00:00:00",
@@ -120,7 +121,7 @@ def make_last_spike(
         "label_short_pre": 0,
         "early_proba_aug_flag": 0,
         "volume_cluster_flag": volume_cluster,
-        "price_break_flag": False,
+        "price_break_flag": price_break,
         "cumulative_price_break_flag": cumulative,
         "accel_spike_flag": accel,
         "cumulative_price_break_short_flag": False,
@@ -216,7 +217,12 @@ async def test_no_signal_when_spike_not_upward():
 async def test_no_signal_when_all_long_flags_off():
     df = make_df()
     context = make_market_context()
-    spike = make_last_spike(volume_cluster=False, cumulative=False, accel=False)
+    spike = make_last_spike(
+        volume_cluster=False,
+        cumulative=False,
+        accel=False,
+        price_break=False,
+    )
     evaluator = make_evaluator(df, context, spike)
     algo = RangeFailedBreakoutFade(cast(Any, evaluator))
 
@@ -228,6 +234,31 @@ async def test_no_signal_when_all_long_flags_off():
     )
 
     evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_emits_short_on_pure_price_break_flag():
+    df = make_df()
+    context = make_market_context()
+    spike = make_last_spike(
+        volume_cluster=False,
+        cumulative=False,
+        accel=False,
+        price_break=True,
+    )
+    evaluator = make_evaluator(df, context, spike)
+    algo = RangeFailedBreakoutFade(cast(Any, evaluator))
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=105.0,
+        bb_mid=102.0,
+        bb_low=99.0,
+    )
+
+    evaluator.telegram_consumer.dispatch_signal.assert_called_once()
+    evaluator.dispatch_signal_record.assert_called_once()
+    evaluator.at_consumer.process_autotrade_restrictions.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -249,7 +280,7 @@ async def test_no_signal_when_market_regime_not_range():
 
 @pytest.mark.asyncio
 async def test_no_signal_when_market_not_failing_to_rally():
-    """avg_return >= -1% should fail the gate even in RANGE."""
+    """avg_return >= -0.5% should fail the gate even in RANGE."""
     df = make_df()
     context = make_market_context(average_return=-0.005)
     evaluator = make_evaluator(df, context, make_last_spike())
