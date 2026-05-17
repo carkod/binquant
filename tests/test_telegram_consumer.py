@@ -20,12 +20,10 @@ class TestTelegramConsumer:
     @pytest.mark.asyncio
     async def test_send_msg(self, MockBot):
         mock_bot_instance = MockBot.return_value
-        mock_bot_instance.__aenter__.return_value = mock_bot_instance
         mock_bot_instance.send_message = AsyncMock()
         consumer = TelegramConsumer()
         consumer.bot = mock_bot_instance
-        with patch.object(consumer, "parse_signal", return_value="Hello"):
-            await consumer.send_msg('{"msg": "Hello"}')
+        await consumer.send_msg("Hello")
         mock_bot_instance.send_message.assert_awaited()
 
     @pytest.mark.asyncio

@@ -17,6 +17,7 @@ class TelegramConsumer:
         self.token = os.getenv("TELEGRAM_BOT_KEY", "")
         self.chat_id = os.getenv("TELEGRAM_USER_ID", "")
         self.bot = Bot(os.getenv("TELEGRAM_BOT_KEY", ""))
+        self._send_lock = asyncio.Lock()
         # Tasks held here so create_task results aren't garbage-collected
         # before the Telegram round-trip completes.
         self._background_tasks: set[asyncio.Task] = set()
@@ -62,9 +63,8 @@ class TelegramConsumer:
 
         return sanitized
 
-    async def send_msg(self, result):
-        async with self.bot:
-            message = self.parse_signal(result)
+    async def send_msg(self, message: str) -> None:
+        async with self._send_lock:
             await self.bot.send_message(
                 self.chat_id,
                 text=self._sanitize_html(message),
@@ -78,13 +78,9 @@ class TelegramConsumer:
             ]  # Strip each line, remove empty ones
             cleaned_message = "\n".join(lines)
 
-            await self.bot.send_message(
-                self.chat_id,
-                text=self._sanitize_html(cleaned_message),
-                parse_mode=ParseMode.HTML,
-            )
-        except TimedOut:
-            logging.warning("Telegram signal timed out, skipping...")
+            await self.send_msg(cleaned_message)
+        except TimedOut as e:
+            logging.warning("Telegram signal timed out, skipping: %s", e)
         except Exception as e:
             logging.error(f"Error sending telegram signal: {e}")
             logging.error(f"Original message: {message}")
