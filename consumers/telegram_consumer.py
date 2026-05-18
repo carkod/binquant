@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 import re
 
 from telegram import Bot
@@ -13,10 +12,10 @@ from telegram.helpers import escape
 class TelegramConsumer:
     _ALLOWED_HTML_TAGS = ("b", "strong", "i", "em", "u", "s", "code", "pre", "a")
 
-    def __init__(self):
-        self.token = os.getenv("TELEGRAM_BOT_KEY", "")
-        self.chat_id = os.getenv("TELEGRAM_USER_ID", "")
-        self.bot = Bot(os.getenv("TELEGRAM_BOT_KEY", ""))
+    def __init__(self, token, chat_id):
+        self.token = token
+        self.chat_id = chat_id
+        self.bot = Bot(token=self.token)
         self._send_lock = asyncio.Lock()
         # Tasks held here so create_task results aren't garbage-collected
         # before the Telegram round-trip completes.

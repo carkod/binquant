@@ -63,7 +63,10 @@ class KlinesProvider:
         # symbol -> {timestamp: openInterest}
         self.oi_cache: dict[str, tuple[int, float]] = {}
         self.CACHE_TTL_MS = 5000
-        self.telegram_consumer = TelegramConsumer()
+        self.telegram_consumer = TelegramConsumer(
+            token=self.config.telegram_bot_key,
+            chat_id=self.config.telegram_user_id,
+        )
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
 
         # Determine exchange
