@@ -42,6 +42,7 @@ class GridTrading(StrategyMixin):
     REPO_ROOT = Path(__file__).resolve().parents[2]
     DEFAULT_CONFIG_PATH = REPO_ROOT / "config" / "grid_thresholds.default.json"
     DEFAULT_OVERRIDE_CONFIG_PATH = REPO_ROOT / ".runtime" / "grid_thresholds.json"
+    SHORT_AUTOTRADE_MICRO_REGIMES = {"RANGE", "TRANSITIONAL", "TREND_DOWN"}
     _config_cache_key: tuple[str, int | None, int | None] | None = None
     _config_cache: dict[str, Any] | None = None
 
@@ -238,9 +239,11 @@ class GridTrading(StrategyMixin):
         if not base_autotrade_eligible:
             return False, base_autotrade_route
         if action == "sell" and (
-            symbol_features is None or symbol_features.micro_regime != "TREND_DOWN"
+            symbol_features is None
+            or symbol_features.micro_regime
+            not in GridTrading.SHORT_AUTOTRADE_MICRO_REGIMES
         ):
-            return False, "symbol_regime_not_trend_down_for_short"
+            return False, "symbol_regime_not_shortable_for_grid_short"
         return True, base_autotrade_route
 
     def _anchor_metrics(
@@ -334,7 +337,7 @@ class GridTrading(StrategyMixin):
                 action="buy",
                 reason=(
                     "Price is down enough from the broader live anchor to trigger "
-                    f"the manual BUY leg ({move_from_anchor * 100:.2f}%)."
+                    f"the grid BUY leg ({move_from_anchor * 100:.2f}%)."
                 ),
                 anchor_price=live_anchor,
                 anchor_high=anchor_metrics["anchor_high"],
@@ -355,7 +358,7 @@ class GridTrading(StrategyMixin):
                 action="sell",
                 reason=(
                     "Price is up enough from the broader live anchor to trigger "
-                    f"the manual SELL leg ({move_from_anchor * 100:.2f}%)."
+                    f"the grid SELL leg ({move_from_anchor * 100:.2f}%)."
                 ),
                 anchor_price=live_anchor,
                 anchor_high=anchor_metrics["anchor_high"],
@@ -454,10 +457,10 @@ class GridTrading(StrategyMixin):
         )
 
         if decision.action == "sell":
-            action_label = "SHORT SELL ALERT"
+            action_label = "SHORT ENTRY"
             bot_strategy = Position.short
             grid_logic = (
-                f"Simple +{self.sell_trigger_pct * 100:.1f}% manual contract sell "
+                f"Simple +{self.sell_trigger_pct * 100:.1f}% grid short "
                 f"trigger from the {decision.anchor_window_candles}-candle anchor"
             )
             action_text = (
@@ -466,10 +469,10 @@ class GridTrading(StrategyMixin):
                 "from the live anchor"
             )
         else:
-            action_label = "LONG BUY ALERT"
+            action_label = "LONG ENTRY"
             bot_strategy = Position.long
             grid_logic = (
-                f"Simple -{self.buy_trigger_pct * 100:.1f}% manual contract buy "
+                f"Simple -{self.buy_trigger_pct * 100:.1f}% grid long "
                 f"trigger from the {decision.anchor_window_candles}-candle anchor"
             )
             action_text = (

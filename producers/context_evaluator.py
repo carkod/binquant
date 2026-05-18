@@ -59,6 +59,8 @@ class ContextEvaluator:
         first_seen_at: int,
         interval: BinanceKlineIntervals | KucoinKlineIntervals,
         binbot_api: BinbotApi,
+        telegram_consumer: TelegramConsumer,
+        strategy_cooldowns: dict[tuple[str, str], int] | None = None,
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
@@ -104,7 +106,8 @@ class ContextEvaluator:
             if self.current_symbol_data
             else 1
         )
-        self.telegram_consumer = TelegramConsumer()
+        self.telegram_consumer = telegram_consumer
+        self.strategy_cooldowns = strategy_cooldowns
         self.at_consumer = ac_api
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at

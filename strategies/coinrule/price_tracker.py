@@ -30,6 +30,11 @@ if TYPE_CHECKING:
 
 
 class PriceTracker:
+    ALGO = "coinrule_price_tracker"
+    ENTRY_COOLDOWN_BARS = 12
+    DEFAULT_INTERVAL_MS = 300_000
+    MIN_RELATIVE_STRENGTH_VS_BTC = 0.05
+
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
         self.df_5m = cls.df_5m
@@ -52,6 +57,42 @@ class PriceTracker:
             risk_weight=0.35,
             support_weight=0.2,
         )
+
+    def _latest_close_time(self) -> int | None:
+        if "close_time" not in self.df_5m or self.df_5m["close_time"].empty:
+            return None
+        try:
+            return int(self.df_5m["close_time"].iloc[-1])
+        except (TypeError, ValueError):
+            return None
+
+    def _cooldown_window_ms(self) -> int:
+        interval = getattr(self.ti, "interval", None)
+        get_ms = getattr(interval, "get_ms", None)
+        if callable(get_ms):
+            try:
+                return int(get_ms()) * self.ENTRY_COOLDOWN_BARS
+            except (TypeError, ValueError):
+                pass
+        return self.DEFAULT_INTERVAL_MS * self.ENTRY_COOLDOWN_BARS
+
+    def _entry_cooldown_active(self, close_time: int | None) -> bool:
+        cooldowns = getattr(self.ti, "strategy_cooldowns", None)
+        if cooldowns is None or close_time is None:
+            return False
+
+        last_signal_time = cooldowns.get((self.ALGO, self.symbol))
+        if last_signal_time is None:
+            return False
+
+        elapsed = close_time - last_signal_time
+        return 0 <= elapsed < self._cooldown_window_ms()
+
+    def _mark_entry_cooldown(self, close_time: int | None) -> None:
+        cooldowns = getattr(self.ti, "strategy_cooldowns", None)
+        if cooldowns is None or close_time is None:
+            return
+        cooldowns[(self.ALGO, self.symbol)] = close_time
 
     @property
     def latest_market_context(self) -> LiveMarketContext | None:
@@ -109,6 +150,12 @@ class PriceTracker:
                 f"symbol_transition_{symbol_features.micro_regime_transition.lower()}",
             )
 
+        if (
+            symbol_features.relative_strength_vs_btc
+            <= self.MIN_RELATIVE_STRENGTH_VS_BTC
+        ):
+            return False, "symbol_relative_strength_vs_btc_insufficient"
+
         if symbol_features.micro_regime == "RANGE":
             return True, "symbol_range"
 
@@ -123,7 +170,7 @@ class PriceTracker:
         BUY $30 of that coin with USDT wallet as limit order
         """
         self.df_5m = self.ti.df_5m.copy()
-        algo = "coinrule_price_tracker"
+        algo = self.ALGO
 
         required_cols = ["close", "rsi", "macd", "high", "low", "volume"]
         recent_window = self.df_5m[required_cols].tail(5)
@@ -195,6 +242,15 @@ class PriceTracker:
             if bad_followthrough or high_risk or low_confidence:
                 return
 
+            close_time = self._latest_close_time()
+            if self._entry_cooldown_active(close_time):
+                logging.info(
+                    "Price tracker cooldown active for %s; skipping duplicate entry.",
+                    self.symbol,
+                )
+                return
+            self._mark_entry_cooldown(close_time)
+
             if autotrade and is_autotrade_suppressed(context=context):
                 autotrade = False
                 autotrade_route = "time_of_day_quiet_hours"
@@ -234,7 +290,7 @@ class PriceTracker:
             - MACD &lt; 0: {round_numbers(macd_value, 6)}
             - MFI &lt; 20: {round_numbers(mfi_value, 2)}
             - Strategy: {bot_strategy.value}
-            - Rule intent: BUY after 5m oversold mean-reversion confirmation in a balanced range market
+            - Rule intent: BUY after 5m oversold mean-reversion in a balanced range market, only when the coin is also leading BTC
             - Market regime: {context.market_regime}
             - Market transition: {context.market_regime_transition if context.market_regime_transition is not None else "None"}
             {format_context_timestamp_line(context)}
@@ -243,6 +299,7 @@ class PriceTracker:
             - Long tailwind: {round_numbers(context.long_tailwind, 3)}
             - Short tailwind: {round_numbers(context.short_tailwind, 3)}
             - Breadth stable for mean-reversion: {"Yes" if breadth_is_stable else "No"}
+            - Relative strength vs BTC: {round_numbers(symbol_features.relative_strength_vs_btc, 4) if symbol_features is not None else "UNAVAILABLE"}
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Context confidence: {round_numbers(context_score.confidence, 2) if context_score is not None else "UNAVAILABLE"}

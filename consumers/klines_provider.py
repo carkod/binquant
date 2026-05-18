@@ -14,6 +14,7 @@ from pybinbot import (
 )
 from calibrators.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer
+from consumers.telegram_consumer import TelegramConsumer
 from market_regime.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
 )
@@ -62,6 +63,11 @@ class KlinesProvider:
         # symbol -> {timestamp: openInterest}
         self.oi_cache: dict[str, tuple[int, float]] = {}
         self.CACHE_TTL_MS = 5000
+        self.telegram_consumer = TelegramConsumer(
+            token=self.config.telegram_bot_key,
+            chat_id=self.config.telegram_user_id,
+        )
+        self.strategy_cooldowns: dict[tuple[str, str], int] = {}
 
         # Determine exchange
         if self.autotrade_settings["exchange_id"] == "kucoin":
@@ -339,6 +345,8 @@ class KlinesProvider:
             latest_market_context_provider=self,
             binbot_api=self.binbot_api,
             last_market_regime=self.last_market_regime,
+            telegram_consumer=self.telegram_consumer,
+            strategy_cooldowns=self.strategy_cooldowns,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

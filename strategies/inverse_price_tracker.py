@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 
 
 class InversePriceTracker:
+    RANGE_RELATIVE_STRENGTH_VS_BTC_MIN = 0.05
+    TELEMETRY_CONFIDENCE_MIN = 0.4
+    TELEMETRY_FOLLOWTHROUGH_MIN = -0.1
+    TELEMETRY_ADVERSE_RISK_MAX = 0.65
+
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
         self.df_5m = cls.df_5m
@@ -68,6 +73,16 @@ class InversePriceTracker:
             and features.relative_strength_vs_btc >= 0
         )
 
+    @classmethod
+    def _has_range_leading_symbol(cls, features: SymbolMarketFeatures) -> bool:
+        if features.micro_regime not in {"TREND_UP", "TRANSITIONAL"}:
+            return False
+        return (
+            features.trend_score > 0
+            and features.relative_strength_vs_btc
+            >= cls.RANGE_RELATIVE_STRENGTH_VS_BTC_MIN
+        )
+
     def regime_routing(
         self,
         context: LiveMarketContext | None,
@@ -86,6 +101,14 @@ class InversePriceTracker:
             market_route = "market_trend_up"
         elif self._has_bullish_transitional_market(context):
             market_route = "market_transitional_bullish"
+        elif context.market_regime == "TRANSITIONAL":
+            market_route = "market_transitional_telemetry"
+        elif context.market_regime == "RANGE":
+            if symbol_features is None:
+                return False, "symbol_regime_unavailable"
+            if self._has_range_leading_symbol(symbol_features):
+                return True, "market_range_symbol_leading_telemetry"
+            return False, "range_symbol_not_leading"
         else:
             return False, f"market_regime_{context.market_regime.lower()}"
 
@@ -162,9 +185,9 @@ class InversePriceTracker:
 
         context_score = evaluation.context_score
         if (
-            context_score.confidence < 0.5
-            or context_score.followthrough_score <= 0
-            or context_score.adverse_excursion_risk > 0.55
+            context_score.confidence < self.TELEMETRY_CONFIDENCE_MIN
+            or context_score.followthrough_score < self.TELEMETRY_FOLLOWTHROUGH_MIN
+            or context_score.adverse_excursion_risk > self.TELEMETRY_ADVERSE_RISK_MAX
         ):
             return
 
@@ -200,12 +223,13 @@ class InversePriceTracker:
             - RSI (14) &lt; 30: {round_numbers(rsi_value, 2)}
             - MACD &lt; 0: {round_numbers(macd_value, 6)}
             - MFI &lt; 20: {round_numbers(mfi_value, 2)}
-            - Rule intent: buy an oversold pullback when the broader market and symbol context favor bullish continuation rather than balanced range mean reversion.
+            - Rule intent: buy an oversold pullback when bullish routing is active, or collect telemetry when a strong range leader pulls back
             - Market regime: {context.market_regime}
             - Market transition: {context.market_regime_transition if context.market_regime_transition is not None else "None"}
             {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features.micro_regime_transition is not None else "None"}
+            - Relative strength vs BTC: {round_numbers(symbol_features.relative_strength_vs_btc, 4)}
             - Context confidence: {round_numbers(context_score.confidence, 2)}
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}

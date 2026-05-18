@@ -4,35 +4,31 @@ import pytest
 
 from consumers.telegram_consumer import TelegramConsumer
 
+consumer = TelegramConsumer(token="fake_token", chat_id="fake_chat_id")
 
-@patch("consumers.telegram_consumer.Bot", autospec=True)
+
+@patch("consumers.telegram_consumer.Bot")
 class TestTelegramConsumer:
     def test_parse_signal_valid(self, MockBot):
-        consumer = TelegramConsumer()
         result = '{"msg": "Hello"}'
         assert consumer.parse_signal(result) == "Hello"
 
     def test_parse_signal_invalid(self, MockBot):
-        consumer = TelegramConsumer()
         result = '{"foo": "bar"}'
         assert consumer.parse_signal(result) is None
 
     @pytest.mark.asyncio
     async def test_send_msg(self, MockBot):
         mock_bot_instance = MockBot.return_value
-        mock_bot_instance.__aenter__.return_value = mock_bot_instance
         mock_bot_instance.send_message = AsyncMock()
-        consumer = TelegramConsumer()
         consumer.bot = mock_bot_instance
-        with patch.object(consumer, "parse_signal", return_value="Hello"):
-            await consumer.send_msg('{"msg": "Hello"}')
+        await consumer.send_msg("Hello")
         mock_bot_instance.send_message.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_send_signal(self, MockBot):
         mock_bot_instance = MockBot.return_value
         mock_bot_instance.send_message = AsyncMock()
-        consumer = TelegramConsumer()
         consumer.bot = mock_bot_instance
         payload = (
             "{"
@@ -46,7 +42,6 @@ class TestTelegramConsumer:
         mock_bot_instance.send_message.assert_awaited()
 
     def test_sanitize_html_preserves_supported_tags(self, MockBot):
-        consumer = TelegramConsumer()
 
         sanitized = consumer._sanitize_html(
             "<strong>Signal</strong> ratio <= 0.45 and >= 0.55"
@@ -55,14 +50,12 @@ class TestTelegramConsumer:
         assert sanitized == ("<strong>Signal</strong> ratio &lt;= 0.45 and &gt;= 0.55")
 
     def test_sanitize_html_preserves_existing_entities(self, MockBot):
-        consumer = TelegramConsumer()
 
         sanitized = consumer._sanitize_html("RSI (14) &lt; 30 and MACD &gt; -1")
 
         assert sanitized == "RSI (14) &lt; 30 and MACD &gt; -1"
 
     def test_sanitize_html_preserves_anchor_links(self, MockBot):
-        consumer = TelegramConsumer()
 
         sanitized = consumer._sanitize_html(
             "<a href='https://www.kucoin.com/trade/futures/TRUTHUSDTM'>KuCoin</a>"
