@@ -43,6 +43,13 @@ class GridTrading(StrategyMixin):
     DEFAULT_CONFIG_PATH = REPO_ROOT / "config" / "grid_thresholds.default.json"
     DEFAULT_OVERRIDE_CONFIG_PATH = REPO_ROOT / ".runtime" / "grid_thresholds.json"
     SHORT_AUTOTRADE_MICRO_REGIMES = {"RANGE", "TRANSITIONAL", "TREND_DOWN"}
+    AUTOTRADE_MARKET_REGIMES = {"RANGE"}
+    MICRO_REGIME_BLOCKING_TRANSITIONS = {
+        "VOLATILITY_EXPANSION",
+        "BREAKDOWN",
+        "ENTERED_TRANSITIONAL",
+    }
+    MICRO_REGIME_MIN_STRENGTH = 0.5
     _config_cache_key: tuple[str, int | None, int | None] | None = None
     _config_cache: dict[str, Any] | None = None
 
@@ -243,7 +250,13 @@ class GridTrading(StrategyMixin):
             or symbol_features.micro_regime
             not in GridTrading.SHORT_AUTOTRADE_MICRO_REGIMES
         ):
-            return False, "symbol_regime_not_shortable_for_grid_short"
+            return False, "symbol_regime_not_trend_down_for_short"
+        if (
+            action == "buy"
+            and symbol_features is not None
+            and symbol_features.micro_regime == "TREND_DOWN"
+        ):
+            return False, "symbol_regime_trend_down_for_long"
         return True, base_autotrade_route
 
     def _anchor_metrics(

@@ -1091,18 +1091,19 @@ async def test_grid_trading_autotrades_short_when_symbol_regime_is_range() -> No
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_short_blocks_trend_up_symbol_for_autotrade() -> None:
+async def test_grid_trading_buy_signal_blocks_autotrade_when_symbol_is_trend_down() -> (
+    None
+):
     df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 100.1
-    df.loc[df.index[-1], "close"] = 102.3
-    df.loc[df.index[-1], "open"] = 101.1
-    df.loc[df.index[-1], "high"] = 102.6
-    df.loc[df.index[-1], "low"] = 100.9
-    df.loc[df.index[-1], "rsi"] = 66.0
+    df.loc[df.index[-1], "close"] = 97.8
+    df.loc[df.index[-1], "open"] = 98.8
+    df.loc[df.index[-1], "high"] = 99.0
+    df.loc[df.index[-1], "low"] = 98.0
+    df.loc[df.index[-1], "rsi"] = 34.0
 
     algo = make_grid_algo(df)
     algo.latest_market_context = make_market_context(
-        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
     )
     at_mock = AsyncMock()
     tg_mock = Mock()
@@ -1123,8 +1124,12 @@ async def test_grid_trading_short_blocks_trend_up_symbol_for_autotrade() -> None
     at_mock.assert_not_awaited()
     tg_mock.assert_called_once()
     telegram_msg = tg_mock.call_args.args[0]
+    assert "Action: LONG ENTRY" in telegram_msg
+    assert "Strategy: long" in telegram_msg
     assert "Autotrade candidate: No" in telegram_msg
-    assert "Autotrade route: symbol_regime_not_shortable_for_grid_short" in telegram_msg
+    assert "Autotrade route: symbol_regime_trend_down_for_long" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
