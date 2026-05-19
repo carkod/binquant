@@ -194,5 +194,5 @@ def test_process_data_keeps_15m_entry_strategies_in_rarity_order():
         "LiquidationSweepPump",
         "SpikeHunterV3KuCoin",
         "BuyTheDip",
-        "GridTrading",
+        "BBExtremeReversion",
     ]

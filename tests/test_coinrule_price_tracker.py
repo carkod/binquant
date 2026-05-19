@@ -1,4 +1,3 @@
-import json
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -7,7 +6,7 @@ import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, Indicators, MarketDominance, MarketType, Position
 
-from strategies.coinrule.grid_trading import GridTrading
+from strategies.coinrule.bb_extreme_reversion import BBExtremeReversion
 from strategies.coinrule.price_tracker import PriceTracker
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -119,8 +118,8 @@ def make_algo(df: DataFrame) -> PriceTracker:
     return PriceTracker(cast(Any, make_context(df)))
 
 
-def make_grid_algo(df: DataFrame) -> GridTrading:
-    return GridTrading(cast(Any, make_context(df)))
+def make_bbex_algo(df: DataFrame) -> BBExtremeReversion:
+    return BBExtremeReversion(cast(Any, make_context(df)))
 
 
 def make_ohlcv_df(n: int = 50, oversold: bool = False) -> DataFrame:
@@ -896,15 +895,46 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
     assert "Autotrade route: breadth_not_stable_for_mean_reversion" in telegram_msg
 
 
+# ---------------------------------------------------------------------------
+# BBExtremeReversion (replaces the old coinrule_grid_trading strategy)
+# ---------------------------------------------------------------------------
+
+
+def make_bbex_df(
+    n: int = 35,
+    last_closes: list[float] | None = None,
+) -> DataFrame:
+    """Stable-choppy 15m df; the last few closes can be overridden so RSI(2)
+    can be driven to a known extreme."""
+    rows = []
+    for i in range(n):
+        close = 100.0 + (0.2 if i % 2 == 0 else -0.2)
+        rows.append(
+            {
+                "open": close,
+                "high": close + 0.5,
+                "low": close - 0.5,
+                "close": close,
+                "volume": 100.0,
+                "close_time": i * 900_000,
+                "number_of_trades": 10,
+            }
+        )
+    if last_closes:
+        for offset, close in enumerate(reversed(last_closes)):
+            row = rows[-1 - offset]
+            row["close"] = close
+            row["open"] = close
+            row["high"] = close + 0.2
+            row["low"] = close - 0.2
+    return DataFrame(rows)
+
+
 @pytest.mark.asyncio
-async def test_grid_trading_emits_signal_for_range_bound_dip():
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 97.8
-    df.loc[df.index[-1], "open"] = 98.8
-    df.loc[df.index[-1], "high"] = 99.0
-    df.loc[df.index[-1], "low"] = 98.0
-    df.loc[df.index[-1], "rsi"] = 34.0
-    algo = make_grid_algo(df)
+async def test_bb_extreme_emits_buy_signal_at_oversold_and_below_band():
+    # Two consecutive sharp drops → RSI(2) = 0. Current price below bb_low.
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
     algo.latest_market_context = make_market_context()
     at_mock = AsyncMock()
     tg_mock = Mock()
@@ -916,44 +946,30 @@ async def test_grid_trading_emits_signal_for_range_bound_dip():
     )
 
     await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
+        current_price=90.0,
+        bb_high=105.0,
+        bb_low=95.0,
         bb_mid=100.0,
     )
 
     at_mock.assert_awaited_once()
     tg_mock.assert_called_once()
-
-    tg_await_args = tg_mock.call_args
-    assert tg_await_args is not None
-    telegram_msg = tg_await_args.args[0]
-    assert "coinrule_grid_trading" in telegram_msg
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "bb_extreme_reversion" in telegram_msg
     assert "Action: LONG ENTRY" in telegram_msg
     assert "Strategy: long" in telegram_msg
-    assert "Anchor window: 8 candles" in telegram_msg
     assert "Autotrade candidate: Yes" in telegram_msg
     assert "Autotrade route: market_range_stable" in telegram_msg
-    assert (
-        "BUY $20.00 of TESTUSDT as market order using isolated margin with 3x leverage"
-        in telegram_msg
-    )
-    assert "Move from live anchor" in telegram_msg
-    assert "Autotrade is enabled" in telegram_msg
     cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_emits_signal_when_market_is_not_range() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 97.8
-    df.loc[df.index[-1], "open"] = 98.8
-    df.loc[df.index[-1], "high"] = 99.0
-    df.loc[df.index[-1], "low"] = 98.0
-    algo = make_grid_algo(df)
+async def test_bb_extreme_emits_sell_signal_at_overbought_and_above_band():
+    # Two consecutive sharp rallies → RSI(2) = 100. Current price above bb_high.
+    df = make_bbex_df(n=35, last_closes=[100.0, 105.0, 110.0])
+    algo = make_bbex_algo(df)
     algo.latest_market_context = make_market_context(
-        market_regime="TREND_UP",
-        market_regime_transition="ENTERED_TREND_UP",
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
     )
     at_mock = AsyncMock()
     tg_mock = Mock()
@@ -965,9 +981,94 @@ async def test_grid_trading_emits_signal_when_market_is_not_range() -> None:
     )
 
     await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
+        current_price=110.0,
+        bb_high=105.0,
+        bb_low=95.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_awaited_once()
+    at_await_args = at_mock.await_args
+    assert at_await_args is not None
+    signal_value = at_await_args.args[0]
+    assert signal_value.bot_params.position == Position.short
+    tg_mock.assert_called_once()
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "Action: SHORT ENTRY" in telegram_msg
+    assert "Autotrade route: market_range_stable" in telegram_msg
+    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_bb_extreme_skips_when_rsi_not_oversold():
+    # Flat closes → RSI(2) ≈ 50. Price below bb_low but RSI doesn't confirm.
+    df = make_bbex_df(n=35)
+    algo = make_bbex_algo(df)
+    algo.latest_market_context = make_market_context()
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
+
+    await algo.signal(
+        current_price=90.0,
+        bb_high=105.0,
+        bb_low=95.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_not_awaited()
+    tg_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bb_extreme_skips_when_price_inside_band():
+    # RSI(2) = 0 (sharp drops) but current_price is at bb_mid, not below bb_low.
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
+    algo.latest_market_context = make_market_context()
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
+
+    await algo.signal(
+        current_price=100.0,  # at bb_mid, well above bb_low=95
+        bb_high=105.0,
+        bb_low=95.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_not_awaited()
+    tg_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bb_extreme_blocked_in_non_range_market_regime() -> None:
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
+    algo.latest_market_context = make_market_context(market_regime="TREND_UP")
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
+
+    await algo.signal(
+        current_price=90.0,
+        bb_high=105.0,
+        bb_low=95.0,
         bb_mid=100.0,
     )
 
@@ -976,18 +1077,13 @@ async def test_grid_trading_emits_signal_when_market_is_not_range() -> None:
     telegram_msg = tg_mock.call_args.args[0]
     assert "Autotrade candidate: No" in telegram_msg
     assert "Autotrade route: market_regime_trend_up" in telegram_msg
-    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_emits_candidate_for_unstable_range_market() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 97.8
-    df.loc[df.index[-1], "open"] = 98.8
-    df.loc[df.index[-1], "high"] = 99.0
-    df.loc[df.index[-1], "low"] = 98.0
-    algo = make_grid_algo(df)
-    algo.latest_market_context = make_market_context(regime_stable_since=500)
+async def test_bb_extreme_blocked_when_market_stress_too_high() -> None:
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
+    algo.latest_market_context = make_market_context(market_stress_score=0.5)
     at_mock = AsyncMock()
     tg_mock = Mock()
     algo.at_consumer = cast(
@@ -998,30 +1094,24 @@ async def test_grid_trading_emits_candidate_for_unstable_range_market() -> None:
     )
 
     await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
+        current_price=90.0,
+        bb_high=105.0,
+        bb_low=95.0,
         bb_mid=100.0,
     )
 
-    at_mock.assert_awaited_once()
+    at_mock.assert_not_awaited()
     tg_mock.assert_called_once()
     telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade candidate: Yes" in telegram_msg
-    assert "Autotrade route: market_range_unstable_allowed" in telegram_msg
-    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
+    assert "Autotrade route: market_stress_too_high" in telegram_msg
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_emits_candidate_when_coin_regime_is_not_range() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 97.8
-    df.loc[df.index[-1], "open"] = 98.8
-    df.loc[df.index[-1], "high"] = 99.0
-    df.loc[df.index[-1], "low"] = 98.0
-    algo = make_grid_algo(df)
+async def test_bb_extreme_blocks_buy_when_micro_regime_trend_down() -> None:
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
     algo.latest_market_context = make_market_context(
-        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
     )
     at_mock = AsyncMock()
     tg_mock = Mock()
@@ -1033,90 +1123,9 @@ async def test_grid_trading_emits_candidate_when_coin_regime_is_not_range() -> N
     )
 
     await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_awaited_once()
-    tg_mock.assert_called_once()
-    telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade candidate: Yes" in telegram_msg
-    assert "Autotrade route: market_range_stable" in telegram_msg
-    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_grid_trading_autotrades_short_when_symbol_regime_is_range() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 100.1
-    df.loc[df.index[-1], "close"] = 102.3
-    df.loc[df.index[-1], "open"] = 101.1
-    df.loc[df.index[-1], "high"] = 102.6
-    df.loc[df.index[-1], "low"] = 100.9
-    df.loc[df.index[-1], "rsi"] = 66.0
-
-    algo = make_grid_algo(df)
-    algo.latest_market_context = make_market_context()
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_awaited_once()
-    tg_mock.assert_called_once()
-
-    tg_await_args = tg_mock.call_args
-    assert tg_await_args is not None
-    telegram_msg = tg_await_args.args[0]
-    assert "Action: SHORT ENTRY" in telegram_msg
-    assert "Strategy: short" in telegram_msg
-    assert "SELL $20.00 of TESTUSDT as market order with 3x leverage" in telegram_msg
-    assert "Autotrade candidate: Yes" in telegram_msg
-    assert "Autotrade route: market_range_stable" in telegram_msg
-    assert "Autotrade is enabled" in telegram_msg
-    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_grid_trading_short_blocks_trend_up_symbol_for_autotrade() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 100.1
-    df.loc[df.index[-1], "close"] = 102.3
-    df.loc[df.index[-1], "open"] = 101.1
-    df.loc[df.index[-1], "high"] = 102.6
-    df.loc[df.index[-1], "low"] = 100.9
-    df.loc[df.index[-1], "rsi"] = 66.0
-
-    algo = make_grid_algo(df)
-    algo.latest_market_context = make_market_context(
-        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
-    )
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
+        current_price=90.0,
+        bb_high=105.0,
+        bb_low=95.0,
         bb_mid=100.0,
     )
 
@@ -1124,22 +1133,15 @@ async def test_grid_trading_short_blocks_trend_up_symbol_for_autotrade() -> None
     tg_mock.assert_called_once()
     telegram_msg = tg_mock.call_args.args[0]
     assert "Autotrade candidate: No" in telegram_msg
-    assert "Autotrade route: symbol_regime_not_shortable_for_grid_short" in telegram_msg
+    assert "Autotrade route: symbol_regime_trend_down_for_long" in telegram_msg
 
 
 @pytest.mark.asyncio
-async def test_grid_trading_autotrades_short_when_symbol_regime_is_trend_down() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 100.1
-    df.loc[df.index[-1], "close"] = 102.3
-    df.loc[df.index[-1], "open"] = 101.1
-    df.loc[df.index[-1], "high"] = 102.6
-    df.loc[df.index[-1], "low"] = 100.9
-    df.loc[df.index[-1], "rsi"] = 66.0
-
-    algo = make_grid_algo(df)
+async def test_bb_extreme_blocks_short_when_micro_regime_not_shortable() -> None:
+    df = make_bbex_df(n=35, last_closes=[100.0, 105.0, 110.0])
+    algo = make_bbex_algo(df)
     algo.latest_market_context = make_market_context(
-        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
     )
     at_mock = AsyncMock()
     tg_mock = Mock()
@@ -1151,327 +1153,90 @@ async def test_grid_trading_autotrades_short_when_symbol_regime_is_trend_down() 
     )
 
     await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_awaited_once()
-    at_await_args = at_mock.await_args
-    assert at_await_args is not None
-    signal_value = at_await_args.args[0]
-    assert signal_value.bot_params.position == Position.short
-    tg_mock.assert_called_once()
-    tg_await_args = tg_mock.call_args
-    assert tg_await_args is not None
-    telegram_msg = tg_await_args.args[0]
-    assert "Action: SHORT ENTRY" in telegram_msg
-    assert "Strategy: short" in telegram_msg
-    assert "Autotrade candidate: Yes" in telegram_msg
-    assert "Autotrade route: market_range_stable" in telegram_msg
-    assert "Autotrade is enabled" in telegram_msg
-    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_grid_trading_active_bot_does_not_block_buy_entry() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 97.8
-    algo = make_grid_algo(df)
-    algo.latest_market_context = make_market_context()
-    binbot_mock = cast(MagicMock, algo.binbot_api)
-    binbot_mock.get_bots_by_name.return_value = [{"id": "bot-123"}]
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-
-    binbot_mock.get_bots_by_name.assert_not_called()
-    binbot_mock.deactivate_bot.assert_not_called()
-    binbot_mock.submit_bot_event_logs.assert_not_called()
-    at_mock.assert_awaited_once()
-    tg_mock.assert_called_once()
-    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_grid_trading_active_bot_does_not_block_short_reversal_entry() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-2], "close"] = 100.1
-    df.loc[df.index[-1], "close"] = 102.3
-    algo = make_grid_algo(df)
-    algo.latest_market_context = make_market_context(
-        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
-    )
-    binbot_mock = cast(MagicMock, algo.binbot_api)
-    binbot_mock.get_bots_by_name.return_value = [{"id": "bot-123"}]
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-
-    binbot_mock.get_bots_by_name.assert_not_called()
-    binbot_mock.deactivate_bot.assert_not_called()
-    binbot_mock.submit_bot_event_logs.assert_not_called()
-    at_mock.assert_awaited_once()
-    at_await_args = at_mock.await_args
-    assert at_await_args is not None
-    signal_value = at_await_args.args[0]
-    assert signal_value.bot_params.position == Position.short
-    tg_mock.assert_called_once()
-    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_grid_trading_skips_when_move_is_below_threshold() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 100.0
-    df.loc[df.index[-1], "open"] = 100.0
-    df.loc[df.index[-1], "high"] = 100.5
-    df.loc[df.index[-1], "low"] = 99.5
-    df.loc[df.index[-1], "rsi"] = 50.0
-
-    algo = make_grid_algo(df)
-    algo.latest_market_context = make_market_context()
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
+        current_price=110.0,
+        bb_high=105.0,
+        bb_low=95.0,
         bb_mid=100.0,
     )
 
     at_mock.assert_not_awaited()
-    tg_mock.assert_not_called()
+    tg_mock.assert_called_once()
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "Autotrade route: symbol_regime_not_shortable" in telegram_msg
 
 
-def test_grid_trading_buy_threshold_requires_two_percent_drop() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 97.9
-    df.loc[df.index[-1], "open"] = 98.8
-    df.loc[df.index[-1], "high"] = 99.0
-    df.loc[df.index[-1], "low"] = 98.2
+@pytest.mark.asyncio
+async def test_bb_extreme_blocks_when_micro_regime_strength_too_low() -> None:
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
+    algo.latest_market_context = make_market_context(
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime_strength=0.2)}
+    )
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
 
-    algo = make_grid_algo(df)
+    await algo.signal(
+        current_price=90.0,
+        bb_high=105.0,
+        bb_low=95.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_not_awaited()
+    tg_mock.assert_called_once()
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "Autotrade route: symbol_micro_regime_unstable" in telegram_msg
+
+
+@pytest.mark.asyncio
+async def test_bb_extreme_blocks_during_breakdown_transition() -> None:
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
+    algo.latest_market_context = make_market_context(
+        symbol_features={
+            "TESTUSDT": make_symbol_features(
+                micro_regime_transition="BREAKDOWN",
+                micro_regime_transition_strength=0.6,
+            )
+        }
+    )
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
+
+    await algo.signal(
+        current_price=90.0,
+        bb_high=105.0,
+        bb_low=95.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_not_awaited()
+    tg_mock.assert_called_once()
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "Autotrade route: symbol_transition_breakdown" in telegram_msg
+
+
+def test_bb_extreme_evaluate_returns_no_trigger_when_band_span_invalid() -> None:
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
     decision = algo.evaluate(
         recent_window=df.tail(algo.LOOKBACK_CANDLES),
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
+        current_price=90.0,
+        bb_high=100.0,
         bb_mid=100.0,
+        bb_low=100.0,
     )
-
-    assert decision.should_trigger is True
-    assert decision.action == "buy"
-
-
-def test_grid_trading_buy_threshold_can_be_configured_at_instantiation() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 98.9
-
-    default_algo = make_grid_algo(df)
-    configured_algo = GridTrading(
-        cast(Any, make_context(df)),
-        buy_trigger_pct=0.01,
-    )
-
-    default_decision = default_algo.evaluate(
-        recent_window=df.tail(default_algo.LOOKBACK_CANDLES),
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-    configured_decision = configured_algo.evaluate(
-        recent_window=df.tail(configured_algo.LOOKBACK_CANDLES),
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-
-    assert default_decision.should_trigger is False
-    assert configured_decision.should_trigger is True
-    assert configured_decision.action == "buy"
-    assert configured_decision.trigger_move_pct == 0.01
-
-
-def test_grid_trading_sell_threshold_requires_two_percent_rally() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 102.3
-    df.loc[df.index[-1], "open"] = 100.0
-    df.loc[df.index[-1], "high"] = 102.6
-    df.loc[df.index[-1], "low"] = 99.9
-
-    algo = make_grid_algo(df)
-    decision = algo.evaluate(
-        recent_window=df.tail(algo.LOOKBACK_CANDLES),
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-
-    assert decision.should_trigger is True
-    assert decision.action == "sell"
-
-
-def test_grid_trading_sell_threshold_can_be_configured_at_instantiation() -> None:
-    df = make_range_bound_df(n=50)
-    df.loc[df.index[-1], "close"] = 101.0
-
-    default_algo = make_grid_algo(df)
-    configured_algo = GridTrading(
-        cast(Any, make_context(df)),
-        sell_trigger_pct=0.01,
-    )
-
-    default_decision = default_algo.evaluate(
-        recent_window=df.tail(default_algo.LOOKBACK_CANDLES),
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-    configured_decision = configured_algo.evaluate(
-        recent_window=df.tail(configured_algo.LOOKBACK_CANDLES),
-        current_price=float(df["close"].iloc[-1]),
-        bb_high=102.0,
-        bb_low=98.0,
-        bb_mid=100.0,
-    )
-
-    assert default_decision.should_trigger is False
-    assert configured_decision.should_trigger is True
-    assert configured_decision.action == "sell"
-    assert configured_decision.trigger_move_pct == 0.01
-
-
-def test_grid_trading_loads_runtime_threshold_override(tmp_path, monkeypatch) -> None:
-    config_dir = tmp_path / "config"
-    runtime_dir = tmp_path / ".runtime"
-    config_dir.mkdir()
-    runtime_dir.mkdir()
-    default_path = config_dir / "grid_thresholds.default.json"
-    override_path = runtime_dir / "grid_thresholds.json"
-    default_path.write_text(
-        json.dumps(
-            {
-                "coinrule_grid_trading": {
-                    "buy_trigger_pct": 0.02,
-                    "sell_trigger_pct": 0.02,
-                    "anchor_window_candles": 8,
-                }
-            }
-        )
-    )
-    override_path.write_text(
-        json.dumps(
-            {
-                "coinrule_grid_trading": {
-                    "buy_trigger_pct": 0.015,
-                    "sell_trigger_pct": 0.025,
-                    "anchor_window_candles": 12,
-                }
-            }
-        )
-    )
-    monkeypatch.setattr(GridTrading, "DEFAULT_CONFIG_PATH", default_path)
-    monkeypatch.setattr(GridTrading, "DEFAULT_OVERRIDE_CONFIG_PATH", override_path)
-    monkeypatch.setattr(GridTrading, "_config_cache", None)
-    monkeypatch.setattr(GridTrading, "_config_cache_key", None)
-
-    algo = make_grid_algo(make_range_bound_df(n=50))
-
-    assert algo.buy_trigger_pct == 0.015
-    assert algo.sell_trigger_pct == 0.025
-    assert algo.ANCHOR_WINDOW_CANDLES == 12
-    assert algo.LOOKBACK_CANDLES == 13
-
-
-def test_grid_trading_refresh_picks_up_rewritten_runtime_file(
-    tmp_path, monkeypatch
-) -> None:
-    config_dir = tmp_path / "config"
-    runtime_dir = tmp_path / ".runtime"
-    config_dir.mkdir()
-    runtime_dir.mkdir()
-    default_path = config_dir / "grid_thresholds.default.json"
-    override_path = runtime_dir / "grid_thresholds.json"
-    default_path.write_text(
-        json.dumps(
-            {
-                "coinrule_grid_trading": {
-                    "buy_trigger_pct": 0.02,
-                    "sell_trigger_pct": 0.02,
-                    "anchor_window_candles": 8,
-                }
-            }
-        )
-    )
-    override_path.write_text(
-        json.dumps(
-            {
-                "coinrule_grid_trading": {
-                    "buy_trigger_pct": 0.02,
-                    "sell_trigger_pct": 0.02,
-                    "anchor_window_candles": 8,
-                }
-            }
-        )
-    )
-    monkeypatch.setattr(GridTrading, "DEFAULT_CONFIG_PATH", default_path)
-    monkeypatch.setattr(GridTrading, "DEFAULT_OVERRIDE_CONFIG_PATH", override_path)
-    monkeypatch.setattr(GridTrading, "_config_cache", None)
-    monkeypatch.setattr(GridTrading, "_config_cache_key", None)
-
-    algo = make_grid_algo(make_range_bound_df(n=50))
-    override_path.write_text(
-        json.dumps(
-            {
-                "coinrule_grid_trading": {
-                    "buy_trigger_pct": 0.03,
-                    "sell_trigger_pct": 0.03,
-                    "anchor_window_candles": 10,
-                }
-            }
-        )
-    )
-
-    algo.refresh_runtime_config()
-
-    assert algo.buy_trigger_pct == 0.03
-    assert algo.sell_trigger_pct == 0.03
-    assert algo.ANCHOR_WINDOW_CANDLES == 10
-    assert algo.LOOKBACK_CANDLES == 11
+    assert decision.should_trigger is False
+    assert "Invalid Bollinger band spread" in decision.reason
