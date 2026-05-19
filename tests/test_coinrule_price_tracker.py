@@ -1,4 +1,3 @@
-import json
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -1241,54 +1240,3 @@ def test_bb_extreme_evaluate_returns_no_trigger_when_band_span_invalid() -> None
     )
     assert decision.should_trigger is False
     assert "Invalid Bollinger band spread" in decision.reason
-
-
-def test_bb_extreme_runtime_config_override(tmp_path, monkeypatch) -> None:
-    """Tighter overbought/oversold thresholds via the runtime override JSON."""
-    config_dir = tmp_path / "config"
-    runtime_dir = tmp_path / ".runtime"
-    config_dir.mkdir()
-    runtime_dir.mkdir()
-    default_path = config_dir / "bb_extreme_reversion.default.json"
-    override_path = runtime_dir / "bb_extreme_reversion.json"
-    default_path.write_text(
-        json.dumps(
-            {
-                "bb_extreme_reversion": {
-                    "rsi_window": 2,
-                    "oversold_rsi": 5.0,
-                    "overbought_rsi": 95.0,
-                    "max_lower_band_position": 0.0,
-                    "min_upper_band_position": 1.0,
-                }
-            }
-        )
-    )
-    override_path.write_text(
-        json.dumps(
-            {
-                "bb_extreme_reversion": {
-                    "rsi_window": 3,
-                    "oversold_rsi": 10.0,
-                    "overbought_rsi": 90.0,
-                    "max_lower_band_position": -0.1,
-                    "min_upper_band_position": 1.1,
-                }
-            }
-        )
-    )
-    monkeypatch.setattr(BBExtremeReversion, "DEFAULT_CONFIG_PATH", default_path)
-    monkeypatch.setattr(
-        BBExtremeReversion, "DEFAULT_OVERRIDE_CONFIG_PATH", override_path
-    )
-    monkeypatch.setattr(BBExtremeReversion, "_config_cache", None)
-    monkeypatch.setattr(BBExtremeReversion, "_config_cache_key", None)
-
-    df = make_bbex_df(n=35)
-    algo = make_bbex_algo(df)
-
-    assert algo.rsi_window == 3
-    assert algo.oversold_rsi == 10.0
-    assert algo.overbought_rsi == 90.0
-    assert algo.max_lower_band_position == -0.1
-    assert algo.min_upper_band_position == 1.1

@@ -1,7 +1,5 @@
-import json
 import logging
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
@@ -63,23 +61,9 @@ class BBExtremeReversion(StrategyMixin):
     }
     MICRO_REGIME_MIN_STRENGTH = 0.5
 
-    REPO_ROOT = Path(__file__).resolve().parents[2]
-    DEFAULT_CONFIG_PATH = REPO_ROOT / "config" / "bb_extreme_reversion.default.json"
-    DEFAULT_OVERRIDE_CONFIG_PATH = REPO_ROOT / ".runtime" / "bb_extreme_reversion.json"
     LOOKBACK_CANDLES = 30  # plenty for RSI(2); BB spreads arrive from the caller
 
-    _config_cache_key: tuple[str, int | None, int | None] | None = None
-    _config_cache: dict[str, Any] | None = None
-
-    def __init__(
-        self,
-        cls: "ContextEvaluator",
-        rsi_window: int | None = None,
-        oversold_rsi: float | None = None,
-        overbought_rsi: float | None = None,
-        max_lower_band_position: float | None = None,
-        min_upper_band_position: float | None = None,
-    ) -> None:
+    def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
         self.df_15m = cls.df_15m
         self.config = cls.config
@@ -91,19 +75,11 @@ class BBExtremeReversion(StrategyMixin):
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
         self.latest_market_context = cls.latest_market_context
-        self.runtime_config_path = self._resolve_override_config_path()
         self.rsi_window = self.DEFAULT_RSI_WINDOW
         self.oversold_rsi = self.DEFAULT_OVERSOLD_RSI
         self.overbought_rsi = self.DEFAULT_OVERBOUGHT_RSI
         self.max_lower_band_position = self.DEFAULT_MAX_LOWER_BAND_POSITION
         self.min_upper_band_position = self.DEFAULT_MIN_UPPER_BAND_POSITION
-        self.refresh_runtime_config(
-            rsi_window=rsi_window,
-            oversold_rsi=oversold_rsi,
-            overbought_rsi=overbought_rsi,
-            max_lower_band_position=max_lower_band_position,
-            min_upper_band_position=min_upper_band_position,
-        )
 
     @property
     def latest_market_context(self):
@@ -112,158 +88,6 @@ class BBExtremeReversion(StrategyMixin):
     @latest_market_context.setter
     def latest_market_context(self, value) -> None:
         self.ti.latest_market_context = value
-
-    @classmethod
-    def _resolve_override_config_path(cls) -> Path:
-        configured = os.getenv("BB_EXTREME_REVERSION_CONFIG_PATH")
-        if configured:
-            return Path(configured).expanduser()
-        return cls.DEFAULT_OVERRIDE_CONFIG_PATH
-
-    @classmethod
-    def _read_json_file(cls, path: Path) -> dict[str, Any]:
-        if not path.exists():
-            return {}
-        try:
-            data = json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError):
-            logging.exception(
-                "Failed to read bb_extreme_reversion config file: %s", path
-            )
-            return {}
-        if not isinstance(data, dict):
-            logging.warning(
-                "bb_extreme_reversion config file must contain a JSON object: %s", path
-            )
-            return {}
-        return data
-
-    @classmethod
-    def _get_strategy_config(cls) -> dict[str, Any]:
-        override_path = cls._resolve_override_config_path()
-        default_mtime = (
-            cls.DEFAULT_CONFIG_PATH.stat().st_mtime_ns
-            if cls.DEFAULT_CONFIG_PATH.exists()
-            else None
-        )
-        override_mtime = (
-            override_path.stat().st_mtime_ns if override_path.exists() else None
-        )
-        cache_key = (str(override_path), default_mtime, override_mtime)
-        if cls._config_cache_key == cache_key and cls._config_cache is not None:
-            return dict(cls._config_cache)
-
-        default_config = cls._read_json_file(cls.DEFAULT_CONFIG_PATH)
-        override_config = cls._read_json_file(override_path)
-        merged = dict(default_config.get(cls.ALGO, {}))
-        merged.update(override_config.get(cls.ALGO, {}))
-        cls._config_cache_key = cache_key
-        cls._config_cache = dict(merged)
-        return merged
-
-    def refresh_runtime_config(
-        self,
-        rsi_window: int | None = None,
-        oversold_rsi: float | None = None,
-        overbought_rsi: float | None = None,
-        max_lower_band_position: float | None = None,
-        min_upper_band_position: float | None = None,
-    ) -> None:
-        runtime_config = self._get_strategy_config()
-        self.rsi_window = self._coerce_positive_int(
-            rsi_window if rsi_window is not None else runtime_config.get("rsi_window"),
-            fallback=self.DEFAULT_RSI_WINDOW,
-            label="rsi_window",
-        )
-        self.oversold_rsi = self._coerce_rsi(
-            oversold_rsi
-            if oversold_rsi is not None
-            else runtime_config.get("oversold_rsi"),
-            fallback=self.DEFAULT_OVERSOLD_RSI,
-            label="oversold_rsi",
-        )
-        self.overbought_rsi = self._coerce_rsi(
-            overbought_rsi
-            if overbought_rsi is not None
-            else runtime_config.get("overbought_rsi"),
-            fallback=self.DEFAULT_OVERBOUGHT_RSI,
-            label="overbought_rsi",
-        )
-        self.max_lower_band_position = self._coerce_float(
-            max_lower_band_position
-            if max_lower_band_position is not None
-            else runtime_config.get("max_lower_band_position"),
-            fallback=self.DEFAULT_MAX_LOWER_BAND_POSITION,
-            label="max_lower_band_position",
-        )
-        self.min_upper_band_position = self._coerce_float(
-            min_upper_band_position
-            if min_upper_band_position is not None
-            else runtime_config.get("min_upper_band_position"),
-            fallback=self.DEFAULT_MIN_UPPER_BAND_POSITION,
-            label="min_upper_band_position",
-        )
-
-    @staticmethod
-    def _coerce_positive_int(value: Any, *, fallback: int, label: str) -> int:
-        if value is None:
-            return fallback
-        try:
-            parsed = int(value)
-        except (TypeError, ValueError):
-            logging.warning(
-                "Invalid bb_extreme_reversion config for %s=%r, using %s",
-                label,
-                value,
-                fallback,
-            )
-            return fallback
-        if parsed < 2:
-            logging.warning(
-                "bb_extreme_reversion config for %s must be >= 2, using %s",
-                label,
-                fallback,
-            )
-            return fallback
-        return parsed
-
-    @staticmethod
-    def _coerce_rsi(value: Any, *, fallback: float, label: str) -> float:
-        if value is None:
-            return fallback
-        try:
-            parsed = float(value)
-        except (TypeError, ValueError):
-            logging.warning(
-                "Invalid bb_extreme_reversion config for %s=%r, using %s",
-                label,
-                value,
-                fallback,
-            )
-            return fallback
-        if not 0.0 <= parsed <= 100.0:
-            logging.warning(
-                "bb_extreme_reversion config for %s must be in [0, 100], using %s",
-                label,
-                fallback,
-            )
-            return fallback
-        return parsed
-
-    @staticmethod
-    def _coerce_float(value: Any, *, fallback: float, label: str) -> float:
-        if value is None:
-            return fallback
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            logging.warning(
-                "Invalid bb_extreme_reversion config for %s=%r, using %s",
-                label,
-                value,
-                fallback,
-            )
-            return fallback
 
     @classmethod
     def supports_autotrade(
@@ -424,7 +248,6 @@ class BBExtremeReversion(StrategyMixin):
         Connors-style BB+RSI extreme mean-reversion signal. Replaces the old
         coinrule_grid_trading 2% trigger.
         """
-        self.refresh_runtime_config()
         context = self.latest_market_context
         symbol_features = resolve_symbol_features(context, self.symbol)
         autotrade_eligible, autotrade_route = self.supports_autotrade(context=context)
