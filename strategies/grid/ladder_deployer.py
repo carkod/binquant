@@ -1,10 +1,8 @@
-import json
 import logging
-from datetime import datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from pybinbot import SignalsConsumer
+from pybinbot import GridDeploymentRequest, MarketType, SignalsConsumer
 from market_regime.regime_routing import resolve_symbol_features
 
 if TYPE_CHECKING:
@@ -13,29 +11,31 @@ if TYPE_CHECKING:
 
 class LadderDeployer:
     ALGO = "grid_ladder"
-    DEFAULT_CONFIG_PATH = (
-        Path(__file__).resolve().parents[2] / "config" / "grid_ladder.default.json"
+    ENABLED = True
+    AUTOTRADE = False
+    GRID_ALLOCATION_PCT = 0.5
+    CASH_RESERVE_PCT = 0.25
+    MIN_RANGE_WIDTH_PCT = 1.5
+    MAX_RANGE_WIDTH_PCT = 8.0
+    BREAKOUT_BUFFER_PCT = 0.6
+    MIN_BB_WIDTH_STABILITY_CANDLES = 8
+    MAX_BB_WIDTH_CHANGE_PCT = 20.0
+    ALLOWED_MARKET_REGIMES = ("RANGE",)
+    ALLOWED_MICRO_REGIMES = ("RANGE", "TRANSITIONAL")
+    BLOCKING_MICRO_TRANSITIONS = (
+        "BREAKDOWN",
+        "VOLATILITY_EXPANSION",
+        "ENTERED_TREND_DOWN",
     )
-    OVERRIDE_CONFIG_PATH = (
-        Path(__file__).resolve().parents[2] / ".runtime" / "grid_ladder.json"
-    )
+    # autotrade_consumer overwrites this with the real margin before POSTing.
+    # Kept >0 so GridDeploymentRequest's validator (total_margin > 0) accepts it.
+    PLACEHOLDER_TOTAL_MARGIN = 1.0
 
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
-        self.last_deploy: dict[str, datetime] = {}
-
-    def _cfg(self) -> dict[str, Any]:
-        base = {}
-        for path in (self.DEFAULT_CONFIG_PATH, self.OVERRIDE_CONFIG_PATH):
-            if path.exists():
-                try:
-                    base.update(json.loads(path.read_text()).get("grid_ladder", {}))
-                except Exception:
-                    logging.exception("Failed reading %s", path)
-        return base
 
     def _bb_stable(self, n: int, max_change_pct: float) -> bool:
         df = self.ti.df_15m.tail(n)
@@ -56,32 +56,30 @@ class LadderDeployer:
     async def signal(
         self, current_price: float, bb_high: float, bb_mid: float, bb_low: float
     ) -> None:
-        cfg = self._cfg()
-        if not cfg.get("enabled", False):
+        if not self.ENABLED:
+            return
+        # binbot's grid-ladder endpoint only accepts FUTURES; emitting a
+        # SPOT grid signal would always 400 at the API. Skip early.
+        if self.ti.market_type != MarketType.FUTURES:
+            logging.info("grid_ladder skipped: market_type_not_futures")
             return
         context = self.ti.latest_market_context
-        if context is None or context.market_regime not in cfg.get(
-            "allowed_market_regimes", ["RANGE"]
-        ):
+        if context is None or context.market_regime not in self.ALLOWED_MARKET_REGIMES:
             logging.info("grid_ladder skipped: market_regime")
             return
         if context.regime_is_transitioning:
             logging.info("grid_ladder skipped: market_transitioning")
             return
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        if symbol_features is None or symbol_features.micro_regime not in cfg.get(
-            "allowed_micro_regimes", ["RANGE"]
-        ):
+        if symbol_features is None or symbol_features.micro_regime not in self.ALLOWED_MICRO_REGIMES:
             logging.info("grid_ladder skipped: symbol_micro_regime")
             return
-        if symbol_features.micro_regime_transition in set(
-            cfg.get("blocking_micro_transitions", [])
-        ):
+        if symbol_features.micro_regime_transition in self.BLOCKING_MICRO_TRANSITIONS:
             logging.info("grid_ladder skipped: symbol_transition")
             return
         if not self._bb_stable(
-            int(cfg.get("min_bb_width_stability_candles", 8)),
-            float(cfg.get("max_bb_width_change_pct", 20.0)),
+            self.MIN_BB_WIDTH_STABILITY_CANDLES,
+            self.MAX_BB_WIDTH_CHANGE_PCT,
         ):
             logging.info("grid_ladder skipped: bb_width_expanding")
             return
@@ -94,9 +92,9 @@ class LadderDeployer:
             ((range_high - range_low) / float(bb_mid)) * 100 if bb_mid > 0 else 0
         )
         if not (
-            float(cfg.get("min_range_width_pct", 1.5))
+            self.MIN_RANGE_WIDTH_PCT
             <= range_width_pct
-            <= float(cfg.get("max_range_width_pct", 8.0))
+            <= self.MAX_RANGE_WIDTH_PCT
         ):
             logging.info("grid_ladder skipped: range_width")
             return
@@ -106,23 +104,43 @@ class LadderDeployer:
             levels = 7
         else:
             levels = 9
-        breakout_buffer_pct = float(cfg.get("breakout_buffer_pct", 0.6))
-        grid_params = {
-            "symbol": self.symbol,
-            "range_low": range_low,
-            "range_high": range_high,
-            "breakout_low": range_low * (1 - breakout_buffer_pct / 100),
-            "breakout_high": range_high * (1 + breakout_buffer_pct / 100),
-            "level_count": levels,
-            "range_width_pct": range_width_pct,
-            "algorithm": self.ALGO,
-        }
+        breakout_buffer_pct = self.BREAKOUT_BUFFER_PCT
+        context_payload = context.model_dump(mode="json") if context else {}
+        grid_params = GridDeploymentRequest(
+            symbol=self.symbol,
+            fiat=str(self.at_consumer.autotrade_settings["fiat"]),
+            exchange=self.ti.exchange,
+            market_type=self.ti.market_type,
+            algorithm_name=self.ALGO,
+            generated_at=datetime.now(UTC),
+            range_low=range_low,
+            range_high=range_high,
+            breakout_low=range_low * (1 - breakout_buffer_pct / 100),
+            breakout_high=range_high * (1 + breakout_buffer_pct / 100),
+            level_count=levels,
+            total_margin=self.PLACEHOLDER_TOTAL_MARGIN,
+            current_price=current_price,
+            current_regime=context.market_regime,
+            context=context_payload,
+            indicators={
+                "bb_high": bb_high,
+                "bb_mid": bb_mid,
+                "bb_low": bb_low,
+                "range_width_pct": range_width_pct,
+            },
+            allocation_pct=self.GRID_ALLOCATION_PCT,
+            cash_reserve_pct=self.CASH_RESERVE_PCT,
+        )
         value = SignalsConsumer(
             signal_kind="grid_deploy",
             direction="grid",
             current_price=current_price,
-            autotrade=cfg.get("autotrade", False),
+            autotrade=self.AUTOTRADE,
             grid_params=grid_params,
         )
-        self.ti.dispatch_signal_record(value=value)
+        # Run autotrade gate first so it can resolve the actual total_margin
+        # on the signal (the value built above carries a candidate placeholder).
+        # Then dispatch the analytics record so the row reflects what was
+        # actually deployed.
         await self.at_consumer.process_autotrade_restrictions(value)
+        self.ti.dispatch_signal_record(value=value)

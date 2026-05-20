@@ -1,0 +1,20 @@
+{
+  "grid_ladder": {
+    "enabled": false,
+    "autotrade": false,
+    "grid_allocation_pct": 0.5,
+    "cash_reserve_pct": 0.25,
+    "min_range_width_pct": 1.5,
+    "max_range_width_pct": 8.0,
+    "breakout_buffer_pct": 0.6,
+    "min_bb_width_stability_candles": 8,
+    "max_bb_width_change_pct": 20.0,
+    "allowed_market_regimes": ["RANGE"],
+    "allowed_micro_regimes": ["RANGE", "TRANSITIONAL"],
+    "blocking_micro_transitions": [
+      "BREAKDOWN",
+      "VOLATILITY_EXPANSION",
+      "ENTERED_TREND_DOWN"
+    ]
+  }
+}

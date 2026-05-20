@@ -32,6 +32,7 @@ from strategies.apex_flow import ApexFlow
 from strategies.coinrule.buy_the_dip import BuyTheDip
 from strategies.coinrule.bb_extreme_reversion import BBExtremeReversion
 from strategies.coinrule.price_tracker import PriceTracker
+from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.inverse_price_tracker import InversePriceTracker
 from strategies.range_bb_rsi_mean_reversion import RangeBbRsiMeanReversion
@@ -233,6 +234,7 @@ class ContextEvaluator:
         self.rbrmr = RangeBbRsiMeanReversion(cls=self)
         self.rfbf = RangeFailedBreakoutFade(cls=self)
         self.rsrr = RelativeStrengthReversalRange(cls=self)
+        self.grid_ladder = LadderDeployer(cls=self)
 
     def indicators_enrichment(
         self, df: TypedDataFrame[KlineSchema]
@@ -291,19 +293,22 @@ class ContextEvaluator:
         grid_params = value.grid_params
         signal_kind = value.signal_kind
         try:
+            signal_kind = value.signal_kind or "bot"
             bot_params = value.bot_params
-            if bot_params is None:
-                return
+            grid_params = value.grid_params
 
             context = self.latest_market_context
-            position = bot_params.position
-            direction = (
-                position.value
-                if hasattr(position, "value")
-                else position
-                if position is not None
-                else value.direction or "UNKNOWN"
-            )
+            if bot_params is not None:
+                position = bot_params.position
+                direction = (
+                    position.value
+                    if hasattr(position, "value")
+                    else position
+                    if position is not None
+                    else value.direction or "UNKNOWN"
+                )
+            else:
+                direction = value.direction or "grid"
             regime = (
                 context.market_regime if context and context.market_regime else None
             )
@@ -451,6 +456,18 @@ class ContextEvaluator:
 
             await self._safe_signal("ApexFlow", self.af.signal())
             self.last_market_regime = self.af.last_market_regime
+
+            # Move to the bottom after tested
+            await self._safe_signal(
+                "LadderDeployer",
+                self.grid_ladder.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
 
             # Keep 15m entry strategies ordered from rarest/selective to broadest.
             # The first matching autotrade setup gets the cleanest chance to fire.
