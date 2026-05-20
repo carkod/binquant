@@ -288,6 +288,8 @@ class ContextEvaluator:
         (model_dump, attribute access) so a malformed payload can't bubble
         up and short-circuit telegram/autotrade dispatch for this kline.
         """
+        grid_params = value.grid_params
+        signal_kind = value.signal_kind
         try:
             bot_params = value.bot_params
             if bot_params is None:
@@ -317,14 +319,20 @@ class ContextEvaluator:
                 merged_indicators.setdefault("score", value.score)
 
             self.binbot_api.dispatch_create_signal(
-                algorithm_name=bot_params.name,
+                algorithm_name=(
+                    bot_params.name if bot_params is not None else "grid_ladder"
+                ),
                 symbol=self.symbol,
                 generated_at=datetime.now(UTC),
                 direction=direction,
                 autotrade=value.autotrade,
                 current_regime=regime,
                 context=context.model_dump(mode="json") if context else {},
-                bot_params=bot_params.model_dump(mode="json"),
+                signal_kind=signal_kind,
+                bot_params=(bot_params.model_dump(mode="json") if bot_params else {}),
+                grid_params=(
+                    grid_params.model_dump(mode="json") if grid_params else {}
+                ),
                 indicators=merged_indicators,
             )
         except Exception:

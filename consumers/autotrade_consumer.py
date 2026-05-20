@@ -202,6 +202,67 @@ class AutotradeConsumer:
         )
         return is_margin_allowed
 
+    async def process_grid_deployment(self, data: SignalsConsumer) -> None:
+        grid_params = data.grid_params
+        if not grid_params:
+            logging.info("grid_ladder skipped: missing_grid_params")
+            return
+        if not data.autotrade or not self.autotrade_settings.get("autotrade"):
+            logging.info("grid_ladder skipped: autotrade_disabled")
+            return
+        available_balance = float(
+            self.binbot_api.get_available_fiat(
+                exchange=self.exchange, fiat=self.autotrade_settings["fiat"]
+            )
+        )
+        active_ladders = self.binbot_api.get_active_grid_ladders()
+        max_active = min(
+            3, int(self.autotrade_settings.get("max_active_grid_ladders", 2))
+        )
+        if len(active_ladders) >= max_active:
+            logging.info("grid_ladder skipped: active_ladder_limit")
+            return
+        symbol = (
+            grid_params.get("symbol")
+            if isinstance(grid_params, dict)
+            else grid_params.symbol
+        )
+        if any(
+            (
+                ladder.get("symbol")
+                if isinstance(ladder, dict)
+                else getattr(ladder, "symbol", None)
+            )
+            == symbol
+            for ladder in active_ladders
+        ):
+            logging.info("grid_ladder skipped: active_ladder_exists")
+            return
+        usable = available_balance * float(
+            self.autotrade_settings.get("grid_allocation_pct", 0.5)
+        )
+        reserve = available_balance * float(
+            self.autotrade_settings.get("cash_reserve_pct", 0.25)
+        )
+        deployable = max(usable - reserve, 0)
+        per_ladder_cap = available_balance * float(
+            self.autotrade_settings.get("max_margin_per_ladder_pct", 0.25)
+        )
+        remaining_slots = max(max_active - len(active_ladders), 1)
+        suggested_margin = round_numbers(
+            min(per_ladder_cap, deployable / remaining_slots), 8
+        )
+        if suggested_margin <= 0:
+            logging.info("grid_ladder skipped: insufficient_available_balance")
+            return
+        payload = (
+            dict(grid_params)
+            if isinstance(grid_params, dict)
+            else grid_params.model_dump(mode="json")
+        )
+        payload.setdefault("total_margin", suggested_margin)
+        self.binbot_api.create_grid_ladder(payload)
+
     async def process_autotrade_restrictions(self, result: SignalsConsumer):
         """
         Refactored autotrade conditions.

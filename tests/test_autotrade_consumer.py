@@ -353,3 +353,35 @@ class TestAutotradeConsumer:
         assert create_payload["stop_loss"] == settings["stop_loss"]
         assert create_payload["take_profit"] == settings["take_profit"]
         assert create_payload["trailing_deviation"] == settings["trailing_deviation"]
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_skips_when_autotrade_false(self):
+        signal = SignalsConsumer(
+            autotrade=False,
+            signal_kind="grid_deploy",
+            grid_params={"symbol": "BTCUSDT"},
+        )
+        await self.consumer.process_autotrade_restrictions(signal)
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_rejects_limit_and_duplicate(self):
+        self.consumer.autotrade_settings["max_active_grid_ladders"] = 2
+        self.mock_binbot_api.get_active_grid_ladders.return_value = [
+            {"symbol": "BTCUSDT"},
+            {"symbol": "ETHUSDT"},
+        ]
+        signal = SignalsConsumer(
+            autotrade=True, signal_kind="grid_deploy", grid_params={"symbol": "XRPUSDT"}
+        )
+        await self.consumer.process_autotrade_restrictions(signal)
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+        self.mock_binbot_api.get_active_grid_ladders.return_value = [
+            {"symbol": "BTCUSDT"}
+        ]
+        signal_dup = SignalsConsumer(
+            autotrade=True, signal_kind="grid_deploy", grid_params={"symbol": "BTCUSDT"}
+        )
+        await self.consumer.process_autotrade_restrictions(signal_dup)
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
