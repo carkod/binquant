@@ -41,6 +41,9 @@ class BBExtremeReversion(StrategyMixin):
     """
 
     ALGO = "bb_extreme_reversion"
+    # This is the highest signals in range markets.
+    # Temporarily disable to test grid ladder
+    ENABLED = False
     CLIP_SIZE_QUOTE = 20.0
     LEVERAGE = 3
 
@@ -248,6 +251,11 @@ class BBExtremeReversion(StrategyMixin):
         Connors-style BB+RSI extreme mean-reversion signal. Replaces the old
         coinrule_grid_trading 2% trigger.
         """
+        if not self.ENABLED:
+            logging.info(
+                "bb_extreme_reversion is disabled, skipping signal generation."
+            )
+            return
         context = self.latest_market_context
         symbol_features = resolve_symbol_features(context, self.symbol)
         autotrade_eligible, autotrade_route = self.supports_autotrade(context=context)

@@ -303,9 +303,11 @@ class ContextEvaluator:
                 direction = (
                     position.value
                     if hasattr(position, "value")
-                    else position
-                    if position is not None
-                    else value.direction or "UNKNOWN"
+                    else (
+                        position
+                        if position is not None
+                        else value.direction or "UNKNOWN"
+                    )
                 )
             else:
                 direction = value.direction or "grid"
@@ -457,18 +459,6 @@ class ContextEvaluator:
             await self._safe_signal("ApexFlow", self.af.signal())
             self.last_market_regime = self.af.last_market_regime
 
-            # Move to the bottom after tested
-            await self._safe_signal(
-                "LadderDeployer",
-                self.grid_ladder.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-
-
             # Keep 15m entry strategies ordered from rarest/selective to broadest.
             # The first matching autotrade setup gets the cleanest chance to fire.
             await self._safe_signal(
@@ -516,6 +506,18 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
+
+            await self._safe_signal(
+                "LadderDeployer",
+                self.grid_ladder.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            # Disabled temporarily to test grid ladder
             await self._safe_signal(
                 "BuyTheDip",
                 self.coinrule_buy_the_dip.signal(
@@ -525,6 +527,7 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
+
             await self._safe_signal(
                 "BBExtremeReversion",
                 self.bbex.signal(

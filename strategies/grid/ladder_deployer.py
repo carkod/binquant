@@ -30,6 +30,7 @@ class LadderDeployer:
     # autotrade_consumer overwrites this with the real margin before POSTing.
     # Kept >0 so GridDeploymentRequest's validator (total_margin > 0) accepts it.
     PLACEHOLDER_TOTAL_MARGIN = 1.0
+    LEVEL_COUNT = 3
 
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
@@ -71,7 +72,10 @@ class LadderDeployer:
             logging.info("grid_ladder skipped: market_transitioning")
             return
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        if symbol_features is None or symbol_features.micro_regime not in self.ALLOWED_MICRO_REGIMES:
+        if (
+            symbol_features is None
+            or symbol_features.micro_regime not in self.ALLOWED_MICRO_REGIMES
+        ):
             logging.info("grid_ladder skipped: symbol_micro_regime")
             return
         if symbol_features.micro_regime_transition in self.BLOCKING_MICRO_TRANSITIONS:
@@ -92,18 +96,10 @@ class LadderDeployer:
             ((range_high - range_low) / float(bb_mid)) * 100 if bb_mid > 0 else 0
         )
         if not (
-            self.MIN_RANGE_WIDTH_PCT
-            <= range_width_pct
-            <= self.MAX_RANGE_WIDTH_PCT
+            self.MIN_RANGE_WIDTH_PCT <= range_width_pct <= self.MAX_RANGE_WIDTH_PCT
         ):
             logging.info("grid_ladder skipped: range_width")
             return
-        if range_width_pct <= 2.5:
-            levels = 5
-        elif range_width_pct <= 5.0:
-            levels = 7
-        else:
-            levels = 9
         breakout_buffer_pct = self.BREAKOUT_BUFFER_PCT
         context_payload = context.model_dump(mode="json") if context else {}
         grid_params = GridDeploymentRequest(
@@ -117,7 +113,7 @@ class LadderDeployer:
             range_high=range_high,
             breakout_low=range_low * (1 - breakout_buffer_pct / 100),
             breakout_high=range_high * (1 + breakout_buffer_pct / 100),
-            level_count=levels,
+            level_count=self.LEVEL_COUNT,
             total_margin=self.PLACEHOLDER_TOTAL_MARGIN,
             current_price=current_price,
             current_regime=context.market_regime,
