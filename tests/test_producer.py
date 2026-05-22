@@ -178,7 +178,7 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
     }
 
 
-def test_process_data_temporarily_runs_only_spike_hunter_and_ladder_deployer():
+def test_process_data_temporarily_runs_only_ladder_deployer():
     source = getsource(ContextEvaluator.process_data)
     safe_signal_names = findall(
         r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
@@ -186,6 +186,5 @@ def test_process_data_temporarily_runs_only_spike_hunter_and_ladder_deployer():
     )
 
     assert safe_signal_names == [
-        "SpikeHunterV3KuCoin",
         "LadderDeployer",
     ]

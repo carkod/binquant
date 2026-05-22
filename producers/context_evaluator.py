@@ -28,7 +28,6 @@ from pybinbot import (
 )
 
 from strategies.grid.ladder_deployer import LadderDeployer
-from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from market_regime.models import LiveMarketContext
@@ -214,7 +213,6 @@ class ContextEvaluator:
         """
         Initialize algorithms that consume self.df_15m and broader market context.
         """
-        self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.grid_ladder = LadderDeployer(cls=self)
 
     def indicators_enrichment(
@@ -404,18 +402,8 @@ class ContextEvaluator:
             close_price = float(self.df_15m["close"].iloc[-1])
             spreads = self.bb_spreads(self.df_15m)
 
-            # Temporary production test: keep only Spike Hunter v3 KuCoin and
-            # the grid ladder deployer active while ladder sizing is observed.
-            await self._safe_signal(
-                "SpikeHunterV3KuCoin",
-                self.sh3.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-
+            # Temporary production test: keep only the grid ladder deployer
+            # active while ladder sizing is observed.
             await self._safe_signal(
                 "LadderDeployer",
                 self.grid_ladder.signal(
