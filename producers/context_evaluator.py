@@ -28,6 +28,7 @@ from pybinbot import (
 )
 
 from strategies.grid.ladder_deployer import LadderDeployer
+from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from market_regime.models import LiveMarketContext
@@ -213,6 +214,7 @@ class ContextEvaluator:
         """
         Initialize algorithms that consume self.df_15m and broader market context.
         """
+        self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.grid_ladder = LadderDeployer(cls=self)
 
     def indicators_enrichment(
