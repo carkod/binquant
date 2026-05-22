@@ -178,21 +178,14 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
     }
 
 
-def test_process_data_keeps_15m_entry_strategies_in_rarity_order():
+def test_process_data_temporarily_runs_only_spike_hunter_and_ladder_deployer():
     source = getsource(ContextEvaluator.process_data)
     safe_signal_names = findall(
         r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
         source,
     )
 
-    apex_index = safe_signal_names.index("ApexFlow")
-    assert safe_signal_names[apex_index:] == [
-        "ApexFlow",
-        "RangeFailedBreakoutFade",
-        "RangeBbRsiMeanReversion",
-        "RelativeStrengthReversalRange",
-        "LiquidationSweepPump",
+    assert safe_signal_names == [
         "SpikeHunterV3KuCoin",
         "LadderDeployer",
-        "BuyTheDip",
     ]
