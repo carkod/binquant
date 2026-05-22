@@ -118,8 +118,10 @@ def make_algo(df: DataFrame) -> PriceTracker:
     return PriceTracker(cast(Any, make_context(df)))
 
 
-def make_bbex_algo(df: DataFrame) -> BBExtremeReversion:
-    return BBExtremeReversion(cast(Any, make_context(df)))
+def make_bbex_algo(df: DataFrame, enabled: bool = True) -> BBExtremeReversion:
+    algo = BBExtremeReversion(cast(Any, make_context(df)))
+    algo.ENABLED = enabled
+    return algo
 
 
 def make_ohlcv_df(n: int = 50, oversold: bool = False) -> DataFrame:
@@ -928,6 +930,32 @@ def make_bbex_df(
             row["high"] = close + 0.2
             row["low"] = close - 0.2
     return DataFrame(rows)
+
+
+@pytest.mark.asyncio
+async def test_bb_extreme_skips_signal_generation_when_disabled():
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df, enabled=False)
+    algo.latest_market_context = make_market_context()
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
+
+    await algo.signal(
+        current_price=90.0,
+        bb_high=105.0,
+        bb_low=95.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_not_awaited()
+    tg_mock.assert_not_called()
+    cast(Mock, algo.ti.dispatch_signal_record).assert_not_called()
 
 
 @pytest.mark.asyncio

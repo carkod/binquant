@@ -5,7 +5,15 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pybinbot import BotBase, MarketType, Position, SignalsConsumer
+from datetime import UTC, datetime
+
+from pybinbot import (
+    BotBase,
+    GridDeploymentRequest,
+    MarketType,
+    Position,
+    SignalsConsumer,
+)
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
@@ -34,6 +42,7 @@ class TestAutotradeConsumer:
         # Methods used in AutotradeConsumer
         self.mock_binbot_api.get_active_pairs.return_value = []
         self.mock_binbot_api.get_available_fiat.return_value = 1000
+        self.mock_binbot_api.get_active_grid_ladders.return_value = {"detail": []}
         # Methods used in Autotrade (for completeness)
         self.mock_binbot_api.get_single_symbol.return_value = {
             "price_precision": 2,
@@ -91,6 +100,23 @@ class TestAutotradeConsumer:
 
     def teardown_method(self):
         pass
+
+    def _grid_params(self, symbol: str) -> GridDeploymentRequest:
+        return GridDeploymentRequest(
+            fiat="USDT",
+            exchange=self.consumer.exchange,
+            market_type=MarketType.FUTURES,
+            algorithm_name="grid_ladder",
+            generated_at=datetime.now(UTC),
+            symbol=symbol,
+            range_low=95.0,
+            range_high=105.0,
+            level_count=7,
+            total_margin=10.0,
+            breakout_low=94.4,
+            breakout_high=105.6,
+            current_price=100.0,
+        )
 
     # --- Original AutotradeConsumer tests ---
     def test_reached_max_active_autobots_paper_trading(self):
@@ -353,3 +379,89 @@ class TestAutotradeConsumer:
         assert create_payload["stop_loss"] == settings["stop_loss"]
         assert create_payload["take_profit"] == settings["take_profit"]
         assert create_payload["trailing_deviation"] == settings["trailing_deviation"]
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_skips_when_autotrade_false(self):
+        signal = SignalsConsumer(
+            autotrade=False,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+        await self.consumer.process_autotrade_restrictions(signal)
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_rejects_limit_and_duplicate(self):
+        self.consumer.autotrade_settings["max_active_grid_ladders"] = 2
+        self.mock_binbot_api.get_active_grid_ladders.return_value = {
+            "detail": [{"symbol": "BTCUSDT"}, {"symbol": "ETHUSDT"}]
+        }
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("XRPUSDT"),
+        )
+        await self.consumer.process_autotrade_restrictions(signal)
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+        self.mock_binbot_api.get_active_grid_ladders.return_value = {
+            "detail": [{"symbol": "BTCUSDT"}]
+        }
+        signal_dup = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+        await self.consumer.process_autotrade_restrictions(signal_dup)
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_posts_with_suggested_margin(self):
+        """
+        Success path: a placeholder total_margin on the signal must be
+        replaced with the autotrade-resolved margin both on the create_grid_ladder
+        POST and on the SignalsConsumer (so analytics records the real value).
+        """
+        self.consumer.autotrade_settings["max_active_grid_ladders"] = 2
+        self.mock_binbot_api.get_active_grid_ladders.return_value = {"detail": []}
+        self.mock_binbot_api.get_available_fiat.return_value = 1000
+
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+        assert signal.grid_params is not None
+        signal.grid_params.total_margin = 1.0  # placeholder from LadderDeployer
+
+        await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.create_grid_ladder.assert_called_once()
+        payload = self.mock_binbot_api.create_grid_ladder.call_args.args[0]
+        # available=1000, allocation=0.5, reserve=0.25 → deployable=250,
+        # remaining_slots=2 → per_ladder=250/2=125, capped at 0.25*1000=250.
+        assert payload["total_margin"] == 125
+        assert signal.grid_params.total_margin == 125
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_swallows_create_grid_ladder_race(self):
+        """
+        Two binquant workers can both pass the active-ladder check between
+        the GET and POST. The POST may then 400 against binbot's partial
+        unique index — log and continue instead of bubbling out.
+        """
+        self.mock_binbot_api.get_active_grid_ladders.return_value = {"detail": []}
+        self.mock_binbot_api.get_available_fiat.return_value = 1000
+        self.mock_binbot_api.create_grid_ladder.side_effect = RuntimeError(
+            "race: ladder already exists"
+        )
+
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+
+        # Should not raise.
+        await self.consumer.process_autotrade_restrictions(signal)
+        self.mock_binbot_api.create_grid_ladder.assert_called_once()

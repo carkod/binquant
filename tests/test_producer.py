@@ -18,7 +18,7 @@ def klines_connector(monkeypatch):
     """
 
     class Client:
-        def klines(self, markets, interval):
+        def klines(self):
             return None
 
     def new_init(self, producer, interval="1m"):
@@ -193,6 +193,6 @@ def test_process_data_keeps_15m_entry_strategies_in_rarity_order():
         "RelativeStrengthReversalRange",
         "LiquidationSweepPump",
         "SpikeHunterV3KuCoin",
+        "LadderDeployer",
         "BuyTheDip",
-        "BBExtremeReversion",
     ]

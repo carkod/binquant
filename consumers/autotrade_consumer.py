@@ -1,9 +1,11 @@
 import logging
+from typing import Any
 
 from pybinbot import (
     BinbotApi,
     BotBase,
     ExchangeId,
+    GridDeploymentRequest,
     KucoinFutures,
     MarketType,
     SignalsConsumer,
@@ -27,7 +29,6 @@ class AutotradeConsumer:
         self.market_domination_reversal = False
         self.active_bots: list = []
         self.paper_trading_active_bots: list = []
-        self.active_bot_pairs: list = []
         self.active_test_bots: list = active_test_bots
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
@@ -96,7 +97,7 @@ class AutotradeConsumer:
             )
             return fiat_order_size
 
-        if stop_loss / 100 <= 0:
+        if stop_loss <= 0:
             logging.info(
                 "Skipping futures autotrade because stop loss is not configured."
             )
@@ -202,6 +203,109 @@ class AutotradeConsumer:
         )
         return is_margin_allowed
 
+    @staticmethod
+    def _response_data_list(response) -> list:
+        # binbot grid-ladder endpoints return {"detail": [...]}; older endpoints
+        # used {"data": [...]}. Accept either so we don't silently swallow the
+        # active-ladder list when the API shape changes.
+        if isinstance(response, dict):
+            for key in ("detail", "data"):
+                value = response.get(key)
+                if isinstance(value, list):
+                    return value
+            return []
+        if isinstance(response, list):
+            return response
+        return []
+
+    @staticmethod
+    def _grid_param_value(
+        grid_params: GridDeploymentRequest, field_name: str, fallback: Any
+    ) -> Any:
+        value = getattr(grid_params, field_name, fallback)
+        return fallback if value is None else value
+
+    @staticmethod
+    def _ratio_config(value: Any) -> float:
+        parsed = float(value)
+        return parsed / 100 if parsed > 1 else parsed
+
+    async def process_grid_deployment(self, data: SignalsConsumer) -> None:
+        grid_params = data.grid_params
+        if not grid_params:
+            logging.info("grid_ladder skipped: missing_grid_params")
+            return
+        if not data.autotrade or not self.autotrade_settings.get("autotrade"):
+            logging.info("grid_ladder skipped: autotrade_disabled")
+            return
+
+        available_balance = float(
+            self.binbot_api.get_available_fiat(
+                exchange=self.exchange, fiat=self.autotrade_settings["fiat"]
+            )
+        )
+        active_ladders = self._response_data_list(
+            self.binbot_api.get_active_grid_ladders()
+        )
+        max_active = min(
+            3, int(self.autotrade_settings.get("max_active_grid_ladders", 2))
+        )
+        if len(active_ladders) >= max_active:
+            logging.info("grid_ladder skipped: active_ladder_limit")
+            return
+        symbol = grid_params.symbol
+        if any(ladder.get("symbol") == symbol for ladder in active_ladders):
+            logging.info("grid_ladder skipped: active_ladder_exists")
+            return
+        grid_allocation_pct = self._grid_param_value(
+            grid_params,
+            "allocation_pct",
+            self.autotrade_settings.get("grid_allocation_pct", 0.5),
+        )
+        cash_reserve_pct = self._grid_param_value(
+            grid_params,
+            "cash_reserve_pct",
+            self.autotrade_settings.get("cash_reserve_pct", 0.25),
+        )
+        max_margin_per_ladder = self._grid_param_value(
+            grid_params,
+            "max_margin_per_ladder",
+            None,
+        )
+        usable = available_balance * self._ratio_config(grid_allocation_pct)
+        reserve = available_balance * self._ratio_config(cash_reserve_pct)
+        if max_margin_per_ladder is None:
+            per_ladder_cap = available_balance * self._ratio_config(
+                self.autotrade_settings.get("max_margin_per_ladder_pct", 0.25)
+            )
+        else:
+            per_ladder_cap = float(max_margin_per_ladder)
+        deployable = max(usable - reserve, 0)
+        remaining_slots = max(max_active - len(active_ladders), 1)
+        suggested_margin = round_numbers(
+            min(per_ladder_cap, deployable / remaining_slots), 8
+        )
+        if suggested_margin <= 0:
+            logging.info("grid_ladder skipped: insufficient_available_balance")
+            return
+        # Mutate total_margin on the signal so downstream analytics
+        # (dispatch_signal_record) sees the actual deployed amount, not the
+        # candidate placeholder the strategy emitted.
+        grid_params.total_margin = suggested_margin
+        payload = grid_params.model_dump(mode="json")
+
+        try:
+            # Two binquant workers can both pass the active-ladder check between
+            # the GET and POST, so the POST may 400 against binbot's partial
+            # unique index. Log and move on instead of bubbling the exception
+            # into the strategy pipeline.
+            self.binbot_api.create_grid_ladder(payload)
+        except Exception:
+            logging.exception(
+                "create_grid_ladder failed for %s; another worker may have raced.",
+                payload.get("symbol"),
+            )
+
     async def process_autotrade_restrictions(self, result: SignalsConsumer):
         """
         Refactored autotrade conditions.
@@ -213,8 +317,10 @@ class AutotradeConsumer:
         4. Check if test algorithms (autotrade = False)
         5. Check active strategy
         """
-        data = result
-        bot_params = data.bot_params
+        if result.signal_kind == "grid_deploy":
+            await self.process_grid_deployment(result)
+            return
+        bot_params = result.bot_params
         if bot_params is None:
             logging.info(
                 "Skipping autotrade processing because signal is missing bot_params."
@@ -238,14 +344,14 @@ class AutotradeConsumer:
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
-        if (
-            symbol not in self.active_test_bots
-            and self.test_autotrade_settings["autotrade"]
-            and not data.autotrade
-        ):
+        if self.test_autotrade_settings["autotrade"] and not result.autotrade:
             if self.reached_max_active_autobots("paper_trading"):
                 logging.info(
                     "Reached maximum number of paper_trading active bots set in controller settings"
+                )
+            elif symbol in self.active_test_bots:
+                logging.info(
+                    "Skipping paper trading: active bot already exists for %s", symbol
                 )
             else:
                 # Test autotrade runs independently of autotrade = 1
@@ -255,7 +361,7 @@ class AutotradeConsumer:
                     algorithm_name=algorithm_name,
                     binbot_api=self.binbot_api,
                 )
-                await test_autotrade.activate_autotrade(data)
+                await test_autotrade.activate_autotrade(result)
 
         # Check balance to avoid failed autotrades
         balance_check = self.binbot_api.get_available_fiat(
@@ -273,7 +379,7 @@ class AutotradeConsumer:
         ):
             effective_fiat_order_size = self._resolve_futures_order_size(
                 symbol=symbol,
-                price=float(data.current_price),
+                price=float(result.current_price),
                 stop_loss=float(stop_loss),
                 fiat_order_size=float(requested_fiat_order_size),
                 available_balance=float(balance_check),
@@ -287,14 +393,14 @@ class AutotradeConsumer:
         """
         Real autotrade starts
         """
-        if (
-            self.autotrade_settings["autotrade"]
-            and data.autotrade
-            and symbol not in self.active_bot_pairs
-        ):
+        if self.autotrade_settings["autotrade"] and result.autotrade:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
+                )
+            elif symbol in self.active_bots:
+                logging.info(
+                    "Skipping autotrade: active bot already exists for %s", symbol
                 )
             else:
                 autotrade = Autotrade(
@@ -304,6 +410,4 @@ class AutotradeConsumer:
                     db_collection_name="bots",
                     binbot_api=self.binbot_api,
                 )
-                await autotrade.activate_autotrade(data)
-
-        pass
+                await autotrade.activate_autotrade(result)

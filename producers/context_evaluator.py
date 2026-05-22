@@ -30,8 +30,8 @@ from pybinbot import (
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.apex_flow import ApexFlow
 from strategies.coinrule.buy_the_dip import BuyTheDip
-from strategies.coinrule.bb_extreme_reversion import BBExtremeReversion
 from strategies.coinrule.price_tracker import PriceTracker
+from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.inverse_price_tracker import InversePriceTracker
 from strategies.range_bb_rsi_mean_reversion import RangeBbRsiMeanReversion
@@ -228,11 +228,12 @@ class ContextEvaluator:
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
-        self.bbex = BBExtremeReversion(cls=self)
+        # self.bbex = BBExtremeReversion(cls=self)
         self.coinrule_buy_the_dip = BuyTheDip(cls=self)
         self.rbrmr = RangeBbRsiMeanReversion(cls=self)
         self.rfbf = RangeFailedBreakoutFade(cls=self)
         self.rsrr = RelativeStrengthReversalRange(cls=self)
+        self.grid_ladder = LadderDeployer(cls=self)
 
     def indicators_enrichment(
         self, df: TypedDataFrame[KlineSchema]
@@ -288,20 +289,27 @@ class ContextEvaluator:
         (model_dump, attribute access) so a malformed payload can't bubble
         up and short-circuit telegram/autotrade dispatch for this kline.
         """
+        grid_params = value.grid_params
+        signal_kind = value.signal_kind
         try:
+            signal_kind = value.signal_kind or "bot"
             bot_params = value.bot_params
-            if bot_params is None:
-                return
+            grid_params = value.grid_params
 
             context = self.latest_market_context
-            position = bot_params.position
-            direction = (
-                position.value
-                if hasattr(position, "value")
-                else position
-                if position is not None
-                else value.direction or "UNKNOWN"
-            )
+            if bot_params is not None:
+                position = bot_params.position
+                direction = (
+                    position.value
+                    if hasattr(position, "value")
+                    else (
+                        position
+                        if position is not None
+                        else value.direction or "UNKNOWN"
+                    )
+                )
+            else:
+                direction = value.direction or "grid"
             regime = (
                 context.market_regime if context and context.market_regime else None
             )
@@ -317,14 +325,20 @@ class ContextEvaluator:
                 merged_indicators.setdefault("score", value.score)
 
             self.binbot_api.dispatch_create_signal(
-                algorithm_name=bot_params.name,
+                algorithm_name=(
+                    bot_params.name if bot_params is not None else "grid_ladder"
+                ),
                 symbol=self.symbol,
                 generated_at=datetime.now(UTC),
                 direction=direction,
                 autotrade=value.autotrade,
                 current_regime=regime,
                 context=context.model_dump(mode="json") if context else {},
-                bot_params=bot_params.model_dump(mode="json"),
+                signal_kind=signal_kind,
+                bot_params=(bot_params.model_dump(mode="json") if bot_params else {}),
+                grid_params=(
+                    grid_params.model_dump(mode="json") if grid_params else {}
+                ),
                 indicators=merged_indicators,
             )
         except Exception:
@@ -491,6 +505,18 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
+
+            await self._safe_signal(
+                "LadderDeployer",
+                self.grid_ladder.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            # Disabled temporarily to test grid ladder
             await self._safe_signal(
                 "BuyTheDip",
                 self.coinrule_buy_the_dip.signal(
@@ -500,14 +526,15 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
-            await self._safe_signal(
-                "BBExtremeReversion",
-                self.bbex.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+
+            # await self._safe_signal(
+            #     "BBExtremeReversion",
+            #     self.bbex.signal(
+            #         current_price=close_price,
+            #         bb_high=spreads.bb_high,
+            #         bb_mid=spreads.bb_mid,
+            #         bb_low=spreads.bb_low,
+            #     ),
+            # )
 
         return
