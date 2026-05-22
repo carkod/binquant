@@ -29,7 +29,6 @@ class AutotradeConsumer:
         self.market_domination_reversal = False
         self.active_bots: list = []
         self.paper_trading_active_bots: list = []
-        self.active_bot_pairs: list = []
         self.active_test_bots: list = active_test_bots
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
@@ -345,14 +344,14 @@ class AutotradeConsumer:
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
-        if (
-            symbol not in self.active_test_bots
-            and self.test_autotrade_settings["autotrade"]
-            and not result.autotrade
-        ):
+        if self.test_autotrade_settings["autotrade"] and not result.autotrade:
             if self.reached_max_active_autobots("paper_trading"):
                 logging.info(
                     "Reached maximum number of paper_trading active bots set in controller settings"
+                )
+            elif symbol in self.active_test_bots:
+                logging.info(
+                    "Skipping paper trading: active bot already exists for %s", symbol
                 )
             else:
                 # Test autotrade runs independently of autotrade = 1
@@ -394,14 +393,14 @@ class AutotradeConsumer:
         """
         Real autotrade starts
         """
-        if (
-            self.autotrade_settings["autotrade"]
-            and result.autotrade
-            and symbol not in self.active_bot_pairs
-        ):
+        if self.autotrade_settings["autotrade"] and result.autotrade:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
+                )
+            elif symbol in self.active_bots:
+                logging.info(
+                    "Skipping autotrade: active bot already exists for %s", symbol
                 )
             else:
                 autotrade = Autotrade(
@@ -412,5 +411,3 @@ class AutotradeConsumer:
                     binbot_api=self.binbot_api,
                 )
                 await autotrade.activate_autotrade(result)
-
-        pass
