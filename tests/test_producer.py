@@ -193,7 +193,6 @@ def test_process_data_keeps_15m_entry_strategies_in_rarity_order():
         "RelativeStrengthReversalRange",
         "LiquidationSweepPump",
         "SpikeHunterV3KuCoin",
-        "BuyTheDip",
-        "BBExtremeReversion",
         "LadderDeployer",
+        "BuyTheDip",
     ]

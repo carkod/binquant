@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 class LadderDeployer:
     ALGO = "grid_ladder"
     ENABLED = True
-    AUTOTRADE = False
+    AUTOTRADE = True
     GRID_ALLOCATION_PCT = 0.5
     CASH_RESERVE_PCT = 0.25
     MIN_RANGE_WIDTH_PCT = 1.5

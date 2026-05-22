@@ -30,7 +30,6 @@ from pybinbot import (
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.apex_flow import ApexFlow
 from strategies.coinrule.buy_the_dip import BuyTheDip
-from strategies.coinrule.bb_extreme_reversion import BBExtremeReversion
 from strategies.coinrule.price_tracker import PriceTracker
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
@@ -229,7 +228,7 @@ class ContextEvaluator:
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
-        self.bbex = BBExtremeReversion(cls=self)
+        # self.bbex = BBExtremeReversion(cls=self)
         self.coinrule_buy_the_dip = BuyTheDip(cls=self)
         self.rbrmr = RangeBbRsiMeanReversion(cls=self)
         self.rfbf = RangeFailedBreakoutFade(cls=self)
@@ -528,14 +527,14 @@ class ContextEvaluator:
                 ),
             )
 
-            await self._safe_signal(
-                "BBExtremeReversion",
-                self.bbex.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+            # await self._safe_signal(
+            #     "BBExtremeReversion",
+            #     self.bbex.signal(
+            #         current_price=close_price,
+            #         bb_high=spreads.bb_high,
+            #         bb_mid=spreads.bb_mid,
+            #         bb_low=spreads.bb_low,
+            #     ),
+            # )
 
         return
