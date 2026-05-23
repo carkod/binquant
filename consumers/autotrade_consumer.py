@@ -219,6 +219,12 @@ class AutotradeConsumer:
         return []
 
     @staticmethod
+    def _record_value(record: Any, field_name: str) -> Any:
+        if isinstance(record, dict):
+            return record.get(field_name)
+        return getattr(record, field_name, None)
+
+    @staticmethod
     def _grid_param_value(
         grid_params: GridDeploymentRequest, field_name: str, fallback: Any
     ) -> Any:
@@ -254,7 +260,9 @@ class AutotradeConsumer:
             logging.info("grid_ladder skipped: active_ladder_limit")
             return
         symbol = grid_params.symbol
-        if any(ladder.get("symbol") == symbol for ladder in active_ladders):
+        if any(
+            self._record_value(ladder, "symbol") == symbol for ladder in active_ladders
+        ):
             logging.info("grid_ladder skipped: active_ladder_exists")
             return
         grid_allocation_pct = self._grid_param_value(

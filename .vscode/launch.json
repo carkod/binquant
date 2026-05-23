@@ -10,7 +10,7 @@
       "justMyCode": false,
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "LOG_LEVEL": "DEBUG"
+        "LOG_LEVEL": "INFO"
       }
     }
   ]

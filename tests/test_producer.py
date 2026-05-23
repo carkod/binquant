@@ -178,7 +178,7 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
     }
 
 
-def test_process_data_temporarily_runs_only_ladder_deployer():
+def test_process_data_runs_non_range_market_strategies():
     source = getsource(ContextEvaluator.process_data)
     safe_signal_names = findall(
         r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
@@ -186,5 +186,15 @@ def test_process_data_temporarily_runs_only_ladder_deployer():
     )
 
     assert safe_signal_names == [
+        "ActivityBurstPump",
+        "PriceTracker",
+        "InversePriceTracker",
+        "ApexFlow",
+        "LiquidationSweepPump",
+        "SpikeHunterV3KuCoin",
         "LadderDeployer",
+        "BuyTheDip",
     ]
+    assert "RangeFailedBreakoutFade" not in safe_signal_names
+    assert "RangeBbRsiMeanReversion" not in safe_signal_names
+    assert "RelativeStrengthReversalRange" not in safe_signal_names
