@@ -108,6 +108,7 @@ class KlinesProvider:
             ),
             all_symbols=self.all_symbols,
             test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
+            active_grid_ladders=self.binbot_api.get_active_grid_ladders(),
             binbot_api=self.binbot_api,
         )
 

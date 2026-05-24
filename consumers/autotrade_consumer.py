@@ -5,7 +5,6 @@ from pybinbot import (
     BinbotApi,
     BotBase,
     ExchangeId,
-    GridDeploymentRequest,
     KucoinFutures,
     MarketType,
     SignalsConsumer,
@@ -24,10 +23,12 @@ class AutotradeConsumer:
         active_test_bots,
         all_symbols,
         test_autotrade_settings,
+        active_grid_ladders,
         binbot_api: BinbotApi,
     ) -> None:
         self.market_domination_reversal = False
         self.active_bots: list = []
+        self.active_grid_ladders = active_grid_ladders
         self.paper_trading_active_bots: list = []
         self.active_test_bots: list = active_test_bots
         # Because market domination analysis 40 weight from binance endpoints
@@ -204,32 +205,10 @@ class AutotradeConsumer:
         return is_margin_allowed
 
     @staticmethod
-    def _response_data_list(response) -> list:
-        # binbot grid-ladder endpoints return {"detail": [...]}; older endpoints
-        # used {"data": [...]}. Accept either so we don't silently swallow the
-        # active-ladder list when the API shape changes.
-        if isinstance(response, dict):
-            for key in ("detail", "data"):
-                value = response.get(key)
-                if isinstance(value, list):
-                    return value
-            return []
-        if isinstance(response, list):
-            return response
-        return []
-
-    @staticmethod
     def _record_value(record: Any, field_name: str) -> Any:
         if isinstance(record, dict):
             return record.get(field_name)
         return getattr(record, field_name, None)
-
-    @staticmethod
-    def _grid_param_value(
-        grid_params: GridDeploymentRequest, field_name: str, fallback: Any
-    ) -> Any:
-        value = getattr(grid_params, field_name, fallback)
-        return fallback if value is None else value
 
     @staticmethod
     def _ratio_config(value: Any) -> float:
@@ -237,12 +216,10 @@ class AutotradeConsumer:
         return parsed / 100 if parsed > 1 else parsed
 
     async def process_grid_deployment(self, data: SignalsConsumer) -> None:
-        grid_params = data.grid_params
-        if not grid_params:
-            logging.info("grid_ladder skipped: missing_grid_params")
-            return
-        if not data.autotrade or not self.autotrade_settings.get("autotrade"):
-            logging.info("grid_ladder skipped: autotrade_disabled")
+        params = data.grid_params
+        autotrade = data.autotrade and self.autotrade_settings["autotrade"]
+        if not params or not autotrade:
+            logging.info("grid_ladder skipped: missing params or autotrade is false")
             return
 
         available_balance = float(
@@ -250,44 +227,31 @@ class AutotradeConsumer:
                 exchange=self.exchange, fiat=self.autotrade_settings["fiat"]
             )
         )
-        active_ladders = self._response_data_list(
-            self.binbot_api.get_active_grid_ladders()
-        )
-        max_active = min(
-            3, int(self.autotrade_settings.get("max_active_grid_ladders", 2))
-        )
-        if len(active_ladders) >= max_active:
-            logging.info("grid_ladder skipped: active_ladder_limit")
-            return
-        symbol = grid_params.symbol
-        if any(
-            self._record_value(ladder, "symbol") == symbol for ladder in active_ladders
+        symbol = params.symbol
+        active_ladders = self.active_grid_ladders
+        grid_allocation_pct = params.allocation_pct
+        cash_reserve_pct = params.cash_reserve_pct
+        # TODO: Read this from autotrade settings when the controller field exists.
+        max_active = 3
+        if (
+            len(active_ladders) >= max_active
+            or any(
+                self._record_value(ladder, "symbol") == symbol
+                for ladder in active_ladders
+            )
+            or grid_allocation_pct is None
+            or cash_reserve_pct is None
         ):
-            logging.info("grid_ladder skipped: active_ladder_exists")
+            logging.info(
+                "grid_ladder skipped: active_ladder_limit or symbol_already_active or missing_allocation_params"
+            )
             return
-        grid_allocation_pct = self._grid_param_value(
-            grid_params,
-            "allocation_pct",
-            self.autotrade_settings.get("grid_allocation_pct", 0.5),
-        )
-        cash_reserve_pct = self._grid_param_value(
-            grid_params,
-            "cash_reserve_pct",
-            self.autotrade_settings.get("cash_reserve_pct", 0.25),
-        )
-        max_margin_per_ladder = self._grid_param_value(
-            grid_params,
-            "max_margin_per_ladder",
-            None,
-        )
+
         usable = available_balance * self._ratio_config(grid_allocation_pct)
         reserve = available_balance * self._ratio_config(cash_reserve_pct)
-        if max_margin_per_ladder is None:
-            per_ladder_cap = available_balance * self._ratio_config(
-                self.autotrade_settings.get("max_margin_per_ladder_pct", 0.25)
-            )
-        else:
-            per_ladder_cap = float(max_margin_per_ladder)
+        per_ladder_cap = available_balance * self._ratio_config(
+            self.autotrade_settings.get("max_margin_per_ladder_pct", 0.25)
+        )
         deployable = max(usable - reserve, 0)
         remaining_slots = max(max_active - len(active_ladders), 1)
         suggested_margin = round_numbers(
@@ -299,8 +263,8 @@ class AutotradeConsumer:
         # Mutate total_margin on the signal so downstream analytics
         # (dispatch_signal_record) sees the actual deployed amount, not the
         # candidate placeholder the strategy emitted.
-        grid_params.total_margin = suggested_margin
-        payload = grid_params.model_dump(mode="json")
+        params.total_margin = suggested_margin
+        payload = params.model_dump(mode="json")
 
         try:
             # Two binquant workers can both pass the active-ladder check between

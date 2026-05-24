@@ -195,6 +195,3 @@ def test_process_data_runs_non_range_market_strategies():
         "LadderDeployer",
         "BuyTheDip",
     ]
-    assert "RangeFailedBreakoutFade" not in safe_signal_names
-    assert "RangeBbRsiMeanReversion" not in safe_signal_names
-    assert "RelativeStrengthReversalRange" not in safe_signal_names

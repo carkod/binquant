@@ -18,6 +18,7 @@ class LadderDeployer:
     MIN_RANGE_WIDTH_PCT = 1.5
     MAX_RANGE_WIDTH_PCT = 8.0
     BREAKOUT_BUFFER_PCT = 0.6
+    MAX_ACTIVE_LADDERS = 3  # move to autotrade settings
     MIN_BB_WIDTH_STABILITY_CANDLES = 8
     MAX_BB_WIDTH_CHANGE_PCT = 20.0
     ALLOWED_MARKET_REGIMES = ("RANGE",)
@@ -30,7 +31,6 @@ class LadderDeployer:
     # autotrade_consumer overwrites this with the real margin before POSTing.
     # Kept >0 so GridDeploymentRequest's validator (total_margin > 0) accepts it.
     PLACEHOLDER_TOTAL_MARGIN = 1.0
-    LEVEL_COUNT = 3
 
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
@@ -113,8 +113,8 @@ class LadderDeployer:
             range_high=range_high,
             breakout_low=range_low * (1 - breakout_buffer_pct / 100),
             breakout_high=range_high * (1 + breakout_buffer_pct / 100),
-            level_count=self.LEVEL_COUNT,
             total_margin=self.PLACEHOLDER_TOTAL_MARGIN,
+            level_count=3,
             current_price=current_price,
             current_regime=context.market_regime,
             context=context_payload,
