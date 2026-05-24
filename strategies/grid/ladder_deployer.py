@@ -13,8 +13,8 @@ class LadderDeployer:
     ALGO = "grid_ladder"
     ENABLED = True
     AUTOTRADE = True
-    GRID_ALLOCATION_PCT = 0.5
-    CASH_RESERVE_PCT = 0.25
+    GRID_ALLOCATION_PCT = 1.0
+    CASH_RESERVE_PCT = 0.0
     MIN_RANGE_WIDTH_PCT = 1.5
     MAX_RANGE_WIDTH_PCT = 8.0
     BREAKOUT_BUFFER_PCT = 0.6

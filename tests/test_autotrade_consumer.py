@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from pybinbot import (
     BotBase,
     GridDeploymentRequest,
+    GridLadderRecord,
+    GridLadderStatus,
     MarketType,
     Position,
     SignalsConsumer,
@@ -413,6 +415,36 @@ class TestAutotradeConsumer:
             grid_params=self._grid_params("BTCUSDT"),
         )
         await self.consumer.process_autotrade_restrictions(signal_dup)
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_rejects_duplicate_model_record(self):
+        self.consumer.autotrade_settings["max_active_grid_ladders"] = 2
+        self.mock_binbot_api.get_active_grid_ladders.return_value = [
+            GridLadderRecord(
+                symbol="BTCUSDT",
+                fiat="USDT",
+                exchange="kucoin",
+                market_type="FUTURES",
+                algorithm_name="grid_ladder",
+                status=GridLadderStatus.pending,
+                range_low=95,
+                range_high=105,
+                grid_step=5,
+                level_count=3,
+                total_margin=10,
+                breakout_low=94,
+                breakout_high=106,
+            )
+        ]
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+
+        await self.consumer.process_autotrade_restrictions(signal)
+
         self.mock_binbot_api.create_grid_ladder.assert_not_called()
 
     @pytest.mark.asyncio

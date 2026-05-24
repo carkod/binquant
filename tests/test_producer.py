@@ -178,21 +178,23 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
     }
 
 
-def test_process_data_keeps_15m_entry_strategies_in_rarity_order():
+def test_process_data_runs_non_range_market_strategies():
     source = getsource(ContextEvaluator.process_data)
     safe_signal_names = findall(
         r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
         source,
     )
 
-    apex_index = safe_signal_names.index("ApexFlow")
-    assert safe_signal_names[apex_index:] == [
+    assert safe_signal_names == [
+        "ActivityBurstPump",
+        "PriceTracker",
+        "InversePriceTracker",
         "ApexFlow",
-        "RangeFailedBreakoutFade",
-        "RangeBbRsiMeanReversion",
-        "RelativeStrengthReversalRange",
         "LiquidationSweepPump",
         "SpikeHunterV3KuCoin",
         "LadderDeployer",
         "BuyTheDip",
     ]
+    assert "RangeFailedBreakoutFade" not in safe_signal_names
+    assert "RangeBbRsiMeanReversion" not in safe_signal_names
+    assert "RelativeStrengthReversalRange" not in safe_signal_names

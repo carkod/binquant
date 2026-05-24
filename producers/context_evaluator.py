@@ -34,9 +34,6 @@ from strategies.coinrule.price_tracker import PriceTracker
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.inverse_price_tracker import InversePriceTracker
-from strategies.range_bb_rsi_mean_reversion import RangeBbRsiMeanReversion
-from strategies.range_failed_breakout_fade import RangeFailedBreakoutFade
-from strategies.relative_strength_reversal_range import RelativeStrengthReversalRange
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -228,11 +225,7 @@ class ContextEvaluator:
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.af = ApexFlow(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
-        # self.bbex = BBExtremeReversion(cls=self)
         self.coinrule_buy_the_dip = BuyTheDip(cls=self)
-        self.rbrmr = RangeBbRsiMeanReversion(cls=self)
-        self.rfbf = RangeFailedBreakoutFade(cls=self)
-        self.rsrr = RelativeStrengthReversalRange(cls=self)
         self.grid_ladder = LadderDeployer(cls=self)
 
     def indicators_enrichment(
@@ -458,35 +451,6 @@ class ContextEvaluator:
             await self._safe_signal("ApexFlow", self.af.signal())
             self.last_market_regime = self.af.last_market_regime
 
-            # Keep 15m entry strategies ordered from rarest/selective to broadest.
-            # The first matching autotrade setup gets the cleanest chance to fire.
-            await self._safe_signal(
-                "RangeFailedBreakoutFade",
-                self.rfbf.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-            await self._safe_signal(
-                "RangeBbRsiMeanReversion",
-                self.rbrmr.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-            await self._safe_signal(
-                "RelativeStrengthReversalRange",
-                self.rsrr.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
             await self._safe_signal(
                 "LiquidationSweepPump",
                 self.lsp.signal(
@@ -496,6 +460,7 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
+
             await self._safe_signal(
                 "SpikeHunterV3KuCoin",
                 self.sh3.signal(
@@ -516,7 +481,6 @@ class ContextEvaluator:
                 ),
             )
 
-            # Disabled temporarily to test grid ladder
             await self._safe_signal(
                 "BuyTheDip",
                 self.coinrule_buy_the_dip.signal(
@@ -526,15 +490,5 @@ class ContextEvaluator:
                     bb_low=spreads.bb_low,
                 ),
             )
-
-            # await self._safe_signal(
-            #     "BBExtremeReversion",
-            #     self.bbex.signal(
-            #         current_price=close_price,
-            #         bb_high=spreads.bb_high,
-            #         bb_mid=spreads.bb_mid,
-            #         bb_low=spreads.bb_low,
-            #     ),
-            # )
 
         return

@@ -71,3 +71,5 @@ async def test_ladder_deployer_uses_three_total_levels(
     value = evaluator.dispatched_values[0]
     assert value.grid_params is not None
     assert value.grid_params.level_count == 3
+    assert value.grid_params.allocation_pct == 1.0
+    assert value.grid_params.cash_reserve_pct == 0.0

@@ -234,12 +234,12 @@ class SpikeHunterV3KuCoin:
         elif context.market_regime == "RANGE":
             # In a RANGE market, BTC weakness propagates to alts even when
             # a symbol's relative strength looks positive. Require BTC to
-            # not be fading and the range regime to not be deeply entrenched
-            # (deep ranges revert hard against breakouts).
-            if context.btc_regime_score < 0:
+            # not be meaningfully fading and confirm the symbol is genuinely
+            # leading before checking range entrenchment — a confirmed leading
+            # coin earns a looser range-strength ceiling (0.75 vs 0.60) because
+            # it's breaking out on idiosyncratic flow, not riding market beta.
+            if context.btc_regime_score < -0.03:
                 return False, "range_btc_regime_negative"
-            if context.range_regime_score > 0.6:
-                return False, "range_regime_too_strong"
             if symbol_features is None:
                 return False, "symbol_regime_unavailable"
             if not self._is_leading_in_range_symbol(symbol_features):
@@ -249,6 +249,10 @@ class SpikeHunterV3KuCoin:
                     False,
                     f"range_symbol_regime_{symbol_features.micro_regime.lower()}",
                 )
+            # Symbol is confirmed leading — allow up to 0.75 range entrenchment.
+            # Deeply entrenched ranges (>0.75) revert hard against breakouts.
+            if context.range_regime_score > 0.75:
+                return False, "range_regime_too_strong"
             return True, "market_range_symbol_leading"
         else:
             return False, f"market_regime_{context.market_regime.lower()}"
