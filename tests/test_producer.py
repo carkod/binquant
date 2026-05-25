@@ -178,7 +178,7 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
     }
 
 
-def test_process_data_runs_non_range_market_strategies():
+def test_process_data_runs_enabled_strategies():
     source = getsource(ContextEvaluator.process_data)
     safe_signal_names = findall(
         r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
@@ -186,12 +186,6 @@ def test_process_data_runs_non_range_market_strategies():
     )
 
     assert safe_signal_names == [
-        "ActivityBurstPump",
-        "PriceTracker",
-        "InversePriceTracker",
-        "ApexFlow",
-        "LiquidationSweepPump",
         "SpikeHunterV3KuCoin",
         "LadderDeployer",
-        "BuyTheDip",
     ]
