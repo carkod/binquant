@@ -186,6 +186,9 @@ def test_process_data_runs_enabled_strategies():
     )
 
     assert safe_signal_names == [
+        "ActivityBurstPump",
+        "MarketRegimeNotifier",
+        "LiquidationSweepPump",
         "SpikeHunterV3KuCoin",
         "LadderDeployer",
     ]

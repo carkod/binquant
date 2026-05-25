@@ -19,7 +19,7 @@ When the filter blocks, callers should:
   1. Force the SignalsConsumer to `autotrade=False` (keep the alert; skip the bot)
   2. Send a `#time_of_day_block` notification via TelegramConsumer
 
-The notification format mirrors apex_flow.py — leading metadata, structured
+The notification format mirrors market_regime_notifier.py — leading metadata, structured
 key/value lines — so existing Telegram parsing and dashboards can ingest it.
 """
 
@@ -85,7 +85,7 @@ def build_quiet_hours_signal_msg(
 ) -> str:
     """
     Render the Telegram alert for a suppressed activation. Keeps the
-    line/key shape used by apex_flow.py so downstream parsers stay uniform.
+    line/key shape used by market_regime_notifier.py so downstream parsers stay uniform.
     """
     london_now = _now_london(now)
     regime = context.market_regime if context is not None else "UNAVAILABLE"

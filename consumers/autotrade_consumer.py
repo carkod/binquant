@@ -252,10 +252,10 @@ class AutotradeConsumer:
         usable = available_balance * self._ratio_config(grid_allocation_pct)
         reserve = available_balance * self._ratio_config(cash_reserve_pct)
         per_ladder_cap = available_balance * self._ratio_config(
-            self.autotrade_settings.max_margin_per_ladder_pct
+            self.autotrade_settings.grid_total_margin
         )
         deployable = max(usable - reserve, 0)
-        remaining_slots = max(max_active - len(self.active_grid_ladders), 1)
+        remaining_slots = max_active - len(self.active_grid_ladders)
         suggested_margin = round_numbers(
             min(per_ladder_cap, deployable / remaining_slots), 8
         )

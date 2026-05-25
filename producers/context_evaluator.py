@@ -27,7 +27,10 @@ from pybinbot import (
     round_numbers,
 )
 
+from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.grid.ladder_deployer import LadderDeployer
+from strategies.liquidation_sweep_pump import LiquidationSweepPump
+from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -204,11 +207,19 @@ class ContextEvaluator:
         self.price_precision = self.current_symbol_data["price_precision"]
         self.qty_precision = self.current_symbol_data["qty_precision"]
 
+    def load_5m_algorithms(self):
+        """
+        Initialize algorithms that consume self.df_5m data.
+        """
+        self.abp = ActivityBurstPump(cls=self)
+
     def load_15m_algorithms(self):
         """
         Initialize algorithms that consume self.df_15m and broader market context.
         """
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
+        self.market_regime_notifier = MarketRegimeNotifier(cls=self)
+        self.lsp = LiquidationSweepPump(cls=self)
         self.grid_ladder = LadderDeployer(cls=self)
 
     def indicators_enrichment(
@@ -337,6 +348,28 @@ class ContextEvaluator:
         raw_candles_15m = Candles(exchange=self.exchange, candles=candles_15m)
 
         self.df_5m = raw_candles_5m.pre_process()
+        if not self.df_5m.empty and self.df_5m.close.size > 0:
+            self.load_5m_algorithms()
+            self.df_5m = self.indicators_enrichment(self.df_5m)
+            self.df_5m = raw_candles_5m.post_process(self.df_5m)
+
+            if (
+                self.df_5m.ma_7.size >= 7
+                and self.df_5m.ma_25.size >= 25
+                and self.df_5m.ma_100.size >= 100
+            ):
+                close_price = float(self.df_5m["close"].iloc[-1])
+                spreads = self.bb_spreads(self.df_5m)
+
+                await self._safe_signal(
+                    "ActivityBurstPump",
+                    self.abp.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
         self.df_15m = raw_candles_15m.pre_process()
         self.df_1h = cast(
@@ -380,6 +413,22 @@ class ContextEvaluator:
 
             close_price = float(self.df_15m["close"].iloc[-1])
             spreads = self.bb_spreads(self.df_15m)
+
+            await self._safe_signal(
+                "MarketRegimeNotifier",
+                self.market_regime_notifier.signal(),
+            )
+            self.last_market_regime = self.market_regime_notifier.last_market_regime
+
+            await self._safe_signal(
+                "LiquidationSweepPump",
+                self.lsp.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
             await self._safe_signal(
                 "SpikeHunterV3KuCoin",
