@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class ApexFlow:
+class MarketRegimeNotifier:
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.context_evaluator = cls
         self.config = cls.config

@@ -2,9 +2,7 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from pybinbot import MarketType, SignalsConsumer
-from pybinbot.models import AutotradeSettingsSchema
-
+from pybinbot import AutotradeSettingsSchema, MarketType, SignalsConsumer
 from producers.context_evaluator import ContextEvaluator
 from strategies.grid.ladder_deployer import LadderDeployer
 
@@ -12,7 +10,11 @@ from strategies.grid.ladder_deployer import LadderDeployer
 class FakeAutotradeConsumer:
     def __init__(self) -> None:
         self.autotrade_settings = AutotradeSettingsSchema(
-            fiat="USDT", grid_cash_reserve_pct=0.0
+            fiat="USDT",
+            grid_total_margin=150.0,
+            grid_level_count=3,
+            grid_allocation_pct=1.0,
+            grid_cash_reserve_pct=0.0,
         )
         self.values: list[SignalsConsumer] = []
 

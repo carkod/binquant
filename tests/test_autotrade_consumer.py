@@ -36,6 +36,7 @@ class TestAutotradeConsumer:
             stop_loss=3,
             autotrade=True,
             grid_max_active_ladders=3,
+            grid_total_margin=1.0,
         )
         self.test_settings = TestAutotradeSettingsSchema(
             max_active_autotrade_bots=1,
@@ -402,7 +403,7 @@ class TestAutotradeConsumer:
     @pytest.mark.asyncio
     async def test_process_grid_deployment_rejects_limit_and_duplicate(self):
         self.consumer.autotrade_settings.grid_max_active_ladders = 2
-        self.consumer.active_grid_ladders = [
+        self.mock_binbot_api.get_active_grid_ladders.return_value = [
             {"symbol": "BTCUSDT"},
             {"symbol": "ETHUSDT"},
             {"symbol": "SOLUSDT"},
@@ -415,7 +416,9 @@ class TestAutotradeConsumer:
         await self.consumer.process_autotrade_restrictions(signal)
         self.mock_binbot_api.create_grid_ladder.assert_not_called()
 
-        self.consumer.active_grid_ladders = [{"symbol": "BTCUSDT"}]
+        self.mock_binbot_api.get_active_grid_ladders.return_value = [
+            {"symbol": "BTCUSDT"}
+        ]
         signal_dup = SignalsConsumer(
             autotrade=True,
             signal_kind="grid_deploy",
@@ -427,7 +430,7 @@ class TestAutotradeConsumer:
     @pytest.mark.asyncio
     async def test_process_grid_deployment_rejects_duplicate_model_record(self):
         self.consumer.autotrade_settings.grid_max_active_ladders = 2
-        self.consumer.active_grid_ladders = [
+        self.mock_binbot_api.get_active_grid_ladders.return_value = [
             GridLadderRecord(
                 symbol="BTCUSDT",
                 fiat="USDT",
@@ -461,7 +464,7 @@ class TestAutotradeConsumer:
         replaced with the autotrade-resolved margin both on the create_grid_ladder
         POST and on the SignalsConsumer (so analytics records the real value).
         """
-        self.consumer.active_grid_ladders = []
+        self.mock_binbot_api.get_active_grid_ladders.return_value = []
         self.mock_binbot_api.get_available_fiat.return_value = 1000
 
         signal = SignalsConsumer(
@@ -489,7 +492,7 @@ class TestAutotradeConsumer:
         the GET and POST. The POST may then 400 against binbot's partial
         unique index — log and continue instead of bubbling out.
         """
-        self.consumer.active_grid_ladders = []
+        self.mock_binbot_api.get_active_grid_ladders.return_value = []
         self.mock_binbot_api.get_available_fiat.return_value = 1000
         self.mock_binbot_api.create_grid_ladder.side_effect = RuntimeError(
             "race: ladder already exists"

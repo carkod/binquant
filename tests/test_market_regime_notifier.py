@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from strategies.apex_flow import ApexFlow
+from strategies.market_regime_notifier import MarketRegimeNotifier
 from market_regime.models import LiveMarketContext
 from market_regime.regime_transitions import RegimeTransitionDetector
 
@@ -65,7 +65,7 @@ def make_algo(
     context: LiveMarketContext,
     *,
     last_market_regime: str | None = None,
-) -> ApexFlow:
+) -> MarketRegimeNotifier:
     cls = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
@@ -73,11 +73,11 @@ def make_algo(
         latest_market_context=context,
         last_market_regime=last_market_regime,
     )
-    return ApexFlow(cast(Any, cls))
+    return MarketRegimeNotifier(cast(Any, cls))
 
 
 @pytest.mark.asyncio
-async def test_apex_flow_bootstraps_without_emitting_transition():
+async def test_market_regime_notifier_bootstraps_without_emitting_transition():
     algo = make_algo(
         annotate_context(
             make_live_context(
@@ -98,7 +98,7 @@ async def test_apex_flow_bootstraps_without_emitting_transition():
 
 
 @pytest.mark.asyncio
-async def test_apex_flow_emits_long_to_short_transition():
+async def test_market_regime_notifier_emits_long_to_short_transition():
     first_context = annotate_context(
         make_live_context(
             timestamp=1_000,
@@ -138,7 +138,7 @@ async def test_apex_flow_emits_long_to_short_transition():
 
 
 @pytest.mark.asyncio
-async def test_apex_flow_emits_transition_into_neutral_regime():
+async def test_market_regime_notifier_emits_transition_into_neutral_regime():
     first_context = annotate_context(
         make_live_context(
             timestamp=1_000,
@@ -177,7 +177,7 @@ async def test_apex_flow_emits_transition_into_neutral_regime():
 
 
 @pytest.mark.asyncio
-async def test_apex_flow_emits_from_annotated_context_without_bootstrap_state():
+async def test_market_regime_notifier_emits_from_annotated_context_without_bootstrap_state():
     first_context = annotate_context(
         make_live_context(
             timestamp=1_000,
@@ -214,7 +214,7 @@ async def test_apex_flow_emits_from_annotated_context_without_bootstrap_state():
 
 
 @pytest.mark.asyncio
-async def test_apex_flow_skips_duplicate_transition_when_already_seen():
+async def test_market_regime_notifier_skips_duplicate_transition_when_already_seen():
     first_context = annotate_context(
         make_live_context(
             timestamp=1_000,
@@ -250,7 +250,7 @@ async def test_apex_flow_skips_duplicate_transition_when_already_seen():
 
 
 @pytest.mark.asyncio
-async def test_apex_flow_persists_last_transition_on_context_evaluator():
+async def test_market_regime_notifier_persists_last_transition_on_context_evaluator():
     first_context = annotate_context(
         make_live_context(
             timestamp=1_000,
@@ -281,7 +281,7 @@ async def test_apex_flow_persists_last_transition_on_context_evaluator():
         latest_market_context=transitioned_context,
         last_market_regime=None,
     )
-    algo = ApexFlow(cast(Any, cls))
+    algo = MarketRegimeNotifier(cast(Any, cls))
 
     await algo.signal()
 
@@ -289,7 +289,7 @@ async def test_apex_flow_persists_last_transition_on_context_evaluator():
 
 
 @pytest.mark.asyncio
-async def test_apex_flow_reads_latest_context_from_context_evaluator():
+async def test_market_regime_notifier_reads_latest_context_from_context_evaluator():
     first_context = annotate_context(
         make_live_context(
             timestamp=1_000,
