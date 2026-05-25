@@ -3,6 +3,7 @@ from typing import Any
 
 from pybinbot import (
     BinbotApi,
+    BinbotErrors,
     BotBase,
     ExchangeId,
     KucoinFutures,
@@ -273,6 +274,9 @@ class AutotradeConsumer:
             # unique index. Log and move on instead of bubbling the exception
             # into the strategy pipeline.
             self.binbot_api.create_grid_ladder(payload)
+        except BinbotErrors as e:
+            if e.message.startswith("Grid ladder limit reached:"):
+                pass
         except Exception:
             logging.exception(
                 "create_grid_ladder failed for %s; another worker may have raced.",

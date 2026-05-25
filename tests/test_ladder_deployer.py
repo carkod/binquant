@@ -3,6 +3,7 @@ from typing import cast
 
 import pytest
 from pybinbot import MarketType, SignalsConsumer
+from pybinbot.models import AutotradeSettingsSchema
 
 from producers.context_evaluator import ContextEvaluator
 from strategies.grid.ladder_deployer import LadderDeployer
@@ -10,7 +11,9 @@ from strategies.grid.ladder_deployer import LadderDeployer
 
 class FakeAutotradeConsumer:
     def __init__(self) -> None:
-        self.autotrade_settings = {"fiat": "USDT", "grid_cash_reserve_pct": 0.0}
+        self.autotrade_settings = AutotradeSettingsSchema(
+            fiat="USDT", grid_cash_reserve_pct=0.0
+        )
         self.values: list[SignalsConsumer] = []
 
     async def process_autotrade_restrictions(self, value) -> None:

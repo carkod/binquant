@@ -99,7 +99,7 @@ class LadderDeployer:
         settings = self.at_consumer.autotrade_settings
         grid_params = GridDeploymentRequest(
             symbol=self.symbol,
-            fiat=str(settings["fiat"]),
+            fiat=settings.fiat,
             exchange=self.ti.exchange,
             market_type=self.ti.market_type,
             algorithm_name=self.ALGO,
@@ -108,8 +108,8 @@ class LadderDeployer:
             range_high=range_high,
             breakout_low=range_low * (1 - breakout_buffer_pct / 100),
             breakout_high=range_high * (1 + breakout_buffer_pct / 100),
-            total_margin=settings.get("grid_total_margin", 1.0),
-            level_count=settings.get("grid_level_count", 3),
+            total_margin=settings.grid_total_margin,
+            level_count=settings.grid_level_count,
             current_price=current_price,
             current_regime=context.market_regime,
             context=context_payload,
@@ -119,8 +119,8 @@ class LadderDeployer:
                 "bb_low": bb_low,
                 "range_width_pct": range_width_pct,
             },
-            allocation_pct=settings.get("grid_allocation_pct", 1.0),
-            cash_reserve_pct=settings.get("grid_cash_reserve_pct", 0.0),
+            allocation_pct=settings.grid_allocation_pct,
+            cash_reserve_pct=settings.grid_cash_reserve_pct,
         )
         value = SignalsConsumer(
             signal_kind="grid_deploy",
