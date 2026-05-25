@@ -32,6 +32,7 @@ class FakeContextEvaluator:
         self.latest_market_context = SimpleNamespace(
             market_regime="RANGE",
             regime_is_transitioning=False,
+            long_regime_score=0.5,
             model_dump=lambda mode: {"market_regime": "RANGE"},
         )
         self.dispatched_values: list[SignalsConsumer] = []
@@ -62,6 +63,7 @@ async def test_ladder_deployer_uses_three_total_levels(
         lambda context, symbol: SimpleNamespace(
             micro_regime="RANGE",
             micro_regime_transition=None,
+            atr_pct=0.008,
         ),
     )
 

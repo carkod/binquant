@@ -252,7 +252,7 @@ class AutotradeConsumer:
         usable = available_balance * self._ratio_config(grid_allocation_pct)
         reserve = available_balance * self._ratio_config(cash_reserve_pct)
         per_ladder_cap = available_balance * self._ratio_config(
-            self.autotrade_settings.grid_total_margin
+            self.autotrade_settings.max_margin_per_ladder_pct
         )
         deployable = max(usable - reserve, 0)
         remaining_slots = max_active - len(self.active_grid_ladders)
@@ -276,6 +276,7 @@ class AutotradeConsumer:
             self.binbot_api.create_grid_ladder(payload)
         except BinbotErrors as e:
             if e.message.startswith("Grid ladder limit reached:"):
+                logging.info(e.message)
                 pass
         except Exception:
             logging.exception(
