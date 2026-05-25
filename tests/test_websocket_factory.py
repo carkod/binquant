@@ -5,7 +5,12 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pybinbot import ExchangeId, AsyncKucoinWebsocketClient, MarketType
+from pybinbot import (
+    AutotradeSettingsSchema,
+    ExchangeId,
+    AsyncKucoinWebsocketClient,
+    MarketType,
+)
 from shared.streaming.websocket_factory import WebsocketClientFactory
 
 
@@ -104,10 +109,9 @@ class TestWebsocketFactory:
         from shared.streaming.websocket_factory import BinbotApi
 
         mock_binbot_api = typing.cast(MagicMock, BinbotApi)
-        mock_binbot_api.return_value.get_autotrade_settings.return_value = {
-            "exchange_id": "kucoin",
-            "fiat": "USDT",
-        }
+        mock_binbot_api.return_value.get_autotrade_settings.return_value = (
+            AutotradeSettingsSchema(exchange_id="kucoin", fiat="USDT")
+        )
         mock_binbot_api.return_value.get_symbols.return_value = mock_symbols
 
         # Mock producer
@@ -187,10 +191,9 @@ class TestWebsocketFactory:
         )
 
         mock_binbot_api = MagicMock()
-        mock_binbot_api.get_autotrade_settings.return_value = {
-            "exchange_id": "kucoin",
-            "fiat": "USDT",
-        }
+        mock_binbot_api.get_autotrade_settings.return_value = AutotradeSettingsSchema(
+            exchange_id="kucoin", fiat="USDT"
+        )
         mock_binbot_api.get_symbols.return_value = mock_symbols
         monkeypatch.setattr(
             "shared.streaming.websocket_factory.BinbotApi",

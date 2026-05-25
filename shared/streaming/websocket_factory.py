@@ -36,8 +36,8 @@ class WebsocketClientFactory:
             service_password=self.config.service_password,
         )
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
-        self.fiat = self.autotrade_settings["fiat"]
-        self.exchange = ExchangeId(self.autotrade_settings["exchange_id"])
+        self.fiat = self.autotrade_settings.fiat
+        self.exchange = ExchangeId(self.autotrade_settings.exchange_id)
         self.queue = queue
         self.interval = (
             KucoinKlineIntervals.FIFTEEN_MINUTES

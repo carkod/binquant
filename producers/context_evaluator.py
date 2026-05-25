@@ -275,12 +275,6 @@ class ContextEvaluator:
         """
         Fire-and-forget POST /signals so every strategy emission lands in the
         analytics table, regardless of whether autotrade actually fires.
-
-        Wrapped in a defensive try/except: an analytics-write failure must
-        never abort the trading path. HTTP errors are already handled inside
-        BinbotApi.create_signal; this guard covers the synchronous prep work
-        (model_dump, attribute access) so a malformed payload can't bubble
-        up and short-circuit telegram/autotrade dispatch for this kline.
         """
         grid_params = value.grid_params
         signal_kind = value.signal_kind
