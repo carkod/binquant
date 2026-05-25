@@ -70,7 +70,7 @@ class KlinesProvider:
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
 
         # Determine exchange
-        if self.autotrade_settings["exchange_id"] == "kucoin":
+        if self.autotrade_settings.exchange_id == "kucoin":
             self.exchange = ExchangeId.KUCOIN
             self.api = KucoinApi(
                 key=self.config.kucoin_key,

@@ -13,12 +13,9 @@ class LadderDeployer:
     ALGO = "grid_ladder"
     ENABLED = True
     AUTOTRADE = True
-    GRID_ALLOCATION_PCT = 1.0
-    CASH_RESERVE_PCT = 0.0
     MIN_RANGE_WIDTH_PCT = 1.5
     MAX_RANGE_WIDTH_PCT = 8.0
     BREAKOUT_BUFFER_PCT = 0.6
-    MAX_ACTIVE_LADDERS = 3  # move to autotrade settings
     MIN_BB_WIDTH_STABILITY_CANDLES = 8
     MAX_BB_WIDTH_CHANGE_PCT = 20.0
     ALLOWED_MARKET_REGIMES = ("RANGE",)
@@ -28,9 +25,6 @@ class LadderDeployer:
         "VOLATILITY_EXPANSION",
         "ENTERED_TREND_DOWN",
     )
-    # autotrade_consumer overwrites this with the real margin before POSTing.
-    # Kept >0 so GridDeploymentRequest's validator (total_margin > 0) accepts it.
-    PLACEHOLDER_TOTAL_MARGIN = 1.0
 
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
@@ -102,9 +96,10 @@ class LadderDeployer:
             return
         breakout_buffer_pct = self.BREAKOUT_BUFFER_PCT
         context_payload = context.model_dump(mode="json") if context else {}
+        settings = self.at_consumer.autotrade_settings
         grid_params = GridDeploymentRequest(
             symbol=self.symbol,
-            fiat=str(self.at_consumer.autotrade_settings["fiat"]),
+            fiat=str(settings["fiat"]),
             exchange=self.ti.exchange,
             market_type=self.ti.market_type,
             algorithm_name=self.ALGO,
@@ -113,8 +108,8 @@ class LadderDeployer:
             range_high=range_high,
             breakout_low=range_low * (1 - breakout_buffer_pct / 100),
             breakout_high=range_high * (1 + breakout_buffer_pct / 100),
-            total_margin=self.PLACEHOLDER_TOTAL_MARGIN,
-            level_count=3,
+            total_margin=settings.get("grid_total_margin", 1.0),
+            level_count=settings.get("grid_level_count", 3),
             current_price=current_price,
             current_regime=context.market_regime,
             context=context_payload,
@@ -124,8 +119,8 @@ class LadderDeployer:
                 "bb_low": bb_low,
                 "range_width_pct": range_width_pct,
             },
-            allocation_pct=self.GRID_ALLOCATION_PCT,
-            cash_reserve_pct=self.CASH_RESERVE_PCT,
+            allocation_pct=settings.get("grid_allocation_pct", 1.0),
+            cash_reserve_pct=settings.get("grid_cash_reserve_pct", 0.0),
         )
         value = SignalsConsumer(
             signal_kind="grid_deploy",

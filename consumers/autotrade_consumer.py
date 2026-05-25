@@ -9,6 +9,8 @@ from pybinbot import (
     MarketType,
     SignalsConsumer,
     round_numbers,
+    AutotradeSettingsSchema,
+    TestAutotradeSettingsSchema,
 )
 from shared.autotrade import Autotrade
 from shared.config import Config
@@ -19,10 +21,10 @@ class AutotradeConsumer:
 
     def __init__(
         self,
-        autotrade_settings,
+        autotrade_settings: AutotradeSettingsSchema,
         active_test_bots,
         all_symbols,
-        test_autotrade_settings,
+        test_autotrade_settings: TestAutotradeSettingsSchema,
         active_grid_ladders,
         binbot_api: BinbotApi,
     ) -> None:
@@ -39,7 +41,7 @@ class AutotradeConsumer:
         self.autotrade_settings = autotrade_settings
         self.all_symbols = all_symbols
         self.test_autotrade_settings = test_autotrade_settings
-        self.exchange = autotrade_settings["exchange_id"]
+        self.exchange = autotrade_settings.exchange_id
         self.config = Config()
         self.binbot_api = binbot_api
         self.kucoin_futures_api = KucoinFutures(
@@ -179,13 +181,13 @@ class AutotradeConsumer:
                 collection_name="paper_trading"
             )
             active_count = len(self.active_test_bots)
-            if active_count > self.test_autotrade_settings["max_active_autotrade_bots"]:
+            if active_count > self.test_autotrade_settings.max_active_autotrade_bots:
                 return True
 
         if db_collection_name == "bots":
             self.active_bots = self.binbot_api.get_active_pairs(collection_name="bots")
             active_count = len(self.active_bots)
-            if active_count > self.autotrade_settings["max_active_autotrade_bots"]:
+            if active_count > self.autotrade_settings.max_active_autotrade_bots:
                 return True
 
         return False
@@ -217,22 +219,21 @@ class AutotradeConsumer:
 
     async def process_grid_deployment(self, data: SignalsConsumer) -> None:
         params = data.grid_params
-        autotrade = data.autotrade and self.autotrade_settings["autotrade"]
+        autotrade = data.autotrade and self.autotrade_settings.autotrade
         if not params or not autotrade:
             logging.info("grid_ladder skipped: missing params or autotrade is false")
             return
 
         available_balance = float(
             self.binbot_api.get_available_fiat(
-                exchange=self.exchange, fiat=self.autotrade_settings["fiat"]
+                exchange=self.exchange, fiat=self.autotrade_settings.fiat
             )
         )
         symbol = params.symbol
         active_ladders = self.active_grid_ladders
         grid_allocation_pct = params.allocation_pct
         cash_reserve_pct = params.cash_reserve_pct
-        # TODO: Read this from autotrade settings when the controller field exists.
-        max_active = 3
+        max_active = self.autotrade_settings.grid_max_active_ladders
         if (
             len(active_ladders) >= max_active
             or any(
@@ -301,14 +302,14 @@ class AutotradeConsumer:
 
         symbol = bot_params.pair
         algorithm_name = bot_params.name
-        fiat = self._signal_value(bot_params, "fiat", self.autotrade_settings["fiat"])
+        fiat = self._signal_value(bot_params, "fiat", self.autotrade_settings.fiat)
         requested_fiat_order_size = self._signal_value(
             bot_params,
             "fiat_order_size",
-            self.autotrade_settings["base_order_size"],
+            self.autotrade_settings.base_order_size,
         )
         stop_loss = self._signal_value(
-            bot_params, "stop_loss", self.autotrade_settings["stop_loss"]
+            bot_params, "stop_loss", self.autotrade_settings.stop_loss
         )
         market_type = MarketType(
             self._signal_value(bot_params, "market_type", MarketType.FUTURES)
@@ -316,7 +317,7 @@ class AutotradeConsumer:
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
-        if self.test_autotrade_settings["autotrade"] and not result.autotrade:
+        if self.test_autotrade_settings.autotrade and not result.autotrade:
             if self.reached_max_active_autobots("paper_trading"):
                 logging.info(
                     "Reached maximum number of paper_trading active bots set in controller settings"
@@ -365,7 +366,7 @@ class AutotradeConsumer:
         """
         Real autotrade starts
         """
-        if self.autotrade_settings["autotrade"] and result.autotrade:
+        if self.autotrade_settings.autotrade and result.autotrade:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"

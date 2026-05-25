@@ -10,7 +10,7 @@ from strategies.grid.ladder_deployer import LadderDeployer
 
 class FakeAutotradeConsumer:
     def __init__(self) -> None:
-        self.autotrade_settings = {"fiat": "USDT"}
+        self.autotrade_settings = {"fiat": "USDT", "grid_cash_reserve_pct": 0.0}
         self.values: list[SignalsConsumer] = []
 
     async def process_autotrade_restrictions(self, value) -> None:

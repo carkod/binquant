@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -275,7 +275,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=1.9.11" },
+    { name = "pybinbot", specifier = ">=1.9.13" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "pytest-vcr", marker = "extra == 'dev'", specifier = ">=1.0.2" },
@@ -1428,7 +1428,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "1.9.11"
+version = "1.9.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1441,9 +1441,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/ac/ed540129f3af791134c21eaddd607f532f346ae7193d6aac5528d00b7447/pybinbot-1.9.11.tar.gz", hash = "sha256:330afdf6a6549f8bfc9d38e221289684da0fe58bd8f125c1a88114eb4b1e9b24", size = 64478, upload-time = "2026-05-24T14:47:29.93Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/ad/8ee5a94eeedc4e4c6c9e93b9d3769380123261ebc8be5c0aa7c46c2c0b49/pybinbot-1.9.13.tar.gz", hash = "sha256:232855c076c8a89b8488e71ccff15dc963b9091364bd0985a4d13229f663d23a", size = 64531, upload-time = "2026-05-25T00:48:48.837Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/de/57041d75b068015e8c4fe804b791f12787935ba5e02fc385f20f1241f082/pybinbot-1.9.11-py3-none-any.whl", hash = "sha256:54b44ae48b05255514a0cc2c4d4678fce8e09113c5fa43c742d4e73d746f81c3", size = 64914, upload-time = "2026-05-24T14:47:28.388Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/8f/2df07ef3b933eea2a8ad003e0cd1cf2edaf606910125ba4ee0630c1c1637/pybinbot-1.9.13-py3-none-any.whl", hash = "sha256:a0cb220434e9f751be01646a5e56ab0ad454d7612e775cb7fe6bcbab776da7a6", size = 64987, upload-time = "2026-05-25T00:48:46.979Z" },
 ]
 
 [[package]]
