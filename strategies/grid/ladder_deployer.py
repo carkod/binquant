@@ -15,8 +15,6 @@ class LadderDeployer:
     AUTOTRADE = True
     MIN_RANGE_WIDTH_PCT = 1.5
     MAX_RANGE_WIDTH_PCT = 8.0
-    # Breakout buffer is computed dynamically as BREAKOUT_ATR_MULTIPLIER × symbol ATR,
-    # clamped to [MIN_BREAKOUT_BUFFER_PCT, MAX_BREAKOUT_BUFFER_PCT].
     MIN_BREAKOUT_BUFFER_PCT = 0.5
     MAX_BREAKOUT_BUFFER_PCT = 4.0
     BREAKOUT_ATR_MULTIPLIER = 1.5

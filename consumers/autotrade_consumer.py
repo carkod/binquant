@@ -213,6 +213,20 @@ class AutotradeConsumer:
             return record.get(field_name)
         return getattr(record, field_name, None)
 
+    def _has_active_grid_ladder(
+        self, symbol: str, market_type: MarketType | str | None = None
+    ) -> bool:
+        self.active_grid_ladders = self.binbot_api.get_active_grid_ladders()
+        for ladder in self.active_grid_ladders:
+            if self._record_value(ladder, "symbol") != symbol:
+                continue
+            ladder_market_type = self._record_value(ladder, "market_type")
+            if market_type is None or ladder_market_type is None:
+                return True
+            if MarketType(ladder_market_type) == MarketType(market_type):
+                return True
+        return False
+
     @staticmethod
     def _ratio_config(value: Any) -> float:
         parsed = float(value)
@@ -231,6 +245,13 @@ class AutotradeConsumer:
             )
         )
         symbol = params.symbol
+        self.active_bots = self.binbot_api.get_active_pairs(collection_name="bots")
+        if symbol in self.active_bots:
+            logging.info(
+                "grid_ladder skipped: active production bot already owns %s", symbol
+            )
+            return
+
         self.active_grid_ladders = self.binbot_api.get_active_grid_ladders()
         grid_allocation_pct = params.allocation_pct
         cash_reserve_pct = params.cash_reserve_pct
@@ -275,9 +296,7 @@ class AutotradeConsumer:
             # into the strategy pipeline.
             self.binbot_api.create_grid_ladder(payload)
         except BinbotErrors as e:
-            if e.message.startswith("Grid ladder limit reached:"):
-                logging.info(e.message)
-                pass
+            logging.info(e.message)
         except Exception:
             logging.exception(
                 "create_grid_ladder failed for %s; another worker may have raced.",
@@ -375,6 +394,10 @@ class AutotradeConsumer:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
+                )
+            elif self._has_active_grid_ladder(symbol, market_type):
+                logging.info(
+                    "Skipping autotrade: active grid ladder already owns %s", symbol
                 )
             elif symbol in self.active_bots:
                 logging.info(
