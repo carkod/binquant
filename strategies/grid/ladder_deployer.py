@@ -15,7 +15,13 @@ class LadderDeployer:
     AUTOTRADE = True
     MIN_RANGE_WIDTH_PCT = 1.5
     MAX_RANGE_WIDTH_PCT = 8.0
-    BREAKOUT_BUFFER_PCT = 0.6
+    # Breakout buffer is computed dynamically as BREAKOUT_ATR_MULTIPLIER × symbol ATR,
+    # clamped to [MIN_BREAKOUT_BUFFER_PCT, MAX_BREAKOUT_BUFFER_PCT].
+    MIN_BREAKOUT_BUFFER_PCT = 0.5
+    MAX_BREAKOUT_BUFFER_PCT = 4.0
+    BREAKOUT_ATR_MULTIPLIER = 1.5
+    # Don't deploy into a market where breadth is overwhelmingly bearish.
+    MIN_LONG_REGIME_SCORE = 0.2
     MIN_BB_WIDTH_STABILITY_CANDLES = 8
     MAX_BB_WIDTH_CHANGE_PCT = 20.0
     ALLOWED_MARKET_REGIMES = ("RANGE",)
@@ -75,6 +81,9 @@ class LadderDeployer:
         if symbol_features.micro_regime_transition in self.BLOCKING_MICRO_TRANSITIONS:
             logging.info("grid_ladder skipped: symbol_transition")
             return
+        if context.long_regime_score < self.MIN_LONG_REGIME_SCORE:
+            logging.info("grid_ladder skipped: long_regime_score_too_low")
+            return
         if not self._bb_stable(
             self.MIN_BB_WIDTH_STABILITY_CANDLES,
             self.MAX_BB_WIDTH_CHANGE_PCT,
@@ -94,7 +103,11 @@ class LadderDeployer:
         ):
             logging.info("grid_ladder skipped: range_width")
             return
-        breakout_buffer_pct = self.BREAKOUT_BUFFER_PCT
+        raw_buffer = symbol_features.atr_pct * 100 * self.BREAKOUT_ATR_MULTIPLIER
+        breakout_buffer_pct = max(
+            self.MIN_BREAKOUT_BUFFER_PCT,
+            min(self.MAX_BREAKOUT_BUFFER_PCT, raw_buffer),
+        )
         context_payload = context.model_dump(mode="json") if context else {}
         settings = self.at_consumer.autotrade_settings
         grid_params = GridDeploymentRequest(
@@ -118,6 +131,7 @@ class LadderDeployer:
                 "bb_mid": bb_mid,
                 "bb_low": bb_low,
                 "range_width_pct": range_width_pct,
+                "atr_buffer_pct": breakout_buffer_pct,
             },
             allocation_pct=settings.grid_allocation_pct,
             cash_reserve_pct=settings.grid_cash_reserve_pct,
