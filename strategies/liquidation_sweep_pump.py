@@ -33,15 +33,6 @@ class LiquidationSweepPump:
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
         self.oi_growth = cls.oi_data
-        self.latest_market_context = cls.latest_market_context
-
-    @property
-    def latest_market_context(self) -> LiveMarketContext | None:
-        return self.ti.latest_market_context
-
-    @latest_market_context.setter
-    def latest_market_context(self, value: LiveMarketContext | None) -> None:
-        self.ti.latest_market_context = value
 
     @staticmethod
     def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
@@ -183,7 +174,7 @@ class LiquidationSweepPump:
         if self.oi_growth is not None and self.oi_growth < 1.02:
             return
 
-        context = self.latest_market_context
+        context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
         should_emit, route_reason = self.regime_routing(
             context=context,

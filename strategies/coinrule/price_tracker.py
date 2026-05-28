@@ -49,7 +49,6 @@ class PriceTracker:
         self.bot_strategy = cls.bot_strategy
         self.current_market_dominance = cls.current_market_dominance
         self.market_domination_reversal = cls.market_domination_reversal
-        self.latest_market_context = cls.latest_market_context
         self._breadth_cross_tolerance = cls._breadth_cross_tolerance
         self._autotrade_stress_threshold = cls._autotrade_stress_threshold
         self.signal_context_scorer = SignalContextScorer(
@@ -93,14 +92,6 @@ class PriceTracker:
         if cooldowns is None or close_time is None:
             return
         cooldowns[(self.ALGO, self.symbol)] = close_time
-
-    @property
-    def latest_market_context(self) -> LiveMarketContext | None:
-        return self.ti.latest_market_context
-
-    @latest_market_context.setter
-    def latest_market_context(self, value: LiveMarketContext | None) -> None:
-        self.ti.latest_market_context = value
 
     @staticmethod
     def _has_stable_breadth(context: LiveMarketContext) -> bool:
@@ -195,7 +186,7 @@ class PriceTracker:
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
             bot_strategy = Position.long
             autotrade = True
-            context = self.latest_market_context
+            context = self.ti.latest_market_context
             local_score = (
                 1.0
                 + max(0.0, (30.0 - rsi_value) / 30.0) * 0.35

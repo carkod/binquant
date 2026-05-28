@@ -79,7 +79,6 @@ class SpikeHunterV3KuCoin:
         self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
-        self.latest_market_context = cls.latest_market_context
         self._breadth_cross_tolerance = cls._breadth_cross_tolerance
         self._autotrade_stress_threshold = cls._autotrade_stress_threshold
         self.binance_ai_report = BinanceAIReport(cls)
@@ -117,14 +116,6 @@ class SpikeHunterV3KuCoin:
         self.post_spike_cooldown_bars = 0
         self.require_bullish_spike = True
         self.body_size_pct_min = 0.0
-
-    @property
-    def latest_market_context(self) -> LiveMarketContext | None:
-        return self.ti.latest_market_context
-
-    @latest_market_context.setter
-    def latest_market_context(self, value: LiveMarketContext | None) -> None:
-        self.ti.latest_market_context = value
 
     @staticmethod
     def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
@@ -678,7 +669,7 @@ class SpikeHunterV3KuCoin:
             return
 
         algo = "spike_hunter_v3_kucoin"
-        context = self.latest_market_context
+        context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
 
         if long_triggered:

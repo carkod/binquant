@@ -50,10 +50,6 @@ class RangeFailedBreakoutFade:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
 
-    @property
-    def latest_market_context(self) -> LiveMarketContext | None:
-        return self.ti.latest_market_context
-
     def regime_routing(
         self,
         context: LiveMarketContext | None,
@@ -95,7 +91,7 @@ class RangeFailedBreakoutFade:
         if not (long_flags and last_spike["upward"]):
             return
 
-        context = self.latest_market_context
+        context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
         should_emit, route_reason = self.regime_routing(
             context=context,

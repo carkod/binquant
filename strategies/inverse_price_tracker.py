@@ -38,20 +38,11 @@ class InversePriceTracker:
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
-        self.latest_market_context = cls.latest_market_context
         self.signal_context_scorer = SignalContextScorer(
             context_weight=0.35,
             risk_weight=0.35,
             support_weight=0.2,
         )
-
-    @property
-    def latest_market_context(self) -> LiveMarketContext | None:
-        return self.ti.latest_market_context
-
-    @latest_market_context.setter
-    def latest_market_context(self, value: LiveMarketContext | None) -> None:
-        self.ti.latest_market_context = value
 
     @staticmethod
     def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
@@ -147,7 +138,7 @@ class InversePriceTracker:
         if not (rsi_value < 30 and macd_value < 0 and mfi_value < 20):
             return
 
-        context = self.latest_market_context
+        context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
         route_allowed, autotrade_route = self.regime_routing(
             context=context,

@@ -139,8 +139,7 @@ async def test_usdt_filtering():
 def test_dispatch_signal_record_uses_json_mode_payloads():
     evaluator = object.__new__(ContextEvaluator)
     evaluator.symbol = "MOVEUSDTM"
-    evaluator._latest_market_context = None
-    evaluator._latest_market_context_provider = None
+    evaluator.latest_market_context = None
     evaluator.binbot_api = Mock()
 
     value = SignalsConsumer(
