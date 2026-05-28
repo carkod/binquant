@@ -30,7 +30,6 @@ class ActivityBurstPump:
         self.telegram_consumer = cls.telegram_consumer
         self.market_type = cls.market_type
         self.at_consumer = cls.at_consumer
-        self.latest_market_context = cls.latest_market_context
         self._breadth_cross_tolerance = cls._breadth_cross_tolerance
         self._autotrade_stress_threshold = cls._autotrade_stress_threshold
         self.current_symbol_data = cls.current_symbol_data
@@ -48,14 +47,6 @@ class ActivityBurstPump:
         self.score_quantile = 0.92
         self.score_lookback = 80
         self.cooldown_bars = 3
-
-    @property
-    def latest_market_context(self):
-        return self.ti.latest_market_context
-
-    @latest_market_context.setter
-    def latest_market_context(self, value) -> None:
-        self.ti.latest_market_context = value
 
     def compute_indicators(
         self, df: TypedDataFrame[KlineSchema]
@@ -177,7 +168,7 @@ class ActivityBurstPump:
         autotrade = False
         bot_strategy = Position.long
         base_asset = self.current_symbol_data["base_asset"]
-        context = self.latest_market_context
+        context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
         autotrade_route = "market_context_unavailable"
 

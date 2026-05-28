@@ -77,20 +77,11 @@ class BBExtremeReversion(StrategyMixin):
         self.kucoin_symbol = cls.kucoin_symbol
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
-        self.latest_market_context = cls.latest_market_context
         self.rsi_window = self.DEFAULT_RSI_WINDOW
         self.oversold_rsi = self.DEFAULT_OVERSOLD_RSI
         self.overbought_rsi = self.DEFAULT_OVERBOUGHT_RSI
         self.max_lower_band_position = self.DEFAULT_MAX_LOWER_BAND_POSITION
         self.min_upper_band_position = self.DEFAULT_MIN_UPPER_BAND_POSITION
-
-    @property
-    def latest_market_context(self):
-        return self.ti.latest_market_context
-
-    @latest_market_context.setter
-    def latest_market_context(self, value) -> None:
-        self.ti.latest_market_context = value
 
     @classmethod
     def supports_autotrade(
@@ -256,7 +247,7 @@ class BBExtremeReversion(StrategyMixin):
                 "bb_extreme_reversion is disabled, skipping signal generation."
             )
             return
-        context = self.latest_market_context
+        context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context, self.symbol)
         autotrade_eligible, autotrade_route = self.supports_autotrade(context=context)
 

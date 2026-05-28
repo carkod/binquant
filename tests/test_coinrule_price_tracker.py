@@ -283,7 +283,7 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
-    algo.latest_market_context = make_market_context()
+    algo.ti.latest_market_context = make_market_context()
 
     monkeypatch.setattr(
         "strategies.coinrule.price_tracker.Indicators.mfi",
@@ -335,7 +335,7 @@ async def test_price_tracker_disables_autotrade_without_relative_strength(
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         symbol_features={
             "TESTUSDT": make_symbol_features(relative_strength_vs_btc=0.03)
         }
@@ -502,7 +502,7 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
-    algo.latest_market_context = make_market_context()
+    algo.ti.latest_market_context = make_market_context()
 
     captured: dict[str, Any] = {}
 
@@ -552,7 +552,7 @@ async def test_price_tracker_disables_autotrade_in_transitioning_market(monkeypa
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         market_regime="TRANSITIONAL",
         market_regime_transition="LOST_REGIME_EDGE",
     )
@@ -612,7 +612,6 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
         market_regime_transition="ENTERED_TREND_UP",
         regime_is_transitioning=True,
     )
-    algo.latest_market_context = context
     algo.ti.latest_market_context = context
 
     captured: dict[str, Any] = {}
@@ -670,7 +669,7 @@ async def test_price_tracker_reads_latest_context_from_evaluator(monkeypatch):
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
-    algo.latest_market_context = make_market_context(market_regime="RANGE")
+    algo.ti.latest_market_context = make_market_context(market_regime="RANGE")
     updated_context = make_market_context(
         market_regime="TREND_UP",
         market_regime_transition="ENTERED_TREND_UP",
@@ -731,7 +730,7 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         market_regime="TREND_UP",
         market_regime_transition=None,
     )
@@ -790,7 +789,7 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         symbol_features={
             "TESTUSDT": make_symbol_features(
                 micro_regime="TRANSITIONAL",
@@ -851,7 +850,7 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
     algo.telegram_consumer = cast(
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         advancers_ratio=0.74,
         long_tailwind=0.45,
         short_tailwind=-0.1,
@@ -936,7 +935,7 @@ def make_bbex_df(
 async def test_bb_extreme_skips_signal_generation_when_disabled():
     df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
     algo = make_bbex_algo(df, enabled=False)
-    algo.latest_market_context = make_market_context()
+    algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
     tg_mock = Mock()
     algo.at_consumer = cast(
@@ -963,7 +962,7 @@ async def test_bb_extreme_emits_buy_signal_at_oversold_and_below_band():
     # Two consecutive sharp drops → RSI(2) = 0. Current price below bb_low.
     df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context()
+    algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
     tg_mock = Mock()
     algo.at_consumer = cast(
@@ -996,7 +995,7 @@ async def test_bb_extreme_emits_sell_signal_at_overbought_and_above_band():
     # Two consecutive sharp rallies → RSI(2) = 100. Current price above bb_high.
     df = make_bbex_df(n=35, last_closes=[100.0, 105.0, 110.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
     )
     at_mock = AsyncMock()
@@ -1032,7 +1031,7 @@ async def test_bb_extreme_skips_when_rsi_not_oversold():
     # Flat closes → RSI(2) ≈ 50. Price below bb_low but RSI doesn't confirm.
     df = make_bbex_df(n=35)
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context()
+    algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
     tg_mock = Mock()
     algo.at_consumer = cast(
@@ -1058,7 +1057,7 @@ async def test_bb_extreme_skips_when_price_inside_band():
     # RSI(2) = 0 (sharp drops) but current_price is at bb_mid, not below bb_low.
     df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context()
+    algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
     tg_mock = Mock()
     algo.at_consumer = cast(
@@ -1083,7 +1082,7 @@ async def test_bb_extreme_skips_when_price_inside_band():
 async def test_bb_extreme_blocked_in_non_range_market_regime() -> None:
     df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context(market_regime="TREND_UP")
+    algo.ti.latest_market_context = make_market_context(market_regime="TREND_UP")
     at_mock = AsyncMock()
     tg_mock = Mock()
     algo.at_consumer = cast(
@@ -1111,7 +1110,7 @@ async def test_bb_extreme_blocked_in_non_range_market_regime() -> None:
 async def test_bb_extreme_blocked_when_market_stress_too_high() -> None:
     df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context(market_stress_score=0.5)
+    algo.ti.latest_market_context = make_market_context(market_stress_score=0.5)
     at_mock = AsyncMock()
     tg_mock = Mock()
     algo.at_consumer = cast(
@@ -1138,7 +1137,7 @@ async def test_bb_extreme_blocked_when_market_stress_too_high() -> None:
 async def test_bb_extreme_blocks_buy_when_micro_regime_trend_down() -> None:
     df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
     )
     at_mock = AsyncMock()
@@ -1168,7 +1167,7 @@ async def test_bb_extreme_blocks_buy_when_micro_regime_trend_down() -> None:
 async def test_bb_extreme_blocks_short_when_micro_regime_not_shortable() -> None:
     df = make_bbex_df(n=35, last_closes=[100.0, 105.0, 110.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
     )
     at_mock = AsyncMock()
@@ -1197,7 +1196,7 @@ async def test_bb_extreme_blocks_short_when_micro_regime_not_shortable() -> None
 async def test_bb_extreme_blocks_when_micro_regime_strength_too_low() -> None:
     df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         symbol_features={"TESTUSDT": make_symbol_features(micro_regime_strength=0.2)}
     )
     at_mock = AsyncMock()
@@ -1226,7 +1225,7 @@ async def test_bb_extreme_blocks_when_micro_regime_strength_too_low() -> None:
 async def test_bb_extreme_blocks_during_breakdown_transition() -> None:
     df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
     algo = make_bbex_algo(df)
-    algo.latest_market_context = make_market_context(
+    algo.ti.latest_market_context = make_market_context(
         symbol_features={
             "TESTUSDT": make_symbol_features(
                 micro_regime_transition="BREAKDOWN",

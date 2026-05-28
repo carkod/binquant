@@ -49,7 +49,7 @@ class TestAutotradeConsumer:
         # Methods used in AutotradeConsumer
         self.mock_binbot_api.get_active_pairs.return_value = []
         self.mock_binbot_api.get_available_fiat.return_value = 1000
-        self.mock_binbot_api.get_active_grid_ladders.return_value = {"detail": []}
+        self.mock_binbot_api.get_active_grid_ladders.return_value = []
         # Methods used in Autotrade (for completeness)
         self.mock_binbot_api.get_single_symbol.return_value = {
             "price_precision": 2,
@@ -102,7 +102,7 @@ class TestAutotradeConsumer:
                 active_test_bots=[],
                 all_symbols=[],
                 test_autotrade_settings=self.test_settings,
-                active_grid_ladders={"detail": []},
+                active_grid_ladders=[],
                 binbot_api=self.mock_binbot_api,
             )
 
@@ -456,6 +456,72 @@ class TestAutotradeConsumer:
         await self.consumer.process_autotrade_restrictions(signal)
 
         self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_skips_when_active_bot_owns_symbol(self):
+        self.mock_binbot_api.get_active_pairs.return_value = ["BTCUSDT"]
+
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+
+        await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_autotrade_restrictions_skips_when_grid_ladder_owns_symbol(
+        self,
+    ):
+        self.consumer.exchange = ExchangeId.KUCOIN
+        self.mock_binbot_api.get_available_fiat.return_value = 1000
+        self.mock_binbot_api.get_active_pairs.return_value = []
+        self.mock_binbot_api.get_active_grid_ladders.return_value = [
+            GridLadderRecord(
+                symbol="BTCUSDTM",
+                fiat="USDT",
+                exchange="kucoin",
+                market_type="FUTURES",
+                algorithm_name="grid_ladder",
+                status=GridLadderStatus.active,
+                range_low=95,
+                range_high=105,
+                grid_step=5,
+                level_count=3,
+                total_margin=10,
+                breakout_low=94,
+                breakout_high=106,
+            )
+        ]
+        self.mock_binbot_api.get_single_symbol.return_value = {
+            "price_precision": 2,
+            "qty_precision": 0,
+            "quote_asset": "USDT",
+            "is_margin_trading_allowed": True,
+            "id": "BTCUSDTM",
+            "active": True,
+            "futures_leverage": 1,
+        }
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=10,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="coinrule_buy_the_dip",
+                market_type=MarketType.FUTURES,
+                position=Position.short,
+                fiat="USDT",
+                fiat_order_size=200,
+                stop_loss=1,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_posts_with_suggested_margin(self):

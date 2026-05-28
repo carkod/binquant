@@ -35,7 +35,6 @@ class Coinrule:
         self.bot_strategy = cls.bot_strategy
         self.current_market_dominance = cls.current_market_dominance
         self.market_domination_reversal = cls.market_domination_reversal
-        self.latest_market_context = cls.latest_market_context
         self._breadth_cross_tolerance = cls._breadth_cross_tolerance
         self._autotrade_stress_threshold = cls._autotrade_stress_threshold
         self.signal_context_scorer = SignalContextScorer(
@@ -43,14 +42,6 @@ class Coinrule:
             risk_weight=0.35,
             support_weight=0.2,
         )
-
-    @property
-    def latest_market_context(self):
-        return self.ti.latest_market_context
-
-    @latest_market_context.setter
-    def latest_market_context(self, value) -> None:
-        self.ti.latest_market_context = value
 
     def pre_process(self, df):
         df = df.copy()
@@ -80,7 +71,7 @@ class Coinrule:
         if last_twap > close_price and price_decrease > -0.05:
             algo = "coinrule_twap_momentum_sniper"
             autotrade = False
-            context = self.latest_market_context
+            context = self.ti.latest_market_context
             symbol_features = resolve_symbol_features(
                 context=context, symbol=self.symbol
             )
@@ -168,7 +159,7 @@ class Coinrule:
             algo = "coinrule_supertrend_swing_reversal"
             bot_strategy = Position.long
             autotrade = True
-            context = self.latest_market_context
+            context = self.ti.latest_market_context
             if context is not None:
                 autotrade = allows_long_autotrade(
                     context=context,
@@ -248,7 +239,7 @@ class Coinrule:
 
             bot_strategy = Position.long
             autotrade = False
-            context = self.latest_market_context
+            context = self.ti.latest_market_context
             symbol_features = resolve_symbol_features(
                 context=context, symbol=self.symbol
             )
