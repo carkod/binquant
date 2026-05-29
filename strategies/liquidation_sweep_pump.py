@@ -18,6 +18,10 @@ if TYPE_CHECKING:
 
 
 class LiquidationSweepPump:
+    SHORT_ADP_THRESHOLD = 0.3
+    LONG_ADP_THRESHOLD = -0.4
+    BTC_STALLED_MOMENTUM_ABS = 0.002
+
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
         self.config = cls.config
@@ -33,62 +37,70 @@ class LiquidationSweepPump:
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
         self.oi_growth = cls.oi_data
+        self.market_breadth_data = cls.market_breadth_data
 
     @staticmethod
-    def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
-        if context.market_regime != "TRANSITIONAL":
-            return False
-        if context.market_stress_score >= 0.35:
-            return False
-        return context.long_tailwind > 0 and context.long_regime_score > max(
-            context.short_regime_score,
-            context.range_regime_score,
-            context.stress_regime_score,
-        )
+    def _context_adp(context: LiveMarketContext) -> float:
+        return context.advancers_ratio - context.decliners_ratio
 
     @staticmethod
-    def _has_bullish_transitional_symbol(features: SymbolMarketFeatures) -> bool:
-        if features.micro_regime != "TRANSITIONAL":
-            return False
-        return (
-            features.trend_score > 0
-            and features.above_ema20
-            and features.relative_strength_vs_btc >= 0
+    def _has_weak_symbol_followthrough(features: SymbolMarketFeatures) -> bool:
+        return features.relative_strength_vs_btc <= 0 and (
+            features.trend_score <= 0
+            or not features.above_ema20
+            or features.micro_regime != "TREND_UP"
         )
 
-    def regime_routing(
+    def _adp_values(self, context: LiveMarketContext) -> list[float]:
+        values = (self.market_breadth_data or {}).get("adp", [])
+        if len(values) >= 2:
+            return [float(value) for value in values]
+        return [self._context_adp(context)]
+
+    def _latest_adp(self, context: LiveMarketContext) -> float:
+        return self._adp_values(context)[-1]
+
+    def _is_breadth_falling(self, context: LiveMarketContext) -> bool:
+        values = self._adp_values(context)
+        return len(values) >= 2 and values[-1] < values[-2]
+
+    def _is_breadth_increasing(self, context: LiveMarketContext) -> bool:
+        values = self._adp_values(context)
+        return len(values) >= 2 and values[-1] > values[-2]
+
+    def breadth_fade_routing(
         self,
         context: LiveMarketContext | None,
         symbol_features: SymbolMarketFeatures | None,
-    ) -> tuple[bool, str]:
+        btc_momentum: float,
+    ) -> tuple[Position | None, str]:
         if context is None:
-            return False, "market_context_unavailable"
+            return None, "market_context_unavailable"
 
         if context.market_stress_score >= 0.35:
-            return False, "market_stress_too_high"
+            return None, "market_stress_too_high"
 
-        if context.market_regime is None:
-            return False, "market_regime_unavailable"
+        adp = self._latest_adp(context)
 
-        if context.market_regime == "TREND_UP":
-            market_route = "market_trend_up"
-        elif self._has_bullish_transitional_market(context):
-            market_route = "market_transitional_bullish"
-        else:
-            return False, f"market_regime_{context.market_regime.lower()}"
+        if adp > self.SHORT_ADP_THRESHOLD:
+            if not self._is_breadth_falling(context):
+                return None, "hot_breadth_not_falling"
+            if abs(btc_momentum) > self.BTC_STALLED_MOMENTUM_ABS:
+                return None, "btc_not_stalled"
+            if symbol_features is None:
+                return None, "symbol_regime_unavailable"
+            if not self._has_weak_symbol_followthrough(symbol_features):
+                return None, "symbol_followthrough_not_weak"
+            return Position.short, "breadth_hot_fading_btc_stalled_symbol_weak"
 
-        if symbol_features is None:
-            return False, "symbol_regime_unavailable"
+        if adp <= self.LONG_ADP_THRESHOLD:
+            if not self._is_breadth_increasing(context):
+                return None, "washed_out_breadth_not_increasing"
+            if btc_momentum <= 0:
+                return None, "btc_not_increasing"
+            return Position.long, "breadth_washed_out_recovering_btc_up"
 
-        if symbol_features.micro_regime == "TREND_UP":
-            return True, f"{market_route}_symbol_trend_up"
-
-        if self._has_bullish_transitional_symbol(symbol_features):
-            return True, f"{market_route}_symbol_transitional_bullish"
-
-        if symbol_features.micro_regime is None:
-            return False, "symbol_regime_unavailable"
-        return False, f"symbol_regime_{symbol_features.micro_regime.lower()}"
+        return None, "adp_not_extreme"
 
     def compute_pump_score(
         self, df: TypedDataFrame[KlineSchema], window_hours=3
@@ -139,8 +151,6 @@ class LiquidationSweepPump:
             return None
 
         algo = "liquidation_sweep_pump"
-        bot_strategy = Position.long
-        autotrade = False
         base_asset = self.current_symbol_data["base_asset"]
 
         df = self.compute_pump_score(df)
@@ -162,11 +172,6 @@ class LiquidationSweepPump:
         latest_raw_score = row["pump_score"]
         trigger_score = max(float(latest_score), float(latest_raw_score))
 
-        # Allow signals while BTC is mildly red; only block under sharper
-        # market-wide selloffs that tend to invalidate breakout follow-through.
-        if btc_momentum < -0.02:
-            return
-
         if latest_score is None or trigger_score < PUMP_SCORE_THRESHOLD:
             return
 
@@ -176,21 +181,28 @@ class LiquidationSweepPump:
 
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        should_emit, route_reason = self.regime_routing(
+        bot_strategy, route_reason = self.breadth_fade_routing(
             context=context,
             symbol_features=symbol_features,
+            btc_momentum=float(btc_momentum),
         )
-        if not should_emit:
+        if bot_strategy is None:
             return
-        autotrade = True
 
         kucoin_link, terminal_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
         )
+        action_label = f"{bot_strategy.value.upper()} ENTRY"
+        direction = bot_strategy.value.upper()
+        rule_intent = (
+            "SELL a liquidation-style pump when breadth is hot but fading, BTC is stalled, and this symbol is not following through"
+            if bot_strategy == Position.short
+            else "BUY a liquidation-style pump when breadth is washed out but recovering and BTC is increasing"
+        )
 
         value = SignalsConsumer(
-            direction="LONG",
-            autotrade=autotrade,
+            direction=direction,
+            autotrade=True,
             bot_params=BotBase(
                 pair=self.symbol,
                 name=algo,
@@ -206,17 +218,19 @@ class LiquidationSweepPump:
             ),
         )
 
-        value.autotrade = autotrade
+        value.autotrade = True
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
-            - Action: LONG ENTRY
+            - Action: {action_label}
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - Strategy: {bot_strategy.value}
-            - Rule intent: BUY after a liquidation-style pump score breakout in bullish market routing
+            - Rule intent: {rule_intent}
             - Score: {trigger_score:.2f}
             - Volume: {round_numbers(float(row.volume), decimals=self.price_precision)} {base_asset}
             - OI Growth: {self.oi_growth:.2f}
+            - ADP: {round_numbers(self._latest_adp(context), 3) if context else "UNAVAILABLE"}
+            - BTC momentum: {round_numbers(float(btc_momentum), 5)}
             - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
             {format_context_timestamp_line(context)}
@@ -224,7 +238,7 @@ class LiquidationSweepPump:
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
             - Autotrade route: {route_reason}
             - Market stress: {round_numbers(context.market_stress_score, 3) if context else 0}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is enabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
