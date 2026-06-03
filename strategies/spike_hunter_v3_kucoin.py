@@ -14,7 +14,6 @@ from pybinbot import (
     timestamp_to_datetime,
 )
 
-from strategies.binance_report_ai import BinanceAIReport
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -29,62 +28,20 @@ class SpikeHunterV3KuCoin:
     - Uses OHLCV + quote volume (turnover)
     - Removes unavailable KuCoin features: taker-based ratios, number_of_trades
     - Keeps thresholds + auto-calibration flow
-    - Optional social sentiment via BinanceAIReport
     """
-
-    REQUIRED_BASE_FEATURES = [
-        "price_change",
-        "price_change_abs",
-        "body_size_pct",
-        "upper_wick_ratio",
-        "lower_wick_ratio",
-        "is_bullish",
-        "close_open_ratio",
-        "price_zscore",
-        "volume_ratio",
-        "volume_zscore",
-        "momentum_3",
-        "momentum_5",
-        "range_pct",
-        "close_to_high",
-        "close_to_low",
-        "quote_volume_ratio",
-    ]
-
-    EARLY_FEATURES = [
-        "std_ratio_8_20",
-        "vol_ratio_slope_3",
-        "vol_ratio_accel",
-        "quote_vol_ratio_slope_3",
-        "pc_1",
-        "pc_2c",
-        "pc_3c",
-        "pc_pos_count_5",
-        "pc_abs_sum_5",
-        "body_size_pct_z",
-        "vol_compression_flag",
-        "volume_ratio",
-        "price_zscore",
-    ]
 
     def __init__(
         self,
         cls: "ContextEvaluator",
     ):
         self.ti = cls
-        self.kucoin_symbol = cls.kucoin_symbol
         self.symbol = cls.symbol
         self.market_type = cls.market_type
         self.df_15m = cls.df_15m.copy()
-        self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
-        self._breadth_cross_tolerance = cls._breadth_cross_tolerance
-        self._autotrade_stress_threshold = cls._autotrade_stress_threshold
-        self.binance_ai_report = BinanceAIReport(cls)
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
-        self.qty_precision = cls.qty_precision
 
         # Thresholds (v2-like defaults preserved)
         self.volume_cluster_min_ratio = 1.6
@@ -107,11 +64,6 @@ class SpikeHunterV3KuCoin:
         self.accel_volume_deriv_window = 3
         self.accel_volume_deriv_min = 0.45
         self.accel_price_change_min = 0.015
-        # Early proba (ML) disabled for KuCoin variant
-        self.early_proba_augment = False
-        self.early_proba_threshold = 0.45
-        self.early_proba_min_slope = 0.05
-        self.early_proba_require_volume = 1.0
         self.require_both_patterns = False
         self.post_spike_cooldown_bars = 0
         self.require_bullish_spike = True

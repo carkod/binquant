@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pandas import DataFrame
@@ -84,19 +84,15 @@ def make_context(
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
-        kucoin_symbol="TEST-USDT",
         market_type=MarketType.SPOT,
         df_15m=df,
         dispatch_signal_record=Mock(),
-        binbot_api=MagicMock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
-        _breadth_cross_tolerance=0.05,
-        _autotrade_stress_threshold=0.35,
         current_symbol_data={"base_asset": "TEST", "quote_asset": "USDT"},
         price_precision=8,
-        qty_precision=8,
+        fiat_order_size=25,
         exchange=ExchangeId.KUCOIN,
     )
 
