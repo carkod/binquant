@@ -39,4 +39,4 @@ jobs:
           ssh -i ~/.ssh/home_server_key \
             -p 2222 \
             "carkod@100.64.83.67" \
-            'cd /var/www/binquant && docker compose up --pull always -d --build && docker image prune -f'
+            'cd /var/www/terminal.binbot.in && docker compose up --pull always -d --build && docker image prune -f'
