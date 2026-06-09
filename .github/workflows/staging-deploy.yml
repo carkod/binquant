@@ -33,13 +33,14 @@ jobs:
           chmod 600 ~/.ssh/home_server_key
 
           for attempt in {1..5}; do
-            if ssh-keyscan -T 5 -p 2222 100.64.83.67 >> ~/.ssh/known_hosts 2>/dev/null; then
+            if ssh-keyscan -T 5 -p 2222 100.64.83.67 >> ~/.ssh/known_hosts; then
               break
             fi
             if [ "$attempt" -eq 5 ]; then
               echo "Failed to fetch SSH host key after ${attempt} attempts" >&2
               exit 1
             fi
+            echo "ssh-keyscan attempt ${attempt}/5 failed; retrying..." >&2
             sleep 3
           done
 
