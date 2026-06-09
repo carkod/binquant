@@ -32,22 +32,11 @@ jobs:
           echo "${{ secrets.STAGING_DEPLOY }}" > ~/.ssh/home_server_key
           chmod 600 ~/.ssh/home_server_key
 
-          for attempt in {1..5}; do
-            if ssh-keyscan -T 5 -p 2222 100.64.83.67 >> ~/.ssh/known_hosts; then
-              break
-            fi
-            if [ "$attempt" -eq 5 ]; then
-              echo "Failed to fetch SSH host key after ${attempt} attempts" >&2
-              exit 1
-            fi
-            echo "ssh-keyscan attempt ${attempt}/5 failed; retrying..." >&2
-            sleep 3
-          done
+          ssh-keyscan -p 2222 100.64.83.67 >> ~/.ssh/known_hosts
 
       - name: Deploy stack
         run: |
           ssh -i ~/.ssh/home_server_key \
             -p 2222 \
-            -o StrictHostKeyChecking=yes \
             "carkod@100.64.83.67" \
-            'cd /var/www/binquant && docker compose up --pull always -d --build && docker image prune -f'
+            'cd /var/www/terminal.binbot.in && docker compose up --pull always -d --build && docker image prune -f'
