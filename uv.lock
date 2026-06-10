@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -291,7 +291,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=1.9.27" },
+    { name = "pybinbot", specifier = ">=1.9.29" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "pytest-vcr", marker = "extra == 'dev'", specifier = ">=1.0.2" },
@@ -1444,7 +1444,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "1.9.27"
+version = "1.9.29"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1457,9 +1457,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/cd/2f10743db3cf08c907c1ad349d6a9f424f6c935ec97325f4a74919fdd1b8/pybinbot-1.9.27.tar.gz", hash = "sha256:b961d804b3e616d1811250fdf7056ac6c7ebc8321b73ab80c21d5c29451e57c4", size = 72437, upload-time = "2026-06-09T00:17:10.138Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/ab/6e84abdd9e0704dd37d264488effe296b44b9686c41d2f8e823248db01d7/pybinbot-1.9.29.tar.gz", hash = "sha256:fc4a9f81a22e2b73093b7af1b6a856dd88ee39e58fbe32bf9ebc4d50c49543cf", size = 73118, upload-time = "2026-06-10T13:06:11.783Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/60/96a885d1115a75aba7db727d244461d85ef52312cca25771882e2a97ef48/pybinbot-1.9.27-py3-none-any.whl", hash = "sha256:a1d744561186593262df26b2441ced81acba4d1117477d22619396b50a55dfe5", size = 69012, upload-time = "2026-06-09T00:17:08.754Z" },
+    { url = "https://files.pythonhosted.org/packages/51/6e/06da0996754b0e82559e229c90adddad56142ae2d722db0be353a5416056/pybinbot-1.9.29-py3-none-any.whl", hash = "sha256:dd3674dbe3fb6dcf9fad9130b8770df3a5b93d0f8a0ed2d7235d79168765fa34", size = 69268, upload-time = "2026-06-10T13:06:10.237Z" },
 ]
 
 [[package]]
@@ -2019,14 +2019,14 @@ wheels = [
 
 [[package]]
 name = "tqdm"
-version = "4.68.1"
+version = "4.68.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/b3/36c8ecf72e8925200671613332db156d84b99b3aee742a41c1938ebb0808/tqdm-4.68.1.tar.gz", hash = "sha256:fc163d96b287bd031e1aa24421ce4411b25559bd0a1be4fe649bdaa4d2c02bf5", size = 171236, upload-time = "2026-06-05T17:23:15.267Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/05/0d5260f1f1ca784f4a4a0def9cbe6affe587f5b4025328d446c3d67765f4/tqdm-4.68.2.tar.gz", hash = "sha256:89c230e8dbc67c7615c142487111222f878c77427ea09549960f62389e258add", size = 171923, upload-time = "2026-06-09T13:26:42.539Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/aa/218a0eb34de1f753c83e4d0d1c8e7c4cef27f20dcb8342e024f63a80dc86/tqdm-4.68.1-py3-none-any.whl", hash = "sha256:fea4a90e4023f764914569f7802a297277c5ab1a66be5144143e142e1a4031d8", size = 78354, upload-time = "2026-06-05T17:23:13.654Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/75/1a0392bcc21c44dcdf87b3cf2d137e7829be2c083a1e38d44efca3d57a16/tqdm-4.68.2-py3-none-any.whl", hash = "sha256:d4240441fb5353290b87d6a85968c9decc131a99b8c7faa28269d829de669ede", size = 78578, upload-time = "2026-06-09T13:26:40.731Z" },
 ]
 
 [[package]]
