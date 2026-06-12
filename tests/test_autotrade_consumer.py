@@ -386,9 +386,94 @@ class TestAutotradeConsumer:
         assert create_payload["position"] == "long"
         assert create_payload["fiat_order_size"] == 25
         assert create_payload["margin_short_reversal"] is False
+        assert create_payload["recovery_params"] is None
         assert create_payload["stop_loss"] == settings["stop_loss"]
         assert create_payload["take_profit"] == settings["take_profit"]
         assert create_payload["trailing_deviation"] == settings["trailing_deviation"]
+
+    @pytest.mark.asyncio
+    async def test_activate_autotrade_enables_bounded_recovery_for_autoswitch(self):
+        settings = {
+            "exchange_id": "kucoin",
+            "fiat": "USDT",
+            "base_order_size": 10,
+            "stop_loss": 3,
+            "take_profit": 4,
+            "trailing": True,
+            "trailing_deviation": 1.2,
+            "trailing_profit": 2.4,
+            "autoswitch": True,
+        }
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="spike_hunter_v3_kucoin",
+                market_type=MarketType.FUTURES,
+                position=Position.long,
+            ),
+        )
+
+        with patch("shared.autotrade.KucoinApi", return_value=MagicMock()):
+            autotrade = Autotrade(
+                pair="BTCUSDTM",
+                settings=settings,
+                algorithm_name="spike_hunter_v3_kucoin",
+                db_collection_name="bots",
+                binbot_api=self.mock_binbot_api,
+            )
+
+        await autotrade.activate_autotrade(signal)
+
+        create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
+        assert create_payload["margin_short_reversal"] is True
+        assert create_payload["recovery_params"] == {
+            "reversal_path": "source",
+            "source_contracts": 0,
+            "source_loss_fiat": 0,
+            "stop_loss_pct": 0,
+        }
+
+    @pytest.mark.asyncio
+    async def test_activate_autotrade_preserves_explicit_recovery_opt_out(self):
+        settings = {
+            "exchange_id": "kucoin",
+            "fiat": "USDT",
+            "base_order_size": 10,
+            "stop_loss": 3,
+            "take_profit": 4,
+            "trailing": True,
+            "trailing_deviation": 1.2,
+            "trailing_profit": 2.4,
+            "autoswitch": True,
+        }
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="spike_hunter_v3_kucoin",
+                market_type=MarketType.FUTURES,
+                position=Position.long,
+                recovery_params=None,
+            ),
+        )
+
+        with patch("shared.autotrade.KucoinApi", return_value=MagicMock()):
+            autotrade = Autotrade(
+                pair="BTCUSDTM",
+                settings=settings,
+                algorithm_name="spike_hunter_v3_kucoin",
+                db_collection_name="bots",
+                binbot_api=self.mock_binbot_api,
+            )
+
+        await autotrade.activate_autotrade(signal)
+
+        create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
+        assert create_payload["margin_short_reversal"] is True
+        assert create_payload["recovery_params"] is None
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_skips_when_autotrade_false(self):

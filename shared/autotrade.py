@@ -8,6 +8,7 @@ from pybinbot import (
     KucoinApi,
     BinbotApi,
     Position,
+    RecoveryParams,
     SignalsConsumer,
     round_numbers,
 )
@@ -89,6 +90,9 @@ class Autotrade:
         for field_name in bot_params.model_fields_set:
             value = getattr(bot_params, field_name)
             if value is None:
+                if field_name == "recovery_params":
+                    self.bot_override_fields.add(field_name)
+                    self.default_bot.recovery_params = None
                 continue
             if field_name == "position" and value is not None:
                 value = Position(value)
@@ -199,6 +203,15 @@ class Autotrade:
             return
 
         self._apply_signal_bot_overrides(data)
+        if (
+            self.db_collection_name == "bots"
+            and self.exchange == ExchangeId.KUCOIN
+            and self.default_bot.market_type == MarketType.FUTURES
+            and not self._is_field_overridden("recovery_params")
+        ):
+            self.default_bot.recovery_params = (
+                RecoveryParams() if self.default_bot.margin_short_reversal else None
+            )
 
         if self.db_collection_name == "paper_trading":
             # Dynamic switch to real bot URLs
