@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock
 
-import aiohttp
 import pytest
 import requests
 
@@ -62,13 +61,3 @@ def test_handle_binance_errors_binbot_error():
 def test_handle_binance_errors_other():
     resp = make_response(json_data={"foo": "bar"})
     assert handle_binance_errors(resp) == {"foo": "bar"}
-
-
-def make_aio_response(json_data):
-    resp = MagicMock(spec=aiohttp.ClientResponse)
-
-    async def json():
-        return json_data
-
-    resp.json = json
-    return resp
