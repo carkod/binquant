@@ -23,6 +23,7 @@ from pybinbot import (
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
 from shared.autotrade import Autotrade
+from shared.exceptions import AutotradeError
 
 
 class TestAutotradeConsumer:
@@ -67,6 +68,7 @@ class TestAutotradeConsumer:
         self.mock_binbot_api.activate_bot.return_value = {"data": {"id": "botid"}}
         self.mock_binbot_api.submit_bot_event_logs.return_value = None
         self.mock_binbot_api.delete_bot.return_value = None
+        self.mock_binbot_api.deactivate_bot.return_value = {"data": {"id": "botid"}}
         self.mock_binbot_api.clean_margin_short.return_value = None
         self.mock_binbot_api.get_symbols.return_value = [
             {
@@ -390,6 +392,77 @@ class TestAutotradeConsumer:
         assert create_payload["stop_loss"] == settings["stop_loss"]
         assert create_payload["take_profit"] == settings["take_profit"]
         assert create_payload["trailing_deviation"] == settings["trailing_deviation"]
+
+    @pytest.mark.asyncio
+    async def test_activation_error_deactivates_real_bot_without_deleting_it(self):
+        settings = {
+            "exchange_id": "binance",
+            "fiat": "USDT",
+            "base_order_size": 10,
+            "stop_loss": 3,
+            "take_profit": 4,
+            "trailing": True,
+            "trailing_deviation": 1.2,
+            "trailing_profit": 2.4,
+            "autoswitch": False,
+        }
+        signal = SignalsConsumer(autotrade=True, current_price=100)
+        self.mock_binbot_api.activate_bot.return_value = {
+            "error": 1,
+            "message": "activation failed",
+        }
+
+        with patch("shared.autotrade.BinanceApi", return_value=MagicMock()):
+            autotrade = Autotrade(
+                pair="BTCUSDT",
+                settings=settings,
+                algorithm_name="coinrule_buy_the_dip",
+                db_collection_name="bots",
+                binbot_api=self.mock_binbot_api,
+            )
+
+        with pytest.raises(AutotradeError, match="activation failed"):
+            await autotrade.activate_autotrade(signal)
+
+        self.mock_binbot_api.deactivate_bot.assert_called_once_with(
+            "botid",
+            algorithmic_close=True,
+        )
+        self.mock_binbot_api.delete_bot.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_activation_error_still_deletes_paper_bot(self):
+        settings = {
+            "exchange_id": "binance",
+            "fiat": "USDT",
+            "base_order_size": 10,
+            "stop_loss": 3,
+            "take_profit": 4,
+            "trailing": True,
+            "trailing_deviation": 1.2,
+            "trailing_profit": 2.4,
+            "autoswitch": False,
+        }
+        signal = SignalsConsumer(autotrade=True, current_price=100)
+        self.mock_binbot_api.activate_paper_bot.return_value = {
+            "error": 1,
+            "message": "activation failed",
+        }
+
+        with patch("shared.autotrade.BinanceApi", return_value=MagicMock()):
+            autotrade = Autotrade(
+                pair="BTCUSDT",
+                settings=settings,
+                algorithm_name="coinrule_buy_the_dip",
+                db_collection_name="paper_trading",
+                binbot_api=self.mock_binbot_api,
+            )
+
+        with pytest.raises(AutotradeError, match="activation failed"):
+            await autotrade.activate_autotrade(signal)
+
+        self.mock_binbot_api.delete_paper_bot.assert_called_once_with("botid")
+        self.mock_binbot_api.deactivate_bot.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_activate_autotrade_enables_bounded_recovery_for_autoswitch(self):

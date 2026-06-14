@@ -218,7 +218,6 @@ class Autotrade:
             create_func = self.binbot_api.create_paper_bot
             activate_func = self.binbot_api.activate_paper_bot
             errors_func = self.binbot_api.submit_paper_trading_event_logs
-            delete_func = self.binbot_api.delete_paper_bot
 
             if self.default_bot.position == Position.short:
                 self.set_margin_short_values(data)
@@ -235,7 +234,6 @@ class Autotrade:
             create_func = self.binbot_api.create_bot
             activate_func = self.binbot_api.activate_bot
             errors_func = self.binbot_api.submit_bot_event_logs
-            delete_func = self.binbot_api.delete_bot
 
             if self.default_bot.position == Position.short:
                 initial_price = self.api.get_ticker_price(self.default_bot.pair)
@@ -281,7 +279,19 @@ class Autotrade:
             errors_func(bot_id, message)
             if self.default_bot.position == Position.short:
                 self.binbot_api.clean_margin_short(self.default_bot.pair)
-            delete_func(bot_id)
+            if self.db_collection_name == "paper_trading":
+                self.binbot_api.delete_paper_bot(bot_id)
+            else:
+                try:
+                    self.binbot_api.deactivate_bot(
+                        bot_id,
+                        algorithmic_close=True,
+                    )
+                except Exception:
+                    logging.exception(
+                        "Failed to deactivate bot %s after activation error",
+                        bot_id,
+                    )
             raise AutotradeError(message)
 
         else:
