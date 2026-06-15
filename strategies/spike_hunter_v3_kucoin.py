@@ -183,6 +183,14 @@ class SpikeHunterV3KuCoin:
             # it's breaking out on idiosyncratic flow, not riding market beta.
             if context.btc_regime_score < -0.03:
                 return False, "range_btc_regime_negative"
+            # Isolated coin spikes inside a broadly falling market are not the
+            # 'leading coin' scenario this path targets. Block when decliners
+            # outnumber advancers; a sleepy market with many unchanged symbols
+            # is fine as long as advancers >= decliners.
+            if context.advancers_ratio < context.decliners_ratio:
+                return False, "range_breadth_too_bearish"
+            if context.long_tailwind < 0:
+                return False, "range_long_tailwind_negative"
             if symbol_features is None:
                 return False, "symbol_regime_unavailable"
             if not self._is_leading_in_range_symbol(symbol_features):
