@@ -184,9 +184,10 @@ class SpikeHunterV3KuCoin:
             if context.btc_regime_score < -0.03:
                 return False, "range_btc_regime_negative"
             # Isolated coin spikes inside a broadly falling market are not the
-            # 'leading coin' scenario this path targets. Mirror the breadth gate
-            # already used on the short side (_has_breadth_short_market).
-            if context.advancers_ratio < 0.35:
+            # 'leading coin' scenario this path targets. Block when decliners
+            # outnumber advancers; a sleepy market with many unchanged symbols
+            # is fine as long as advancers >= decliners.
+            if context.advancers_ratio < context.decliners_ratio:
                 return False, "range_breadth_too_bearish"
             if context.long_tailwind < 0:
                 return False, "range_long_tailwind_negative"

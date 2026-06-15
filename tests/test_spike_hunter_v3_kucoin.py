@@ -269,6 +269,97 @@ async def test_signal_blocks_autotrade_in_range_when_symbol_not_leading(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_signal_autotrades_in_range_with_sleepy_low_participation_market(
+    monkeypatch,
+):
+    """
+    RANGE market with many unchanged symbols: 10 advancers, 5 decliners, 25 flat.
+    advancers_ratio is only 0.25 (well below the old 0.35 threshold), but
+    advancers outnumber decliners 2:1 so this is not a broadly falling market.
+    Autotrade should fire via the 'market_range_symbol_leading' route.
+    """
+    context = make_market_context(
+        market_regime="RANGE",
+        advancers=10,
+        decliners=5,
+        advancers_ratio=0.25,
+        decliners_ratio=0.125,
+        advancers_decliners_ratio=2.0,
+        long_tailwind=0.12,
+        btc_regime_score=0.01,
+    )
+    algo, df = make_algo(context)
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+
+    monkeypatch.setattr(algo, "latest_signal", lambda: make_last_spike())
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    process_mock.assert_awaited_once()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    assert "Autotrade route: market_range_symbol_leading" in telegram_msg
+    assert "Autotrade is enabled" in telegram_msg
+
+
+@pytest.mark.asyncio
+async def test_signal_blocks_autotrade_in_range_when_decliners_outnumber_advancers(
+    monkeypatch,
+):
+    """
+    RANGE market where decliners outnumber advancers (broadly falling): autotrade
+    must be blocked with range_breadth_too_bearish regardless of how the
+    individual advancers_ratio compares to the old 0.35 threshold.
+    """
+    context = make_market_context(
+        market_regime="RANGE",
+        advancers=8,
+        decliners=20,
+        advancers_ratio=0.20,
+        decliners_ratio=0.50,
+        advancers_decliners_ratio=0.4,
+        long_tailwind=0.05,
+        btc_regime_score=0.01,
+    )
+    algo, df = make_algo(context)
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+
+    monkeypatch.setattr(algo, "latest_signal", lambda: make_last_spike())
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    process_mock.assert_not_awaited()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    assert "Autotrade route: range_breadth_too_bearish" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+
+
+@pytest.mark.asyncio
 async def test_signal_emits_for_bullish_transitional_market(monkeypatch):
     transitional_symbol = make_symbol_features(
         micro_regime="TRANSITIONAL",
