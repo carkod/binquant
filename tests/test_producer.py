@@ -2,10 +2,12 @@ from inspect import getsource
 from re import findall
 from asyncio import Queue
 from os import environ
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pandas import DataFrame
 from producers.context_evaluator import ContextEvaluator
 from producers.klines_connector import KlinesConnector
 from pybinbot import BotBase, HABollinguerSpread, MarketType, Position, SignalsConsumer
@@ -177,7 +179,7 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
     }
 
 
-def test_process_data_runs_enabled_strategies():
+def test_process_data_prioritizes_price_tracker_before_ladder_deployer():
     source = getsource(ContextEvaluator.process_data)
     safe_signal_names = findall(
         r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
@@ -186,8 +188,64 @@ def test_process_data_runs_enabled_strategies():
 
     assert safe_signal_names == [
         "ActivityBurstPump",
+        "PriceTracker",
         "MarketRegimeNotifier",
         "LiquidationSweepPump",
         "SpikeHunterV3KuCoin",
         "LadderDeployer",
     ]
+
+
+@pytest.mark.asyncio
+async def test_process_data_runs_price_tracker_when_15m_history_is_empty(monkeypatch):
+    rows = 100
+    df_5m = DataFrame(
+        {
+            "close": [100.0] * rows,
+            "ma_7": [100.0] * rows,
+            "ma_25": [100.0] * rows,
+            "ma_100": [100.0] * rows,
+        }
+    )
+
+    class FakeCandles:
+        def __init__(self, exchange, candles):  # noqa: ARG002
+            self.candles = candles
+
+        def pre_process(self):
+            return df_5m.copy() if self.candles == "5m" else DataFrame()
+
+        def post_process(self, df):
+            return df
+
+        def resample(self, df, interval):  # noqa: ARG002
+            return DataFrame()
+
+    activity_signal = AsyncMock()
+    price_tracker_signal = AsyncMock()
+    evaluator: Any = object.__new__(ContextEvaluator)
+    evaluator.exchange = Mock()
+    evaluator.symbol = "TESTUSDT"
+    evaluator.symbol_dependent_data = Mock()
+    evaluator.indicators_enrichment = lambda df: df
+    evaluator.bb_spreads = lambda df: HABollinguerSpread(
+        bb_high=101.0,
+        bb_mid=100.0,
+        bb_low=99.0,
+    )
+
+    def load_5m_algorithms():
+        evaluator.abp = SimpleNamespace(signal=activity_signal)
+        evaluator.pt = SimpleNamespace(signal=price_tracker_signal)
+
+    evaluator.load_5m_algorithms = load_5m_algorithms
+    monkeypatch.setattr("producers.context_evaluator.Candles", FakeCandles)
+
+    await evaluator.process_data(candles="5m", candles_15m="15m")
+
+    price_tracker_signal.assert_awaited_once_with(
+        close_price=100.0,
+        bb_high=101.0,
+        bb_mid=100.0,
+        bb_low=99.0,
+    )
