@@ -428,15 +428,15 @@ class ContextEvaluator:
                 ),
             )
 
-            await self._safe_signal(
-                "SpikeHunterV3KuCoin",
-                self.sh3.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+            # await self._safe_signal(
+            #     "SpikeHunterV3KuCoin",
+            #     self.sh3.signal(
+            #         current_price=close_price,
+            #         bb_high=spreads.bb_high,
+            #         bb_mid=spreads.bb_mid,
+            #         bb_low=spreads.bb_low,
+            #     ),
+            # )
 
             await self._safe_signal(
                 "LadderDeployer",
