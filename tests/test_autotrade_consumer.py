@@ -5,7 +5,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pybinbot import (
     AutotradeSettingsSchema,
@@ -111,13 +111,15 @@ class TestAutotradeConsumer:
     def teardown_method(self):
         pass
 
-    def _grid_params(self, symbol: str) -> GridDeploymentRequest:
+    def _grid_params(
+        self, symbol: str, generated_at: datetime | None = None
+    ) -> GridDeploymentRequest:
         return GridDeploymentRequest(
             fiat="USDT",
             exchange=self.consumer.exchange,
             market_type=MarketType.FUTURES,
             algorithm_name="grid_ladder",
-            generated_at=datetime.now(UTC),
+            generated_at=generated_at or datetime.now(UTC),
             symbol=symbol,
             range_low=95.0,
             range_high=105.0,
@@ -809,6 +811,55 @@ class TestAutotradeConsumer:
         # per_ladder=250/3=83.33333333, capped at 0.25*1000=250.
         assert payload["total_margin"] == 83.33333333
         assert signal.grid_params.total_margin == 83.33333333
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_skips_recent_create_attempt(self):
+        self.mock_binbot_api.get_active_grid_ladders.return_value = []
+        self.mock_binbot_api.get_available_fiat.return_value = 1000
+        generated_at = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
+
+        first_signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT", generated_at),
+        )
+        second_signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params(
+                "BTCUSDT", generated_at + timedelta(minutes=15)
+            ),
+        )
+
+        await self.consumer.process_autotrade_restrictions(first_signal)
+        await self.consumer.process_autotrade_restrictions(second_signal)
+
+        self.mock_binbot_api.create_grid_ladder.assert_called_once()
+        assert self.mock_binbot_api.get_available_fiat.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_allows_attempt_after_cooldown(self):
+        self.mock_binbot_api.get_active_grid_ladders.return_value = []
+        self.mock_binbot_api.get_available_fiat.return_value = 1000
+        generated_at = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
+
+        first_signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT", generated_at),
+        )
+        second_signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params(
+                "BTCUSDT", generated_at + timedelta(hours=1, minutes=1)
+            ),
+        )
+
+        await self.consumer.process_autotrade_restrictions(first_signal)
+        await self.consumer.process_autotrade_restrictions(second_signal)
+
+        assert self.mock_binbot_api.create_grid_ladder.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_swallows_create_grid_ladder_race(self):
