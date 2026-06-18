@@ -6,6 +6,7 @@ from pybinbot import (
     ExchangeId,
     BinanceApi,
     KucoinApi,
+    KucoinFutures,
     BinbotApi,
     Position,
     RecoveryParams,
@@ -188,6 +189,23 @@ class Autotrade:
             self._set_bollinguer_spreads(data)
         pass
 
+    def _get_kucoin_futures_mark_price(self) -> float:
+        futures_api = KucoinFutures(
+            key=self.config.kucoin_key,
+            secret=self.config.kucoin_secret,
+            passphrase=self.config.kucoin_passphrase,
+        )
+        return futures_api.get_mark_price(self.default_bot.pair)
+
+    def _get_initial_price(self) -> float:
+        if (
+            self.exchange == ExchangeId.KUCOIN
+            and self.default_bot.market_type == MarketType.FUTURES
+        ):
+            return self._get_kucoin_futures_mark_price()
+
+        return self.api.get_ticker_price(self.default_bot.pair)
+
     async def activate_autotrade(self, data: SignalsConsumer):
         """
         Run autotrade
@@ -236,12 +254,10 @@ class Autotrade:
             errors_func = self.binbot_api.submit_bot_event_logs
 
             if self.default_bot.position == Position.short:
-                initial_price = self.api.get_ticker_price(self.default_bot.pair)
+                initial_price = self._get_initial_price()
 
-                estimate_qty = float(self.default_bot.fiat_order_size) / float(
-                    initial_price
-                )
-                stop_loss_price_inc = float(initial_price) * (
+                estimate_qty = float(self.default_bot.fiat_order_size) / initial_price
+                stop_loss_price_inc = initial_price * (
                     1 + (self.default_bot.stop_loss / 100)
                 )
                 # transfer quantity required to cover losses

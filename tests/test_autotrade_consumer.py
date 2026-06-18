@@ -549,6 +549,107 @@ class TestAutotradeConsumer:
         assert create_payload["recovery_params"] is None
 
     @pytest.mark.asyncio
+    async def test_activate_kucoin_futures_short_uses_mark_price_for_preflight(self):
+        settings = {
+            "exchange_id": "kucoin",
+            "fiat": "USDT",
+            "base_order_size": 10,
+            "stop_loss": 3,
+            "take_profit": 4,
+            "trailing": True,
+            "trailing_deviation": 1.2,
+            "trailing_profit": 2.4,
+            "autoswitch": True,
+        }
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="spike_hunter_v3_kucoin",
+                market_type=MarketType.FUTURES,
+                position=Position.short,
+                fiat_order_size=10,
+                stop_loss=3,
+            ),
+        )
+        spot_api = MagicMock()
+        futures_api = MagicMock()
+        futures_api.get_mark_price.return_value = 100
+
+        with (
+            patch("shared.autotrade.KucoinApi", return_value=spot_api),
+            patch("shared.autotrade.KucoinFutures", return_value=futures_api),
+        ):
+            autotrade = Autotrade(
+                pair="BTCUSDTM",
+                settings=settings,
+                algorithm_name="spike_hunter_v3_kucoin",
+                db_collection_name="bots",
+                binbot_api=self.mock_binbot_api,
+            )
+
+            await autotrade.activate_autotrade(signal)
+
+        futures_api.get_mark_price.assert_called_once_with("BTCUSDTM")
+        spot_api.get_ticker_price.assert_not_called()
+        create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
+        assert create_payload["market_type"] == "FUTURES"
+        assert create_payload["position"] == "short"
+
+    @pytest.mark.asyncio
+    async def test_activate_kucoin_futures_short_raises_clear_error_without_mark_price(
+        self,
+    ):
+        settings = {
+            "exchange_id": "kucoin",
+            "fiat": "USDT",
+            "base_order_size": 10,
+            "stop_loss": 3,
+            "take_profit": 4,
+            "trailing": True,
+            "trailing_deviation": 1.2,
+            "trailing_profit": 2.4,
+            "autoswitch": True,
+        }
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="spike_hunter_v3_kucoin",
+                market_type=MarketType.FUTURES,
+                position=Position.short,
+                fiat_order_size=10,
+                stop_loss=3,
+            ),
+        )
+        futures_api = MagicMock()
+        futures_api.get_mark_price.side_effect = ValueError(
+            "KuCoin futures mark price returned no value for BTCUSDTM"
+        )
+
+        with (
+            patch("shared.autotrade.KucoinApi", return_value=MagicMock()),
+            patch("shared.autotrade.KucoinFutures", return_value=futures_api),
+        ):
+            autotrade = Autotrade(
+                pair="BTCUSDTM",
+                settings=settings,
+                algorithm_name="spike_hunter_v3_kucoin",
+                db_collection_name="bots",
+                binbot_api=self.mock_binbot_api,
+            )
+
+            with pytest.raises(
+                ValueError,
+                match="KuCoin futures mark price returned no value for BTCUSDTM",
+            ):
+                await autotrade.activate_autotrade(signal)
+
+        self.mock_binbot_api.create_bot.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_process_grid_deployment_skips_when_autotrade_false(self):
         signal = SignalsConsumer(
             autotrade=False,
