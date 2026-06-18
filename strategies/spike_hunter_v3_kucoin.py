@@ -167,9 +167,9 @@ class SpikeHunterV3KuCoin:
         if context.market_regime is None:
             return False, "market_regime_unavailable"
 
-        # Standard market-level routes (TREND_UP / bullish TRANSITIONAL).
-        # The 'RANGE + leading coin' path is handled separately below
-        # because it demands a stricter symbol-level confirmation.
+        # Long Spike Hunter entries have been noisy outside full market +
+        # coin trend alignment. Keep the detailed route reasons for
+        # observability, but only autotrade when both are TREND_UP.
         if context.market_regime == "TREND_UP":
             market_route = "market_trend_up"
         elif self._has_bullish_transitional_market(context):
@@ -204,18 +204,24 @@ class SpikeHunterV3KuCoin:
             # Deeply entrenched ranges (>0.75) revert hard against breakouts.
             if context.range_regime_score > 0.75:
                 return False, "range_regime_too_strong"
-            return True, "market_range_symbol_leading"
+            return False, "market_range_symbol_leading_long_disabled"
         else:
             return False, f"market_regime_{context.market_regime.lower()}"
 
         if symbol_features is None:
             return False, "symbol_regime_unavailable"
 
-        if symbol_features.micro_regime == "TREND_UP":
+        if (
+            context.market_regime == "TREND_UP"
+            and symbol_features.micro_regime == "TREND_UP"
+        ):
             return True, f"{market_route}_symbol_trend_up"
 
+        if symbol_features.micro_regime == "TREND_UP":
+            return False, f"{market_route}_symbol_trend_up_long_disabled"
+
         if self._has_bullish_transitional_symbol(symbol_features):
-            return True, f"{market_route}_symbol_transitional_bullish"
+            return False, f"{market_route}_symbol_transitional_bullish_long_disabled"
 
         if symbol_features.micro_regime is None:
             return False, "symbol_regime_unavailable"
