@@ -481,7 +481,9 @@ async def test_signal_keeps_short_autotrade_path_enabled(monkeypatch):
     send_signal_mock.assert_called_once()
     process_mock.assert_awaited_once()
     telegram_msg = send_signal_mock.call_args.args[0]
-    signal_value = process_mock.await_args.args[0]
+    await_args = process_mock.await_args
+    assert await_args is not None
+    signal_value = await_args.args[0]
     assert "Autotrade route: breadth_short_symbol_weak" in telegram_msg
     assert "Autotrade is enabled" in telegram_msg
     assert signal_value.autotrade is True
@@ -489,7 +491,9 @@ async def test_signal_keeps_short_autotrade_path_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_suppresses_telegram_for_unmet_short_conditions(monkeypatch):
+async def test_signal_sends_telegram_but_skips_autotrade_for_unmet_short_conditions(
+    monkeypatch,
+):
     context = make_market_context()
     algo, df = make_algo(context)
     send_signal_mock = Mock()
@@ -501,7 +505,7 @@ async def test_signal_suppresses_telegram_for_unmet_short_conditions(monkeypatch
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
-    algo.ti.dispatch_signal_record = record_mock
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
 
     monkeypatch.setattr(
         algo,
@@ -516,9 +520,17 @@ async def test_signal_suppresses_telegram_for_unmet_short_conditions(monkeypatch
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_not_called()
+    send_signal_mock.assert_called_once()
     process_mock.assert_not_awaited()
     record_mock.assert_called_once()
-    signal_value = record_mock.call_args.kwargs["value"]
+    telegram_call_args = send_signal_mock.call_args
+    record_call_args = record_mock.call_args
+    assert telegram_call_args is not None
+    assert record_call_args is not None
+
+    telegram_msg = telegram_call_args.args[0]
+    signal_value = record_call_args.kwargs["value"]
+    assert "Autotrade route: breadth_short_conditions_unmet" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
     assert signal_value.autotrade is False
     assert signal_value.bot_params.position == "short"

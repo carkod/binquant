@@ -66,6 +66,7 @@ class KlinesProvider:
         self.telegram_consumer = TelegramConsumer(
             token=self.config.telegram_bot_key,
             chat_id=self.config.telegram_user_id,
+            is_enabled=self.autotrade_settings.telegram_signals,
         )
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
 
