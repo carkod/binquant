@@ -337,7 +337,7 @@ async def test_price_tracker_disables_autotrade_without_relative_strength(
     )
     algo.ti.latest_market_context = make_market_context(
         symbol_features={
-            "TESTUSDT": make_symbol_features(relative_strength_vs_btc=0.03)
+            "TESTUSDT": make_symbol_features(relative_strength_vs_btc=0.003)
         }
     )
 
