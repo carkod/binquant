@@ -283,7 +283,7 @@ class KlinesProvider:
         - Reload market data at the top of each hour
         """
         current_time = datetime.now()
-        if current_time.minute == 0:
+        if current_time.minute % 15 == 0:
             self.market_breadth_data = await self.binbot_api.get_market_breadth()
 
         # Recalibrate per-symbol futures_leverage on each 15m boundary, but

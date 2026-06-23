@@ -141,19 +141,19 @@ class Coinrule:
         # Reuse shared Supertrend (period adjusted to 10 to match strategy)
         Indicators.set_supertrend(df, multiplier=3.0)
 
-        adp_diff = (
-            self.market_breadth_data["adp"][-1] - self.market_breadth_data["adp"][-2]
+        breadth_diff = (
+            self.market_breadth_data["market_breadth"][-1] - self.market_breadth_data["market_breadth"][-2]
         )
-        adp_diff_prev = (
-            self.market_breadth_data["adp"][-2] - self.market_breadth_data["adp"][-3]
+        breadth_diff_prev = (
+            self.market_breadth_data["market_breadth"][-2] - self.market_breadth_data["market_breadth"][-3]
         )
 
         if (
             bool(df["supertrend"].iloc[-1])
             and df["rsi"].iloc[-1] < 30
             and df["number_of_trades"].iloc[-1] > 5
-            and adp_diff > 0
-            and adp_diff_prev > 0
+            and breadth_diff > 0
+            and breadth_diff_prev > 0
             and self.current_market_dominance == MarketDominance.LOSERS
         ):
             algo = "coinrule_supertrend_swing_reversal"

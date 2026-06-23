@@ -102,7 +102,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         df_15m=df,
         df_1h=df,
         df_btc_15m=df,
-        market_breadth_data={"adp": [0, 1, 2]},
+        market_breadth_data={"market_breadth": [0, 1, 2]},
         bot_strategy=Position.long,
         current_market_dominance=MarketDominance.NEUTRAL,
         market_domination_reversal=False,

@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 
 
 class LiquidationSweepPump:
-    SHORT_ADP_THRESHOLD = 0.3
-    LONG_ADP_THRESHOLD = -0.4
+    SHORT_BREADTH_THRESHOLD = 0.3
+    LONG_BREADTH_THRESHOLD = -0.4
     BTC_STALLED_MOMENTUM_ABS = 0.002
 
     def __init__(self, cls: "ContextEvaluator"):
@@ -40,7 +40,7 @@ class LiquidationSweepPump:
         self.market_breadth_data = cls.market_breadth_data
 
     @staticmethod
-    def _context_adp(context: LiveMarketContext) -> float:
+    def _context_market_breadth(context: LiveMarketContext) -> float:
         return context.advancers_ratio - context.decliners_ratio
 
     @staticmethod
@@ -51,21 +51,21 @@ class LiquidationSweepPump:
             or features.micro_regime != "TREND_UP"
         )
 
-    def _adp_values(self, context: LiveMarketContext) -> list[float]:
-        values = (self.market_breadth_data or {}).get("adp", [])
+    def _market_breadth_values(self, context: LiveMarketContext) -> list[float]:
+        values = (self.market_breadth_data or {}).get("market_breadth", [])
         if len(values) >= 2:
             return [float(value) for value in values]
-        return [self._context_adp(context)]
+        return [self._context_market_breadth(context)]
 
-    def _latest_adp(self, context: LiveMarketContext) -> float:
-        return self._adp_values(context)[-1]
+    def _latest_market_breadth(self, context: LiveMarketContext) -> float:
+        return self._market_breadth_values(context)[-1]
 
     def _is_breadth_falling(self, context: LiveMarketContext) -> bool:
-        values = self._adp_values(context)
+        values = self._market_breadth_values(context)
         return len(values) >= 2 and values[-1] < values[-2]
 
     def _is_breadth_increasing(self, context: LiveMarketContext) -> bool:
-        values = self._adp_values(context)
+        values = self._market_breadth_values(context)
         return len(values) >= 2 and values[-1] > values[-2]
 
     def breadth_fade_routing(
@@ -80,9 +80,9 @@ class LiquidationSweepPump:
         if context.market_stress_score >= 0.35:
             return None, "market_stress_too_high"
 
-        adp = self._latest_adp(context)
+        market_breadth = self._latest_market_breadth(context)
 
-        if adp > self.SHORT_ADP_THRESHOLD:
+        if market_breadth > self.SHORT_BREADTH_THRESHOLD:
             if not self._is_breadth_falling(context):
                 return None, "hot_breadth_not_falling"
             if abs(btc_momentum) > self.BTC_STALLED_MOMENTUM_ABS:
@@ -93,14 +93,14 @@ class LiquidationSweepPump:
                 return None, "symbol_followthrough_not_weak"
             return Position.short, "breadth_hot_fading_btc_stalled_symbol_weak"
 
-        if adp <= self.LONG_ADP_THRESHOLD:
+        if market_breadth <= self.LONG_BREADTH_THRESHOLD:
             if not self._is_breadth_increasing(context):
                 return None, "washed_out_breadth_not_increasing"
             if btc_momentum <= 0:
                 return None, "btc_not_increasing"
             return Position.long, "breadth_washed_out_recovering_btc_up"
 
-        return None, "adp_not_extreme"
+        return None, "breadth_not_extreme"
 
     def compute_pump_score(
         self, df: TypedDataFrame[KlineSchema], window_hours=3
@@ -229,7 +229,7 @@ class LiquidationSweepPump:
             - Score: {trigger_score:.2f}
             - Volume: {round_numbers(float(row.volume), decimals=self.price_precision)} {base_asset}
             - OI Growth: {self.oi_growth:.2f}
-            - ADP: {round_numbers(self._latest_adp(context), 3) if context else "UNAVAILABLE"}
+            - Market breadth: {round_numbers(self._latest_market_breadth(context), 3) if context else "UNAVAILABLE"}
             - BTC momentum: {round_numbers(float(btc_momentum), 5)}
             - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}

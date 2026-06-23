@@ -130,7 +130,7 @@ def make_context(
         price_precision=8,
         qty_precision=8,
         oi_data=1.05,
-        market_breadth_data=market_breadth_data or {"adp": [0.0, 0.0]},
+        market_breadth_data=market_breadth_data or {"market_breadth": [0.0, 0.0]},
         latest_market_context=latest_market_context,
         df_15m=df,
         df_btc_15m=df_btc_15m if df_btc_15m is not None else df,
@@ -174,7 +174,7 @@ async def test_signal_emits_short_when_hot_breadth_fades_with_stalled_btc_and_we
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [0.18, 0.36, 0.32]},
+        market_breadth_data={"market_breadth": [0.18, 0.36, 0.32]},
         btc_last_change=0.001,
     )
     send_signal_mock = Mock()
@@ -232,7 +232,7 @@ async def test_signal_skips_short_when_hot_breadth_is_not_falling(monkeypatch):
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [0.18, 0.30, 0.32]},
+        market_breadth_data={"market_breadth": [0.18, 0.30, 0.32]},
         btc_last_change=0.001,
     )
     send_signal_mock = Mock()
@@ -272,7 +272,7 @@ async def test_signal_skips_short_when_symbol_followthrough_is_not_weak(monkeypa
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [0.18, 0.36, 0.32]},
+        market_breadth_data={"market_breadth": [0.18, 0.36, 0.32]},
         btc_last_change=0.001,
     )
     send_signal_mock = Mock()
@@ -307,7 +307,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [-0.52, -0.46, -0.42]},
+        market_breadth_data={"market_breadth": [-0.52, -0.46, -0.42]},
         btc_last_change=0.003,
     )
     send_signal_mock = Mock()
@@ -358,7 +358,7 @@ async def test_signal_skips_long_when_btc_is_not_increasing(monkeypatch):
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [-0.52, -0.46, -0.42]},
+        market_breadth_data={"market_breadth": [-0.52, -0.46, -0.42]},
         btc_last_change=0.0,
     )
     send_signal_mock = Mock()
