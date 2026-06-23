@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from pybinbot import AutotradeSettingsSchema, MarketType, SignalsConsumer
+from pybinbot import AutotradeSettingsSchema, ExchangeId, MarketType, SignalsConsumer
 from producers.context_evaluator import ContextEvaluator
 from strategies.grid.ladder_deployer import LadderDeployer
 
@@ -77,6 +77,8 @@ async def test_ladder_deployer_uses_three_total_levels(
     assert len(evaluator.dispatched_values) == 1
     value = evaluator.dispatched_values[0]
     assert value.grid_params is not None
+    assert value.grid_params.exchange is ExchangeId.KUCOIN
+    assert value.grid_params.market_type is MarketType.FUTURES
     assert value.grid_params.level_count == 3
     assert value.grid_params.allocation_pct == 1.0
     assert value.grid_params.cash_reserve_pct == 0.0

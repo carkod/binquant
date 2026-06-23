@@ -33,7 +33,7 @@ class PriceTracker:
     ALGO = "coinrule_price_tracker"
     ENTRY_COOLDOWN_BARS = 12
     DEFAULT_INTERVAL_MS = 300_000
-    MIN_RELATIVE_STRENGTH_VS_BTC = 0.05
+    MIN_RELATIVE_STRENGTH_VS_BTC = 0.005
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls

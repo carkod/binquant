@@ -12,11 +12,12 @@ from telegram.helpers import escape
 class TelegramConsumer:
     _ALLOWED_HTML_TAGS = ("b", "strong", "i", "em", "u", "s", "code", "pre", "a")
 
-    def __init__(self, token, chat_id):
+    def __init__(self, token, chat_id, is_enabled: bool = True):
         self.token = token
         self.chat_id = chat_id
         self.bot = Bot(token=self.token)
         self._send_lock = asyncio.Lock()
+        self.is_enabled = is_enabled
         # Tasks held here so create_task results aren't garbage-collected
         # before the Telegram round-trip completes.
         self._background_tasks: set[asyncio.Task] = set()
@@ -84,12 +85,14 @@ class TelegramConsumer:
             logging.error(f"Error sending telegram signal: {e}")
             logging.error(f"Original message: {message}")
 
-    def dispatch_signal(self, message: str) -> asyncio.Task:
+    def dispatch_signal(self, message: str) -> asyncio.Task | None:
         """
         Fire-and-forget Telegram send. Returns immediately so the caller
         (autotrade path) can run in parallel. Errors are swallowed inside
         send_signal, so the task never propagates exceptions.
         """
+        if not self.is_enabled:
+            return None
         task = asyncio.create_task(self.send_signal(message))
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)

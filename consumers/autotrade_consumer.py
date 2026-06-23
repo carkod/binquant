@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from pybinbot import (
@@ -6,6 +7,7 @@ from pybinbot import (
     BinbotErrors,
     BotBase,
     ExchangeId,
+    GridDeploymentRequest,
     KucoinFutures,
     MarketType,
     SignalsConsumer,
@@ -19,6 +21,7 @@ from shared.config import Config
 
 class AutotradeConsumer:
     FUTURES_REVERSAL_BUFFER = 1.40
+    GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
 
     def __init__(
         self,
@@ -34,6 +37,7 @@ class AutotradeConsumer:
         self.active_grid_ladders = active_grid_ladders
         self.paper_trading_active_bots: list = []
         self.active_test_bots: list = active_test_bots
+        self.grid_ladder_attempts: dict[tuple[str, str, str, str], float] = {}
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
         self.volatility = 0
@@ -232,11 +236,55 @@ class AutotradeConsumer:
         parsed = float(value)
         return parsed / 100 if parsed > 1 else parsed
 
+    @staticmethod
+    def _grid_ladder_attempt_key(
+        params: GridDeploymentRequest,
+    ) -> tuple[str, str, str, str]:
+        return (
+            ExchangeId(params.exchange).value,
+            MarketType(params.market_type).value,
+            params.symbol,
+            params.algorithm_name,
+        )
+
+    @staticmethod
+    def _grid_ladder_attempt_timestamp(params: GridDeploymentRequest) -> float:
+        generated_at = params.generated_at
+        if not isinstance(generated_at, datetime):
+            return datetime.now(UTC).timestamp()
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=UTC)
+        return generated_at.timestamp()
+
+    def _grid_ladder_attempted_recently(self, params: GridDeploymentRequest) -> bool:
+        key = self._grid_ladder_attempt_key(params)
+        attempt_ts = self._grid_ladder_attempt_timestamp(params)
+        last_attempt_ts = self.grid_ladder_attempts.get(key)
+        if last_attempt_ts is None:
+            return False
+
+        elapsed = attempt_ts - last_attempt_ts
+        if 0 <= elapsed < self.GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS:
+            logging.info(
+                "grid_ladder skipped: recent create attempt for %s within %ss",
+                params.symbol,
+                self.GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS,
+            )
+            return True
+
+        return False
+
+    def _record_grid_ladder_attempt(self, params: GridDeploymentRequest) -> None:
+        key = self._grid_ladder_attempt_key(params)
+        self.grid_ladder_attempts[key] = self._grid_ladder_attempt_timestamp(params)
+
     async def process_grid_deployment(self, data: SignalsConsumer) -> None:
         params = data.grid_params
         autotrade = data.autotrade and self.autotrade_settings.autotrade
         if not params or not autotrade:
             logging.info("grid_ladder skipped: missing params or autotrade is false")
+            return
+        if self._grid_ladder_attempted_recently(params):
             return
 
         available_balance = float(
@@ -294,6 +342,7 @@ class AutotradeConsumer:
             # the GET and POST, so the POST may 400 against binbot's partial
             # unique index. Log and move on instead of bubbling the exception
             # into the strategy pipeline.
+            self._record_grid_ladder_attempt(params)
             self.binbot_api.create_grid_ladder(payload)
         except BinbotErrors as e:
             logging.info(e.message)

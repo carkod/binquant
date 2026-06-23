@@ -2,7 +2,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from pybinbot import GridDeploymentRequest, MarketType, SignalsConsumer
+from pybinbot import ExchangeId, GridDeploymentRequest, MarketType, SignalsConsumer
 from market_regime.regime_routing import resolve_symbol_features
 
 if TYPE_CHECKING:
@@ -108,11 +108,13 @@ class LadderDeployer:
         )
         context_payload = context.model_dump(mode="json") if context else {}
         settings = self.at_consumer.autotrade_settings
+        exchange = ExchangeId(self.ti.exchange)
+        market_type = MarketType(self.ti.market_type)
         grid_params = GridDeploymentRequest(
             symbol=self.symbol,
             fiat=settings.fiat,
-            exchange=self.ti.exchange,
-            market_type=self.ti.market_type,
+            exchange=exchange,
+            market_type=market_type,
             algorithm_name=self.ALGO,
             generated_at=datetime.now(UTC),
             range_low=range_low,
@@ -134,6 +136,8 @@ class LadderDeployer:
             allocation_pct=settings.grid_allocation_pct,
             cash_reserve_pct=settings.grid_cash_reserve_pct,
         )
+        grid_params.exchange = exchange
+        grid_params.market_type = market_type
         value = SignalsConsumer(
             signal_kind="grid_deploy",
             direction="grid",
