@@ -103,8 +103,8 @@ class RangeFailedBreakoutFade:
         autotrade = True
         bot_strategy = Position.short
 
-        base_asset = self.current_symbol_data["base_asset"]
-        quote_asset = self.current_symbol_data["quote_asset"]
+        base_asset = self.current_symbol_data.base_asset
+        quote_asset = self.current_symbol_data.quote_asset
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
             self.exchange,

@@ -10,7 +10,15 @@ import pytest
 from pandas import DataFrame
 from producers.context_evaluator import ContextEvaluator
 from producers.klines_connector import KlinesConnector
-from pybinbot import BotBase, HABollinguerSpread, MarketType, Position, SignalsConsumer
+from pybinbot import (
+    AutotradeSettingsSchema,
+    BotBase,
+    HABollinguerSpread,
+    MarketType,
+    Position,
+    SignalsConsumer,
+    SymbolModel,
+)
 
 
 @pytest.fixture
@@ -32,7 +40,7 @@ def klines_connector(monkeypatch):
         self.partition_count = 0
         self.queue = producer
         self.blacklist_data = []
-        self.autotrade_settings = {"fiat": "USDC"}
+        self.autotrade_settings = AutotradeSettingsSchema(fiat="USDC")
         self.exchange_info = {"symbols": []}
 
     async def async_noop(*args, **kwargs):  # noqa: ARG001
@@ -98,11 +106,21 @@ async def test_usdt_filtering():
 
     # Mock symbols with mixed quote assets
     mock_symbols = [
-        {"id": "BTCUSDT", "base_asset": "BTC", "quote_asset": "USDT"},
-        {"id": "ETHUSDT", "base_asset": "ETH", "quote_asset": "USDT"},
-        {"id": "BTCUSDC", "base_asset": "BTC", "quote_asset": "USDC"},
-        {"id": "ETHBTC", "base_asset": "ETH", "quote_asset": "BTC"},
-        {"id": "BNBUSDT", "base_asset": "BNB", "quote_asset": "USDT"},
+        SymbolModel(
+            id="BTCUSDT", exchange_id="binance", base_asset="BTC", quote_asset="USDT"
+        ),
+        SymbolModel(
+            id="ETHUSDT", exchange_id="binance", base_asset="ETH", quote_asset="USDT"
+        ),
+        SymbolModel(
+            id="BTCUSDC", exchange_id="binance", base_asset="BTC", quote_asset="USDC"
+        ),
+        SymbolModel(
+            id="ETHBTC", exchange_id="binance", base_asset="ETH", quote_asset="BTC"
+        ),
+        SymbolModel(
+            id="BNBUSDT", exchange_id="binance", base_asset="BNB", quote_asset="USDT"
+        ),
     ]
 
     # Set fake BACKEND_DOMAIN before instantiation
@@ -118,7 +136,9 @@ async def test_usdt_filtering():
     with (
         patch.object(BinbotApi, "get_symbols", return_value=mock_symbols),
         patch.object(
-            BinbotApi, "get_autotrade_settings", return_value={"fiat": "USDT"}
+            BinbotApi,
+            "get_autotrade_settings",
+            return_value=AutotradeSettingsSchema(fiat="USDT"),
         ),
         patch.object(
             KlinesConnector, "connect_client", AsyncMock(return_value=mock_client)

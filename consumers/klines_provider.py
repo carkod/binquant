@@ -11,6 +11,7 @@ from pybinbot import (
     KlineProduceModel,
     MarketType,
     KucoinFutures,
+    SymbolModel,
 )
 from calibrators.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -99,7 +100,7 @@ class KlinesProvider:
         self.latest_market_context: LiveMarketContext | None = None
         self.last_market_regime: str | None = None
 
-        self.all_symbols = self.binbot_api.get_symbols()
+        self.all_symbols: list[SymbolModel] = self.binbot_api.get_symbols()
 
         # Autotrade consumer setup
         self.ac_api = AutotradeConsumer(
@@ -320,11 +321,10 @@ class KlinesProvider:
 
         self._refresh_symbol_histories(api_symbol=api_symbol, market_type=market_type)
 
-        all_symbols = [s for s in self.all_symbols if s["id"] == symbol]
-        if all_symbols and len(all_symbols) > 0:
-            current_symbol_data = all_symbols[0]
-        else:
-            current_symbol_data = None
+        current_symbol_data = next(
+            (s for s in self.all_symbols if s.id == symbol), None
+        )
+        if current_symbol_data is None:
             # Can't work with a symbol that doesn't exist in our symbols table
             logging.error(f"Symbol {symbol} not found in symbols list. Skipping.")
             return

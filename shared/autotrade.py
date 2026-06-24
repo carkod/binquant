@@ -8,9 +8,11 @@ from pybinbot import (
     KucoinApi,
     KucoinFutures,
     BinbotApi,
+    AutotradeSettingsSchema,
     Position,
     RecoveryParams,
     SignalsConsumer,
+    TestAutotradeSettingsSchema,
     round_numbers,
 )
 from shared.exceptions import AutotradeError
@@ -21,7 +23,7 @@ class Autotrade:
     def __init__(
         self,
         pair,
-        settings,
+        settings: AutotradeSettingsSchema | TestAutotradeSettingsSchema,
         algorithm_name,
         binbot_api: BinbotApi,
         db_collection_name="paper_trading",
@@ -42,7 +44,7 @@ class Autotrade:
         self.pair: str = pair
         self.config = Config()
         self.binbot_api = binbot_api
-        self.exchange = ExchangeId(settings["exchange_id"])
+        self.exchange = ExchangeId(settings.exchange_id)
         self.api: BinanceApi | KucoinApi
 
         if self.exchange == ExchangeId.KUCOIN:
@@ -57,22 +59,22 @@ class Autotrade:
             )
 
         self.symbol_data = self.binbot_api.get_single_symbol(self.pair)
-        self.decimals = self.symbol_data["price_precision"]
+        self.decimals = self.symbol_data.price_precision
         self.algorithm_name = algorithm_name
         self.default_bot = BotBase(
             pair=pair,
             mode="autotrade",
             name=algorithm_name,
-            fiat=settings["fiat"],
-            fiat_order_size=settings["base_order_size"],
-            quote_asset=self.symbol_data["quote_asset"],
+            fiat=settings.fiat,
+            fiat_order_size=settings.base_order_size,
+            quote_asset=self.symbol_data.quote_asset,
             position=Position.long,
-            stop_loss=settings["stop_loss"],
-            take_profit=settings["take_profit"],
-            trailing=settings["trailing"],
-            trailing_deviation=settings["trailing_deviation"],
-            trailing_profit=settings["trailing_profit"],
-            margin_short_reversal=settings["autoswitch"],
+            stop_loss=settings.stop_loss,
+            take_profit=settings.take_profit,
+            trailing=settings.trailing,
+            trailing_deviation=settings.trailing_deviation,
+            trailing_profit=settings.trailing_profit,
+            margin_short_reversal=settings.autoswitch,
             close_condition=CloseConditions.dynamic_trailing,
             dynamic_trailing=True,  # not added to settings yet
         )
@@ -176,7 +178,7 @@ class Autotrade:
 
         # disable margin short if not available to prevent bot erroring
         if (
-            not self.symbol_data["is_margin_trading_allowed"]
+            not self.symbol_data.is_margin_trading_allowed
             and self.exchange == ExchangeId.BINANCE
         ):
             self.default_bot.margin_short_reversal = False

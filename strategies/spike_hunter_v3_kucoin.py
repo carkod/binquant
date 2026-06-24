@@ -663,8 +663,8 @@ class SpikeHunterV3KuCoin:
 
         autotrade = should_emit
 
-        base_asset = self.current_symbol_data["base_asset"]
-        quote_asset = self.current_symbol_data["quote_asset"]
+        base_asset = self.current_symbol_data.base_asset
+        quote_asset = self.current_symbol_data.quote_asset
         kucoin_link, terminal_link = build_links_msg(
             self.ti.config.env,
             self.ti.exchange,

@@ -24,6 +24,7 @@ from pybinbot import (
     MarketType,
     Position,
     SignalsConsumer,
+    SymbolModel,
     round_numbers,
 )
 
@@ -46,9 +47,9 @@ class ContextEvaluator:
         self,
         api: KucoinApi | BinanceApi | KucoinFutures,
         symbol: str,
-        current_symbol_data,
+        current_symbol_data: SymbolModel,
         market_breadth_data,
-        all_symbols,
+        all_symbols: list[SymbolModel],
         ac_api: AutotradeConsumer,
         exchange: ExchangeId,
         first_seen_at: int,
@@ -95,11 +96,7 @@ class ContextEvaluator:
         # theorically current_symbol_data is always defined
         # if it's not defined, then it wouldn't subscribe with websockets
         self.current_symbol_data = current_symbol_data
-        self.price_precision = (
-            self.current_symbol_data["price_precision"]
-            if self.current_symbol_data
-            else 1
-        )
+        self.price_precision = self.current_symbol_data.price_precision
         self.telegram_consumer = telegram_consumer
         self.strategy_cooldowns = strategy_cooldowns
         self.at_consumer = ac_api
@@ -186,11 +183,11 @@ class ContextEvaluator:
         """
         Reload symbol-dependent data such as price and qty precision
         """
-        self.current_symbol_data = [
-            s for s in self.all_symbols if s["id"] == self.symbol
-        ][0]
-        self.price_precision = self.current_symbol_data["price_precision"]
-        self.qty_precision = self.current_symbol_data["qty_precision"]
+        self.current_symbol_data = [s for s in self.all_symbols if s.id == self.symbol][
+            0
+        ]
+        self.price_precision = self.current_symbol_data.price_precision
+        self.qty_precision = self.current_symbol_data.qty_precision
 
     def load_5m_algorithms(self):
         """

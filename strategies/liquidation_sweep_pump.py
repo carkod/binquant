@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 
 class LiquidationSweepPump:
+    ALGO = "liquidation_sweep_pump"
     SHORT_ADP_THRESHOLD = 0.3
     LONG_ADP_THRESHOLD = -0.4
     BTC_STALLED_MOMENTUM_ABS = 0.002
@@ -150,8 +151,8 @@ class LiquidationSweepPump:
         if df is None or df.empty:
             return None
 
-        algo = "liquidation_sweep_pump"
-        base_asset = self.current_symbol_data["base_asset"]
+        algo = self.ALGO
+        base_asset = self.current_symbol_data.base_asset
 
         df = self.compute_pump_score(df)
 

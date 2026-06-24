@@ -9,6 +9,7 @@ from pybinbot import (
     AsyncSpotWebsocketStreamClient,
     AsyncKucoinWebsocketClient,
     MarketType,
+    SymbolModel,
 )
 from producers.klines_connector import KlinesConnector
 from shared.config import Config
@@ -45,11 +46,11 @@ class WebsocketClientFactory:
             else BinanceKlineIntervals.fifteen_minutes
         )
 
-    def filter_fiat_symbols(self, symbols: list[dict]) -> list[dict]:
+    def filter_fiat_symbols(self, symbols: list[SymbolModel]) -> list[SymbolModel]:
         """
         Filter symbols to only include USDT markets.
         """
-        return [s for s in symbols if s.get("quote_asset") == self.fiat]
+        return [s for s in symbols if s.quote_asset == self.fiat]
 
     async def start_stream(self) -> list[AsyncKucoinWebsocketClient]:
         """
@@ -75,7 +76,7 @@ class WebsocketClientFactory:
             await asyncio.sleep(0.5)
 
             for s in chunk:
-                symbol_name = s["base_asset"] + "-" + s["quote_asset"]
+                symbol_name = s.base_asset + "-" + s.quote_asset
                 await client.subscribe_klines(symbol_name, interval=self.interval.value)
 
             clients.append(client)
@@ -89,7 +90,7 @@ class WebsocketClientFactory:
         """
         all_symbols = self.binbot_api.get_symbols()
         symbols = self.filter_fiat_symbols(all_symbols)
-        futures_symbols = [s for s in symbols if s["id"].endswith("USDTM")]
+        futures_symbols = [s for s in symbols if s.id.endswith("USDTM")]
         total = len(futures_symbols)
         clients: list[AsyncKucoinWebsocketClient] = []
         chunk_count = (
@@ -127,7 +128,7 @@ class WebsocketClientFactory:
                 len(chunk),
             )
             for s in chunk:
-                await client.subscribe_klines(s["id"], interval=self.interval.value)
+                await client.subscribe_klines(s.id, interval=self.interval.value)
                 total_subscriptions += 1
 
             clients.append(client)

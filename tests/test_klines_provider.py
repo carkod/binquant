@@ -5,19 +5,19 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 from consumers.klines_provider import KlinesProvider
 from market_regime.models import LiveMarketContext
-from pybinbot import MarketType
+from pybinbot import AutotradeSettingsSchema, MarketType, TestAutotradeSettingsSchema
 
 
 class TestKlinesProvider:
     @patch(
         "consumers.klines_provider.BinbotApi.get_autotrade_settings",
-        return_value={"exchange_id": "binance"},
+        return_value=AutotradeSettingsSchema(exchange_id="binance"),
     )
     @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
     @patch("consumers.klines_provider.BinbotApi.get_active_pairs", return_value=set())
     @patch(
         "consumers.klines_provider.BinbotApi.get_test_autotrade_settings",
-        return_value={},
+        return_value=TestAutotradeSettingsSchema(),
     )
     def test_init(
         self,
@@ -40,21 +40,25 @@ class TestKlinesProvider:
         api_instance.get_symbols.return_value = []
         api_instance.get_active_pairs.return_value = set()
         api_instance.get_market_breadth = AsyncMock(return_value={})
-        api_instance.get_autotrade_settings.return_value = {"exchange_id": "kucoin"}
-        api_instance.get_test_autotrade_settings.return_value = {}
+        api_instance.get_autotrade_settings.return_value = AutotradeSettingsSchema(
+            exchange_id="kucoin"
+        )
+        api_instance.get_test_autotrade_settings.return_value = (
+            TestAutotradeSettingsSchema()
+        )
         provider.binbot_api = api_instance
         await provider.load_data_on_start()
         assert hasattr(provider, "ac_api")
 
     @patch(
         "consumers.klines_provider.BinbotApi.get_autotrade_settings",
-        return_value={"exchange_id": "binance"},
+        return_value=AutotradeSettingsSchema(exchange_id="binance"),
     )
     @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
     @patch("consumers.klines_provider.BinbotApi.get_active_pairs", return_value=set())
     @patch(
         "consumers.klines_provider.BinbotApi.get_test_autotrade_settings",
-        return_value={},
+        return_value=TestAutotradeSettingsSchema(),
     )
     def test_sync_market_state_from_ui_klines(
         self,
@@ -79,13 +83,13 @@ class TestKlinesProvider:
     @patch("consumers.klines_provider.time", return_value=3.0)
     @patch(
         "consumers.klines_provider.BinbotApi.get_autotrade_settings",
-        return_value={"exchange_id": "binance"},
+        return_value=AutotradeSettingsSchema(exchange_id="binance"),
     )
     @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
     @patch("consumers.klines_provider.BinbotApi.get_active_pairs", return_value=set())
     @patch(
         "consumers.klines_provider.BinbotApi.get_test_autotrade_settings",
-        return_value={},
+        return_value=TestAutotradeSettingsSchema(),
     )
     def test_sync_market_state_ignores_unclosed_ui_kline(
         self,

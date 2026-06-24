@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from pybinbot import ExchangeId
+from pybinbot import ExchangeId, SymbolModel
 
 from calibrators.leverage_calibrator import LeverageCalibrator
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
@@ -62,6 +62,27 @@ def _make_context(
         short_tailwind=0.0,
         market_regime=market_regime,
         symbol_features=symbol_features or {},
+    )
+
+
+def _make_symbol(
+    symbol: str,
+    *,
+    base_asset: str,
+    futures_leverage: int = 1,
+    price_precision: int = 2,
+) -> SymbolModel:
+    return SymbolModel(
+        id=symbol,
+        exchange_id=ExchangeId.KUCOIN,
+        active=True,
+        futures_leverage=futures_leverage,
+        quote_asset="USDT",
+        base_asset=base_asset,
+        price_precision=price_precision,
+        qty_precision=0,
+        min_notional=0,
+        is_margin_trading_allowed=False,
     )
 
 
@@ -128,43 +149,15 @@ class TestCalibrateAll:
         self.calibrator = LeverageCalibrator(
             binbot_api=self.binbot_api, exchange=ExchangeId.KUCOIN
         )
-        self.symbols = [
-            {
-                "id": "SOLUSDTM",
-                "exchange_id": "kucoin",
-                "active": True,
-                "futures_leverage": 1,
-                "quote_asset": "USDT",
-                "base_asset": "SOL",
-                "price_precision": 2,
-                "qty_precision": 0,
-                "min_notional": 0,
-                "is_margin_trading_allowed": False,
-            },
-            {
-                "id": "ETHUSDTM",
-                "exchange_id": "kucoin",
-                "active": True,
-                "futures_leverage": 1,
-                "quote_asset": "USDT",
-                "base_asset": "ETH",
-                "price_precision": 2,
-                "qty_precision": 0,
-                "min_notional": 0,
-                "is_margin_trading_allowed": False,
-            },
-            {
-                "id": "TRUMPUSDTM",
-                "exchange_id": "kucoin",
-                "active": True,
-                "futures_leverage": 2,
-                "quote_asset": "USDT",
-                "base_asset": "TRUMP",
-                "price_precision": 4,
-                "qty_precision": 0,
-                "min_notional": 0,
-                "is_margin_trading_allowed": False,
-            },
+        self.symbols: list[SymbolModel] = [
+            _make_symbol("SOLUSDTM", base_asset="SOL"),
+            _make_symbol("ETHUSDTM", base_asset="ETH"),
+            _make_symbol(
+                "TRUMPUSDTM",
+                base_asset="TRUMP",
+                futures_leverage=2,
+                price_precision=4,
+            ),
         ]
 
     def test_writes_only_on_diff(self) -> None:

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, MarketType
+from pybinbot import ExchangeId, MarketType, SymbolModel
 
 from strategies.range_failed_breakout_fade import RangeFailedBreakoutFade
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
@@ -97,7 +97,14 @@ def make_evaluator(
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
-        current_symbol_data={"base_asset": "TEST", "quote_asset": "USDT"},
+        current_symbol_data=SymbolModel(
+            id="TESTUSDT",
+            exchange_id=ExchangeId.KUCOIN,
+            base_asset="TEST",
+            quote_asset="USDT",
+            price_precision=8,
+            qty_precision=8,
+        ),
         price_precision=8,
         qty_precision=8,
         exchange=ExchangeId.KUCOIN,
