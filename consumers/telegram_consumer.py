@@ -108,7 +108,11 @@ class TelegramConsumer:
 
     def _drop_duplicate_signal(self, signal_key: str) -> bool:
         if self._signal_dedupe_seconds <= 0:
-            return signal_key in self._pending_signal_keys
+            if signal_key in self._pending_signal_keys:
+                logging.info("Telegram duplicate signal already pending; skipping")
+                return True
+            self._pending_signal_keys.add(signal_key)
+            return False
 
         now = time.monotonic()
         expired_keys = [
