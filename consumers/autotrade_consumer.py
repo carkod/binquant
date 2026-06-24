@@ -11,6 +11,7 @@ from pybinbot import (
     KucoinFutures,
     MarketType,
     SignalsConsumer,
+    SymbolModel,
     round_numbers,
     AutotradeSettingsSchema,
     TestAutotradeSettingsSchema,
@@ -27,7 +28,7 @@ class AutotradeConsumer:
         self,
         autotrade_settings: AutotradeSettingsSchema,
         active_test_bots,
-        all_symbols,
+        all_symbols: list[SymbolModel],
         test_autotrade_settings: TestAutotradeSettingsSchema,
         active_grid_ladders,
         binbot_api: BinbotApi,
@@ -117,7 +118,7 @@ class AutotradeConsumer:
         multiplier = float(futures_symbol_info.multiplier)
         lot_size = float(futures_symbol_info.lot_size)
         taker_fee_rate = float(futures_symbol_info.taker_fee_rate)
-        futures_leverage = float(symbol_info["futures_leverage"])
+        futures_leverage = float(symbol_info.futures_leverage)
 
         min_step_margin = self._required_margin_for_contracts(
             lot_size,
@@ -203,9 +204,9 @@ class AutotradeConsumer:
         """
         is_margin_allowed = next(
             (
-                item["is_margin_trading_allowed"]
+                item.is_margin_trading_allowed
                 for item in self.all_symbols
-                if item["id"] == symbol
+                if item.id == symbol
             ),
             False,
         )

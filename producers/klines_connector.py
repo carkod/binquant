@@ -7,6 +7,7 @@ from pybinbot import (
     BinbotApi,
     AsyncSpotWebsocketStreamClient,
     KlineProduceModel,
+    SymbolModel,
 )
 from shared.config import Config
 
@@ -39,9 +40,9 @@ class KlinesConnector:
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.clients: list[AsyncSpotWebsocketStreamClient] = []
 
-    def _filter_usdt_symbols(self, symbols: list[dict]) -> list[dict]:
+    def _filter_usdt_symbols(self, symbols: list[SymbolModel]) -> list[SymbolModel]:
         """Filter symbols to only include USDT markets."""
-        return [s for s in symbols if s.get("quote_asset") == "USDT"]
+        return [s for s in symbols if s.quote_asset == "USDT"]
 
     async def connect_client(self, on_message, on_close, on_error):
         """Instantiate and start an async websocket client."""
@@ -107,8 +108,7 @@ class KlinesConnector:
         ]
         for idx, chunk in enumerate(symbol_chunks):
             markets = [
-                f"{symbol['id'].lower()}@kline_{self.interval.value}"
-                for symbol in chunk
+                f"{symbol.id.lower()}@kline_{self.interval.value}" for symbol in chunk
             ]
             logging.debug(
                 f"Preparing subscription (client {idx}) markets={len(markets)}"
@@ -136,7 +136,7 @@ class KlinesConnector:
         ]
         chunk = symbol_chunks[idx]
         markets = [
-            f"{symbol['id'].lower()}@kline_{self.interval.value}" for symbol in chunk
+            f"{symbol.id.lower()}@kline_{self.interval.value}" for symbol in chunk
         ]
         await self.clients[idx].send_message_to_server(
             markets,

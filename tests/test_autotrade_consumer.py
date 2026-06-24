@@ -17,6 +17,7 @@ from pybinbot import (
     MarketType,
     Position,
     SignalsConsumer,
+    SymbolModel,
     TestAutotradeSettingsSchema,
 )
 
@@ -24,6 +25,24 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
 from shared.autotrade import Autotrade
 from shared.exceptions import AutotradeError
+
+
+def make_autotrade_settings(
+    *,
+    exchange_id: ExchangeId | str = ExchangeId.BINANCE,
+    autoswitch: bool = True,
+) -> AutotradeSettingsSchema:
+    return AutotradeSettingsSchema(
+        exchange_id=exchange_id,
+        fiat="USDT",
+        base_order_size=10,
+        stop_loss=3,
+        take_profit=4,
+        trailing=True,
+        trailing_deviation=1.2,
+        trailing_profit=2.4,
+        autoswitch=autoswitch,
+    )
 
 
 class TestAutotradeConsumer:
@@ -52,13 +71,14 @@ class TestAutotradeConsumer:
         self.mock_binbot_api.get_available_fiat.return_value = 1000
         self.mock_binbot_api.get_active_grid_ladders.return_value = []
         # Methods used in Autotrade (for completeness)
-        self.mock_binbot_api.get_single_symbol.return_value = {
-            "price_precision": 2,
-            "quote_asset": "USDT",
-            "is_margin_trading_allowed": True,
-            "id": "BTCUSDT",
-            "active": True,
-        }
+        self.mock_binbot_api.get_single_symbol.return_value = SymbolModel(
+            id="BTCUSDT",
+            exchange_id=ExchangeId.BINANCE,
+            base_asset="BTC",
+            quote_asset="USDT",
+            price_precision=2,
+            is_margin_trading_allowed=True,
+        )
         self.mock_binbot_api.filter_excluded_symbols.return_value = []
         self.mock_binbot_api.create_paper_bot.return_value = {"data": {"id": "botid"}}
         self.mock_binbot_api.activate_paper_bot.return_value = {"data": {"id": "botid"}}
@@ -71,12 +91,13 @@ class TestAutotradeConsumer:
         self.mock_binbot_api.deactivate_bot.return_value = {"data": {"id": "botid"}}
         self.mock_binbot_api.clean_margin_short.return_value = None
         self.mock_binbot_api.get_symbols.return_value = [
-            {
-                "id": "BTCUSDT",
-                "base_asset": "BTC",
-                "active": True,
-                "is_margin_trading_allowed": True,
-            }
+            SymbolModel(
+                id="BTCUSDT",
+                exchange_id=ExchangeId.BINANCE,
+                base_asset="BTC",
+                quote_asset="USDT",
+                is_margin_trading_allowed=True,
+            )
         ]
         # Methods used in KlinesProvider
         self.mock_binbot_api.get_autotrade_settings.return_value = self.settings
@@ -85,12 +106,13 @@ class TestAutotradeConsumer:
         )
         self.mock_binbot_api.get_market_breadth.return_value = []
         self.mock_binbot_api.get_symbols.return_value = [
-            {
-                "id": "BTCUSDT",
-                "base_asset": "BTC",
-                "active": True,
-                "is_margin_trading_allowed": True,
-            }
+            SymbolModel(
+                id="BTCUSDT",
+                exchange_id=ExchangeId.BINANCE,
+                base_asset="BTC",
+                quote_asset="USDT",
+                is_margin_trading_allowed=True,
+            )
         ]
         with patch("consumers.autotrade_consumer.KucoinFutures") as futures_cls:
             futures_cls.return_value.DEFAULT_MULTIPLIER = 1
@@ -201,15 +223,16 @@ class TestAutotradeConsumer:
     ):
         self.consumer.exchange = ExchangeId.KUCOIN
         self.mock_binbot_api.get_available_fiat.return_value = 15
-        self.mock_binbot_api.get_single_symbol.return_value = {
-            "price_precision": 2,
-            "qty_precision": 0,
-            "quote_asset": "USDT",
-            "is_margin_trading_allowed": True,
-            "id": "BTCUSDTM",
-            "active": True,
-            "futures_leverage": 1,
-        }
+        self.mock_binbot_api.get_single_symbol.return_value = SymbolModel(
+            id="BTCUSDTM",
+            exchange_id=ExchangeId.KUCOIN,
+            base_asset="BTC",
+            quote_asset="USDT",
+            price_precision=2,
+            qty_precision=0,
+            is_margin_trading_allowed=True,
+            futures_leverage=1,
+        )
         signal = SignalsConsumer(
             autotrade=True,
             current_price=10,
@@ -244,15 +267,16 @@ class TestAutotradeConsumer:
     ):
         self.consumer.exchange = ExchangeId.KUCOIN
         self.mock_binbot_api.get_available_fiat.return_value = 1000
-        self.mock_binbot_api.get_single_symbol.return_value = {
-            "price_precision": 2,
-            "qty_precision": 0,
-            "quote_asset": "USDT",
-            "is_margin_trading_allowed": True,
-            "id": "BTCUSDTM",
-            "active": True,
-            "futures_leverage": 1,
-        }
+        self.mock_binbot_api.get_single_symbol.return_value = SymbolModel(
+            id="BTCUSDTM",
+            exchange_id=ExchangeId.KUCOIN,
+            base_asset="BTC",
+            quote_asset="USDT",
+            price_precision=2,
+            qty_precision=0,
+            is_margin_trading_allowed=True,
+            futures_leverage=1,
+        )
         signal = SignalsConsumer(
             autotrade=True,
             current_price=10,
@@ -299,15 +323,16 @@ class TestAutotradeConsumer:
     ):
         self.consumer.exchange = ExchangeId.KUCOIN
         self.mock_binbot_api.get_available_fiat.return_value = 60
-        self.mock_binbot_api.get_single_symbol.return_value = {
-            "price_precision": 2,
-            "qty_precision": 0,
-            "quote_asset": "USDT",
-            "is_margin_trading_allowed": True,
-            "id": "BTCUSDTM",
-            "active": True,
-            "futures_leverage": 10,
-        }
+        self.mock_binbot_api.get_single_symbol.return_value = SymbolModel(
+            id="BTCUSDTM",
+            exchange_id=ExchangeId.KUCOIN,
+            base_asset="BTC",
+            quote_asset="USDT",
+            price_precision=2,
+            qty_precision=0,
+            is_margin_trading_allowed=True,
+            futures_leverage=3,
+        )
         signal = SignalsConsumer(
             autotrade=True,
             current_price=10,
@@ -337,7 +362,7 @@ class TestAutotradeConsumer:
 
             await self.consumer.process_autotrade_restrictions(signal)
 
-        # min_step_margin = 1*10*0.001/10 + 2*0.01*0.0006 ≈ 0.001012
+        # min_step_margin = 1*10*0.001/3 + 2*0.01*0.0006 ≈ 0.003345
         # reversal_reserve ≈ 1.401, spendable ≈ 58.599
         # requested 500 > spendable → scaled to 58.599.
         autotrade_cls.assert_called_once()
@@ -348,17 +373,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_activate_autotrade_merges_signal_bot_params_over_settings(self):
-        settings = {
-            "exchange_id": "binance",
-            "fiat": "USDT",
-            "base_order_size": 10,
-            "stop_loss": 3,
-            "take_profit": 4,
-            "trailing": True,
-            "trailing_deviation": 1.2,
-            "trailing_profit": 2.4,
-            "autoswitch": True,
-        }
+        settings = make_autotrade_settings()
         signal = SignalsConsumer(
             autotrade=True,
             current_price=100,
@@ -391,23 +406,13 @@ class TestAutotradeConsumer:
         assert create_payload["fiat_order_size"] == 25
         assert create_payload["margin_short_reversal"] is False
         assert create_payload["recovery_params"] is None
-        assert create_payload["stop_loss"] == settings["stop_loss"]
-        assert create_payload["take_profit"] == settings["take_profit"]
-        assert create_payload["trailing_deviation"] == settings["trailing_deviation"]
+        assert create_payload["stop_loss"] == settings.stop_loss
+        assert create_payload["take_profit"] == settings.take_profit
+        assert create_payload["trailing_deviation"] == settings.trailing_deviation
 
     @pytest.mark.asyncio
     async def test_activation_error_deactivates_real_bot_without_deleting_it(self):
-        settings = {
-            "exchange_id": "binance",
-            "fiat": "USDT",
-            "base_order_size": 10,
-            "stop_loss": 3,
-            "take_profit": 4,
-            "trailing": True,
-            "trailing_deviation": 1.2,
-            "trailing_profit": 2.4,
-            "autoswitch": False,
-        }
+        settings = make_autotrade_settings(autoswitch=False)
         signal = SignalsConsumer(autotrade=True, current_price=100)
         self.mock_binbot_api.activate_bot.return_value = {
             "error": 1,
@@ -434,17 +439,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_activation_error_still_deletes_paper_bot(self):
-        settings = {
-            "exchange_id": "binance",
-            "fiat": "USDT",
-            "base_order_size": 10,
-            "stop_loss": 3,
-            "take_profit": 4,
-            "trailing": True,
-            "trailing_deviation": 1.2,
-            "trailing_profit": 2.4,
-            "autoswitch": False,
-        }
+        settings = make_autotrade_settings(autoswitch=False)
         signal = SignalsConsumer(autotrade=True, current_price=100)
         self.mock_binbot_api.activate_paper_bot.return_value = {
             "error": 1,
@@ -468,17 +463,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_activate_autotrade_enables_bounded_recovery_for_autoswitch(self):
-        settings = {
-            "exchange_id": "kucoin",
-            "fiat": "USDT",
-            "base_order_size": 10,
-            "stop_loss": 3,
-            "take_profit": 4,
-            "trailing": True,
-            "trailing_deviation": 1.2,
-            "trailing_profit": 2.4,
-            "autoswitch": True,
-        }
+        settings = make_autotrade_settings(exchange_id=ExchangeId.KUCOIN)
         signal = SignalsConsumer(
             autotrade=True,
             current_price=100,
@@ -512,17 +497,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_activate_autotrade_preserves_explicit_recovery_opt_out(self):
-        settings = {
-            "exchange_id": "kucoin",
-            "fiat": "USDT",
-            "base_order_size": 10,
-            "stop_loss": 3,
-            "take_profit": 4,
-            "trailing": True,
-            "trailing_deviation": 1.2,
-            "trailing_profit": 2.4,
-            "autoswitch": True,
-        }
+        settings = make_autotrade_settings(exchange_id=ExchangeId.KUCOIN)
         signal = SignalsConsumer(
             autotrade=True,
             current_price=100,
@@ -552,17 +527,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_activate_kucoin_futures_short_uses_mark_price_for_preflight(self):
-        settings = {
-            "exchange_id": "kucoin",
-            "fiat": "USDT",
-            "base_order_size": 10,
-            "stop_loss": 3,
-            "take_profit": 4,
-            "trailing": True,
-            "trailing_deviation": 1.2,
-            "trailing_profit": 2.4,
-            "autoswitch": True,
-        }
+        settings = make_autotrade_settings(exchange_id=ExchangeId.KUCOIN)
         signal = SignalsConsumer(
             autotrade=True,
             current_price=100,
@@ -603,17 +568,7 @@ class TestAutotradeConsumer:
     async def test_activate_kucoin_futures_short_raises_clear_error_without_mark_price(
         self,
     ):
-        settings = {
-            "exchange_id": "kucoin",
-            "fiat": "USDT",
-            "base_order_size": 10,
-            "stop_loss": 3,
-            "take_profit": 4,
-            "trailing": True,
-            "trailing_deviation": 1.2,
-            "trailing_profit": 2.4,
-            "autoswitch": True,
-        }
+        settings = make_autotrade_settings(exchange_id=ExchangeId.KUCOIN)
         signal = SignalsConsumer(
             autotrade=True,
             current_price=100,
@@ -756,15 +711,16 @@ class TestAutotradeConsumer:
                 breakout_high=106,
             )
         ]
-        self.mock_binbot_api.get_single_symbol.return_value = {
-            "price_precision": 2,
-            "qty_precision": 0,
-            "quote_asset": "USDT",
-            "is_margin_trading_allowed": True,
-            "id": "BTCUSDTM",
-            "active": True,
-            "futures_leverage": 1,
-        }
+        self.mock_binbot_api.get_single_symbol.return_value = SymbolModel(
+            id="BTCUSDTM",
+            exchange_id=ExchangeId.KUCOIN,
+            base_asset="BTC",
+            quote_asset="USDT",
+            price_precision=2,
+            qty_precision=0,
+            is_margin_trading_allowed=True,
+            futures_leverage=1,
+        )
         signal = SignalsConsumer(
             autotrade=True,
             current_price=10,

@@ -167,7 +167,7 @@ class ActivityBurstPump:
         algo = "activity_burst_pump"
         autotrade = False
         bot_strategy = Position.long
-        base_asset = self.current_symbol_data["base_asset"]
+        base_asset = self.current_symbol_data.base_asset
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
         autotrade_route = "market_context_unavailable"

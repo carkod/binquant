@@ -1,7 +1,6 @@
 import logging
 
-from pybinbot import BinbotApi, ExchangeId
-
+from pybinbot import BinbotApi, ExchangeId, SymbolModel
 from market_regime.models import LiveMarketContext
 
 
@@ -82,14 +81,14 @@ class LeverageCalibrator:
     def calibrate_all(
         self,
         context: LiveMarketContext,
-        all_symbols: list[dict],
+        all_symbols: list[SymbolModel],
     ) -> dict[str, int]:
         """
         Iterate over symbols with live features, write new leverage when it
         differs from the current row. Returns a small counters dict for
         observability.
         """
-        rows_by_id = {row["id"]: row for row in all_symbols}
+        rows_by_id = {row.id: row for row in all_symbols}
         applied = 0
         no_change = 0
         skipped = 0
@@ -100,7 +99,7 @@ class LeverageCalibrator:
                 skipped += 1
                 continue
 
-            current = int(row.get("futures_leverage") or 1)
+            current = row.futures_leverage
             target = self.target_leverage(symbol, features.close, context)
 
             if target == current:
@@ -111,7 +110,7 @@ class LeverageCalibrator:
                 self.binbot_api.edit_symbol(
                     symbol=symbol, exchange_id=self.exchange, futures_leverage=target
                 )
-                row["futures_leverage"] = target
+                row.futures_leverage = target
                 applied += 1
             except Exception:
                 logging.exception(

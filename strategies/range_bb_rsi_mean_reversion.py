@@ -251,8 +251,8 @@ class RangeBbRsiMeanReversion:
             self.market_type,
             self.symbol,
         )
-        base_asset = self.current_symbol_data["base_asset"]
-        quote_asset = self.current_symbol_data["quote_asset"]
+        base_asset = self.current_symbol_data.base_asset
+        quote_asset = self.current_symbol_data.quote_asset
         latest_row = df.iloc[-1]
         candle_range = float(latest_row["high"] - latest_row["low"])
         atr_stop_note = (

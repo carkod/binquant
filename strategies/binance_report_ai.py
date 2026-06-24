@@ -37,7 +37,7 @@ class BinanceAIReport:
         if not self.current_symbol_data:
             return None
 
-        token = self.current_symbol_data["base_asset"]
+        token = self.current_symbol_data.base_asset
         try:
             timestamp = int(time.time() * 1000)
             payload = {

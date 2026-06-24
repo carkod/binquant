@@ -4,8 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, MarketType, Position
-
+from pybinbot import ExchangeId, MarketType, Position, SymbolModel
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 
@@ -126,7 +125,14 @@ def make_context(
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
-        current_symbol_data={"base_asset": "TEST"},
+        current_symbol_data=SymbolModel(
+            id="TESTUSDT",
+            exchange_id=ExchangeId.KUCOIN,
+            base_asset="TEST",
+            quote_asset="USDT",
+            price_precision=8,
+            qty_precision=8,
+        ),
         price_precision=8,
         qty_precision=8,
         oi_data=1.05,

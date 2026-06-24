@@ -10,6 +10,7 @@ from pybinbot import (
     ExchangeId,
     AsyncKucoinWebsocketClient,
     MarketType,
+    SymbolModel,
 )
 from shared.streaming.websocket_factory import WebsocketClientFactory
 
@@ -96,11 +97,36 @@ class TestWebsocketFactory:
         """Test that KuCoin factory only subscribes to USDT markets"""
         # Mock symbols with mixed quote assets
         mock_symbols = [
-            {"id": "BTC-USDT", "base_asset": "BTC", "quote_asset": "USDT"},
-            {"id": "ETH-USDT", "base_asset": "ETH", "quote_asset": "USDT"},
-            {"id": "BTC-USDC", "base_asset": "BTC", "quote_asset": "USDC"},
-            {"id": "ETH-BTC", "base_asset": "ETH", "quote_asset": "BTC"},
-            {"id": "BNB-USDT", "base_asset": "BNB", "quote_asset": "USDT"},
+            SymbolModel(
+                id="BTC-USDT",
+                exchange_id=ExchangeId.KUCOIN,
+                base_asset="BTC",
+                quote_asset="USDT",
+            ),
+            SymbolModel(
+                id="ETH-USDT",
+                exchange_id=ExchangeId.KUCOIN,
+                base_asset="ETH",
+                quote_asset="USDT",
+            ),
+            SymbolModel(
+                id="BTC-USDC",
+                exchange_id=ExchangeId.KUCOIN,
+                base_asset="BTC",
+                quote_asset="USDC",
+            ),
+            SymbolModel(
+                id="ETH-BTC",
+                exchange_id=ExchangeId.KUCOIN,
+                base_asset="ETH",
+                quote_asset="BTC",
+            ),
+            SymbolModel(
+                id="BNB-USDT",
+                exchange_id=ExchangeId.KUCOIN,
+                base_asset="BNB",
+                quote_asset="USDT",
+            ),
         ]
 
         # Set return values for the global BinbotApi mock
@@ -164,17 +190,28 @@ class TestWebsocketFactory:
         expected_client_count: int,
     ):
         mock_symbols = [
-            {
-                "id": f"SYM{i}USDTM",
-                "base_asset": f"SYM{i}",
-                "quote_asset": "USDT",
-            }
+            SymbolModel(
+                id=f"SYM{i}USDTM",
+                exchange_id=ExchangeId.KUCOIN,
+                base_asset=f"SYM{i}",
+                quote_asset="USDT",
+            )
             for i in range(symbol_count)
         ]
         mock_symbols.extend(
             [
-                {"id": "BTC-USDT", "base_asset": "BTC", "quote_asset": "USDT"},
-                {"id": "ETHUSDCM", "base_asset": "ETH", "quote_asset": "USDC"},
+                SymbolModel(
+                    id="BTC-USDT",
+                    exchange_id=ExchangeId.KUCOIN,
+                    base_asset="BTC",
+                    quote_asset="USDT",
+                ),
+                SymbolModel(
+                    id="ETHUSDCM",
+                    exchange_id=ExchangeId.KUCOIN,
+                    base_asset="ETH",
+                    quote_asset="USDC",
+                ),
             ]
         )
 
