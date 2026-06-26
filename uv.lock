@@ -275,7 +275,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=1.9.48" },
+    { name = "pybinbot", specifier = ">=1.9.49" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "python-jose" },
@@ -1411,7 +1411,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "1.9.48"
+version = "1.9.49"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1425,9 +1425,9 @@ dependencies = [
     { name = "requests" },
     { name = "websocket-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/75/dd/67d4654d912d9db1a48beac0e17288839b6e9ff52d74dfff11b95a1b768d/pybinbot-1.9.48.tar.gz", hash = "sha256:e38e9afb6c5e3b0428ba7758e6a09b657132e62b42eea272648736961f176557", size = 76090, upload-time = "2026-06-25T21:48:16.514Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/15/682d106a0b2bed05ec72c522ab98971caef05ac187d7f2286daf3072cc94/pybinbot-1.9.49.tar.gz", hash = "sha256:a1cf464db5f9d4d08aa90c8ff3f4df1be9f84b235dc0c8728d2d5e11d43cfef3", size = 76167, upload-time = "2026-06-28T21:18:18.742Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/ce/90337548cf412db221fc58ceb342b9cc2ae22de870609e4a416f1cb9f2da/pybinbot-1.9.48-py3-none-any.whl", hash = "sha256:8e649e123d516bd38ced6518d73d3cee23eb26995bd4cb97c04246c50cdb4d1f", size = 72362, upload-time = "2026-06-25T21:48:15.22Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/d8/2bcfbe41887924ddea686569fdf58f7c26bb16f5a24eebf3a02c0a72af53/pybinbot-1.9.49-py3-none-any.whl", hash = "sha256:c6f32687a9badc632bc2486cb44f400ffc970f1a551624619f9fdf7ec0a833be", size = 72365, upload-time = "2026-06-28T21:18:17.601Z" },
 ]
 
 [[package]]
