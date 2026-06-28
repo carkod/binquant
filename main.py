@@ -8,7 +8,9 @@ event loop, connected by an in-memory `asyncio.Queue`.
 
 import asyncio
 import logging
+import time
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Protocol
 
 from pybinbot import configure_logging
@@ -17,9 +19,16 @@ from shared.streaming.websocket_factory import WebsocketClientFactory
 
 configure_logging(force=True)
 
+HEARTBEAT_PATH = Path("/tmp/binquant.heartbeat")
+
 
 class WebsocketClient(Protocol):
     async def run_forever(self) -> None: ...
+
+
+def touch_heartbeat() -> None:
+    HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    HEARTBEAT_PATH.write_text(f"{time.time()}\n", encoding="utf-8")
 
 
 async def ingest_loop(clients: Sequence[WebsocketClient]) -> None:
@@ -38,6 +47,7 @@ async def consume_loop(klines_provider: KlinesProvider, queue: asyncio.Queue) ->
         message = await queue.get()
         try:
             await klines_provider.aggregate_data(message)
+            touch_heartbeat()
         except Exception:
             logging.exception("Error processing kline message")
         finally:

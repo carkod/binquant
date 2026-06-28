@@ -233,11 +233,6 @@ class AutotradeConsumer:
         return False
 
     @staticmethod
-    def _ratio_config(value: Any) -> float:
-        parsed = float(value)
-        return parsed / 100 if parsed > 1 else parsed
-
-    @staticmethod
     def _grid_ladder_attempt_key(
         params: GridDeploymentRequest,
     ) -> tuple[str, str, str, str]:
@@ -288,11 +283,6 @@ class AutotradeConsumer:
         if self._grid_ladder_attempted_recently(params):
             return
 
-        available_balance = float(
-            self.binbot_api.get_available_fiat(
-                exchange=self.exchange, fiat=self.autotrade_settings.fiat
-            )
-        )
         symbol = params.symbol
         self.active_bots = self.binbot_api.get_active_pairs(collection_name="bots")
         if symbol in self.active_bots:
@@ -319,31 +309,27 @@ class AutotradeConsumer:
             )
             return
 
-        usable = available_balance * self._ratio_config(grid_allocation_pct)
-        reserve = available_balance * self._ratio_config(cash_reserve_pct)
-        per_ladder_cap = available_balance * self._ratio_config(
-            self.autotrade_settings.max_margin_per_ladder_pct
-        )
-        deployable = max(usable - reserve, 0)
-        remaining_slots = max_active - len(self.active_grid_ladders)
-        suggested_margin = round_numbers(
-            min(per_ladder_cap, deployable / remaining_slots), 8
-        )
-        if suggested_margin <= 0:
-            logging.info("grid_ladder skipped: insufficient_available_balance")
-            return
-        # Mutate total_margin on the signal so downstream analytics
-        # (dispatch_signal_record) sees the actual deployed amount, not the
-        # candidate placeholder the strategy emitted.
-        params.total_margin = suggested_margin
         payload = params.model_dump(mode="json")
+
+        try:
+            self.binbot_api.calculate_grid_levels(payload)
+        except BinbotErrors as e:
+            logging.info(e.message)
+            return
+        except Exception:
+            logging.exception(
+                "calculate_grid_levels failed for %s; skipping grid ladder create.",
+                payload.get("symbol"),
+            )
+            return
+
+        self._record_grid_ladder_attempt(params)
 
         try:
             # Two binquant workers can both pass the active-ladder check between
             # the GET and POST, so the POST may 400 against binbot's partial
             # unique index. Log and move on instead of bubbling the exception
             # into the strategy pipeline.
-            self._record_grid_ladder_attempt(params)
             self.binbot_api.create_grid_ladder(payload)
         except BinbotErrors as e:
             logging.info(e.message)
