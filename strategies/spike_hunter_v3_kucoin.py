@@ -283,9 +283,15 @@ class SpikeHunterV3KuCoin:
         )
         self.volume_cluster_min_ratio = new_vol_thr
         self.price_break_base_threshold = max(old_price_floor, new_price_floor)
-        if self.price_break_use_dynamic:
-            logging.info(
-                "[AutoCalibrate] Dynamic price quantile logic will adapt above calibrated floor."
+        if (
+            self.price_break_use_dynamic
+            and self.price_break_base_threshold > old_price_floor
+        ):
+            logging.debug(
+                "[AutoCalibrate] Price break floor increased from %.6f to %.6f; "
+                "dynamic quantile logic will adapt above it.",
+                old_price_floor,
+                self.price_break_base_threshold,
             )
 
     # -------- Features -------- #
