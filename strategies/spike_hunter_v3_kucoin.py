@@ -115,8 +115,15 @@ class SpikeHunterV3KuCoin:
     ) -> tuple[bool, str]:
         """
         Market-level gate for short entries. Keep short autotrade symmetric
-        with long autotrade: only a full TREND_DOWN market can open bots.
-        Other regimes still emit observable signals with autotrade disabled.
+        with long autotrade: a full TREND_DOWN market plus breadth/BTC/tailwind
+        confirmation can open bots. Other regimes still emit observable signals
+        with autotrade disabled.
+
+        Historically shorts only checked the TREND_DOWN label and ignored the
+        breadth fields the long path uses, which let shorts fire into snapback
+        bounces (39% win rate vs 58% for longs). These vetoes mirror the long
+        RANGE path with the sign flipped so shorts require the tape, BTC, and
+        market-wide tailwind to actually be bearish, not just the regime label.
         """
         if context.market_regime is None:
             return False, "short_market_regime_unavailable"
@@ -125,6 +132,17 @@ class SpikeHunterV3KuCoin:
             return False, "short_market_stress_too_high"
 
         if context.market_regime == "TREND_DOWN":
+            # A firmly bid BTC drags alts up regardless of a symbol's own
+            # weakness; mirror of the long path's btc_regime_score < -0.03 veto.
+            if context.btc_regime_score > 0.03:
+                return False, "trend_down_btc_regime_positive"
+            # Broad participation must be bearish. Block when advancers still
+            # outnumber decliners (mirror of long range_breadth_too_bearish).
+            if context.advancers_ratio > context.decliners_ratio:
+                return False, "trend_down_breadth_too_bullish"
+            # Market-wide short bias must be present (mirror of long_tailwind).
+            if context.short_tailwind <= 0:
+                return False, "trend_down_short_tailwind_non_positive"
             return True, "market_trend_down"
 
         if context.market_regime == "RANGE":
@@ -138,10 +156,19 @@ class SpikeHunterV3KuCoin:
     @staticmethod
     def _is_weak_short_symbol(features: SymbolMarketFeatures) -> bool:
         """
-        Symbol-level confirmation for short entries. Keep this symmetric with
-        long autotrade by requiring a full TREND_DOWN symbol micro-regime.
+        Symbol-level confirmation for short entries. Sign-flipped analogue of
+        ``_is_leading_in_range_symbol``: require a full TREND_DOWN symbol
+        micro-regime plus a negative trend score, price below EMA20, and the
+        symbol lagging (not leading) BTC, so we short genuine weakness rather
+        than a single red spike in an otherwise-firm coin.
         """
-        return features.micro_regime == "TREND_DOWN"
+        if features.micro_regime != "TREND_DOWN":
+            return False
+        return bool(
+            features.trend_score < 0
+            and not features.above_ema20
+            and features.relative_strength_vs_btc <= 0
+        )
 
     def regime_routing(
         self,

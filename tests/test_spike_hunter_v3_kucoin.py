@@ -497,6 +497,234 @@ async def test_signal_keeps_short_autotrade_path_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_signal_blocks_short_autotrade_when_btc_regime_positive(monkeypatch):
+    weak_symbol = make_symbol_features(
+        micro_regime="TREND_DOWN",
+        micro_regime_transition="BREAKDOWN",
+        trend_score=-0.03,
+        above_ema20=False,
+        relative_strength_vs_btc=-0.04,
+    )
+    context = make_market_context(
+        market_regime="TREND_DOWN",
+        market_regime_transition="ENTERED_TREND_DOWN",
+        advancers_ratio=0.25,
+        decliners_ratio=0.65,
+        short_tailwind=0.12,
+        btc_regime_score=0.05,
+        symbol_features={"TESTUSDT": weak_symbol},
+    )
+    algo, df = make_algo(context)
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    monkeypatch.setattr(
+        algo,
+        "latest_signal",
+        lambda: make_last_spike(upward=False, downward=True),
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    process_mock.assert_not_awaited()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    record_call = record_mock.call_args
+    assert record_call is not None
+    signal_value = record_call.kwargs["value"]
+    assert "Autotrade route: trend_down_btc_regime_positive" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+    assert signal_value.autotrade is False
+    assert signal_value.bot_params.position == "short"
+
+
+@pytest.mark.asyncio
+async def test_signal_blocks_short_autotrade_when_breadth_too_bullish(monkeypatch):
+    weak_symbol = make_symbol_features(
+        micro_regime="TREND_DOWN",
+        micro_regime_transition="BREAKDOWN",
+        trend_score=-0.03,
+        above_ema20=False,
+        relative_strength_vs_btc=-0.04,
+    )
+    context = make_market_context(
+        market_regime="TREND_DOWN",
+        market_regime_transition="ENTERED_TREND_DOWN",
+        advancers_ratio=0.70,
+        decliners_ratio=0.20,
+        short_tailwind=0.12,
+        btc_regime_score=-0.04,
+        symbol_features={"TESTUSDT": weak_symbol},
+    )
+    algo, df = make_algo(context)
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    monkeypatch.setattr(
+        algo,
+        "latest_signal",
+        lambda: make_last_spike(upward=False, downward=True),
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    process_mock.assert_not_awaited()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    record_call = record_mock.call_args
+    assert record_call is not None
+    signal_value = record_call.kwargs["value"]
+    assert "Autotrade route: trend_down_breadth_too_bullish" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+    assert signal_value.autotrade is False
+    assert signal_value.bot_params.position == "short"
+
+
+@pytest.mark.asyncio
+async def test_signal_blocks_short_autotrade_when_short_tailwind_non_positive(
+    monkeypatch,
+):
+    weak_symbol = make_symbol_features(
+        micro_regime="TREND_DOWN",
+        micro_regime_transition="BREAKDOWN",
+        trend_score=-0.03,
+        above_ema20=False,
+        relative_strength_vs_btc=-0.04,
+    )
+    context = make_market_context(
+        market_regime="TREND_DOWN",
+        market_regime_transition="ENTERED_TREND_DOWN",
+        advancers_ratio=0.25,
+        decliners_ratio=0.65,
+        short_tailwind=-0.02,
+        btc_regime_score=-0.04,
+        symbol_features={"TESTUSDT": weak_symbol},
+    )
+    algo, df = make_algo(context)
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    monkeypatch.setattr(
+        algo,
+        "latest_signal",
+        lambda: make_last_spike(upward=False, downward=True),
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    process_mock.assert_not_awaited()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    record_call = record_mock.call_args
+    assert record_call is not None
+    signal_value = record_call.kwargs["value"]
+    assert "Autotrade route: trend_down_short_tailwind_non_positive" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+    assert signal_value.autotrade is False
+    assert signal_value.bot_params.position == "short"
+
+
+@pytest.mark.asyncio
+async def test_signal_blocks_short_autotrade_when_symbol_not_genuinely_weak(
+    monkeypatch,
+):
+    # Market-level breadth/BTC/tailwind all confirm bearish, and the symbol's
+    # micro_regime label is TREND_DOWN, but the symbol is still trading above
+    # its EMA20 and outperforming BTC — not the genuine-weakness case this
+    # veto targets.
+    not_weak_symbol = make_symbol_features(
+        micro_regime="TREND_DOWN",
+        micro_regime_transition="BREAKDOWN",
+        trend_score=-0.03,
+        above_ema20=True,
+        relative_strength_vs_btc=0.01,
+    )
+    context = make_market_context(
+        market_regime="TREND_DOWN",
+        market_regime_transition="ENTERED_TREND_DOWN",
+        advancers_ratio=0.25,
+        decliners_ratio=0.65,
+        short_tailwind=0.12,
+        btc_regime_score=-0.04,
+        symbol_features={"TESTUSDT": not_weak_symbol},
+    )
+    algo, df = make_algo(context)
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    monkeypatch.setattr(
+        algo,
+        "latest_signal",
+        lambda: make_last_spike(upward=False, downward=True),
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    process_mock.assert_not_awaited()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    record_call = record_mock.call_args
+    assert record_call is not None
+    signal_value = record_call.kwargs["value"]
+    assert "Autotrade route: market_trend_down_symbol_regime_trend_down" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+    assert signal_value.autotrade is False
+    assert signal_value.bot_params.position == "short"
+
+
+@pytest.mark.asyncio
 async def test_signal_blocks_short_autotrade_when_symbol_is_not_trend_down(monkeypatch):
     volatile_symbol = make_symbol_features(
         micro_regime="VOLATILE",
