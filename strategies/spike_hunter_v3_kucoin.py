@@ -30,6 +30,8 @@ class SpikeHunterV3KuCoin:
     - Keeps thresholds + auto-calibration flow
     """
 
+    SHORT_MAX_STRESS_SCORE = 0.45
+
     def __init__(
         self,
         cls: "ContextEvaluator",
@@ -107,51 +109,39 @@ class SpikeHunterV3KuCoin:
             and features.relative_strength_vs_btc >= 0
         )
 
-    @staticmethod
-    def _has_breadth_short_market(context: LiveMarketContext) -> bool:
+    @classmethod
+    def _breadth_short_market_route(
+        cls, context: LiveMarketContext
+    ) -> tuple[bool, str]:
         """
-        Market-level breadth gate for short entries: requires an actual
-        TREND_DOWN regime (or transition into one), with deteriorating
-        advancers, positive short-side tailwind, BTC neutral-or-down,
-        and stress below the crisis range where mean-reversion bounces
-        dominate.
-
-        The TREND_DOWN requirement is deliberately strict: in RANGE
-        markets a low advancers_ratio mean-reverts hard, so level-based
-        gating without a confirmed bearish regime has anti-edge.
-
-        Note: short_regime_score is *structurally* lower than
-        long_regime_score in observed data even during periods where
-        shorts outperform — so we do not gate on their relative ordering.
+        Market-level gate for short entries. Keep short autotrade symmetric
+        with long autotrade: only a full TREND_DOWN market can open bots.
+        Other regimes still emit observable signals with autotrade disabled.
         """
-        if context.market_regime != "TREND_DOWN" and (
-            context.market_regime_transition != "ENTERED_TREND_DOWN"
-        ):
-            return False
-        if context.advancers_ratio >= 0.45:
-            return False
-        if context.short_tailwind <= 0:
-            return False
-        if context.market_stress_score >= 0.65:
-            return False
-        if context.btc_regime_score > 0:
-            return False
-        return True
+        if context.market_regime is None:
+            return False, "short_market_regime_unavailable"
+
+        if context.market_stress_score >= cls.SHORT_MAX_STRESS_SCORE:
+            return False, "short_market_stress_too_high"
+
+        if context.market_regime == "TREND_DOWN":
+            return True, "market_trend_down"
+
+        if context.market_regime == "RANGE":
+            return False, "market_range_short_disabled"
+
+        if context.market_regime == "TRANSITIONAL":
+            return False, "market_transitional_short_disabled"
+
+        return False, f"market_regime_{context.market_regime.lower()}_short_disabled"
 
     @staticmethod
     def _is_weak_short_symbol(features: SymbolMarketFeatures) -> bool:
         """
-        Symbol-level confirmation for short entries: lagging BTC AND
-        either in a TREND_DOWN/VOLATILE micro_regime or trading below
-        its 20EMA. Symmetric to _is_leading_in_range_symbol.
+        Symbol-level confirmation for short entries. Keep this symmetric with
+        long autotrade by requiring a full TREND_DOWN symbol micro-regime.
         """
-        if features.relative_strength_vs_btc > 0:
-            return False
-        if features.micro_regime in ("TREND_DOWN", "VOLATILE"):
-            return True
-        if not features.above_ema20:
-            return True
-        return False
+        return features.micro_regime == "TREND_DOWN"
 
     def regime_routing(
         self,
@@ -234,13 +224,19 @@ class SpikeHunterV3KuCoin:
     ) -> tuple[bool, str]:
         if context is None:
             return False, "market_context_unavailable"
-        if not self._has_breadth_short_market(context):
-            return False, "breadth_short_conditions_unmet"
+        market_allowed, market_route = self._breadth_short_market_route(context)
+        if not market_allowed:
+            return False, market_route
         if symbol_features is None:
             return False, "symbol_regime_unavailable"
         if not self._is_weak_short_symbol(symbol_features):
-            return False, "symbol_not_weak_enough"
-        return True, "breadth_short_symbol_weak"
+            if symbol_features.micro_regime is None:
+                return False, "symbol_regime_unavailable"
+            return (
+                False,
+                f"{market_route}_symbol_regime_{symbol_features.micro_regime.lower()}",
+            )
+        return True, f"{market_route}_symbol_trend_down"
 
     def auto_calibrate(
         self,
@@ -261,9 +257,15 @@ class SpikeHunterV3KuCoin:
         )
         self.volume_cluster_min_ratio = new_vol_thr
         self.price_break_base_threshold = max(old_price_floor, new_price_floor)
-        if self.price_break_use_dynamic:
-            logging.info(
-                "[AutoCalibrate] Dynamic price quantile logic will adapt above calibrated floor."
+        if (
+            self.price_break_use_dynamic
+            and self.price_break_base_threshold > old_price_floor
+        ):
+            logging.debug(
+                "[AutoCalibrate] Price break floor increased from %.6f to %.6f; "
+                "dynamic quantile logic will adapt above it.",
+                old_price_floor,
+                self.price_break_base_threshold,
             )
 
     # -------- Features -------- #
