@@ -14,7 +14,7 @@ from pybinbot import (
     timestamp_to_datetime,
 )
 
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.models import LiveMarketContext
 from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
 
@@ -30,7 +30,7 @@ class SpikeHunterV3KuCoin:
     - Keeps thresholds + auto-calibration flow
     """
 
-    SHORT_MAX_STRESS_SCORE = 0.45
+    MAX_MARKET_STRESS_SCORE = 0.35
 
     def __init__(
         self,
@@ -71,172 +71,49 @@ class SpikeHunterV3KuCoin:
         self.require_bullish_spike = True
         self.body_size_pct_min = 0.0
 
-    @staticmethod
-    def _has_bullish_transitional_market(context: LiveMarketContext) -> bool:
-        if context.market_regime != "TRANSITIONAL":
-            return False
-        if context.market_stress_score >= 0.35:
-            return False
-        return context.long_tailwind > 0 and context.long_regime_score > max(
-            context.short_regime_score,
-            context.range_regime_score,
-            context.stress_regime_score,
-        )
-
-    @staticmethod
-    def _has_bullish_transitional_symbol(features: SymbolMarketFeatures) -> bool:
-        if features.micro_regime != "TRANSITIONAL":
-            return False
-        return (
-            features.trend_score > 0
-            and features.above_ema20
-            and features.relative_strength_vs_btc >= 0
-        )
-
-    @staticmethod
-    def _is_leading_in_range_symbol(features: SymbolMarketFeatures) -> bool:
-        """
-        Symbol-level confirmation for the 'leading coin in a sleepy market'
-        path: a coin in genuine TREND_UP with positive trend score, above
-        EMA20, and not lagging BTC. Stricter than the bullish_transitional
-        check because we have no market-level confirmation backing it.
-        """
-        if features.micro_regime != "TREND_UP":
-            return False
-        return bool(
-            features.trend_score > 0
-            and features.above_ema20
-            and features.relative_strength_vs_btc >= 0
-        )
-
-    @classmethod
-    def _breadth_short_market_route(
-        cls, context: LiveMarketContext
-    ) -> tuple[bool, str]:
-        """
-        Market-level gate for short entries. Keep short autotrade symmetric
-        with long autotrade: only a full TREND_DOWN market can open bots.
-        Other regimes still emit observable signals with autotrade disabled.
-        """
-        if context.market_regime is None:
-            return False, "short_market_regime_unavailable"
-
-        if context.market_stress_score >= cls.SHORT_MAX_STRESS_SCORE:
-            return False, "short_market_stress_too_high"
-
-        if context.market_regime == "TREND_DOWN":
-            return True, "market_trend_down"
-
-        if context.market_regime == "RANGE":
-            return False, "market_range_short_disabled"
-
-        if context.market_regime == "TRANSITIONAL":
-            return False, "market_transitional_short_disabled"
-
-        return False, f"market_regime_{context.market_regime.lower()}_short_disabled"
-
-    @staticmethod
-    def _is_weak_short_symbol(features: SymbolMarketFeatures) -> bool:
-        """
-        Symbol-level confirmation for short entries. Keep this symmetric with
-        long autotrade by requiring a full TREND_DOWN symbol micro-regime.
-        """
-        return features.micro_regime == "TREND_DOWN"
-
-    def regime_routing(
+    def market_breadth_direction(
         self,
         context: LiveMarketContext | None,
-        symbol_features: SymbolMarketFeatures | None,
-    ) -> tuple[bool, str]:
+    ) -> tuple[Position | None, str]:
         if context is None:
-            return False, "market_context_unavailable"
+            return None, "market_context_unavailable"
 
-        if context.market_stress_score >= 0.35:
-            return False, "market_stress_too_high"
+        if context.market_stress_score >= self.MAX_MARKET_STRESS_SCORE:
+            return None, "market_stress_too_high"
 
         if context.market_regime is None:
-            return False, "market_regime_unavailable"
+            return None, "market_regime_unavailable"
 
-        # Long Spike Hunter entries have been noisy outside full market +
-        # coin trend alignment. Keep the detailed route reasons for
-        # observability, but only autotrade when both are TREND_UP.
         if context.market_regime == "TREND_UP":
-            market_route = "market_trend_up"
-        elif self._has_bullish_transitional_market(context):
-            market_route = "market_transitional_bullish"
-        elif context.market_regime == "RANGE":
-            # In a RANGE market, BTC weakness propagates to alts even when
-            # a symbol's relative strength looks positive. Require BTC to
-            # not be meaningfully fading and confirm the symbol is genuinely
-            # leading before checking range entrenchment — a confirmed leading
-            # coin earns a looser range-strength ceiling (0.75 vs 0.60) because
-            # it's breaking out on idiosyncratic flow, not riding market beta.
-            if context.btc_regime_score < -0.03:
-                return False, "range_btc_regime_negative"
-            # Isolated coin spikes inside a broadly falling market are not the
-            # 'leading coin' scenario this path targets. Block when decliners
-            # outnumber advancers; a sleepy market with many unchanged symbols
-            # is fine as long as advancers >= decliners.
-            if context.advancers_ratio < context.decliners_ratio:
-                return False, "range_breadth_too_bearish"
-            if context.long_tailwind < 0:
-                return False, "range_long_tailwind_negative"
-            if symbol_features is None:
-                return False, "symbol_regime_unavailable"
-            if not self._is_leading_in_range_symbol(symbol_features):
-                if symbol_features.micro_regime is None:
-                    return False, "symbol_regime_unavailable"
-                return (
-                    False,
-                    f"range_symbol_regime_{symbol_features.micro_regime.lower()}",
-                )
-            # Symbol is confirmed leading — allow up to 0.75 range entrenchment.
-            # Deeply entrenched ranges (>0.75) revert hard against breakouts.
-            if context.range_regime_score > 0.75:
-                return False, "range_regime_too_strong"
-            return False, "market_range_symbol_leading_long_disabled"
-        else:
-            return False, f"market_regime_{context.market_regime.lower()}"
+            return Position.long, "market_trend_up"
+        if context.market_regime == "TREND_DOWN":
+            return Position.short, "market_trend_down"
 
-        if symbol_features is None:
-            return False, "symbol_regime_unavailable"
+        return None, f"market_regime_{context.market_regime.lower()}_disabled"
 
-        if (
-            context.market_regime == "TREND_UP"
-            and symbol_features.micro_regime == "TREND_UP"
-        ):
-            return True, f"{market_route}_symbol_trend_up"
-
-        if symbol_features.micro_regime == "TREND_UP":
-            return False, f"{market_route}_symbol_trend_up_long_disabled"
-
-        if self._has_bullish_transitional_symbol(symbol_features):
-            return False, f"{market_route}_symbol_transitional_bullish_long_disabled"
-
-        if symbol_features.micro_regime is None:
-            return False, "symbol_regime_unavailable"
-        return False, f"symbol_regime_{symbol_features.micro_regime.lower()}"
-
-    def regime_routing_short(
-        self,
-        context: LiveMarketContext | None,
-        symbol_features: SymbolMarketFeatures | None,
+    @staticmethod
+    def symbol_spike_confirms_direction(
+        last_spike: dict,
+        direction: Position,
     ) -> tuple[bool, str]:
-        if context is None:
-            return False, "market_context_unavailable"
-        market_allowed, market_route = self._breadth_short_market_route(context)
-        if not market_allowed:
-            return False, market_route
-        if symbol_features is None:
-            return False, "symbol_regime_unavailable"
-        if not self._is_weak_short_symbol(symbol_features):
-            if symbol_features.micro_regime is None:
-                return False, "symbol_regime_unavailable"
-            return (
-                False,
-                f"{market_route}_symbol_regime_{symbol_features.micro_regime.lower()}",
+        if direction == Position.long:
+            long_flags = (
+                last_spike["cumulative_price_break_flag"]
+                or last_spike["volume_cluster_flag"]
+                or last_spike["accel_spike_flag"]
             )
-        return True, f"{market_route}_symbol_trend_down"
+            if long_flags and last_spike["upward"]:
+                return True, "symbol_upward_spike"
+            return False, "symbol_upward_spike_missing"
+
+        short_flags = (
+            last_spike["cumulative_price_break_short_flag"]
+            or last_spike["volume_cluster_flag"]
+            or last_spike["accel_spike_short_flag"]
+        )
+        if short_flags and last_spike["downward"]:
+            return True, "symbol_downward_spike"
+        return False, "symbol_downward_spike_missing"
 
     def auto_calibrate(
         self,
@@ -619,51 +496,47 @@ class SpikeHunterV3KuCoin:
             logging.info("No recent spike detected for breakout.")
             return
 
-        long_flags = (
-            last_spike["cumulative_price_break_flag"]
-            or last_spike["volume_cluster_flag"]
-            or last_spike["accel_spike_flag"]
-        )
-        short_flags = (
-            last_spike["cumulative_price_break_short_flag"]
-            or last_spike["volume_cluster_flag"]
-            or last_spike["accel_spike_short_flag"]
-        )
-
-        long_triggered = bool(long_flags and last_spike["upward"])
-        short_triggered = bool(short_flags and last_spike["downward"])
-
-        if not (long_triggered or short_triggered):
-            return
-
         algo = "spike_hunter_v3_kucoin"
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
+        bot_strategy, market_route = self.market_breadth_direction(context)
 
-        if long_triggered:
-            bot_strategy = Position.long
+        if bot_strategy is None:
+            logging.info(
+                "Spike Hunter skipped %s because market breadth route is %s.",
+                self.symbol,
+                market_route,
+            )
+            return
+
+        symbol_confirmed, symbol_route = self.symbol_spike_confirms_direction(
+            last_spike=last_spike,
+            direction=bot_strategy,
+        )
+        if not symbol_confirmed:
+            logging.info(
+                "Spike Hunter skipped %s because %s did not confirm %s.",
+                self.symbol,
+                symbol_route,
+                bot_strategy.value,
+            )
+            return
+
+        route_reason = f"{market_route}_{symbol_route}"
+        autotrade = True
+
+        if bot_strategy == Position.long:
             streak = "📈"
             action_label = "LONG ENTRY"
             rule_intent = (
-                "BUY after an early spike cluster survives bullish regime routing"
-            )
-            should_emit, route_reason = self.regime_routing(
-                context=context,
-                symbol_features=symbol_features,
+                "BUY when bullish market breadth is confirmed by an upward spike"
             )
         else:
-            bot_strategy = Position.short
             streak = "📉"
             action_label = "SHORT ENTRY"
             rule_intent = (
-                "SELL after a downward spike cluster on deteriorating market breadth"
+                "SELL when bearish market breadth is confirmed by a downward spike"
             )
-            should_emit, route_reason = self.regime_routing_short(
-                context=context,
-                symbol_features=symbol_features,
-            )
-
-        autotrade = should_emit
 
         base_asset = self.current_symbol_data.base_asset
         quote_asset = self.current_symbol_data.quote_asset
@@ -711,5 +584,4 @@ class SpikeHunterV3KuCoin:
         )
         self.ti.dispatch_signal_record(value=value)
         self.telegram_consumer.dispatch_signal(msg)
-        if autotrade:
-            await self.at_consumer.process_autotrade_restrictions(value)
+        await self.at_consumer.process_autotrade_restrictions(value)
