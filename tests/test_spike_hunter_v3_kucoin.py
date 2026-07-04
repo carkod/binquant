@@ -77,9 +77,37 @@ def make_market_context(**overrides: Any) -> LiveMarketContext:
     return LiveMarketContext(**values)
 
 
+def make_market_breadth_data(
+    *,
+    latest: float,
+    previous: float,
+    key: str = "market_breadth_ma",
+) -> dict[str, list[float] | list[str]]:
+    return {
+        "timestamp": [
+            "2026-07-04 00:15:00",
+            "2026-07-04 00:00:00",
+        ],
+        key: [latest, previous],
+    }
+
+
+def make_market_breadth_data_for_context(
+    context: LiveMarketContext | None,
+) -> dict[str, list[float] | list[str]]:
+    if context is None:
+        return {}
+    if context.market_regime == "TREND_UP":
+        return make_market_breadth_data(latest=0.12, previous=0.10)
+    if context.market_regime == "TREND_DOWN":
+        return make_market_breadth_data(latest=0.10, previous=0.12)
+    return make_market_breadth_data(latest=0.10, previous=0.10)
+
+
 def make_context(
     df: DataFrame,
     latest_market_context: LiveMarketContext | None,
+    market_breadth_data: dict[str, list[float] | list[str]] | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
@@ -90,6 +118,11 @@ def make_context(
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
+        market_breadth_data=(
+            market_breadth_data
+            if market_breadth_data is not None
+            else make_market_breadth_data_for_context(latest_market_context)
+        ),
         current_symbol_data=SymbolModel(
             id="TESTUSDT",
             exchange_id=ExchangeId.KUCOIN,
@@ -105,6 +138,7 @@ def make_context(
 
 def make_algo(
     latest_market_context: LiveMarketContext | None,
+    market_breadth_data: dict[str, list[float] | list[str]] | None = None,
 ) -> tuple[SpikeHunterV3KuCoin, DataFrame]:
     df = DataFrame(
         [
@@ -118,7 +152,16 @@ def make_algo(
             }
         ]
     )
-    algo = SpikeHunterV3KuCoin(cast(Any, make_context(df, latest_market_context)))
+    algo = SpikeHunterV3KuCoin(
+        cast(
+            Any,
+            make_context(
+                df,
+                latest_market_context,
+                market_breadth_data=market_breadth_data,
+            ),
+        )
+    )
     return algo, df
 
 
@@ -150,11 +193,14 @@ def make_last_spike(
 
 
 @pytest.mark.asyncio
-async def test_signal_autotrades_long_when_trend_up_market_has_upward_spike(
+async def test_signal_autotrades_long_when_breadth_momentum_rises_with_upward_spike(
     monkeypatch,
 ):
-    context = make_market_context(market_regime="TREND_UP")
-    algo, df = make_algo(context)
+    context = make_market_context(market_regime="TREND_DOWN")
+    algo, df = make_algo(
+        context,
+        market_breadth_data=make_market_breadth_data(latest=0.12, previous=0.10),
+    )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
     record_mock = Mock()
@@ -182,27 +228,33 @@ async def test_signal_autotrades_long_when_trend_up_market_has_upward_spike(
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert "Autotrade route: market_trend_up_symbol_upward_spike" in telegram_msg
+    assert (
+        "Autotrade route: breadth_momentum_up_market_breadth_ma_symbol_upward_spike"
+        in telegram_msg
+    )
     assert "Autotrade is enabled" in telegram_msg
     assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "long"
 
 
 @pytest.mark.asyncio
-async def test_signal_autotrades_short_when_trend_down_market_has_downward_spike(
+async def test_signal_autotrades_short_when_breadth_momentum_falls_with_downward_spike(
     monkeypatch,
 ):
     context = make_market_context(
-        market_regime="TREND_DOWN",
-        market_regime_transition="ENTERED_TREND_DOWN",
+        market_regime="TREND_UP",
+        market_regime_transition="ENTERED_TREND_UP",
         symbol_features={
             "TESTUSDT": make_symbol_features(
-                micro_regime="TREND_DOWN",
-                micro_regime_transition="BREAKDOWN",
+                micro_regime="TREND_UP",
+                micro_regime_transition="BREAKOUT_UP",
             )
         },
     )
-    algo, df = make_algo(context)
+    algo, df = make_algo(
+        context,
+        market_breadth_data=make_market_breadth_data(latest=0.10, previous=0.12),
+    )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
     record_mock = Mock()
@@ -234,14 +286,19 @@ async def test_signal_autotrades_short_when_trend_down_market_has_downward_spike
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert "Autotrade route: market_trend_down_symbol_downward_spike" in telegram_msg
+    assert (
+        "Autotrade route: breadth_momentum_down_market_breadth_ma_symbol_downward_spike"
+        in telegram_msg
+    )
     assert "Autotrade is enabled" in telegram_msg
     assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "short"
 
 
 @pytest.mark.asyncio
-async def test_signal_skips_range_market_without_alert_only_signal(monkeypatch):
+async def test_signal_skips_flat_breadth_momentum_without_alert_only_signal(
+    monkeypatch,
+):
     context = make_market_context(market_regime="RANGE")
     algo, df = make_algo(context)
     send_signal_mock = Mock()

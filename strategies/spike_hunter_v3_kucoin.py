@@ -1,7 +1,8 @@
 import logging
 from datetime import datetime
+from math import isfinite
 from os import getenv
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from pandas import DataFrame, Series
@@ -31,6 +32,7 @@ class SpikeHunterV3KuCoin:
     """
 
     MAX_MARKET_STRESS_SCORE = 0.35
+    MIN_BREADTH_MOMENTUM_POINTS = 0.0
 
     def __init__(
         self,
@@ -44,6 +46,7 @@ class SpikeHunterV3KuCoin:
         self.at_consumer = cls.at_consumer
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
+        self.market_breadth_data = cls.market_breadth_data
 
         # Thresholds (v2-like defaults preserved)
         self.volume_cluster_min_ratio = 1.6
@@ -71,7 +74,85 @@ class SpikeHunterV3KuCoin:
         self.require_bullish_spike = True
         self.body_size_pct_min = 0.0
 
-    def market_breadth_direction(
+    @staticmethod
+    def _coerce_breadth_value(value: Any) -> float | None:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not isfinite(parsed):
+            return None
+        return parsed
+
+    @staticmethod
+    def _timestamp_sort_key(value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if not isinstance(value, str):
+            return None
+        try:
+            return datetime.fromisoformat(value).timestamp()
+        except ValueError:
+            return None
+
+    def _ordered_breadth_values(
+        self,
+        values: list[Any],
+        timestamps: list[Any],
+        *,
+        newest_first: bool,
+    ) -> list[float]:
+        if len(values) >= 2 and len(timestamps) >= len(values):
+            timestamped_values: list[tuple[float, float]] = []
+            for timestamp, value in zip(timestamps, values, strict=False):
+                sort_key = self._timestamp_sort_key(timestamp)
+                breadth_value = self._coerce_breadth_value(value)
+                if sort_key is not None and breadth_value is not None:
+                    timestamped_values.append((sort_key, breadth_value))
+
+            if len(timestamped_values) >= 2:
+                return [
+                    breadth_value
+                    for _, breadth_value in sorted(
+                        timestamped_values, key=lambda item: item[0]
+                    )
+                ]
+
+        parsed_values = [
+            parsed
+            for value in values
+            if (parsed := self._coerce_breadth_value(value)) is not None
+        ]
+        if newest_first:
+            return list(reversed(parsed_values))
+        return parsed_values
+
+    def _breadth_momentum_points(self) -> tuple[float | None, str]:
+        market_breadth_data = self.market_breadth_data or {}
+        timestamps = market_breadth_data.get("timestamp", [])
+        if not isinstance(timestamps, list):
+            timestamps = []
+
+        for key, newest_first in (
+            ("market_breadth_ma", True),
+            ("market_breadth", True),
+            ("adp", False),
+        ):
+            values = market_breadth_data.get(key, [])
+            if not isinstance(values, list):
+                continue
+
+            breadth_values = self._ordered_breadth_values(
+                values=values,
+                timestamps=timestamps,
+                newest_first=newest_first,
+            )
+            if len(breadth_values) >= 2:
+                return (breadth_values[-1] - breadth_values[-2]) * 100, key
+
+        return None, "unavailable"
+
+    def breadth_momentum_direction(
         self,
         context: LiveMarketContext | None,
     ) -> tuple[Position | None, str]:
@@ -81,15 +162,16 @@ class SpikeHunterV3KuCoin:
         if context.market_stress_score >= self.MAX_MARKET_STRESS_SCORE:
             return None, "market_stress_too_high"
 
-        if context.market_regime is None:
-            return None, "market_regime_unavailable"
+        momentum_points, source = self._breadth_momentum_points()
+        if momentum_points is None:
+            return None, "breadth_momentum_unavailable"
 
-        if context.market_regime == "TREND_UP":
-            return Position.long, "market_trend_up"
-        if context.market_regime == "TREND_DOWN":
-            return Position.short, "market_trend_down"
+        if momentum_points > self.MIN_BREADTH_MOMENTUM_POINTS:
+            return Position.long, f"breadth_momentum_up_{source}"
+        if momentum_points < -self.MIN_BREADTH_MOMENTUM_POINTS:
+            return Position.short, f"breadth_momentum_down_{source}"
 
-        return None, f"market_regime_{context.market_regime.lower()}_disabled"
+        return None, "breadth_momentum_flat"
 
     @staticmethod
     def symbol_spike_confirms_direction(
@@ -499,7 +581,7 @@ class SpikeHunterV3KuCoin:
         algo = "spike_hunter_v3_kucoin"
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        bot_strategy, market_route = self.market_breadth_direction(context)
+        bot_strategy, market_route = self.breadth_momentum_direction(context)
 
         if bot_strategy is None:
             logging.info(

@@ -118,6 +118,7 @@ class KlinesProvider:
             binbot_api=self.binbot_api, exchange=self.exchange
         )
         self._last_calibration_bucket: int | None = None
+        self._last_market_breadth_bucket: int | None = None
 
     def _get_benchmark_symbol(self, market_type: MarketType = MarketType.SPOT) -> str:
         if market_type == MarketType.FUTURES:
@@ -238,6 +239,14 @@ class KlinesProvider:
                 limit=self.LIMIT,
             )
 
+    async def _refresh_market_breadth_for_bucket(self, current_time: datetime) -> None:
+        bucket = int(current_time.timestamp() * 1000 // self.interval_15m.get_ms())
+        if bucket == self._last_market_breadth_bucket:
+            return
+
+        self.market_breadth_data = await self.binbot_api.get_market_breadth()
+        self._last_market_breadth_bucket = bucket
+
     def retrieve_oi(self, kucoin_symbol: str) -> float:
         """
         Fetch current open interest from KuCoin with caching and compute OI growth.
@@ -269,6 +278,9 @@ class KlinesProvider:
         # Load market-level data
         self.active_pairs = self.binbot_api.get_active_pairs()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
+        self._last_market_breadth_bucket = int(
+            datetime.now().timestamp() * 1000 // self.interval_15m.get_ms()
+        )
 
         # Load BTC benchmark candles
         self.btc_candles_15m = self.api.get_ui_klines(
@@ -281,11 +293,10 @@ class KlinesProvider:
     async def aggregate_data(self, payload: dict):
         """
         Merge new asset candle and pass data to ContextEvaluator.
-        - Reload market data at the top of each hour
+        - Reload market breadth once per 15-minute bucket
         """
         current_time = datetime.now()
-        if current_time.minute == 0:
-            self.market_breadth_data = await self.binbot_api.get_market_breadth()
+        await self._refresh_market_breadth_for_bucket(current_time)
 
         # Recalibrate per-symbol futures_leverage on each 15m boundary, but
         # only once per bucket so multiple kline payloads in the same minute
