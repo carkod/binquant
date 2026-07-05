@@ -11,6 +11,8 @@ from pybinbot import (
     AutotradeSettingsSchema,
     BinbotErrors,
     BotBase,
+    BotModel,
+    BotResponse,
     ExchangeId,
     GridDeploymentRequest,
     GridLadderRecord,
@@ -18,6 +20,7 @@ from pybinbot import (
     MarketType,
     Position,
     SignalsConsumer,
+    Status,
     SymbolModel,
     TestAutotradeSettingsSchema,
 )
@@ -27,6 +30,8 @@ from consumers.klines_provider import KlinesProvider
 from market_regime.grid_only_policy import GridOnlyPolicy
 from shared.autotrade import Autotrade
 from shared.exceptions import AutotradeError
+
+BOT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def make_autotrade_settings(
@@ -91,15 +96,30 @@ class TestAutotradeConsumer:
             is_margin_trading_allowed=True,
         )
         self.mock_binbot_api.filter_excluded_symbols.return_value = []
-        self.mock_binbot_api.create_paper_bot.return_value = {"data": {"id": "botid"}}
-        self.mock_binbot_api.activate_paper_bot.return_value = {"data": {"id": "botid"}}
+        self.mock_binbot_api.create_paper_bot.return_value = BotResponse(
+            message="Bot created",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.inactive),
+        )
+        self.mock_binbot_api.activate_paper_bot.return_value = BotResponse(
+            message="Successfully activated bot!",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.active),
+        )
         self.mock_binbot_api.submit_paper_trading_event_logs.return_value = None
         self.mock_binbot_api.delete_paper_bot.return_value = None
-        self.mock_binbot_api.create_bot.return_value = {"data": {"id": "botid"}}
-        self.mock_binbot_api.activate_bot.return_value = {"data": {"id": "botid"}}
+        self.mock_binbot_api.create_bot.return_value = BotResponse(
+            message="Successfully created one bot.",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.inactive),
+        )
+        self.mock_binbot_api.activate_bot.return_value = BotResponse(
+            message="Successfully activated bot.",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.active),
+        )
         self.mock_binbot_api.submit_bot_event_logs.return_value = None
         self.mock_binbot_api.delete_bot.return_value = None
-        self.mock_binbot_api.deactivate_bot.return_value = {"data": {"id": "botid"}}
+        self.mock_binbot_api.deactivate_bot.return_value = BotResponse(
+            message="Successfully triggered panic sell! Bot deactivated.",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.completed),
+        )
         self.mock_binbot_api.clean_margin_short.return_value = None
         self.mock_binbot_api.get_symbols.return_value = [
             SymbolModel(
@@ -492,10 +512,10 @@ class TestAutotradeConsumer:
     async def test_activation_error_deactivates_real_bot_without_deleting_it(self):
         settings = make_autotrade_settings(autoswitch=False)
         signal = SignalsConsumer(autotrade=True, current_price=100)
-        self.mock_binbot_api.activate_bot.return_value = {
-            "error": 1,
-            "message": "activation failed",
-        }
+        self.mock_binbot_api.activate_bot.return_value = BotResponse(
+            error=1,
+            message="activation failed",
+        )
 
         with patch("shared.autotrade.BinanceApi", return_value=MagicMock()):
             autotrade = Autotrade(
@@ -510,7 +530,7 @@ class TestAutotradeConsumer:
             await autotrade.activate_autotrade(signal)
 
         self.mock_binbot_api.deactivate_bot.assert_called_once_with(
-            "botid",
+            BOT_ID,
             algorithmic_close=True,
         )
         self.mock_binbot_api.delete_bot.assert_not_called()
@@ -519,10 +539,10 @@ class TestAutotradeConsumer:
     async def test_activation_error_still_deletes_paper_bot(self):
         settings = make_autotrade_settings(autoswitch=False)
         signal = SignalsConsumer(autotrade=True, current_price=100)
-        self.mock_binbot_api.activate_paper_bot.return_value = {
-            "error": 1,
-            "message": "activation failed",
-        }
+        self.mock_binbot_api.activate_paper_bot.return_value = BotResponse(
+            error=1,
+            message="activation failed",
+        )
 
         with patch("shared.autotrade.BinanceApi", return_value=MagicMock()):
             autotrade = Autotrade(
@@ -536,7 +556,7 @@ class TestAutotradeConsumer:
         with pytest.raises(AutotradeError, match="activation failed"):
             await autotrade.activate_autotrade(signal)
 
-        self.mock_binbot_api.delete_paper_bot.assert_called_once_with("botid")
+        self.mock_binbot_api.delete_paper_bot.assert_called_once_with(BOT_ID)
         self.mock_binbot_api.deactivate_bot.assert_not_called()
 
     @pytest.mark.asyncio
