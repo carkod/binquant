@@ -56,14 +56,6 @@ class AutotradeConsumer:
             passphrase=self.config.kucoin_passphrase,
         )
 
-    @staticmethod
-    def _signal_value(bot_params: BotBase, field_name: str, fallback):
-        if field_name in bot_params.model_fields_set:
-            value = getattr(bot_params, field_name)
-            if value is not None:
-                return value
-
-        return fallback
 
     @staticmethod
     def _required_margin_for_contracts(
@@ -362,17 +354,11 @@ class AutotradeConsumer:
 
         symbol = bot_params.pair
         algorithm_name = bot_params.name
-        fiat = self._signal_value(bot_params, "fiat", self.autotrade_settings.fiat)
-        requested_fiat_order_size = self._signal_value(
-            bot_params,
-            "fiat_order_size",
-            self.autotrade_settings.base_order_size,
-        )
-        stop_loss = self._signal_value(
-            bot_params, "stop_loss", self.autotrade_settings.stop_loss
-        )
+        fiat = bot_params.fiat or self.autotrade_settings.fiat
+        requested_fiat_order_size = bot_params.fiat_order_size or self.autotrade_settings.fiat_order_size
+        stop_loss = bot_params.stop_loss or self.autotrade_settings.stop_loss
         market_type = MarketType(
-            self._signal_value(bot_params, "market_type", MarketType.FUTURES)
+            bot_params.market_type or MarketType.FUTURES
         )
 
         # Includes both test and non-test autotrade
