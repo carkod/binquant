@@ -22,7 +22,6 @@ class LadderDeployer:
     MIN_LONG_REGIME_SCORE = 0.2
     MIN_BB_WIDTH_STABILITY_CANDLES = 8
     MAX_BB_WIDTH_CHANGE_PCT = 20.0
-    ALLOWED_MARKET_REGIMES = ("RANGE",)
     ALLOWED_MICRO_REGIMES = ("RANGE", "TRANSITIONAL")
     BLOCKING_MICRO_TRANSITIONS = (
         "BREAKDOWN",
@@ -63,11 +62,15 @@ class LadderDeployer:
             logging.info("grid_ladder skipped: market_type_not_futures")
             return
         context = self.ti.latest_market_context
-        if context is None or context.market_regime not in self.ALLOWED_MARKET_REGIMES:
-            logging.info("grid_ladder skipped: market_regime")
+        grid_only_policy = self.ti.grid_only_policy
+        if not grid_only_policy.allow_grid_ladder:
+            logging.info(
+                "grid_ladder skipped: grid_only_policy_%s",
+                grid_only_policy.reason,
+            )
             return
-        if context.regime_is_transitioning:
-            logging.info("grid_ladder skipped: market_transitioning")
+        if context is None:
+            logging.info("grid_ladder skipped: market_context_unavailable")
             return
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
         if (

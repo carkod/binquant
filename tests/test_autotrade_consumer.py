@@ -24,6 +24,7 @@ from pybinbot import (
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
+from market_regime.grid_only_policy import GridOnlyPolicy
 from shared.autotrade import Autotrade
 from shared.exceptions import AutotradeError
 
@@ -43,6 +44,15 @@ def make_autotrade_settings(
         trailing_deviation=1.2,
         trailing_profit=2.4,
         autoswitch=autoswitch,
+    )
+
+
+def active_grid_only_policy() -> GridOnlyPolicy:
+    return GridOnlyPolicy.active(
+        direction="toward_range",
+        source="market_breadth_ma",
+        latest=0.10,
+        previous=0.12,
     )
 
 
@@ -217,6 +227,73 @@ class TestAutotradeConsumer:
 
         self.mock_binbot_api.get_available_fiat.assert_not_called()
         autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_grid_only_policy_blocks_standard_real_bots(self):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="coinrule_buy_the_dip",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_grid_only_policy_does_not_block_grid_deployment(self):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+
+        await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.calculate_grid_levels.assert_called_once()
+        self.mock_binbot_api.create_grid_ladder.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_grid_only_policy_still_allows_paper_trading(self):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=False,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="paper_algo",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_called_once_with(
+            pair="BTCUSDT",
+            settings=self.test_settings,
+            algorithm_name="paper_algo",
+            binbot_api=self.mock_binbot_api,
+        )
+        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_process_autotrade_restrictions_skips_futures_when_minimum_margin_exceeds_balance(

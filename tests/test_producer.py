@@ -246,6 +246,9 @@ async def test_process_data_runs_price_tracker_when_15m_history_is_empty(monkeyp
     evaluator: Any = object.__new__(ContextEvaluator)
     evaluator.exchange = Mock()
     evaluator.symbol = "TESTUSDT"
+    evaluator.latest_market_context = None
+    evaluator.market_breadth_data = {}
+    evaluator.at_consumer = SimpleNamespace()
     evaluator.symbol_dependent_data = Mock()
     evaluator.indicators_enrichment = lambda df: df
     evaluator.bb_spreads = lambda df: HABollinguerSpread(

@@ -30,6 +30,7 @@ from pybinbot import (
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
+from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import LiveMarketContext
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
@@ -105,6 +106,8 @@ class ContextEvaluator:
         self.oi_data = oi_data
         self.latest_market_context = latest_market_context
         self.last_market_regime = last_market_regime
+        self.grid_only_policy = GridOnlyPolicy.disabled("not_evaluated")
+        self.at_consumer.grid_only_policy = self.grid_only_policy
         self.signal_context_scorer = SignalContextScorer(
             context_weight=0.35,
             risk_weight=0.35,
@@ -112,6 +115,14 @@ class ContextEvaluator:
         )
         self._breadth_cross_tolerance = 0.05
         self._autotrade_stress_threshold = 0.35
+
+    def refresh_grid_only_policy(self) -> GridOnlyPolicy:
+        self.grid_only_policy = GridOnlyPolicy.resolve(
+            self.latest_market_context,
+            self.market_breadth_data,
+        )
+        self.at_consumer.grid_only_policy = self.grid_only_policy
+        return self.grid_only_policy
 
     def context_timestamp_line(self, context: LiveMarketContext | None = None) -> str:
         resolved_context = (
@@ -327,6 +338,7 @@ class ContextEvaluator:
         Algorithms should consume this data
         """
         self.symbol_dependent_data()
+        self.refresh_grid_only_policy()
         raw_candles_5m = Candles(exchange=self.exchange, candles=candles)
         raw_candles_15m = Candles(exchange=self.exchange, candles=candles_15m)
 

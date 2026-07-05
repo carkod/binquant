@@ -3,6 +3,7 @@ from typing import cast
 
 import pytest
 from pybinbot import AutotradeSettingsSchema, ExchangeId, MarketType, SignalsConsumer
+from market_regime.grid_only_policy import GridOnlyPolicy
 from producers.context_evaluator import ContextEvaluator
 from strategies.grid.ladder_deployer import LadderDeployer
 
@@ -29,6 +30,12 @@ class FakeContextEvaluator:
         self.at_consumer = FakeAutotradeConsumer()
         self.exchange = "kucoin"
         self.market_type = MarketType.FUTURES
+        self.grid_only_policy = GridOnlyPolicy.active(
+            direction="toward_range",
+            source="market_breadth_ma",
+            latest=0.10,
+            previous=0.12,
+        )
         self.latest_market_context = SimpleNamespace(
             market_regime="RANGE",
             regime_is_transitioning=False,
@@ -82,3 +89,55 @@ async def test_ladder_deployer_uses_three_total_levels(
     assert value.grid_params.level_count == 3
     assert value.grid_params.allocation_pct == 1.0
     assert value.grid_params.cash_reserve_pct == 0.0
+
+
+@pytest.mark.asyncio
+async def test_ladder_deployer_skips_when_grid_only_policy_is_inactive(
+    caplog,
+) -> None:
+    caplog.set_level("INFO")
+    evaluator = FakeContextEvaluator()
+    evaluator.grid_only_policy = GridOnlyPolicy.disabled("breadth_momentum_flat")
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert evaluator.at_consumer.values == []
+    assert evaluator.dispatched_values == []
+    assert "grid_ladder skipped: grid_only_policy_breadth_momentum_flat" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ladder_deployer_reaches_existing_checks_when_policy_is_active(
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level("INFO")
+    evaluator = FakeContextEvaluator()
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: False)
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: SimpleNamespace(
+            micro_regime="RANGE",
+            micro_regime_transition=None,
+            atr_pct=0.008,
+        ),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert evaluator.at_consumer.values == []
+    assert evaluator.dispatched_values == []
+    assert "grid_ladder skipped: bb_width_expanding" in caplog.text
+    assert "grid_only_policy" not in caplog.text
