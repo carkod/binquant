@@ -11,6 +11,8 @@ from pybinbot import (
     AutotradeSettingsSchema,
     BinbotErrors,
     BotBase,
+    BotModel,
+    BotResponse,
     ExchangeId,
     GridDeploymentRequest,
     GridLadderRecord,
@@ -18,14 +20,18 @@ from pybinbot import (
     MarketType,
     Position,
     SignalsConsumer,
+    Status,
     SymbolModel,
     TestAutotradeSettingsSchema,
 )
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.klines_provider import KlinesProvider
+from market_regime.grid_only_policy import GridOnlyPolicy
 from shared.autotrade import Autotrade
 from shared.exceptions import AutotradeError
+
+BOT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def make_autotrade_settings(
@@ -43,6 +49,15 @@ def make_autotrade_settings(
         trailing_deviation=1.2,
         trailing_profit=2.4,
         autoswitch=autoswitch,
+    )
+
+
+def active_grid_only_policy() -> GridOnlyPolicy:
+    return GridOnlyPolicy.active(
+        direction="toward_range",
+        source="market_breadth_ma",
+        latest=0.10,
+        previous=0.12,
     )
 
 
@@ -81,15 +96,30 @@ class TestAutotradeConsumer:
             is_margin_trading_allowed=True,
         )
         self.mock_binbot_api.filter_excluded_symbols.return_value = []
-        self.mock_binbot_api.create_paper_bot.return_value = {"data": {"id": "botid"}}
-        self.mock_binbot_api.activate_paper_bot.return_value = {"data": {"id": "botid"}}
+        self.mock_binbot_api.create_paper_bot.return_value = BotResponse(
+            message="Bot created",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.inactive),
+        )
+        self.mock_binbot_api.activate_paper_bot.return_value = BotResponse(
+            message="Successfully activated bot!",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.active),
+        )
         self.mock_binbot_api.submit_paper_trading_event_logs.return_value = None
         self.mock_binbot_api.delete_paper_bot.return_value = None
-        self.mock_binbot_api.create_bot.return_value = {"data": {"id": "botid"}}
-        self.mock_binbot_api.activate_bot.return_value = {"data": {"id": "botid"}}
+        self.mock_binbot_api.create_bot.return_value = BotResponse(
+            message="Successfully created one bot.",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.inactive),
+        )
+        self.mock_binbot_api.activate_bot.return_value = BotResponse(
+            message="Successfully activated bot.",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.active),
+        )
         self.mock_binbot_api.submit_bot_event_logs.return_value = None
         self.mock_binbot_api.delete_bot.return_value = None
-        self.mock_binbot_api.deactivate_bot.return_value = {"data": {"id": "botid"}}
+        self.mock_binbot_api.deactivate_bot.return_value = BotResponse(
+            message="Successfully triggered panic sell! Bot deactivated.",
+            data=BotModel(id=BOT_ID, pair="BTCUSDT", status=Status.completed),
+        )
         self.mock_binbot_api.clean_margin_short.return_value = None
         self.mock_binbot_api.get_symbols.return_value = [
             SymbolModel(
@@ -217,6 +247,73 @@ class TestAutotradeConsumer:
 
         self.mock_binbot_api.get_available_fiat.assert_not_called()
         autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_grid_only_policy_blocks_standard_real_bots(self):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="coinrule_buy_the_dip",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_grid_only_policy_does_not_block_grid_deployment(self):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+
+        await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.calculate_grid_levels.assert_called_once()
+        self.mock_binbot_api.create_grid_ladder.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_grid_only_policy_still_allows_paper_trading(self):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=False,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="paper_algo",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_called_once_with(
+            pair="BTCUSDT",
+            settings=self.test_settings,
+            algorithm_name="paper_algo",
+            binbot_api=self.mock_binbot_api,
+        )
+        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_process_autotrade_restrictions_skips_futures_when_minimum_margin_exceeds_balance(
@@ -415,10 +512,10 @@ class TestAutotradeConsumer:
     async def test_activation_error_deactivates_real_bot_without_deleting_it(self):
         settings = make_autotrade_settings(autoswitch=False)
         signal = SignalsConsumer(autotrade=True, current_price=100)
-        self.mock_binbot_api.activate_bot.return_value = {
-            "error": 1,
-            "message": "activation failed",
-        }
+        self.mock_binbot_api.activate_bot.return_value = BotResponse(
+            error=1,
+            message="activation failed",
+        )
 
         with patch("shared.autotrade.BinanceApi", return_value=MagicMock()):
             autotrade = Autotrade(
@@ -433,7 +530,7 @@ class TestAutotradeConsumer:
             await autotrade.activate_autotrade(signal)
 
         self.mock_binbot_api.deactivate_bot.assert_called_once_with(
-            "botid",
+            BOT_ID,
             algorithmic_close=True,
         )
         self.mock_binbot_api.delete_bot.assert_not_called()
@@ -442,10 +539,10 @@ class TestAutotradeConsumer:
     async def test_activation_error_still_deletes_paper_bot(self):
         settings = make_autotrade_settings(autoswitch=False)
         signal = SignalsConsumer(autotrade=True, current_price=100)
-        self.mock_binbot_api.activate_paper_bot.return_value = {
-            "error": 1,
-            "message": "activation failed",
-        }
+        self.mock_binbot_api.activate_paper_bot.return_value = BotResponse(
+            error=1,
+            message="activation failed",
+        )
 
         with patch("shared.autotrade.BinanceApi", return_value=MagicMock()):
             autotrade = Autotrade(
@@ -459,7 +556,7 @@ class TestAutotradeConsumer:
         with pytest.raises(AutotradeError, match="activation failed"):
             await autotrade.activate_autotrade(signal)
 
-        self.mock_binbot_api.delete_paper_bot.assert_called_once_with("botid")
+        self.mock_binbot_api.delete_paper_bot.assert_called_once_with(BOT_ID)
         self.mock_binbot_api.deactivate_bot.assert_not_called()
 
     @pytest.mark.asyncio

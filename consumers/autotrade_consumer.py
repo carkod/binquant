@@ -16,6 +16,7 @@ from pybinbot import (
     AutotradeSettingsSchema,
     TestAutotradeSettingsSchema,
 )
+from market_regime.grid_only_policy import GridOnlyPolicy
 from shared.autotrade import Autotrade
 from shared.config import Config
 
@@ -39,6 +40,7 @@ class AutotradeConsumer:
         self.paper_trading_active_bots: list = []
         self.active_test_bots: list = active_test_bots
         self.grid_ladder_attempts: dict[tuple[str, str, str, str], float] = {}
+        self.grid_only_policy = GridOnlyPolicy.disabled("not_evaluated")
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
         self.volatility = 0
@@ -371,9 +373,7 @@ class AutotradeConsumer:
         stop_loss = self._signal_value(
             bot_params, "stop_loss", self.autotrade_settings.stop_loss
         )
-        market_type = MarketType(
-            self._signal_value(bot_params, "market_type", MarketType.FUTURES)
-        )
+        market_type = bot_params.market_type or MarketType.FUTURES
 
         # Includes both test and non-test autotrade
         # Test autotrade settings must be enabled
@@ -395,6 +395,13 @@ class AutotradeConsumer:
                     binbot_api=self.binbot_api,
                 )
                 await test_autotrade.activate_autotrade(result)
+
+        if self.grid_only_policy.block_standard_bots:
+            logging.info(
+                "Skipping autotrade: grid-only policy active (%s)",
+                self.grid_only_policy.reason,
+            )
+            return
 
         # Check balance to avoid failed autotrades
         balance_check = self.binbot_api.get_available_fiat(

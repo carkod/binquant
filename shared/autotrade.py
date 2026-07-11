@@ -1,6 +1,8 @@
 import logging
 from pybinbot import (
     BotBase,
+    BotModel,
+    BotResponse,
     CloseConditions,
     MarketType,
     ExchangeId,
@@ -12,6 +14,7 @@ from pybinbot import (
     Position,
     RecoveryParams,
     SignalsConsumer,
+    Status,
     TestAutotradeSettingsSchema,
     round_numbers,
 )
@@ -20,6 +23,12 @@ from shared.config import Config
 
 
 class Autotrade:
+    @staticmethod
+    def _response_bot(response: BotResponse) -> BotModel:
+        if isinstance(response.data, BotModel):
+            return response.data
+        raise AutotradeError(response.message)
+
     def __init__(
         self,
         pair,
@@ -281,19 +290,19 @@ class Autotrade:
         # Create bot
         payload = self.default_bot.model_dump(mode="json")
         # create paper or real bot
-        create_bot = create_func(payload)
+        create_bot = BotResponse.model_validate(create_func(payload))
 
-        if "error" in create_bot and create_bot["error"] == 1:
-            errors_func(create_bot["botId"], create_bot["message"])
-            return
+        if create_bot.error == 1:
+            raise AutotradeError(create_bot.message)
 
         # Activate bot
-        bot_id = create_bot["data"]["id"]
+        created_bot = self._response_bot(create_bot)
+        bot_id = str(created_bot.id)
         # paper or real bot activation
-        bot = activate_func(bot_id)
+        bot = BotResponse.model_validate(activate_func(bot_id))
 
-        if "error" in bot and bot["error"] > 0:
-            message = bot["message"]
+        if bot.error > 0:
+            message = bot.message
             errors_func(bot_id, message)
             if self.default_bot.position == Position.short:
                 self.binbot_api.clean_margin_short(self.default_bot.pair)
@@ -313,5 +322,10 @@ class Autotrade:
             raise AutotradeError(message)
 
         else:
-            message = f"Succesful {self.db_collection_name} autotrade, opened with {self.pair}!"
+            activated_bot = self._response_bot(bot)
+            action = "submitted" if activated_bot.status == Status.pending else "opened"
+            message = (
+                f"Succesful {self.db_collection_name} autotrade, "
+                f"{action} with {self.pair}!"
+            )
             errors_func(bot_id, message)
