@@ -254,6 +254,24 @@ async def test_missing_timestamped_breadth_momentum_never_emits():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("market_breadth_data", [None, {}])
+async def test_unavailable_market_breadth_skips_before_candle_processing(
+    market_breadth_data,
+    monkeypatch,
+):
+    evaluator = make_evaluator()
+    evaluator.market_breadth_data = market_breadth_data
+    strategy = ConservativeSpikeHunter(cast(Any, evaluator))
+    closed_history_mock = Mock()
+    monkeypatch.setattr(strategy, "_validated_closed_history", closed_history_mock)
+
+    await strategy.signal(100.0, 110.0, 100.0, 90.0)
+
+    closed_history_mock.assert_not_called()
+    evaluator.dispatch_signal_record.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_one_missing_five_percent_component_emits_at_threshold():
     weak_strength = make_symbol_features(micro_regime_strength=0.79)
     context = make_context(symbol_features={"TESTUSDTM": weak_strength})

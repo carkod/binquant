@@ -7,11 +7,13 @@ from typing import TYPE_CHECKING, Any
 from pandas import DataFrame
 from pybinbot import (
     BotBase,
+    Candles,
     HABollinguerSpread,
     MarketType,
     Position,
     SignalsConsumer,
     round_numbers,
+    timestamp_sort_key,
 )
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
@@ -88,18 +90,6 @@ class ConservativeSpikeHunter:
         self._last_emitted_candle: int | None = None
 
     @staticmethod
-    def _timestamp_sort_key(value: Any) -> float | None:
-        if isinstance(value, (int, float)):
-            parsed = float(value)
-            return parsed if isfinite(parsed) else None
-        if not isinstance(value, str):
-            return None
-        try:
-            return datetime.fromisoformat(value).timestamp()
-        except ValueError:
-            return None
-
-    @staticmethod
     def _finite_float(value: Any) -> float | None:
         try:
             parsed = float(value)
@@ -108,8 +98,8 @@ class ConservativeSpikeHunter:
         return parsed if isfinite(parsed) else None
 
     def _breadth_momentum_points(self) -> float | None:
-        values = (self.market_breadth_data or {}).get("market_breadth_ma", [])
-        timestamps = (self.market_breadth_data or {}).get("timestamp", [])
+        values = self.market_breadth_data["market_breadth_ma"]
+        timestamps = self.market_breadth_data["timestamp"]
         if not isinstance(values, list) or not isinstance(timestamps, list):
             return None
         if len(values) < 2 or len(timestamps) < len(values):
@@ -117,7 +107,7 @@ class ConservativeSpikeHunter:
 
         timestamped_values: list[tuple[float, float]] = []
         for timestamp, value in zip(timestamps, values, strict=False):
-            sort_key = self._timestamp_sort_key(timestamp)
+            sort_key = timestamp_sort_key(timestamp)
             breadth_value = self._finite_float(value)
             if sort_key is not None and breadth_value is not None:
                 timestamped_values.append((sort_key, breadth_value))
@@ -128,7 +118,7 @@ class ConservativeSpikeHunter:
         ordered = sorted(timestamped_values, key=lambda item: item[0])
         return (ordered[-1][1] - ordered[-2][1]) * 100
 
-    def _closed_candles(self, now_ms: int) -> DataFrame | None:
+    def _validated_closed_history(self, now_ms: int) -> DataFrame | None:
         df = self.ti.df_15m.copy()
         required_columns = {
             "open_time",
@@ -142,7 +132,17 @@ class ConservativeSpikeHunter:
         if not required_columns.issubset(df.columns):
             return None
 
-        closed = df[df["open_time"] + self.CANDLE_INTERVAL_MS <= now_ms].copy()
+        completed, _ = Candles.partition_closed_candles(
+            df.to_dict(orient="records"),
+            now_ms=now_ms,
+            interval_ms=self.CANDLE_INTERVAL_MS,
+        )
+        completed_open_times = {candle["open_time"] for candle in completed}
+        closed = (
+            df[df["open_time"].isin(completed_open_times)]
+            .sort_values("open_time")
+            .copy()
+        )
         if len(closed) < self.MIN_CANDLES:
             return None
         if closed[list(required_columns)].tail(self.MIN_CANDLES).isnull().any().any():
@@ -357,9 +357,15 @@ class ConservativeSpikeHunter:
         if self.market_type != MarketType.FUTURES:
             logging.info("%s skipped: market_type_not_futures", self.ALGO)
             return
+        if not self.market_breadth_data or not {
+            "market_breadth_ma",
+            "timestamp",
+        }.issubset(self.market_breadth_data):
+            logging.info("%s skipped: market_breadth_unavailable", self.ALGO)
+            return
 
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
-        df = self._closed_candles(now_ms)
+        df = self._validated_closed_history(now_ms)
         if df is None:
             logging.info("%s skipped: incomplete_candle_history", self.ALGO)
             return

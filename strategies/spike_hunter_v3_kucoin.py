@@ -12,6 +12,7 @@ from pybinbot import (
     Position,
     SignalsConsumer,
     round_numbers,
+    timestamp_sort_key,
     timestamp_to_datetime,
 )
 
@@ -84,17 +85,6 @@ class SpikeHunterV3KuCoin:
             return None
         return parsed
 
-    @staticmethod
-    def _timestamp_sort_key(value: Any) -> float | None:
-        if isinstance(value, (int, float)):
-            return float(value)
-        if not isinstance(value, str):
-            return None
-        try:
-            return datetime.fromisoformat(value).timestamp()
-        except ValueError:
-            return None
-
     def _ordered_breadth_values(
         self,
         values: list[Any],
@@ -105,7 +95,7 @@ class SpikeHunterV3KuCoin:
         if len(values) >= 2 and len(timestamps) >= len(values):
             timestamped_values: list[tuple[float, float]] = []
             for timestamp, value in zip(timestamps, values, strict=False):
-                sort_key = self._timestamp_sort_key(timestamp)
+                sort_key = timestamp_sort_key(timestamp)
                 breadth_value = self._coerce_breadth_value(value)
                 if sort_key is not None and breadth_value is not None:
                     timestamped_values.append((sort_key, breadth_value))
