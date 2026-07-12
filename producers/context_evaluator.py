@@ -8,25 +8,11 @@ from numpy import log as logarithm
 from numpy import nan
 from pandas import DataFrame
 from pandera.typing import DataFrame as TypedDataFrame
-from pybinbot import (
-    BinanceApi,
-    BinanceKlineIntervals,
-    BinbotApi,
-    Candles,
-    ExchangeId,
-    HABollinguerSpread,
-    Indicators,
-    KlineSchema,
-    KucoinApi,
-    KucoinFutures,
-    KucoinKlineIntervals,
-    MarketDominance,
-    MarketType,
-    Position,
-    SignalsConsumer,
-    SymbolModel,
-    round_numbers,
-)
+from pybinbot import (BinanceApi, BinanceKlineIntervals, BinbotApi, Candles,
+                      ExchangeId, HABollinguerSpread, Indicators, KlineSchema,
+                      KucoinApi, KucoinFutures, KucoinKlineIntervals,
+                      MarketDominance, MarketType, Position, SignalsConsumer,
+                      SymbolModel, round_numbers)
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -37,10 +23,10 @@ from shared.config import Config
 from shared.utils import format_context_timestamp_line
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.coinrule.price_tracker import PriceTracker
-from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.market_regime_notifier import MarketRegimeNotifier
+from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 
 
