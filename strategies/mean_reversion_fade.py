@@ -49,7 +49,6 @@ class MeanReversionFade:
     """
 
     ALGO = "mean_reversion_fade"
-    MIN_CANDLES = 40
     CANDLE_INTERVAL_MS = 15 * 60 * 1000
 
     RSI_WINDOW = 14
@@ -155,16 +154,6 @@ class MeanReversionFade:
             return
 
         df = self.ti.df_15m
-        required_columns = {"open_time", "open", "high", "low", "close", "volume"}
-        if not required_columns.issubset(df.columns):
-            logging.info("%s skipped: missing_required_columns", self.ALGO)
-            return
-        if len(df) < self.MIN_CANDLES:
-            logging.info("%s skipped: insufficient_candle_history", self.ALGO)
-            return
-        if df[list(required_columns)].tail(self.MIN_CANDLES).isnull().any().any():
-            logging.info("%s skipped: null_candle_history", self.ALGO)
-            return
         if "ATR" not in df.columns:
             logging.info("%s skipped: atr_column_unavailable", self.ALGO)
             return

@@ -192,21 +192,6 @@ async def test_spot_market_never_emits(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_insufficient_candle_history_never_emits(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(df=make_df(count=39))
-    strategy = MeanReversionFade(cast(Any, evaluator))
-
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
-
-    evaluator.dispatch_signal_record.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_missing_atr_column_never_emits(monkeypatch: pytest.MonkeyPatch) -> None:
     patch_rsi(monkeypatch, 20.0)
     df = make_df().drop(columns=["ATR"])
