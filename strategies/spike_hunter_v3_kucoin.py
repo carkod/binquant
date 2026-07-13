@@ -647,7 +647,7 @@ class SpikeHunterV3KuCoin:
                 name=algo,
                 position=bot_strategy,
                 market_type=self.market_type,
-                margin_reversal=False,
+                margin_short_reversal=False,
             ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
