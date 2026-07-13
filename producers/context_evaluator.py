@@ -37,6 +37,7 @@ from shared.config import Config
 from shared.utils import format_context_timestamp_line
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.coinrule.price_tracker import PriceTracker
+from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.market_regime_notifier import MarketRegimeNotifier
@@ -211,6 +212,7 @@ class ContextEvaluator:
         """
         Initialize algorithms that consume self.df_15m and broader market context.
         """
+        self.mean_reversion_fade = MeanReversionFade(cls=self)
         self.sh3 = SpikeHunterV3KuCoin(cls=self)
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
@@ -237,6 +239,7 @@ class ContextEvaluator:
         df = Indicators.ma_spreads(df)
         df = Indicators.bollinguer_spreads(df)
         df = Indicators.set_twap(df)
+        df = Indicators.atr(df=df, window=14)
 
         return df
 
@@ -430,6 +433,16 @@ class ContextEvaluator:
             await self._safe_signal(
                 "LiquidationSweepPump",
                 self.lsp.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            await self._safe_signal(
+                "MeanReversionFade",
+                self.mean_reversion_fade.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,

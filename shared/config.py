@@ -55,7 +55,6 @@ class Config:
         if self._ci_mode:
             return
         required_vars = [
-            "PYTHONUNBUFFERED",
             "DEBUG",
             "LOG_LEVEL",
             "TZ",
