@@ -8,11 +8,25 @@ from numpy import log as logarithm
 from numpy import nan
 from pandas import DataFrame
 from pandera.typing import DataFrame as TypedDataFrame
-from pybinbot import (BinanceApi, BinanceKlineIntervals, BinbotApi, Candles,
-                      ExchangeId, HABollinguerSpread, Indicators, KlineSchema,
-                      KucoinApi, KucoinFutures, KucoinKlineIntervals,
-                      MarketDominance, MarketType, Position, SignalsConsumer,
-                      SymbolModel, round_numbers)
+from pybinbot import (
+    BinanceApi,
+    BinanceKlineIntervals,
+    BinbotApi,
+    Candles,
+    ExchangeId,
+    HABollinguerSpread,
+    Indicators,
+    KlineSchema,
+    KucoinApi,
+    KucoinFutures,
+    KucoinKlineIntervals,
+    MarketDominance,
+    MarketType,
+    Position,
+    SignalsConsumer,
+    SymbolModel,
+    round_numbers,
+)
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
