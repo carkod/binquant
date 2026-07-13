@@ -5,14 +5,8 @@ from os import getenv
 from typing import TYPE_CHECKING
 
 from pandas import Series
-from pybinbot import (
-    BotBase,
-    HABollinguerSpread,
-    MarketType,
-    Position,
-    SignalsConsumer,
-    round_numbers,
-)
+from pybinbot import (BotBase, HABollinguerSpread, MarketType, Position,
+                      SignalsConsumer, round_numbers)
 
 from shared.utils import build_links_msg
 

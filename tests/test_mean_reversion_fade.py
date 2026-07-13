@@ -8,7 +8,6 @@ from pybinbot import ExchangeId, MarketType, Position, SymbolModel
 
 from strategies.mean_reversion_fade import MeanReversionFade
 
-
 NOW_MS = 1_700_000_000_000
 CANDLE_MS = 15 * 60 * 1000
 BASELINE_CLOSE = 100.0
