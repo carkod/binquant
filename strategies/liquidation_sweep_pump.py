@@ -4,6 +4,7 @@ from pybinbot import (
     BotBase,
     HABollinguerSpread,
     KlineSchema,
+    MarketBreadthSeries,
     Position,
     SignalsConsumer,
     round_numbers,
@@ -38,7 +39,7 @@ class LiquidationSweepPump:
         self.price_precision = cls.price_precision
         self.qty_precision = cls.qty_precision
         self.oi_growth = cls.oi_data
-        self.market_breadth_data = cls.market_breadth_data
+        self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
 
     @staticmethod
     def _context_adp(context: LiveMarketContext) -> float:
@@ -53,9 +54,12 @@ class LiquidationSweepPump:
         )
 
     def _adp_values(self, context: LiveMarketContext) -> list[float]:
-        values = (self.market_breadth_data or {}).get("adp", [])
-        if len(values) >= 2:
-            return [float(value) for value in values]
+        if (
+            self.market_breadth_data is not None
+            and len(self.market_breadth_data.timestamp) >= 2
+            and len(self.market_breadth_data.market_breadth) >= 2
+        ):
+            return [float(value) for value in self.market_breadth_data.market_breadth]
         return [self._context_adp(context)]
 
     def _latest_adp(self, context: LiveMarketContext) -> float:

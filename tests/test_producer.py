@@ -248,7 +248,7 @@ async def test_process_data_runs_price_tracker_when_15m_history_is_empty(monkeyp
     evaluator.exchange = Mock()
     evaluator.symbol = "TESTUSDT"
     evaluator.latest_market_context = None
-    evaluator.market_breadth_data = {}
+    evaluator.market_breadth_data = None
     evaluator.at_consumer = SimpleNamespace()
     evaluator.symbol_dependent_data = Mock()
     evaluator.indicators_enrichment = lambda df: df

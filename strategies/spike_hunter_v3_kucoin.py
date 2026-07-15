@@ -9,6 +9,7 @@ from pandas import DataFrame, Series
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
+    MarketBreadthSeries,
     Position,
     SignalsConsumer,
     round_numbers,
@@ -47,7 +48,7 @@ class SpikeHunterV3KuCoin:
         self.at_consumer = cls.at_consumer
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
-        self.market_breadth_data = cls.market_breadth_data
+        self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
 
         # Thresholds (v2-like defaults preserved)
         self.volume_cluster_min_ratio = 1.6
@@ -118,23 +119,19 @@ class SpikeHunterV3KuCoin:
         return parsed_values
 
     def _breadth_momentum_points(self) -> tuple[float | None, str]:
-        market_breadth_data = self.market_breadth_data or {}
-        timestamps = market_breadth_data.get("timestamp", [])
-        if not isinstance(timestamps, list):
-            timestamps = []
+        market_breadth_data = self.market_breadth_data
+        if market_breadth_data is None or len(market_breadth_data.timestamp) < 2:
+            return None, "unavailable"
 
         for key, newest_first in (
             ("market_breadth_ma", True),
             ("market_breadth", True),
-            ("adp", False),
         ):
-            values = market_breadth_data.get(key, [])
-            if not isinstance(values, list):
-                continue
+            values = getattr(market_breadth_data, key)
 
             breadth_values = self._ordered_breadth_values(
                 values=values,
-                timestamps=timestamps,
+                timestamps=market_breadth_data.timestamp,
                 newest_first=newest_first,
             )
             if len(breadth_values) >= 2:

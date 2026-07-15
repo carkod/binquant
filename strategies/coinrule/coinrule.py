@@ -7,6 +7,7 @@ from pybinbot import (
     BotBase,
     HABollinguerSpread,
     Indicators,
+    MarketBreadthSeries,
     MarketDominance,
     Position,
     SignalsConsumer,
@@ -28,7 +29,7 @@ class Coinrule:
         self.exchange = cls.exchange
         self.market_type = cls.market_type
         self.exchange = cls.exchange
-        self.market_breadth_data = cls.market_breadth_data
+        self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
@@ -141,12 +142,19 @@ class Coinrule:
         # Reuse shared Supertrend (period adjusted to 10 to match strategy)
         Indicators.set_supertrend(df, multiplier=3.0)
 
-        adp_diff = (
-            self.market_breadth_data["adp"][-1] - self.market_breadth_data["adp"][-2]
-        )
-        adp_diff_prev = (
-            self.market_breadth_data["adp"][-2] - self.market_breadth_data["adp"][-3]
-        )
+        if (
+            self.market_breadth_data is None
+            or len(self.market_breadth_data.timestamp) < 3
+            or len(self.market_breadth_data.market_breadth) < 3
+        ):
+            logging.info(
+                "supertrend_swing_reversal skipped: market_breadth_adp_missing"
+            )
+            return
+
+        adp_values = self.market_breadth_data.market_breadth
+        adp_diff = adp_values[-1] - adp_values[-2]
+        adp_diff_prev = adp_values[-2] - adp_values[-3]
 
         if (
             bool(df["supertrend"].iloc[-1])

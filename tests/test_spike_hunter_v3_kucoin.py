@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, MarketType, SymbolModel
+from pybinbot import ExchangeId, MarketBreadthSeries, MarketType, SymbolModel
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
@@ -82,21 +82,32 @@ def make_market_breadth_data(
     latest: float,
     previous: float,
     key: str = "market_breadth_ma",
-) -> dict[str, list[float] | list[str]]:
-    return {
-        "timestamp": [
+) -> MarketBreadthSeries:
+    market_breadth = [latest, previous] if key == "market_breadth" else [0.0, 0.0]
+    market_breadth_ma = (
+        [latest, previous] if key == "market_breadth_ma" else [None, None]
+    )
+    return MarketBreadthSeries(
+        timestamp=[
             "2026-07-04 00:15:00",
             "2026-07-04 00:00:00",
         ],
-        key: [latest, previous],
-    }
+        advancers=[32, 30],
+        decliners=[18, 20],
+        market_breadth=market_breadth,
+        market_breadth_ma=market_breadth_ma,
+        avg_gain=[0.02, 0.01],
+        avg_loss=[-0.01, -0.02],
+        total_volume=[1000, 900],
+        strength_index=[0.2, 0.1],
+    )
 
 
 def make_market_breadth_data_for_context(
     context: LiveMarketContext | None,
-) -> dict[str, list[float] | list[str]]:
+) -> MarketBreadthSeries | None:
     if context is None:
-        return {}
+        return None
     if context.market_regime == "TREND_UP":
         return make_market_breadth_data(latest=0.12, previous=0.10)
     if context.market_regime == "TREND_DOWN":
@@ -107,7 +118,7 @@ def make_market_breadth_data_for_context(
 def make_context(
     df: DataFrame,
     latest_market_context: LiveMarketContext | None,
-    market_breadth_data: dict[str, list[float] | list[str]] | None = None,
+    market_breadth_data: MarketBreadthSeries | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
@@ -138,7 +149,7 @@ def make_context(
 
 def make_algo(
     latest_market_context: LiveMarketContext | None,
-    market_breadth_data: dict[str, list[float] | list[str]] | None = None,
+    market_breadth_data: MarketBreadthSeries | None = None,
 ) -> tuple[SpikeHunterV3KuCoin, DataFrame]:
     df = DataFrame(
         [
@@ -235,6 +246,39 @@ async def test_signal_autotrades_long_when_breadth_momentum_rises_with_upward_sp
     assert "Autotrade is enabled" in telegram_msg
     assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "long"
+
+
+@pytest.mark.asyncio
+async def test_signal_accepts_market_breadth_series_model(monkeypatch):
+    context = make_market_context(market_regime="TREND_DOWN")
+    algo, df = make_algo(
+        context,
+        market_breadth_data=cast(
+            Any,
+            make_market_breadth_data(latest=0.12, previous=0.10),
+        ),
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+    monkeypatch.setattr(algo, "latest_signal", lambda: make_last_spike())
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    process_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
