@@ -4,7 +4,14 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, Indicators, MarketDominance, MarketType, Position
+from pybinbot import (
+    ExchangeId,
+    Indicators,
+    MarketBreadthSeries,
+    MarketDominance,
+    MarketType,
+    Position,
+)
 
 from strategies.coinrule.bb_extreme_reversion import BBExtremeReversion
 from strategies.coinrule.price_tracker import PriceTracker
@@ -102,7 +109,21 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         df_15m=df,
         df_1h=df,
         df_btc_15m=df,
-        market_breadth_data={"adp": [0, 1, 2]},
+        market_breadth_data=MarketBreadthSeries(
+            timestamp=[
+                "2026-07-04T00:00:00+00:00",
+                "2026-07-04T00:15:00+00:00",
+                "2026-07-04T00:30:00+00:00",
+            ],
+            advancers=[30, 31, 32],
+            decliners=[20, 19, 18],
+            market_breadth=[0, 1, 2],
+            market_breadth_ma=[0, 1, 2],
+            avg_gain=[0.01, 0.02, 0.03],
+            avg_loss=[-0.03, -0.02, -0.01],
+            total_volume=[900, 1000, 1100],
+            strength_index=[0, 0.1, 0.2],
+        ),
         bot_strategy=Position.long,
         current_market_dominance=MarketDominance.NEUTRAL,
         market_domination_reversal=False,

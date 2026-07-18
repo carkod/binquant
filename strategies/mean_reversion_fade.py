@@ -88,8 +88,16 @@ class MeanReversionFade:
         avg_loss = loss.ewm(
             alpha=1 / cls.RSI_WINDOW, min_periods=cls.RSI_WINDOW, adjust=False
         ).mean()
-        rs = avg_gain / avg_loss.replace(0, float("nan"))
-        return 100 - (100 / (1 + rs))
+        # 100*avg_gain/(avg_gain+avg_loss) is algebraically the same RSI as
+        # 100-100/(1+avg_gain/avg_loss) when avg_loss>0, but — unlike dividing
+        # by avg_loss directly — it resolves cleanly to 100 when a window has
+        # no losses at all (a monotonic rally, exactly the short-entry
+        # condition this strategy watches for), instead of turning the whole
+        # window's RSI into NaN. Only the genuine flat case (no gains AND no
+        # losses) needs an explicit neutral override; NaN from insufficient
+        # warmup history is preserved either way.
+        denom = avg_gain + avg_loss
+        return (100 * avg_gain / denom).where(denom != 0, 50.0)
 
     def _resolve_entry(
         self,

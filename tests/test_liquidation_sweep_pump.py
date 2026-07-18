@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, MarketType, Position, SymbolModel
+from pybinbot import ExchangeId, MarketBreadthSeries, MarketType, Position, SymbolModel
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 
@@ -109,10 +109,26 @@ def make_pump_ready_df(df: DataFrame) -> DataFrame:
     return enriched
 
 
+def make_market_breadth_series(values: list[float]) -> MarketBreadthSeries:
+    return MarketBreadthSeries(
+        timestamp=[
+            f"2026-07-04T00:{index:02d}:00+00:00" for index in range(len(values))
+        ],
+        advancers=[32] * len(values),
+        decliners=[18] * len(values),
+        market_breadth=values,
+        market_breadth_ma=values,
+        avg_gain=[0.02] * len(values),
+        avg_loss=[-0.01] * len(values),
+        total_volume=[1000] * len(values),
+        strength_index=[0.2] * len(values),
+    )
+
+
 def make_context(
     df: DataFrame,
     latest_market_context: LiveMarketContext | None,
-    market_breadth_data: dict[str, list[float]] | None = None,
+    market_breadth_data: MarketBreadthSeries | None = None,
     df_btc_15m: DataFrame | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
@@ -136,7 +152,8 @@ def make_context(
         price_precision=8,
         qty_precision=8,
         oi_data=1.05,
-        market_breadth_data=market_breadth_data or {"adp": [0.0, 0.0]},
+        market_breadth_data=market_breadth_data
+        or make_market_breadth_series([0.0, 0.0]),
         latest_market_context=latest_market_context,
         df_15m=df,
         df_btc_15m=df_btc_15m if df_btc_15m is not None else df,
@@ -145,7 +162,7 @@ def make_context(
 
 def make_algo(
     latest_market_context: LiveMarketContext | None,
-    market_breadth_data: dict[str, list[float]] | None = None,
+    market_breadth_data: MarketBreadthSeries | None = None,
     btc_last_change: float = 0.0,
 ) -> tuple[LiquidationSweepPump, DataFrame]:
     df = make_price_df()
@@ -180,7 +197,7 @@ async def test_signal_emits_short_when_hot_breadth_fades_with_stalled_btc_and_we
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [0.18, 0.36, 0.32]},
+        market_breadth_data=make_market_breadth_series([0.18, 0.36, 0.32]),
         btc_last_change=0.001,
     )
     send_signal_mock = Mock()
@@ -238,7 +255,7 @@ async def test_signal_skips_short_when_hot_breadth_is_not_falling(monkeypatch):
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [0.18, 0.30, 0.32]},
+        market_breadth_data=make_market_breadth_series([0.18, 0.30, 0.32]),
         btc_last_change=0.001,
     )
     send_signal_mock = Mock()
@@ -278,7 +295,7 @@ async def test_signal_skips_short_when_symbol_followthrough_is_not_weak(monkeypa
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [0.18, 0.36, 0.32]},
+        market_breadth_data=make_market_breadth_series([0.18, 0.36, 0.32]),
         btc_last_change=0.001,
     )
     send_signal_mock = Mock()
@@ -313,7 +330,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [-0.52, -0.46, -0.42]},
+        market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
         btc_last_change=0.003,
     )
     send_signal_mock = Mock()
@@ -364,7 +381,7 @@ async def test_signal_skips_long_when_btc_is_not_increasing(monkeypatch):
     )
     algo, df = make_algo(
         context,
-        market_breadth_data={"adp": [-0.52, -0.46, -0.42]},
+        market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
         btc_last_change=0.0,
     )
     send_signal_mock = Mock()

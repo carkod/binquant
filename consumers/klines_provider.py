@@ -12,6 +12,7 @@ from pybinbot import (
     MarketType,
     KucoinFutures,
     SymbolModel,
+    MarketBreadthSeries,
 )
 from calibrators.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -60,6 +61,7 @@ class KlinesProvider:
         self.candles_15m: list[list] = []
         self.btc_candles_15m: list[list] = []
         self.market_state_store = MarketStateStore(max_bars_per_symbol=self.LIMIT)
+        self.market_breadth_data: MarketBreadthSeries | None = None
         # Open interest cache
         # symbol -> {timestamp: openInterest}
         self.oi_cache: dict[str, tuple[int, float]] = {}

@@ -20,6 +20,7 @@ from pybinbot import (
     KucoinApi,
     KucoinFutures,
     KucoinKlineIntervals,
+    MarketBreadthSeries,
     MarketDominance,
     MarketType,
     Position,
@@ -37,11 +38,17 @@ from shared.config import Config
 from shared.utils import format_context_timestamp_line
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.coinrule.price_tracker import PriceTracker
-from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.market_regime_notifier import MarketRegimeNotifier
+from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
+
+# SpikeHunterV3KuCoin's own signal dispatch is disabled 2026-07-18 for a
+# 1-week trial (11% win rate, -1.87 USDT over the prior 7 days) — see the
+# instantiation and dispatch block below. The instance itself is kept alive
+# because RangeFailedBreakoutFade reuses its breakout detector
+# (self.ti.sh3.latest_signal()).
 
 
 class ContextEvaluator:
@@ -50,7 +57,7 @@ class ContextEvaluator:
         api: KucoinApi | BinanceApi | KucoinFutures,
         symbol: str,
         current_symbol_data: SymbolModel,
-        market_breadth_data,
+        market_breadth_data: MarketBreadthSeries | None,
         all_symbols: list[SymbolModel],
         ac_api: AutotradeConsumer,
         exchange: ExchangeId,
@@ -450,15 +457,16 @@ class ContextEvaluator:
                 ),
             )
 
-            await self._safe_signal(
-                "SpikeHunterV3KuCoin",
-                self.sh3.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+            # SpikeHunterV3KuCoin disabled 2026-07-18, see import comment above.
+            # await self._safe_signal(
+            #     "SpikeHunterV3KuCoin",
+            #     self.sh3.signal(
+            #         current_price=close_price,
+            #         bb_high=spreads.bb_high,
+            #         bb_mid=spreads.bb_mid,
+            #         bb_low=spreads.bb_low,
+            #     ),
+            # )
 
             await self._safe_signal(
                 "LadderDeployer",

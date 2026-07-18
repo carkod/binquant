@@ -9,6 +9,7 @@ from market_regime.models import LiveMarketContext
 from pybinbot import (
     AutotradeSettingsSchema,
     KucoinKlineIntervals,
+    MarketBreadthSeries,
     MarketType,
     TestAutotradeSettingsSchema,
 )
@@ -178,39 +179,57 @@ def make_provider(
 def make_market_breadth_refresh_provider() -> Any:
     provider = cast(Any, object.__new__(KlinesProvider))
     provider.binbot_api = SimpleNamespace(get_market_breadth=AsyncMock())
-    provider.market_breadth_data = {"market_breadth_ma": [0.1, 0.09]}
+    provider.market_breadth_data = make_market_breadth_series(0.1, 0.09)
     provider._last_market_breadth_bucket = None
     provider.interval_15m = KucoinKlineIntervals.FIFTEEN_MINUTES
     return provider
 
 
+def make_market_breadth_series(latest: float, previous: float) -> MarketBreadthSeries:
+    return MarketBreadthSeries(
+        timestamp=[
+            "2026-07-04T00:15:00+00:00",
+            "2026-07-04T00:00:00+00:00",
+        ],
+        advancers=[32, 30],
+        decliners=[18, 20],
+        market_breadth=[latest, previous],
+        market_breadth_ma=[latest, previous],
+        avg_gain=[0.02, 0.01],
+        avg_loss=[-0.01, -0.02],
+        total_volume=[1000, 900],
+        strength_index=[0.2, 0.1],
+    )
+
+
 @pytest.mark.asyncio
 async def test_refresh_market_breadth_once_per_15m_bucket():
     provider = make_market_breadth_refresh_provider()
-    provider.binbot_api.get_market_breadth.return_value = {
-        "market_breadth_ma": [0.12, 0.1]
-    }
+    refreshed = make_market_breadth_series(0.12, 0.1)
+    provider.binbot_api.get_market_breadth.return_value = refreshed
 
     await provider._refresh_market_breadth_for_bucket(datetime(2026, 7, 4, 12, 15, 1))
     await provider._refresh_market_breadth_for_bucket(datetime(2026, 7, 4, 12, 29, 59))
 
     provider.binbot_api.get_market_breadth.assert_awaited_once()
-    assert provider.market_breadth_data == {"market_breadth_ma": [0.12, 0.1]}
+    assert provider.market_breadth_data == refreshed
 
 
 @pytest.mark.asyncio
 async def test_refresh_market_breadth_again_on_next_15m_bucket():
     provider = make_market_breadth_refresh_provider()
+    first_refresh = make_market_breadth_series(0.12, 0.1)
+    second_refresh = make_market_breadth_series(0.09, 0.12)
     provider.binbot_api.get_market_breadth.side_effect = [
-        {"market_breadth_ma": [0.12, 0.1]},
-        {"market_breadth_ma": [0.09, 0.12]},
+        first_refresh,
+        second_refresh,
     ]
 
     await provider._refresh_market_breadth_for_bucket(datetime(2026, 7, 4, 12, 15))
     await provider._refresh_market_breadth_for_bucket(datetime(2026, 7, 4, 12, 30))
 
     assert provider.binbot_api.get_market_breadth.await_count == 2
-    assert provider.market_breadth_data == {"market_breadth_ma": [0.09, 0.12]}
+    assert provider.market_breadth_data == second_refresh
 
 
 def test_refresh_latest_market_context_keeps_existing_context_when_refresh_is_none():

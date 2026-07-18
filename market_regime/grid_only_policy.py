@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any, ClassVar
 
-from pybinbot import timestamp_sort_key
+from pybinbot import MarketBreadthSeries, timestamp_sort_key
 
 from market_regime.models import LiveMarketContext
 
@@ -15,7 +15,6 @@ class GridOnlyPolicy:
     BREADTH_SOURCES: ClassVar[tuple[tuple[str, bool], ...]] = (
         ("market_breadth_ma", True),
         ("market_breadth", True),
-        ("adp", False),
     )
 
     allow_grid_ladder: bool
@@ -101,23 +100,17 @@ class GridOnlyPolicy:
     @classmethod
     def _breadth_pair(
         cls,
-        market_breadth_data: dict[str, Any] | None,
+        market_breadth_data: MarketBreadthSeries | None,
     ) -> tuple[float, float, str] | None:
-        if not isinstance(market_breadth_data, dict):
+        if market_breadth_data is None or len(market_breadth_data.timestamp) < 2:
             return None
 
-        timestamps = market_breadth_data.get("timestamp", [])
-        if not isinstance(timestamps, list):
-            timestamps = []
-
         for source, newest_first in cls.BREADTH_SOURCES:
-            values = market_breadth_data.get(source, [])
-            if not isinstance(values, list):
-                continue
+            values = getattr(market_breadth_data, source)
 
             breadth_values = cls._ordered_breadth_values(
                 values=values,
-                timestamps=timestamps,
+                timestamps=market_breadth_data.timestamp,
                 newest_first=newest_first,
             )
             if len(breadth_values) >= 2:
@@ -129,7 +122,7 @@ class GridOnlyPolicy:
     def resolve(
         cls,
         context: LiveMarketContext | None,
-        market_breadth_data: dict[str, Any] | None,
+        market_breadth_data: MarketBreadthSeries | None,
     ) -> GridOnlyPolicy:
         if context is None:
             return GridOnlyPolicy.disabled("market_context_unavailable")

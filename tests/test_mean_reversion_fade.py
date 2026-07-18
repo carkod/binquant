@@ -8,7 +8,6 @@ from pybinbot import ExchangeId, MarketType, Position, SymbolModel
 
 from strategies.mean_reversion_fade import MeanReversionFade
 
-
 NOW_MS = 1_700_000_000_000
 CANDLE_MS = 15 * 60 * 1000
 BASELINE_CLOSE = 100.0
@@ -66,6 +65,20 @@ def make_evaluator(*, df: DataFrame | None = None) -> SimpleNamespace:
         df_15m=df if df is not None else make_df(),
         dispatch_signal_record=Mock(),
     )
+
+
+def test_rsi_is_100_not_nan_when_window_has_no_losses() -> None:
+    """Regression: a window with zero losses (a monotonic rally, exactly the
+    short-entry condition this strategy watches for) must resolve RSI to
+    100, not NaN. Dividing by avg_loss directly (replacing 0 with NaN)
+    previously poisoned the whole series in that scenario."""
+    closes = Series([100.0 + i for i in range(20)])
+
+    rsi = MeanReversionFade._rsi(closes)
+
+    tail = rsi.iloc[14:]
+    assert tail.notna().all()
+    assert (tail == 100.0).all()
 
 
 def patch_rsi(monkeypatch: pytest.MonkeyPatch, value: float) -> None:
