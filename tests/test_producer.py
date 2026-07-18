@@ -206,13 +206,14 @@ def test_process_data_prioritizes_price_tracker_before_ladder_deployer():
         source,
     )
 
+    # SpikeHunterV3KuCoin's dispatch is disabled 2026-07-18 for a 1-week
+    # trial; restore it here when producers/context_evaluator.py is reverted.
     assert safe_signal_names == [
         "ActivityBurstPump",
         "PriceTracker",
         "MarketRegimeNotifier",
         "LiquidationSweepPump",
         "MeanReversionFade",
-        "SpikeHunterV3KuCoin",
         "LadderDeployer",
     ]
 
