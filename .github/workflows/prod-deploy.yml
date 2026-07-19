@@ -3,8 +3,8 @@ name: Deploy to Production
 on:
   workflow_dispatch:
     inputs:
-      binquant_image_tag:
-        description: Binquant image tag to deploy. Leave blank for latest
+      image_tag:
+        description: "Image tag to deploy, default: latest"
         required: false
         default: ""
         type: string
@@ -18,16 +18,56 @@ env:
 
 jobs:
   deploy:
-    name: Release production version
+    name: Release new production version
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - name: Resolve deploy image tag
-        id: deploy_tag
+      - name: Log in to Docker Hub
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "$DOCKER_PASSWORD" |
+            docker login --username "$DOCKER_USERNAME" --password-stdin
+
+      - name: Calculate next image version
+        id: version
+        shell: bash
+        run: |
+          versions_file="$RUNNER_TEMP/docker-image-versions"
+          : > "$versions_file"
+
+          next_url="https://hub.docker.com/v2/repositories/${BINQUANT_IMAGE}/tags?page_size=100"
+
+          while [ -n "$next_url" ]; do
+            response="$(curl --fail --silent --show-error "$next_url")"
+            jq --raw-output \
+              '.results[].name | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' \
+              <<< "$response" >> "$versions_file"
+            next_url="$(jq --raw-output '.next // empty' <<< "$response")"
+          done
+
+          latest_version="$(
+            sort --version-sort "$versions_file" |
+              tail --lines 1
+          )"
+
+          if [ -z "$latest_version" ]; then
+            next_version="0.0.1"
+          else
+            IFS=. read -r major minor patch <<< "$latest_version"
+            next_version="$major.$minor.$((patch + 1))"
+          fi
+
+          echo "version=$next_version" >> "$GITHUB_OUTPUT"
+          echo "Production version: $next_version"
+
+      - name: Resolve deploy image tags
+        id: deploy_tags
         shell: bash
         env:
-          BINQUANT_IMAGE_TAG: ${{ inputs.binquant_image_tag }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           normalize_image_tag() {
             local image_tag
@@ -40,52 +80,43 @@ jobs:
             printf '%s\n' "$image_tag"
           }
 
-          binquant_image_tag="$(normalize_image_tag "$BINQUANT_IMAGE_TAG")"
+          image_tag="$(normalize_image_tag "$IMAGE_TAG")"
 
-          echo "binquant_image_tag=$binquant_image_tag" >> "$GITHUB_OUTPUT"
-          echo "Binquant image tag: $binquant_image_tag"
-
-      - name: Log in to Docker Hub
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo "$DOCKER_PASSWORD" |
-            docker login --username "$DOCKER_USERNAME" --password-stdin
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+          echo "Image tag: $image_tag"
 
       - name: Verify deploy image
         env:
-          BINQUANT_IMAGE_TAG: ${{ steps.deploy_tag.outputs.binquant_image_tag }}
+          IMAGE_TAG: ${{ steps.deploy_tags.outputs.image_tag }}
         run: |
-          docker pull "$BINQUANT_IMAGE:$BINQUANT_IMAGE_TAG"
-
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ secrets.TAILSCALE_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TAILSCALE_CLIENT_SECRET }}
-          tags: tag:ci
-
-      - name: Install SSH key
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-
-          echo "${{ secrets.STAGING_DEPLOY }}" > ~/.ssh/home_server_key
-          chmod 600 ~/.ssh/home_server_key
-
-          ssh-keyscan -p 2222 100.64.83.67 >> ~/.ssh/known_hosts
+          docker pull "$BINQUANT_IMAGE:$IMAGE_TAG"
 
       - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.4
         env:
-          BINQUANT_IMAGE_TAG: ${{ steps.deploy_tag.outputs.binquant_image_tag }}
+          IMAGE_TAG: ${{ steps.deploy_tags.outputs.image_tag }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          envs: IMAGE_TAG
+          script: |
+            set -e
+            cd /var/www/terminal.binbot.in
+            echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+            docker pull carloswufei/binquant:$IMAGE_TAG
+            docker tag carloswufei/binquant:$IMAGE_TAG carloswufei/binquant:latest
+            docker compose up --pull never -d
+            docker image prune -f
+
+      - name: Version deployed production images
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_TAG: ${{ steps.deploy_tags.outputs.image_tag }}
         run: |
-          ssh -i ~/.ssh/home_server_key \
-            -p 2222 \
-            "carkod@100.64.83.67" \
-            "cd /var/www/terminal.binbot.in && \
-              echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin && \
-              docker pull $BINQUANT_IMAGE:$BINQUANT_IMAGE_TAG && \
-              docker tag $BINQUANT_IMAGE:$BINQUANT_IMAGE_TAG binquant:latest && \
-              docker compose up --pull never -d && \
-              docker image prune -f"
+          docker tag "$BINQUANT_IMAGE:$IMAGE_TAG" "$BINQUANT_IMAGE:latest"
+          docker tag "$BINQUANT_IMAGE:$IMAGE_TAG" "$BINQUANT_IMAGE:$VERSION"
+          docker tag "$BINQUANT_IMAGE:$IMAGE_TAG" "$BINQUANT_IMAGE:production"
+          docker push "$BINQUANT_IMAGE:latest"
+          docker push "$BINQUANT_IMAGE:$VERSION"
+          docker push "$BINQUANT_IMAGE:production"
