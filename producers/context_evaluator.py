@@ -8,26 +8,11 @@ from numpy import log as logarithm
 from numpy import nan
 from pandas import DataFrame
 from pandera.typing import DataFrame as TypedDataFrame
-from pybinbot import (
-    BinanceApi,
-    BinanceKlineIntervals,
-    BinbotApi,
-    Candles,
-    ExchangeId,
-    HABollinguerSpread,
-    Indicators,
-    KlineSchema,
-    KucoinApi,
-    KucoinFutures,
-    KucoinKlineIntervals,
-    MarketBreadthSeries,
-    MarketDominance,
-    MarketType,
-    Position,
-    SignalsConsumer,
-    SymbolModel,
-    round_numbers,
-)
+from pybinbot import (BinanceApi, BinanceKlineIntervals, BinbotApi, Candles,
+                      ExchangeId, HABollinguerSpread, Indicators, KlineSchema,
+                      KucoinApi, KucoinFutures, KucoinKlineIntervals,
+                      MarketBreadthSeries, MarketDominance, MarketType,
+                      Position, SignalsConsumer, SymbolModel, round_numbers)
 
 from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
@@ -457,16 +442,15 @@ class ContextEvaluator:
                 ),
             )
 
-            # SpikeHunterV3KuCoin disabled 2026-07-18, see import comment above.
-            # await self._safe_signal(
-            #     "SpikeHunterV3KuCoin",
-            #     self.sh3.signal(
-            #         current_price=close_price,
-            #         bb_high=spreads.bb_high,
-            #         bb_mid=spreads.bb_mid,
-            #         bb_low=spreads.bb_low,
-            #     ),
-            # )
+            await self._safe_signal(
+                "SpikeHunterV3KuCoin",
+                self.sh3.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
             await self._safe_signal(
                 "LadderDeployer",
