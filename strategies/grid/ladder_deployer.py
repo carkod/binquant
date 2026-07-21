@@ -19,7 +19,14 @@ class LadderDeployer:
     MAX_BREAKOUT_BUFFER_PCT = 4.0
     BREAKOUT_ATR_MULTIPLIER = 1.5
     # Don't deploy into a market where breadth is overwhelmingly bearish.
-    MIN_LONG_REGIME_SCORE = 0.2
+    # RANGE is the regime this strategy targets, and long_regime_score sits
+    # structurally low there (no trend breadth to score) even on healthy
+    # days — the stricter floor only means something outside RANGE, where a
+    # low score reflects genuinely bearish breadth rather than the regime
+    # itself.
+    MIN_LONG_REGIME_SCORE = 0.45
+    MIN_LONG_REGIME_SCORE_RANGE = 0.2
+    MIN_ENTRY_CONTRACTS = 2
     MIN_BB_WIDTH_STABILITY_CANDLES = 8
     MAX_BB_WIDTH_CHANGE_PCT = 20.0
     ALLOWED_MICRO_REGIMES = ("RANGE", "TRANSITIONAL")
@@ -82,7 +89,12 @@ class LadderDeployer:
         if symbol_features.micro_regime_transition in self.BLOCKING_MICRO_TRANSITIONS:
             logging.info("grid_ladder skipped: symbol_transition")
             return
-        if context.long_regime_score < self.MIN_LONG_REGIME_SCORE:
+        required_long_regime_score = (
+            self.MIN_LONG_REGIME_SCORE_RANGE
+            if context.market_regime == "RANGE"
+            else self.MIN_LONG_REGIME_SCORE
+        )
+        if context.long_regime_score < required_long_regime_score:
             logging.info("grid_ladder skipped: long_regime_score_too_low")
             return
         if not self._bb_stable(
@@ -110,6 +122,14 @@ class LadderDeployer:
             min(self.MAX_BREAKOUT_BUFFER_PCT, raw_buffer),
         )
         context_payload = context.model_dump(mode="json") if context else {}
+        existing_grid_context = context_payload.get("grid_ladder", {})
+        if not isinstance(existing_grid_context, dict):
+            existing_grid_context = {}
+        context_payload["grid_ladder"] = {
+            **existing_grid_context,
+            "disable_upper_band_short_entries": True,
+            "min_entry_contracts": self.MIN_ENTRY_CONTRACTS,
+        }
         settings = self.at_consumer.autotrade_settings
         exchange = ExchangeId(self.ti.exchange)
         market_type = MarketType(self.ti.market_type)
@@ -135,6 +155,8 @@ class LadderDeployer:
                 "bb_low": bb_low,
                 "range_width_pct": range_width_pct,
                 "atr_buffer_pct": breakout_buffer_pct,
+                "disable_upper_band_short_entries": True,
+                "min_entry_contracts": self.MIN_ENTRY_CONTRACTS,
             },
             allocation_pct=settings.grid_allocation_pct,
             cash_reserve_pct=settings.grid_cash_reserve_pct,

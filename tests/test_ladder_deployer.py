@@ -89,6 +89,12 @@ async def test_ladder_deployer_uses_three_total_levels(
     assert value.grid_params.level_count == 3
     assert value.grid_params.allocation_pct == 1.0
     assert value.grid_params.cash_reserve_pct == 0.0
+    assert value.grid_params.context["grid_ladder"] == {
+        "disable_upper_band_short_entries": True,
+        "min_entry_contracts": 2,
+    }
+    assert value.grid_params.indicators["disable_upper_band_short_entries"] is True
+    assert value.grid_params.indicators["min_entry_contracts"] == 2
 
 
 @pytest.mark.asyncio
@@ -141,3 +147,97 @@ async def test_ladder_deployer_reaches_existing_checks_when_policy_is_active(
     assert evaluator.dispatched_values == []
     assert "grid_ladder skipped: bb_width_expanding" in caplog.text
     assert "grid_only_policy" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ladder_deployer_skips_when_long_regime_score_is_too_low_outside_range(
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level("INFO")
+    evaluator = FakeContextEvaluator()
+    evaluator.latest_market_context.market_regime = "TREND_DOWN"
+    evaluator.latest_market_context.long_regime_score = 0.44
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: SimpleNamespace(
+            micro_regime="RANGE",
+            micro_regime_transition=None,
+            atr_pct=0.008,
+        ),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert evaluator.at_consumer.values == []
+    assert evaluator.dispatched_values == []
+    assert "grid_ladder skipped: long_regime_score_too_low" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ladder_deployer_skips_in_range_regime_below_range_floor(
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level("INFO")
+    evaluator = FakeContextEvaluator()
+    evaluator.latest_market_context.market_regime = "RANGE"
+    evaluator.latest_market_context.long_regime_score = 0.15
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: SimpleNamespace(
+            micro_regime="RANGE",
+            micro_regime_transition=None,
+            atr_pct=0.008,
+        ),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert evaluator.at_consumer.values == []
+    assert evaluator.dispatched_values == []
+    assert "grid_ladder skipped: long_regime_score_too_low" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ladder_deployer_deploys_in_range_regime_with_low_long_regime_score(
+    monkeypatch,
+) -> None:
+    evaluator = FakeContextEvaluator()
+    evaluator.latest_market_context.market_regime = "RANGE"
+    # Below the 0.45 floor used outside RANGE, but RANGE is the regime this
+    # strategy targets and long_regime_score sits structurally low there.
+    evaluator.latest_market_context.long_regime_score = 0.31
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: SimpleNamespace(
+            micro_regime="RANGE",
+            micro_regime_transition=None,
+            atr_pct=0.008,
+        ),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert len(evaluator.dispatched_values) == 1
