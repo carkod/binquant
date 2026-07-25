@@ -271,6 +271,71 @@ class TestAutotradeConsumer:
         autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "algorithm_name",
+        [
+            "coinrule_price_tracker",
+            "mean_reversion_fade",
+            "liquidation_sweep_pump",
+        ],
+    )
+    async def test_grid_only_policy_allows_approved_real_bot_strategies(
+        self, algorithm_name
+    ):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name=algorithm_name,
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_called_once_with(
+            pair="BTCUSDT",
+            settings=self.settings,
+            algorithm_name=algorithm_name,
+            db_collection_name="bots",
+            binbot_api=self.mock_binbot_api,
+        )
+        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+
+    @pytest.mark.asyncio
+    async def test_grid_only_policy_allowlist_still_blocks_active_grid_symbol(self):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        self.mock_binbot_api.get_active_grid_ladders.return_value = [
+            {"symbol": "BTCUSDT", "market_type": "SPOT"}
+        ]
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="mean_reversion_fade",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_grid_only_policy_does_not_block_grid_deployment(self):
         self.consumer.grid_only_policy = active_grid_only_policy()
         signal = SignalsConsumer(
@@ -314,6 +379,35 @@ class TestAutotradeConsumer:
         )
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
         self.mock_binbot_api.get_available_fiat.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_spike_hunter_shadow_signal_never_creates_real_bot(self):
+        signal = SignalsConsumer(
+            autotrade=False,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="spike_hunter_v3_kucoin",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_called_once_with(
+            pair="BTCUSDT",
+            settings=self.test_settings,
+            algorithm_name="spike_hunter_v3_kucoin",
+            binbot_api=self.mock_binbot_api,
+        )
+        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
 
     @pytest.mark.asyncio
     async def test_process_autotrade_restrictions_skips_futures_when_minimum_margin_exceeds_balance(

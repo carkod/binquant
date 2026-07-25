@@ -44,11 +44,9 @@ from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 
-# SpikeHunterV3KuCoin's own signal dispatch is disabled 2026-07-18 for a
-# 1-week trial (11% win rate, -1.87 USDT over the prior 7 days) — see the
-# instantiation and dispatch block below. The instance itself is kept alive
-# because RangeFailedBreakoutFade reuses its breakout detector
-# (self.ti.sh3.latest_signal()).
+# SpikeHunterV3KuCoin still evaluates and dispatches signal records, but its
+# own signal class locks autotrade to shadow mode after negative production
+# expectancy.
 
 
 class ContextEvaluator:
