@@ -13,6 +13,7 @@ from pybinbot import (
     BotBase,
     BotModel,
     BotResponse,
+    DealModel,
     ExchangeId,
     GridDeploymentRequest,
     GridLadderRecord,
@@ -86,6 +87,7 @@ class TestAutotradeConsumer:
         self.mock_binbot_api.get_active_pairs.return_value = []
         self.mock_binbot_api.get_available_fiat.return_value = 1000
         self.mock_binbot_api.get_active_grid_ladders.return_value = []
+        self.mock_binbot_api.get_bots_by_status.return_value = []
         # Methods used in Autotrade (for completeness)
         self.mock_binbot_api.get_single_symbol.return_value = SymbolModel(
             id="BTCUSDT",
@@ -199,6 +201,161 @@ class TestAutotradeConsumer:
 
         self.mock_binbot_api.get_active_pairs.return_value = [1, 2, 3]
         assert self.consumer.reached_max_active_autobots("bots")
+
+    def _closed_bot(
+        self,
+        *,
+        position: Position = Position.long,
+        market_type: MarketType = MarketType.SPOT,
+        pair: str = "SCRUSDTM",
+        opening_price: float,
+        closing_price: float,
+        opening_qty: float,
+        total_commissions: float = 0.0,
+        total_interests: float = 0.0,
+    ) -> BotModel:
+        return BotModel(
+            id=BOT_ID,
+            pair=pair,
+            status=Status.completed,
+            position=position,
+            market_type=market_type,
+            deal=DealModel(
+                opening_price=opening_price,
+                closing_price=closing_price,
+                opening_qty=opening_qty,
+                closing_qty=opening_qty,
+                total_commissions=total_commissions,
+                total_interests=total_interests,
+            ),
+        )
+
+    def test_bot_realized_pnl_quote_matches_known_production_loss(self):
+        # Validated against a real SCRUSDTM futures stop-loss fill: entry
+        # 0.0212, close 0.0206, 583 contracts, 0.00247192 commissions ->
+        # -0.3523. SCRUSDTM's real contract multiplier is 1.0 (mocked
+        # below), matching setup_method's default kucoin_futures_api stub.
+        bot = self._closed_bot(
+            position=Position.long,
+            market_type=MarketType.FUTURES,
+            opening_price=0.0212,
+            closing_price=0.0206,
+            opening_qty=583,
+            total_commissions=0.00247192,
+        )
+        assert self.consumer._bot_realized_pnl_quote(bot) == pytest.approx(
+            -0.3523, abs=1e-4
+        )
+
+    def test_bot_realized_pnl_quote_short_direction_is_inverted(self):
+        bot = self._closed_bot(
+            position=Position.short,
+            opening_price=100.0,
+            closing_price=95.0,
+            opening_qty=1.0,
+        )
+        assert self.consumer._bot_realized_pnl_quote(bot) == pytest.approx(5.0)
+
+    def test_bot_realized_pnl_quote_applies_futures_contract_multiplier(self):
+        # XBTUSDTM's real contract multiplier is 0.001 (1 contract = 0.001
+        # BTC) — without applying it, this would be misstated by 1000x.
+        cast(Any, self.consumer.kucoin_futures_api.get_symbol_info).side_effect = (
+            lambda symbol: SimpleNamespace(
+                multiplier=0.001, lot_size=1, taker_fee_rate=0
+            )
+        )
+        bot = self._closed_bot(
+            market_type=MarketType.FUTURES,
+            pair="XBTUSDTM",
+            opening_price=100_000.0,
+            closing_price=101_000.0,
+            opening_qty=10,
+        )
+        # price delta * qty * multiplier = 1000 * 10 * 0.001 = 10.0
+        assert self.consumer._bot_realized_pnl_quote(bot) == pytest.approx(10.0)
+
+    def test_bot_realized_pnl_quote_spot_bot_skips_multiplier_lookup(self):
+        bot = self._closed_bot(
+            market_type=MarketType.SPOT,
+            opening_price=100.0,
+            closing_price=101.0,
+            opening_qty=1.0,
+        )
+        assert self.consumer._bot_realized_pnl_quote(bot) == pytest.approx(1.0)
+        cast(Any, self.consumer.kucoin_futures_api.get_symbol_info).assert_not_called()
+
+    def test_bot_realized_pnl_quote_excludes_bot_when_multiplier_lookup_fails(self):
+        cast(
+            Any, self.consumer.kucoin_futures_api.get_symbol_info
+        ).side_effect = Exception("boom")
+        bot = self._closed_bot(
+            market_type=MarketType.FUTURES,
+            pair="XBTUSDTM",
+            opening_price=100_000.0,
+            closing_price=90_000.0,
+            opening_qty=10,
+        )
+        assert self.consumer._bot_realized_pnl_quote(bot) == pytest.approx(0.0)
+
+    def test_estimated_daily_realized_pnl_sums_closed_bots(self):
+        self.mock_binbot_api.get_bots_by_status.return_value = [
+            self._closed_bot(opening_price=100.0, closing_price=99.0, opening_qty=1.0),
+            self._closed_bot(opening_price=100.0, closing_price=101.0, opening_qty=1.0),
+        ]
+        assert self.consumer.estimated_daily_realized_pnl() == pytest.approx(0.0)
+
+    def test_daily_loss_limit_not_reached_below_threshold(self):
+        self.mock_binbot_api.get_bots_by_status.return_value = [
+            self._closed_bot(opening_price=100.0, closing_price=99.9, opening_qty=1.0)
+        ]
+        assert not self.consumer.daily_loss_limit_reached()
+
+    def test_daily_loss_limit_reached_past_threshold(self):
+        self.mock_binbot_api.get_bots_by_status.return_value = [
+            self._closed_bot(opening_price=100.0, closing_price=99.0, opening_qty=1.0)
+        ]
+        assert self.consumer.daily_loss_limit_reached()
+
+    @pytest.mark.asyncio
+    async def test_process_autotrade_restrictions_blocks_real_bots_on_daily_loss_limit(
+        self,
+    ):
+        self.mock_binbot_api.get_bots_by_status.return_value = [
+            self._closed_bot(opening_price=100.0, closing_price=90.0, opening_qty=1.0)
+        ]
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="coinrule_buy_the_dip",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_blocks_on_daily_loss_limit(self):
+        self.mock_binbot_api.get_bots_by_status.return_value = [
+            self._closed_bot(opening_price=100.0, closing_price=90.0, opening_qty=1.0)
+        ]
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+
+        await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.calculate_grid_levels.assert_not_called()
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
 
     # --- KlinesProvider test ---
     def test_klines_provider_init(self):
