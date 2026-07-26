@@ -204,7 +204,7 @@ def make_last_spike(
 
 
 @pytest.mark.asyncio
-async def test_signal_autotrades_long_when_breadth_momentum_rises_with_upward_spike(
+async def test_signal_dispatches_shadow_long_when_breadth_momentum_rises_with_upward_spike(
     monkeypatch,
 ):
     context = make_market_context(market_regime="TREND_DOWN")
@@ -239,12 +239,9 @@ async def test_signal_autotrades_long_when_breadth_momentum_rises_with_upward_sp
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert (
-        "Autotrade route: breadth_momentum_up_market_breadth_ma_symbol_upward_spike"
-        in telegram_msg
-    )
-    assert "Autotrade is enabled" in telegram_msg
-    assert signal_value.autotrade is True
+    assert "Autotrade route: shadow_only_negative_expectancy_lock" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.position == "long"
 
 
@@ -282,7 +279,7 @@ async def test_signal_accepts_market_breadth_series_model(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_autotrades_short_when_breadth_momentum_falls_with_downward_spike(
+async def test_signal_dispatches_shadow_short_when_breadth_momentum_falls_with_downward_spike(
     monkeypatch,
 ):
     context = make_market_context(
@@ -330,12 +327,9 @@ async def test_signal_autotrades_short_when_breadth_momentum_falls_with_downward
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert (
-        "Autotrade route: breadth_momentum_down_market_breadth_ma_symbol_downward_spike"
-        in telegram_msg
-    )
-    assert "Autotrade is enabled" in telegram_msg
-    assert signal_value.autotrade is True
+    assert "Autotrade route: shadow_only_negative_expectancy_lock" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.position == "short"
 
 

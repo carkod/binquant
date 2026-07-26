@@ -591,8 +591,8 @@ class SpikeHunterV3KuCoin:
             )
             return
 
-        route_reason = f"{market_route}_{symbol_route}"
-        autotrade = True
+        route_reason = "shadow_only_negative_expectancy_lock"
+        autotrade = False
 
         if bot_strategy == Position.long:
             streak = "📈"
