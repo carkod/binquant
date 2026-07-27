@@ -3,19 +3,23 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pybinbot import (
+    AutotradeSettingsSchema,
     BinbotApi,
     BinbotErrors,
     BotBase,
+    BotModel,
     ExchangeId,
     GridDeploymentRequest,
     KucoinFutures,
     MarketType,
+    Position,
     SignalsConsumer,
+    Status,
     SymbolModel,
-    round_numbers,
-    AutotradeSettingsSchema,
     TestAutotradeSettingsSchema,
+    round_numbers,
 )
+
 from market_regime.grid_only_policy import GridOnlyPolicy
 from shared.autotrade import Autotrade
 from shared.config import Config
@@ -31,6 +35,14 @@ class AutotradeConsumer:
             "liquidation_sweep_pump",
         }
     )
+    # Circuit breaker: stop opening new real bots/ladders once today's
+    # estimated realized PnL (UTC calendar day) drops to this quote-currency
+    # amount or below. Expressed in absolute quote terms rather than a % of
+    # account balance because "available balance" swings with how much is
+    # currently locked in open positions and isn't a stable denominator.
+    # Default reflects roughly -1.5% of the current ~10 USDT futures pool —
+    # revisit if the deployable capital base changes materially.
+    DAILY_LOSS_LIMIT_QUOTE = -0.15
 
     def __init__(
         self,
@@ -48,6 +60,7 @@ class AutotradeConsumer:
         self.active_test_bots: list = active_test_bots
         self.grid_ladder_attempts: dict[tuple[str, str, str, str], float] = {}
         self.grid_only_policy = GridOnlyPolicy.disabled("not_evaluated")
+        self._futures_multiplier_cache: dict[str, float] = {}
         # Because market domination analysis 40 weight from binance endpoints
         self.btc_change_perc = 0
         self.volatility = 0
@@ -207,6 +220,93 @@ class AutotradeConsumer:
 
         return False
 
+    def _futures_contract_multiplier(self, symbol: str) -> float | None:
+        """KuCoin futures order fills record `filled_size` as a contract
+        count (see binbot's futures_deal.py), not a base-asset quantity —
+        it must be scaled by the exchange's per-symbol contract multiplier
+        to get a real quote-currency PnL, exactly like grid ladders already
+        do in binbot's lifecycle.py `_realized_pnl`. Multiplier is rarely 1
+        (e.g. XBTUSDTM=0.001, ETHUSDTM=0.01) so skipping this silently
+        misstates PnL by orders of magnitude for most symbols. Cached per
+        symbol since it's static exchange metadata. Returns None on lookup
+        failure so the caller can exclude the bot rather than guess.
+        """
+        if symbol in self._futures_multiplier_cache:
+            return self._futures_multiplier_cache[symbol]
+        try:
+            info = self.kucoin_futures_api.get_symbol_info(symbol)
+            multiplier = float(info.multiplier or 1.0)
+        except Exception:
+            logging.exception(
+                "Failed to fetch futures contract multiplier for %s; "
+                "excluding this bot from today's estimated realized PnL",
+                symbol,
+            )
+            return None
+        self._futures_multiplier_cache[symbol] = multiplier
+        return multiplier
+
+    def _bot_realized_pnl_quote(self, bot: BotModel) -> float:
+        """Estimate a closed bot's realized PnL in quote currency."""
+        deal = bot.deal
+        if not deal.opening_price or not deal.closing_price or not deal.opening_qty:
+            return 0.0
+        if str(bot.market_type) == MarketType.FUTURES.value:
+            multiplier = self._futures_contract_multiplier(bot.pair)
+            if multiplier is None:
+                return 0.0
+        else:
+            # Spot/margin qty is already base-asset-denominated.
+            multiplier = 1.0
+        direction = 1.0 if str(bot.position) == Position.long.value else -1.0
+        gross = (
+            (float(deal.closing_price) - float(deal.opening_price))
+            * float(deal.opening_qty)
+            * multiplier
+            * direction
+        )
+        return (
+            gross
+            - float(deal.total_commissions or 0)
+            - float(deal.total_interests or 0)
+        )
+
+    def estimated_daily_realized_pnl(self, collection_name: str = "bots") -> float:
+        """Sum estimated realized PnL of bots closed since UTC midnight today."""
+        now = datetime.now(UTC)
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = int(start_of_day.timestamp() * 1000)
+        end_date = int(now.timestamp() * 1000)
+        closed_today = self.binbot_api.get_bots_by_status(
+            start_date=start_date,
+            end_date=end_date,
+            collection_name=collection_name,
+            status=Status.completed,
+        )
+        return sum(self._bot_realized_pnl_quote(bot) for bot in closed_today)
+
+    def daily_loss_limit_reached(self) -> bool:
+        """Circuit breaker: block new real autotrade opens (bots and grid
+        ladders alike) once today's estimated realized PnL breaches
+        DAILY_LOSS_LIMIT_QUOTE. Resets naturally at UTC midnight. Does not
+        gate paper trading, which risks no real capital.
+
+        Deliberately scoped to the `bots` collection only — grid ladders
+        are treated as a separately-risk-managed pool (bounded margin per
+        ladder, single-active-side guard, stale-ladder panic close) and are
+        not folded into this total by design."""
+        estimated_pnl = self.estimated_daily_realized_pnl()
+        if estimated_pnl <= self.DAILY_LOSS_LIMIT_QUOTE:
+            logging.warning(
+                "Daily loss limit reached: estimated realized PnL %.4f <= "
+                "limit %.4f — blocking new real autotrade opens for the "
+                "rest of the UTC day",
+                estimated_pnl,
+                self.DAILY_LOSS_LIMIT_QUOTE,
+            )
+            return True
+        return False
+
     def is_margin_available(self, symbol: str) -> bool:
         """
         Check if margin trading is allowed for a symbol
@@ -290,6 +390,12 @@ class AutotradeConsumer:
             logging.info("grid_ladder skipped: missing params or autotrade is false")
             return
         if self._grid_ladder_attempted_recently(params):
+            return
+        if self.daily_loss_limit_reached():
+            logging.warning(
+                "grid_ladder skipped: daily loss limit reached (symbol=%s)",
+                params.symbol,
+            )
             return
 
         symbol = params.symbol
@@ -458,6 +564,13 @@ class AutotradeConsumer:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
+                )
+            elif self.daily_loss_limit_reached():
+                logging.warning(
+                    "Skipping autotrade: daily loss limit reached "
+                    "(symbol=%s, algorithm=%s)",
+                    symbol,
+                    algorithm_name,
                 )
             elif self._has_active_grid_ladder(symbol, market_type):
                 logging.info(

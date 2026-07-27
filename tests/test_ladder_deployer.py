@@ -90,10 +90,10 @@ async def test_ladder_deployer_uses_three_total_levels(
     assert value.grid_params.allocation_pct == 1.0
     assert value.grid_params.cash_reserve_pct == 0.0
     assert value.grid_params.context["grid_ladder"] == {
-        "disable_upper_band_short_entries": True,
+        "disable_upper_band_short_entries": False,
         "min_entry_contracts": 2,
     }
-    assert value.grid_params.indicators["disable_upper_band_short_entries"] is True
+    assert value.grid_params.indicators["disable_upper_band_short_entries"] is False
     assert value.grid_params.indicators["min_entry_contracts"] == 2
 
 

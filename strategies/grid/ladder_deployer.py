@@ -27,6 +27,14 @@ class LadderDeployer:
     MIN_LONG_REGIME_SCORE = 0.45
     MIN_LONG_REGIME_SCORE_RANGE = 0.2
     MIN_ENTRY_CONTRACTS = 2
+    # Two-sided grids on a netted KuCoin futures symbol are safe: the
+    # lifecycle's single-active-side guard (_guard_entry_side /
+    # _cancel_side_entries) already cancels whichever leg doesn't fill
+    # first, so keeping the short leg armed doesn't reintroduce the netting
+    # desync bug. Disabling it instead removes the downside hedge entirely,
+    # which produced worse outcomes than symmetric grids (see incident
+    # 2026-07-22 to 2026-07-26).
+    DISABLE_UPPER_BAND_SHORT_ENTRIES = False
     MIN_BB_WIDTH_STABILITY_CANDLES = 8
     MAX_BB_WIDTH_CHANGE_PCT = 20.0
     ALLOWED_MICRO_REGIMES = ("RANGE", "TRANSITIONAL")
@@ -127,7 +135,7 @@ class LadderDeployer:
             existing_grid_context = {}
         context_payload["grid_ladder"] = {
             **existing_grid_context,
-            "disable_upper_band_short_entries": True,
+            "disable_upper_band_short_entries": self.DISABLE_UPPER_BAND_SHORT_ENTRIES,
             "min_entry_contracts": self.MIN_ENTRY_CONTRACTS,
         }
         settings = self.at_consumer.autotrade_settings
@@ -155,7 +163,7 @@ class LadderDeployer:
                 "bb_low": bb_low,
                 "range_width_pct": range_width_pct,
                 "atr_buffer_pct": breakout_buffer_pct,
-                "disable_upper_band_short_entries": True,
+                "disable_upper_band_short_entries": self.DISABLE_UPPER_BAND_SHORT_ENTRIES,
                 "min_entry_contracts": self.MIN_ENTRY_CONTRACTS,
             },
             allocation_pct=settings.grid_allocation_pct,
