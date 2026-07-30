@@ -1,0 +1,482 @@
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+from pandas import DataFrame
+from pybinbot import (
+    AutotradeSettingsSchema,
+    ExchangeId,
+    MarketType,
+    SymbolModel,
+)
+
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
+
+
+def make_symbol_features(**overrides: Any) -> SymbolMarketFeatures:
+    values = {
+        "symbol": "TESTUSDTM",
+        "timestamp": 1_000,
+        "close": 111.0,
+        "return_pct": 0.08,
+        "ema20": 105.0,
+        "ema50": 102.0,
+        "above_ema20": True,
+        "above_ema50": True,
+        "trend_score": 0.05,
+        "relative_strength_vs_btc": 0.04,
+        "atr_pct": 0.025,
+        "bb_width": 0.05,
+        "micro_regime": "TREND_UP",
+        "micro_regime_strength": 0.78,
+        "micro_regime_transition": "BREAKOUT_UP",
+        "micro_regime_transition_strength": 0.5,
+    }
+    values.update(overrides)
+    return SymbolMarketFeatures(**values)
+
+
+def make_market_context(**overrides: Any) -> LiveMarketContext:
+    values = {
+        "timestamp": 1_000,
+        "market_stress_score": 0.1,
+        "advancers_ratio": 0.62,
+        "decliners_ratio": 0.38,
+        "advancers": 31,
+        "decliners": 19,
+        "advancers_decliners_ratio": 31 / 19,
+        "btc_present": True,
+        "fresh_count": 50,
+        "total_tracked_symbols": 50,
+        "coverage_ratio": 1.0,
+        "btc_symbol": "BTCUSDT",
+        "confidence": 1.0,
+        "is_provisional": False,
+        "average_return": 0.01,
+        "average_relative_strength_vs_btc": 0.01,
+        "pct_above_ema20": 0.66,
+        "pct_above_ema50": 0.61,
+        "average_trend_score": 0.04,
+        "average_atr_pct": 0.02,
+        "average_bb_width": 0.04,
+        "btc_return": 0.005,
+        "btc_trend_score": 0.02,
+        "btc_regime_score": 0.1,
+        "long_tailwind": 0.34,
+        "short_tailwind": 0.08,
+        "market_regime": "TREND_UP",
+        "previous_market_regime": None,
+        "market_regime_transition": "ENTERED_TREND_UP",
+        "market_regime_transition_strength": 0.45,
+        "long_regime_score": 0.64,
+        "short_regime_score": 0.2,
+        "range_regime_score": 0.2,
+        "stress_regime_score": 0.1,
+        "regime_is_transitioning": False,
+        "symbol_features": {"TESTUSDTM": make_symbol_features()},
+        "metadata": {},
+    }
+    values.update(overrides)
+    return LiveMarketContext(**values)
+
+
+def make_breakout_candles() -> DataFrame:
+    closes = [100.0] * 84
+    closes.extend(
+        [
+            101.0,
+            101.8,
+            102.5,
+            103.2,
+            103.8,
+            104.3,
+            104.9,
+            105.0,
+            105.2,
+            105.8,
+            106.2,
+            106.8,
+            107.4,
+            108.2,
+            109.2,
+            114.5,
+        ]
+    )
+    rows: list[dict[str, float | int]] = []
+    for index, close in enumerate(closes):
+        is_last = index == len(closes) - 1
+        open_price = 110.0 if is_last else close - 0.15
+        high = 115.0 if is_last else close + 0.25
+        low = 109.8 if is_last else close - 0.35
+        volume = 230.0 if is_last else 100.0
+        rows.append(
+            {
+                "open_time": 1_700_000_000_000 + index * 900_000,
+                "open": open_price,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+                "quote_asset_volume": volume * close,
+                "ATR": 1.0,
+            }
+        )
+    return DataFrame(rows)
+
+
+def make_short_history_breakout_candles() -> DataFrame:
+    rows = make_breakout_candles().iloc[-64:].copy()
+    rows["open_time"] = [
+        1_700_000_000_000 + index * 900_000 for index in range(len(rows))
+    ]
+    return rows.reset_index(drop=True)
+
+
+def make_context(
+    *,
+    df_15m: DataFrame,
+    latest_market_context: LiveMarketContext,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        config=SimpleNamespace(env="test"),
+        symbol="TESTUSDTM",
+        market_type=MarketType.FUTURES,
+        df_15m=df_15m,
+        dispatch_signal_record=Mock(),
+        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        at_consumer=SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=AsyncMock(),
+        ),
+        latest_market_context=latest_market_context,
+        current_symbol_data=SymbolModel(
+            id="TESTUSDTM",
+            exchange_id=ExchangeId.KUCOIN,
+            base_asset="TEST",
+            quote_asset="USDT",
+            price_precision=8,
+        ),
+        price_precision=8,
+        exchange=ExchangeId.KUCOIN,
+        strategy_cooldowns={},
+    )
+
+
+@pytest.mark.asyncio
+async def test_signal_dispatches_staging_long_with_reduced_margin(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    algo = TopGainerEarlyMomentum(
+        cast(
+            Any,
+            make_context(df_15m=df, latest_market_context=make_market_context()),
+        )
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    record_mock.assert_called_once()
+    process_mock.assert_awaited_once()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    await_args = process_mock.await_args
+    assert await_args is not None
+    signal_value = await_args.args[0]
+
+    assert "Entry setup: top_gainer_breakout_ignition" in telegram_msg
+    assert "Autotrade route: staging_top_gainer_long" in telegram_msg
+    assert "Max margin: 2.0 USDT" in telegram_msg
+    assert signal_value.autotrade is True
+    assert signal_value.bot_params.position == "long"
+    assert signal_value.bot_params.fiat_order_size == 2.0
+    assert signal_value.bot_params.stop_loss > 0
+
+
+@pytest.mark.asyncio
+async def test_signal_records_shadow_long_outside_staging(monkeypatch):
+    monkeypatch.setenv("ENV", "production")
+    df = make_breakout_candles()
+    algo = TopGainerEarlyMomentum(
+        cast(
+            Any,
+            make_context(df_15m=df, latest_market_context=make_market_context()),
+        )
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    record_mock.assert_called_once()
+    process_mock.assert_awaited_once()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    await_args = process_mock.await_args
+    assert await_args is not None
+    signal_value = await_args.args[0]
+
+    assert "Autotrade route: staging_only_shadow" in telegram_msg
+    assert "Autotrade is disabled outside staging" in telegram_msg
+    assert signal_value.autotrade is False
+    assert signal_value.bot_params.fiat_order_size == 2.0
+
+
+@pytest.mark.asyncio
+async def test_signal_labels_short_history_extension_window(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_short_history_breakout_candles()
+    algo = TopGainerEarlyMomentum(
+        cast(
+            Any,
+            make_context(df_15m=df, latest_market_context=make_market_context()),
+        )
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    telegram_msg = send_signal_mock.call_args.args[0]
+
+    assert "extension return (63 bars, cap 32.81%)" in telegram_msg
+    assert "24h return" not in telegram_msg
+
+
+@pytest.mark.asyncio
+async def test_signal_skips_short_history_when_scaled_extension_cap_is_exceeded(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_short_history_breakout_candles()
+    df.loc[df.index[0], "close"] = 75.0
+    algo = TopGainerEarlyMomentum(
+        cast(
+            Any,
+            make_context(df_15m=df, latest_market_context=make_market_context()),
+        )
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    send_signal_mock.assert_not_called()
+    record_mock.assert_not_called()
+    process_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_skips_when_relative_strength_is_not_positive(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    context = make_market_context(
+        symbol_features={
+            "TESTUSDTM": make_symbol_features(relative_strength_vs_btc=0.0)
+        }
+    )
+    algo = TopGainerEarlyMomentum(
+        cast(Any, make_context(df_15m=df, latest_market_context=context))
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    send_signal_mock.assert_not_called()
+    record_mock.assert_not_called()
+    process_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_skips_when_symbol_features_are_missing(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    context = make_market_context(symbol_features={})
+    algo = TopGainerEarlyMomentum(
+        cast(Any, make_context(df_15m=df, latest_market_context=context))
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    send_signal_mock.assert_not_called()
+    record_mock.assert_not_called()
+    process_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_skips_when_one_hour_move_is_too_extended(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    df.loc[df.index[-1], ["open", "high", "low", "close"]] = [
+        132.0,
+        140.5,
+        131.8,
+        139.0,
+    ]
+    df.loc[df.index[-1], "quote_asset_volume"] = (
+        df.loc[df.index[-1], "volume"] * df.loc[df.index[-1], "close"]
+    )
+    algo = TopGainerEarlyMomentum(
+        cast(
+            Any,
+            make_context(df_15m=df, latest_market_context=make_market_context()),
+        )
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=145.0,
+        bb_mid=120.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_not_called()
+    record_mock.assert_not_called()
+    process_mock.assert_not_awaited()
