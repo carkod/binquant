@@ -97,6 +97,12 @@ class LadderDeployer:
         if symbol_features.micro_regime_transition in self.BLOCKING_MICRO_TRANSITIONS:
             logging.info("grid_ladder skipped: symbol_transition")
             return
+        if not symbol_features.above_ema20 and not symbol_features.above_ema50:
+            logging.info("grid_ladder skipped: symbol_below_ema20_and_ema50")
+            return
+        if symbol_features.relative_strength_vs_btc <= 0:
+            logging.info("grid_ladder skipped: relative_strength_vs_btc_not_positive")
+            return
         required_long_regime_score = (
             self.MIN_LONG_REGIME_SCORE_RANGE
             if context.market_regime == "RANGE"

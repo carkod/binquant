@@ -48,6 +48,19 @@ class FakeContextEvaluator:
         self.dispatched_values.append(value)
 
 
+def make_symbol_features(**overrides):
+    values = {
+        "micro_regime": "RANGE",
+        "micro_regime_transition": None,
+        "atr_pct": 0.008,
+        "above_ema20": True,
+        "above_ema50": True,
+        "relative_strength_vs_btc": 0.01,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("bb_low", "bb_high"),
@@ -67,11 +80,7 @@ async def test_ladder_deployer_uses_three_total_levels(
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
-        lambda context, symbol: SimpleNamespace(
-            micro_regime="RANGE",
-            micro_regime_transition=None,
-            atr_pct=0.008,
-        ),
+        lambda context, symbol: make_symbol_features(),
     )
 
     await deployer.signal(
@@ -129,11 +138,7 @@ async def test_ladder_deployer_reaches_existing_checks_when_policy_is_active(
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: False)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
-        lambda context, symbol: SimpleNamespace(
-            micro_regime="RANGE",
-            micro_regime_transition=None,
-            atr_pct=0.008,
-        ),
+        lambda context, symbol: make_symbol_features(),
     )
 
     await deployer.signal(
@@ -162,11 +167,7 @@ async def test_ladder_deployer_skips_when_long_regime_score_is_too_low_outside_r
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
-        lambda context, symbol: SimpleNamespace(
-            micro_regime="RANGE",
-            micro_regime_transition=None,
-            atr_pct=0.008,
-        ),
+        lambda context, symbol: make_symbol_features(),
     )
 
     await deployer.signal(
@@ -194,11 +195,7 @@ async def test_ladder_deployer_skips_in_range_regime_below_range_floor(
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
-        lambda context, symbol: SimpleNamespace(
-            micro_regime="RANGE",
-            micro_regime_transition=None,
-            atr_pct=0.008,
-        ),
+        lambda context, symbol: make_symbol_features(),
     )
 
     await deployer.signal(
@@ -226,11 +223,7 @@ async def test_ladder_deployer_deploys_in_range_regime_with_low_long_regime_scor
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
-        lambda context, symbol: SimpleNamespace(
-            micro_regime="RANGE",
-            micro_regime_transition=None,
-            atr_pct=0.008,
-        ),
+        lambda context, symbol: make_symbol_features(),
     )
 
     await deployer.signal(
@@ -241,3 +234,58 @@ async def test_ladder_deployer_deploys_in_range_regime_with_low_long_regime_scor
     )
 
     assert len(evaluator.dispatched_values) == 1
+
+
+@pytest.mark.asyncio
+async def test_ladder_deployer_skips_when_symbol_is_below_both_emas(
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level("INFO")
+    evaluator = FakeContextEvaluator()
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: make_symbol_features(
+            above_ema20=False,
+            above_ema50=False,
+        ),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert evaluator.at_consumer.values == []
+    assert evaluator.dispatched_values == []
+    assert "grid_ladder skipped: symbol_below_ema20_and_ema50" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ladder_deployer_skips_when_relative_strength_vs_btc_is_not_positive(
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level("INFO")
+    evaluator = FakeContextEvaluator()
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: make_symbol_features(relative_strength_vs_btc=0.0),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert evaluator.at_consumer.values == []
+    assert evaluator.dispatched_values == []
+    assert "grid_ladder skipped: relative_strength_vs_btc_not_positive" in caplog.text

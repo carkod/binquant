@@ -213,6 +213,7 @@ def test_process_data_prioritizes_price_tracker_before_ladder_deployer():
         "LiquidationSweepPump",
         "MeanReversionFade",
         "SpikeHunterV3KuCoin",
+        "RideMarketBreadth",
         "LadderDeployer",
     ]
 

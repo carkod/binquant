@@ -14,6 +14,8 @@ from pybinbot import (
     round_numbers,
 )
 
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg
 
 if TYPE_CHECKING:
@@ -62,6 +64,10 @@ class MeanReversionFade:
     ATR_MA_WINDOW = 20
     ATR_SPIKE_MAX = 2.0
     ATR_STOP_MULT = 2.0
+    MAX_FIAT_ORDER_SIZE = 2.0
+    MAX_MARKET_STRESS_SCORE = 0.35
+    MAX_CONTEXT_COUNTER_TREND_GAP = 0.05
+    MAX_SYMBOL_ATR_PCT = 0.04
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -140,6 +146,51 @@ class MeanReversionFade:
         pct = (self.ATR_STOP_MULT * atr / entry_price) * 100.0
         return round_numbers(min(max(pct, 0.0), 101.0), 4)
 
+    @classmethod
+    def _risk_profile_allows(
+        cls,
+        *,
+        direction: Position,
+        context: LiveMarketContext | None,
+        features: SymbolMarketFeatures | None,
+    ) -> tuple[bool, str]:
+        if context is None:
+            return False, "market_context_unavailable"
+        if context.market_stress_score >= cls.MAX_MARKET_STRESS_SCORE:
+            return False, "market_stress_too_high"
+
+        if features is not None and features.atr_pct > cls.MAX_SYMBOL_ATR_PCT:
+            return False, "symbol_atr_too_high"
+
+        if direction == Position.long:
+            if (
+                context.short_regime_score
+                > context.long_regime_score + cls.MAX_CONTEXT_COUNTER_TREND_GAP
+            ):
+                return False, "market_context_short_edge"
+            if context.btc_regime_score < -0.15 and context.btc_return < 0:
+                return False, "btc_context_down"
+            if features is not None:
+                if features.micro_regime_transition == "BREAKDOWN":
+                    return False, "symbol_breakdown"
+                if features.micro_regime == "TREND_DOWN" and features.trend_score < 0:
+                    return False, "symbol_trend_down"
+            return True, "risk_profile_allows_long"
+
+        if (
+            context.long_regime_score
+            > context.short_regime_score + cls.MAX_CONTEXT_COUNTER_TREND_GAP
+        ):
+            return False, "market_context_long_edge"
+        if context.btc_regime_score > 0.15 and context.btc_return > 0:
+            return False, "btc_context_up"
+        if features is not None:
+            if features.micro_regime_transition == "BREAKOUT_UP":
+                return False, "symbol_breakout_up"
+            if features.micro_regime == "TREND_UP" and features.trend_score > 0:
+                return False, "symbol_trend_up"
+        return True, "risk_profile_allows_short"
+
     def _already_emitted(self, candle_open_time: int) -> bool:
         if self.strategy_cooldowns is None:
             return self._last_emitted_candle == candle_open_time
@@ -194,6 +245,18 @@ class MeanReversionFade:
             logging.info("%s skipped: %s", self.ALGO, entry_reason)
             return
 
+        context = self.ti.latest_market_context
+        symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
+        risk_allowed, risk_reason = self._risk_profile_allows(
+            direction=direction,
+            context=context,
+            features=symbol_features,
+        )
+        if not risk_allowed:
+            logging.info("%s skipped: %s", self.ALGO, risk_reason)
+            return
+        assert context is not None
+
         if self._already_emitted(candidate_open_time):
             logging.info("%s skipped: candle_already_emitted", self.ALGO)
             return
@@ -223,6 +286,7 @@ class MeanReversionFade:
                 position=direction,
                 market_type=MarketType.FUTURES,
                 dynamic_trailing=True,
+                fiat_order_size=self.MAX_FIAT_ORDER_SIZE,
                 stop_loss=stop_loss_pct,
                 margin_short_reversal=False,
             ),
@@ -244,7 +308,8 @@ class MeanReversionFade:
             - Bollinger lower/mid/upper: {round_numbers(bb_low, decimals=self.price_precision)} / {round_numbers(bb_mid, decimals=self.price_precision)} / {round_numbers(bb_high, decimals=self.price_precision)}
             - Volume: {round_numbers(volume, decimals=self.price_precision)} {base_asset} (20-bar avg {round_numbers(volume_ma, decimals=self.price_precision)})
             - ATR: {round_numbers(atr, decimals=self.price_precision)} {quote_asset} (20-bar avg {round_numbers(atr_ma, decimals=self.price_precision)})
-            - Rule intent: pure mean-reversion fade of a Bollinger extreme, no trend/regime filter
+            - Risk profile: {risk_reason}, max margin {self.MAX_FIAT_ORDER_SIZE} {quote_asset}
+            - Rule intent: mean-reversion fade of a Bollinger extreme when market and symbol context do not show strong continuation risk
             - Stop intent: ATR-sized emergency stop (~{stop_loss_pct}%), tightened early on RSI thesis invalidation
             - Take profit intent: reversion to the 20-bar Bollinger mid-band, managed dynamically
             - Confidence score: {score}
@@ -267,6 +332,18 @@ class MeanReversionFade:
                 "atr": atr,
                 "atr_ma": atr_ma,
                 "stop_loss_pct": stop_loss_pct,
+                "risk_reason": risk_reason,
+                "market_stress_score": context.market_stress_score,
+                "long_regime_score": context.long_regime_score,
+                "short_regime_score": context.short_regime_score,
+                "btc_regime_score": context.btc_regime_score,
+                "btc_return": context.btc_return,
+                "symbol_micro_regime": (
+                    symbol_features.micro_regime if symbol_features else None
+                ),
+                "symbol_micro_regime_transition": (
+                    symbol_features.micro_regime_transition if symbol_features else None
+                ),
                 "candidate_open_time": candidate_open_time,
             },
         )
