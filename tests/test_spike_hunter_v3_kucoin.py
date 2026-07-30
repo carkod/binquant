@@ -4,7 +4,13 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pandas import DataFrame
-from pybinbot import ExchangeId, MarketBreadthSeries, MarketType, SymbolModel
+from pybinbot import (
+    AutotradeSettingsSchema,
+    ExchangeId,
+    MarketBreadthSeries,
+    MarketType,
+    SymbolModel,
+)
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
@@ -127,7 +133,13 @@ def make_context(
         df_15m=df,
         dispatch_signal_record=Mock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
-        at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
+        at_consumer=SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=AsyncMock(),
+        ),
         latest_market_context=latest_market_context,
         market_breadth_data=(
             market_breadth_data
@@ -204,9 +216,10 @@ def make_last_spike(
 
 
 @pytest.mark.asyncio
-async def test_signal_dispatches_shadow_long_when_breadth_momentum_rises_with_upward_spike(
+async def test_signal_dispatches_staging_long_with_reduced_margin_when_breadth_momentum_rises_with_upward_spike(
     monkeypatch,
 ):
+    monkeypatch.setenv("ENV", "staging")
     context = make_market_context(market_regime="TREND_DOWN")
     algo, df = make_algo(
         context,
@@ -219,7 +232,14 @@ async def test_signal_dispatches_shadow_long_when_breadth_momentum_rises_with_up
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
     algo.at_consumer = cast(
-        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
     )
     monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
     monkeypatch.setattr(algo, "latest_signal", lambda: make_last_spike())
@@ -239,10 +259,63 @@ async def test_signal_dispatches_shadow_long_when_breadth_momentum_rises_with_up
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert "Autotrade route: shadow_only_negative_expectancy_lock" in telegram_msg
+    assert "Autotrade route: staging_long_only_reenable" in telegram_msg
+    assert "Max margin: 2.0 USDT" in telegram_msg
+    assert "Autotrade is enabled" in telegram_msg
+    assert signal_value.autotrade is True
+    assert signal_value.bot_params.position == "long"
+    assert signal_value.bot_params.fiat_order_size == 2.0
+
+
+@pytest.mark.asyncio
+async def test_signal_dispatches_shadow_long_outside_staging(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "production")
+    context = make_market_context(market_regime="TREND_DOWN")
+    algo, df = make_algo(
+        context,
+        market_breadth_data=make_market_breadth_data(latest=0.12, previous=0.10),
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    record_mock = Mock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+    monkeypatch.setattr(algo, "latest_signal", lambda: make_last_spike())
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    record_mock.assert_called_once()
+    process_mock.assert_awaited_once()
+    telegram_msg = send_signal_mock.call_args.args[0]
+    await_args = process_mock.await_args
+    assert await_args is not None
+    signal_value = await_args.args[0]
+
+    assert "Autotrade route: staging_only_long_shadow" in telegram_msg
     assert "Autotrade is disabled" in telegram_msg
     assert signal_value.autotrade is False
     assert signal_value.bot_params.position == "long"
+    assert signal_value.bot_params.fiat_order_size == 2.0
 
 
 @pytest.mark.asyncio
@@ -262,7 +335,14 @@ async def test_signal_accepts_market_breadth_series_model(monkeypatch):
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
     algo.at_consumer = cast(
-        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=process_mock,
+        ),
     )
     monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
     monkeypatch.setattr(algo, "latest_signal", lambda: make_last_spike())
@@ -279,9 +359,10 @@ async def test_signal_accepts_market_breadth_series_model(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_dispatches_shadow_short_when_breadth_momentum_falls_with_downward_spike(
+async def test_signal_skips_short_when_breadth_momentum_falls_with_downward_spike(
     monkeypatch,
 ):
+    monkeypatch.setenv("ENV", "staging")
     context = make_market_context(
         market_regime="TREND_UP",
         market_regime_transition="ENTERED_TREND_UP",
@@ -319,18 +400,9 @@ async def test_signal_dispatches_shadow_short_when_breadth_momentum_falls_with_d
         bb_low=100.0,
     )
 
-    send_signal_mock.assert_called_once()
-    record_mock.assert_called_once()
-    process_mock.assert_awaited_once()
-    telegram_msg = send_signal_mock.call_args.args[0]
-    await_args = process_mock.await_args
-    assert await_args is not None
-    signal_value = await_args.args[0]
-
-    assert "Autotrade route: shadow_only_negative_expectancy_lock" in telegram_msg
-    assert "Autotrade is disabled" in telegram_msg
-    assert signal_value.autotrade is False
-    assert signal_value.bot_params.position == "short"
+    send_signal_mock.assert_not_called()
+    record_mock.assert_not_called()
+    process_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

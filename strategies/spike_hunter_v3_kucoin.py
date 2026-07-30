@@ -35,6 +35,7 @@ class SpikeHunterV3KuCoin:
 
     MAX_MARKET_STRESS_SCORE = 0.35
     MIN_BREADTH_MOMENTUM_POINTS = 0.0
+    FIAT_ORDER_SIZE_FRACTION = 1 / 3
 
     def __init__(
         self,
@@ -183,6 +184,11 @@ class SpikeHunterV3KuCoin:
         if short_flags and last_spike["downward"]:
             return True, "symbol_downward_spike"
         return False, "symbol_downward_spike_missing"
+
+    def _fiat_order_size(self) -> float:
+        settings = getattr(self.at_consumer, "autotrade_settings", None)
+        base_order_size = float(getattr(settings, "base_order_size", 0.0) or 0.0)
+        return round_numbers(base_order_size * self.FIAT_ORDER_SIZE_FRACTION, 8)
 
     def auto_calibrate(
         self,
@@ -577,6 +583,13 @@ class SpikeHunterV3KuCoin:
                 market_route,
             )
             return
+        if bot_strategy != Position.long:
+            logging.info(
+                "Spike Hunter skipped %s because long_only_reenable excludes %s.",
+                self.symbol,
+                bot_strategy.value,
+            )
+            return
 
         symbol_confirmed, symbol_route = self.symbol_spike_confirms_direction(
             last_spike=last_spike,
@@ -591,21 +604,15 @@ class SpikeHunterV3KuCoin:
             )
             return
 
-        route_reason = "shadow_only_negative_expectancy_lock"
-        autotrade = False
+        autotrade = getenv("ENV") == "staging"
+        route_reason = (
+            "staging_long_only_reenable" if autotrade else "staging_only_long_shadow"
+        )
+        fiat_order_size = self._fiat_order_size()
 
-        if bot_strategy == Position.long:
-            streak = "📈"
-            action_label = "LONG ENTRY"
-            rule_intent = (
-                "BUY when bullish market breadth is confirmed by an upward spike"
-            )
-        else:
-            streak = "📉"
-            action_label = "SHORT ENTRY"
-            rule_intent = (
-                "SELL when bearish market breadth is confirmed by a downward spike"
-            )
+        streak = "📈"
+        action_label = "LONG ENTRY"
+        rule_intent = "BUY when bullish market breadth is confirmed by an upward spike"
 
         base_asset = self.current_symbol_data.base_asset
         quote_asset = self.current_symbol_data.quote_asset
@@ -631,6 +638,7 @@ class SpikeHunterV3KuCoin:
             - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
             - Autotrade route: {route_reason}
+            - Max margin: {fiat_order_size} {quote_asset}
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
@@ -644,6 +652,7 @@ class SpikeHunterV3KuCoin:
                 name=algo,
                 position=bot_strategy,
                 market_type=self.market_type,
+                fiat_order_size=fiat_order_size,
                 margin_short_reversal=False,
             ),
             bb_spreads=HABollinguerSpread(
