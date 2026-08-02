@@ -451,15 +451,6 @@ class ContextEvaluator:
             )
             self.last_market_regime = self.market_regime_notifier.last_market_regime
 
-            await self._safe_signal(
-                "LiquidationSweepPump",
-                self.lsp.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
 
             await self._safe_signal(
                 "MeanReversionFade",
@@ -474,6 +465,16 @@ class ContextEvaluator:
             await self._safe_signal(
                 "RideMarketBreadth",
                 self.ride_market_breadth.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            await self._safe_signal(
+                "LiquidationSweepPump",
+                self.lsp.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,

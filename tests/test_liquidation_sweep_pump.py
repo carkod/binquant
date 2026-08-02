@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pandas import DataFrame
@@ -134,10 +134,8 @@ def make_context(
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
-        kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,
         dispatch_signal_record=Mock(),
-        binbot_api=MagicMock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
@@ -150,7 +148,6 @@ def make_context(
             qty_precision=8,
         ),
         price_precision=8,
-        qty_precision=8,
         oi_data=1.05,
         market_breadth_data=market_breadth_data
         or make_market_breadth_series([0.0, 0.0]),
@@ -181,7 +178,7 @@ def make_algo(
 
 
 @pytest.mark.asyncio
-async def test_signal_emits_short_when_hot_breadth_fades_with_stalled_btc_and_weak_symbol(
+async def test_signal_does_not_emit_short_when_hot_breadth_fades(
     monkeypatch,
 ):
     weak_symbol = make_symbol_features(
@@ -210,105 +207,6 @@ async def test_signal_emits_short_when_hot_breadth_fades_with_stalled_btc_and_we
     )
 
     monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
-    monkeypatch.setattr(
-        "strategies.liquidation_sweep_pump.build_links_msg",
-        lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
-    )
-
-    await algo.signal(
-        current_price=float(df.close.iloc[-1]),
-        bb_high=110.0,
-        bb_mid=105.0,
-        bb_low=100.0,
-    )
-
-    send_signal_mock.assert_called_once()
-    process_mock.assert_awaited_once()
-    telegram_await_args = send_signal_mock.call_args
-    process_await_args = process_mock.await_args
-
-    assert telegram_await_args is not None
-    assert process_await_args is not None
-
-    telegram_msg = telegram_await_args.args[0]
-    signal_value = process_await_args.args[0]
-
-    assert signal_value.bot_params.position == Position.short
-    assert signal_value.direction == "SHORT"
-    assert signal_value.autotrade is True
-    assert "Action: SHORT ENTRY" in telegram_msg
-    assert "Autotrade route: breadth_hot_fading_btc_stalled_symbol_weak" in telegram_msg
-
-
-@pytest.mark.asyncio
-async def test_signal_skips_short_when_hot_breadth_is_not_falling(monkeypatch):
-    weak_symbol = make_symbol_features(
-        micro_regime="TRANSITIONAL",
-        trend_score=-0.01,
-        above_ema20=False,
-        relative_strength_vs_btc=-0.02,
-    )
-    context = make_market_context(
-        advancers_ratio=0.66,
-        decliners_ratio=0.34,
-        symbol_features={"TESTUSDT": weak_symbol},
-    )
-    algo, df = make_algo(
-        context,
-        market_breadth_data=make_market_breadth_series([0.18, 0.30, 0.32]),
-        btc_last_change=0.001,
-    )
-    send_signal_mock = Mock()
-    process_mock = AsyncMock()
-    algo.telegram_consumer = cast(
-        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
-    )
-    algo.at_consumer = cast(
-        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
-    )
-
-    monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
-
-    await algo.signal(
-        current_price=float(df.close.iloc[-1]),
-        bb_high=110.0,
-        bb_mid=105.0,
-        bb_low=100.0,
-    )
-
-    send_signal_mock.assert_not_called()
-    process_mock.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_signal_skips_short_when_symbol_followthrough_is_not_weak(monkeypatch):
-    strong_symbol = make_symbol_features(
-        micro_regime="TREND_UP",
-        trend_score=0.03,
-        above_ema20=True,
-        relative_strength_vs_btc=0.02,
-    )
-    context = make_market_context(
-        advancers_ratio=0.66,
-        decliners_ratio=0.34,
-        symbol_features={"TESTUSDT": strong_symbol},
-    )
-    algo, df = make_algo(
-        context,
-        market_breadth_data=make_market_breadth_series([0.18, 0.36, 0.32]),
-        btc_last_change=0.001,
-    )
-    send_signal_mock = Mock()
-    process_mock = AsyncMock()
-    algo.telegram_consumer = cast(
-        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
-    )
-    algo.at_consumer = cast(
-        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
-    )
-
-    monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
-
     await algo.signal(
         current_price=float(df.close.iloc[-1]),
         bb_high=110.0,
@@ -369,8 +267,55 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     assert signal_value.bot_params.position == Position.long
     assert signal_value.direction == "LONG"
     assert signal_value.autotrade is True
+    assert signal_value.bot_params.dynamic_trailing is False
+    assert signal_value.bot_params.stop_loss == 2.0
+    assert signal_value.bot_params.take_profit == 2.5
+    assert signal_value.bot_params.trailing is False
+    assert signal_value.bot_params.margin_short_reversal is False
     assert "Action: LONG ENTRY" in telegram_msg
-    assert "Autotrade route: breadth_washed_out_recovering_btc_up" in telegram_msg
+    assert (
+        "Autotrade route: breadth_washed_out_recovering_btc_up_symbol_up"
+        in telegram_msg
+    )
+
+
+@pytest.mark.asyncio
+async def test_signal_skips_long_when_symbol_trend_is_not_up(monkeypatch):
+    context = make_market_context(
+        advancers_ratio=0.29,
+        decliners_ratio=0.71,
+        symbol_features={
+            "TESTUSDT": make_symbol_features(
+                trend_score=0.0,
+                above_ema20=False,
+                above_ema50=False,
+            )
+        },
+    )
+    algo, df = make_algo(
+        context,
+        market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
+        btc_last_change=0.003,
+    )
+    send_signal_mock = Mock()
+    process_mock = AsyncMock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
+    )
+    monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=110.0,
+        bb_mid=105.0,
+        bb_low=100.0,
+    )
+
+    send_signal_mock.assert_not_called()
+    process_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
