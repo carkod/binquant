@@ -211,9 +211,9 @@ def test_process_data_prioritizes_price_tracker_before_ladder_deployer():
         "PriceTracker",
         "TopGainerEarlyMomentum",
         "MarketRegimeNotifier",
-        "LiquidationSweepPump",
         "MeanReversionFade",
         "RideMarketBreadth",
+        "LiquidationSweepPump",
         "LadderDeployer",
     ]
 

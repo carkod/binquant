@@ -99,10 +99,12 @@ async def test_ladder_deployer_uses_three_total_levels(
     assert value.grid_params.allocation_pct == 1.0
     assert value.grid_params.cash_reserve_pct == 0.0
     assert value.grid_params.context["grid_ladder"] == {
-        "disable_upper_band_short_entries": False,
+        "disable_upper_band_short_entries": True,
+        "first_cycle_timeout_hours": 12,
         "min_entry_contracts": 2,
     }
-    assert value.grid_params.indicators["disable_upper_band_short_entries"] is False
+    assert value.grid_params.indicators["disable_upper_band_short_entries"] is True
+    assert value.grid_params.indicators["first_cycle_timeout_hours"] == 12
     assert value.grid_params.indicators["min_entry_contracts"] == 2
 
 
@@ -155,14 +157,13 @@ async def test_ladder_deployer_reaches_existing_checks_when_policy_is_active(
 
 
 @pytest.mark.asyncio
-async def test_ladder_deployer_skips_when_long_regime_score_is_too_low_outside_range(
+async def test_ladder_deployer_skips_outside_range_market_regime(
     monkeypatch,
     caplog,
 ) -> None:
     caplog.set_level("INFO")
     evaluator = FakeContextEvaluator()
     evaluator.latest_market_context.market_regime = "TREND_DOWN"
-    evaluator.latest_market_context.long_regime_score = 0.44
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
@@ -179,7 +180,32 @@ async def test_ladder_deployer_skips_when_long_regime_score_is_too_low_outside_r
 
     assert evaluator.at_consumer.values == []
     assert evaluator.dispatched_values == []
-    assert "grid_ladder skipped: long_regime_score_too_low" in caplog.text
+    assert "grid_ladder skipped: market_regime_not_range" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ladder_deployer_skips_transitional_symbol_regime(
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level("INFO")
+    evaluator = FakeContextEvaluator()
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: make_symbol_features(micro_regime="TRANSITIONAL"),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert evaluator.at_consumer.values == []
+    assert evaluator.dispatched_values == []
+    assert "grid_ladder skipped: symbol_micro_regime" in caplog.text
 
 
 @pytest.mark.asyncio

@@ -44,7 +44,7 @@ class TopGainerEarlyMomentum:
     MAX_CANDLE_RETURN = 0.10
     MIN_RETURN_1H = 0.05
     MIN_RETURN_2H = 0.08
-    MIN_RETURN_6H = 0.05
+    MIN_RETURN_6H = 0.07
     MAX_RETURN_1H = 0.20
     FULL_EXTENSION_WINDOW_BARS = 96
     MAX_EXTENSION_RETURN = 0.50
@@ -61,6 +61,9 @@ class TopGainerEarlyMomentum:
     ATR_STOP_MULT = 2.2
     MIN_STOP_LOSS_PCT = 1.5
     MAX_STOP_LOSS_PCT = 2.0
+    ENTRY_COOLDOWN_MINUTES = 60
+    TRAILING_PROFIT_PCT = 3.0
+    TRAILING_DEVIATION_PCT = 1.5
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls

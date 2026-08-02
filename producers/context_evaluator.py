@@ -451,7 +451,6 @@ class ContextEvaluator:
             )
             self.last_market_regime = self.market_regime_notifier.last_market_regime
 
-
             await self._safe_signal(
                 "MeanReversionFade",
                 self.mean_reversion_fade.signal(
