@@ -123,6 +123,35 @@ def make_breakout_candles() -> DataFrame:
                 "ATR": 1.0,
             }
         )
+    source_index = len(rows) - 3
+    rows[source_index].update(
+        {
+            "open": 107.0,
+            "high": 112.2,
+            "low": 106.8,
+            "close": 112.0,
+            "volume": 230.0,
+            "quote_asset_volume": 230.0 * 112.0,
+        }
+    )
+    rows[source_index + 1].update(
+        {
+            "open": 111.5,
+            "high": 112.7,
+            "low": 111.2,
+            "close": 112.5,
+            "quote_asset_volume": 100.0 * 112.5,
+        }
+    )
+    rows[source_index + 2].update(
+        {
+            "open": 112.3,
+            "high": 113.2,
+            "low": 112.0,
+            "close": 113.0,
+            "quote_asset_volume": 100.0 * 113.0,
+        }
+    )
     return DataFrame(rows)
 
 
@@ -210,13 +239,18 @@ async def test_signal_dispatches_staging_long_with_reduced_margin(monkeypatch):
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert "Entry setup: top_gainer_breakout_ignition" in telegram_msg
+    assert "Breakout setup: top_gainer_breakout_ignition" in telegram_msg
+    assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
     assert "Autotrade route: staging_top_gainer_long" in telegram_msg
     assert "Max margin: 2.0 USDT" in telegram_msg
     assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "long"
     assert signal_value.bot_params.fiat_order_size == 2.0
     assert signal_value.bot_params.stop_loss > 0
+    assert signal_value.bot_params.cooldown == 60
+    assert signal_value.bot_params.trailing is True
+    assert signal_value.bot_params.trailing_profit == 3.0
+    assert signal_value.bot_params.trailing_deviation == 1.5
 
 
 @pytest.mark.asyncio
@@ -306,7 +340,7 @@ async def test_signal_labels_short_history_extension_window(monkeypatch):
     send_signal_mock.assert_called_once()
     telegram_msg = send_signal_mock.call_args.args[0]
 
-    assert "extension return (63 bars, cap 32.81%)" in telegram_msg
+    assert "extension return (61 bars, cap 31.77%)" in telegram_msg
     assert "24h return" not in telegram_msg
 
 
@@ -437,14 +471,14 @@ async def test_signal_skips_when_symbol_features_are_missing(monkeypatch):
 async def test_signal_skips_when_one_hour_move_is_too_extended(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     df = make_breakout_candles()
-    df.loc[df.index[-1], ["open", "high", "low", "close"]] = [
+    df.loc[df.index[-3], ["open", "high", "low", "close"]] = [
         132.0,
         140.5,
         131.8,
         139.0,
     ]
-    df.loc[df.index[-1], "quote_asset_volume"] = (
-        df.loc[df.index[-1], "volume"] * df.loc[df.index[-1], "close"]
+    df.loc[df.index[-3], "quote_asset_volume"] = (
+        df.loc[df.index[-3], "volume"] * df.loc[df.index[-3], "close"]
     )
     algo = TopGainerEarlyMomentum(
         cast(
@@ -480,3 +514,53 @@ async def test_signal_skips_when_one_hour_move_is_too_extended(monkeypatch):
     send_signal_mock.assert_not_called()
     record_mock.assert_not_called()
     process_mock.assert_not_awaited()
+
+
+def test_entry_requires_seven_percent_six_hour_return() -> None:
+    values, reason = TopGainerEarlyMomentum._features(make_breakout_candles().iloc[:-2])
+    assert reason == "features_ready"
+    assert values is not None
+    values["return_6h"] = 0.0699
+
+    assert TopGainerEarlyMomentum._entry_allows(values) == (
+        False,
+        "six_hour_move_not_confirmed",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("row_offset", "open_price", "high", "low", "close"),
+    [
+        (-2, 106.5, 107.0, 106.0, 106.8),
+        (-1, 111.8, 112.0, 111.0, 111.9),
+    ],
+)
+async def test_signal_requires_both_confirmation_closes(
+    monkeypatch,
+    row_offset: int,
+    open_price: float,
+    high: float,
+    low: float,
+    close: float,
+) -> None:
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    df.loc[df.index[row_offset], ["open", "high", "low", "close"]] = [
+        open_price,
+        high,
+        low,
+        close,
+    ]
+    context = make_context(df_15m=df, latest_market_context=make_market_context())
+
+    await TopGainerEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    context.dispatch_signal_record.assert_not_called()
+    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()

@@ -30,7 +30,8 @@ class TopGainerEarlyMomentum:
     The production top-gainer sample showed the first tradable impulse usually
     shared four traits: close above the recent 15m high, accelerating 1h/2h
     return, volume expansion, and a candle closing near its high. This strategy
-    targets that ignition zone while rejecting already-vertical blow-offs.
+    waits for two closes to confirm that ignition while rejecting
+    already-vertical blow-offs.
     """
 
     ALGO = "top_gainer_early_momentum"
@@ -178,6 +179,20 @@ class TopGainerEarlyMomentum:
             return False, "upper_wick_too_large"
         return True, "top_gainer_breakout_ignition"
 
+    @staticmethod
+    def _confirmation_allows(
+        *,
+        breakout_close: float,
+        previous_high: float,
+        first_confirmation_close: float,
+        second_confirmation_close: float,
+    ) -> tuple[bool, str]:
+        if first_confirmation_close <= previous_high:
+            return False, "first_confirmation_did_not_hold_breakout"
+        if second_confirmation_close <= breakout_close:
+            return False, "second_confirmation_did_not_clear_breakout_close"
+        return True, "top_gainer_breakout_two_close_confirmation"
+
     @classmethod
     def _risk_profile_allows(
         cls,
@@ -210,10 +225,10 @@ class TopGainerEarlyMomentum:
             return False, "symbol_trend_down"
         return True, "risk_profile_allows_long"
 
-    def _stop_loss_pct(self, values: dict[str, float]) -> float:
-        if values["close"] <= 0 or values["atr"] <= 0:
+    def _stop_loss_pct(self, close: float, atr: float) -> float:
+        if close <= 0 or atr <= 0:
             return self.MIN_STOP_LOSS_PCT
-        pct = (self.ATR_STOP_MULT * values["atr"] / values["close"]) * 100
+        pct = (self.ATR_STOP_MULT * atr / close) * 100
         return round_numbers(
             min(max(pct, self.MIN_STOP_LOSS_PCT), self.MAX_STOP_LOSS_PCT),
             4,
@@ -250,7 +265,12 @@ class TopGainerEarlyMomentum:
             return
 
         df = self.ti.df_15m
-        values, feature_reason = self._features(df)
+        if len(df) < self.MIN_HISTORY + 2:
+            logging.info("%s skipped: history_too_short", self.ALGO)
+            return
+
+        breakout_df = df.iloc[:-2]
+        values, feature_reason = self._features(breakout_df)
         if values is None:
             logging.info("%s skipped: %s", self.ALGO, feature_reason)
             return
@@ -258,6 +278,18 @@ class TopGainerEarlyMomentum:
         entry_allowed, entry_reason = self._entry_allows(values)
         if not entry_allowed:
             logging.info("%s skipped: %s", self.ALGO, entry_reason)
+            return
+
+        first_confirmation = df.iloc[-2]
+        candidate = df.iloc[-1]
+        confirmation_allowed, confirmation_reason = self._confirmation_allows(
+            breakout_close=values["close"],
+            previous_high=values["previous_high"],
+            first_confirmation_close=float(first_confirmation["close"]),
+            second_confirmation_close=float(candidate["close"]),
+        )
+        if not confirmation_allowed:
+            logging.info("%s skipped: %s", self.ALGO, confirmation_reason)
             return
 
         context = self.ti.latest_market_context
@@ -271,7 +303,6 @@ class TopGainerEarlyMomentum:
             return
         assert context is not None
 
-        candidate = df.iloc[-1]
         candidate_open_time = int(candidate["open_time"])
         if self._already_emitted(candidate_open_time):
             logging.info("%s skipped: candle_already_emitted", self.ALGO)
@@ -281,7 +312,10 @@ class TopGainerEarlyMomentum:
         autotrade = getenv("ENV") == "staging"
         route_reason = "staging_top_gainer_long" if autotrade else "staging_only_shadow"
         fiat_order_size = self._fiat_order_size()
-        stop_loss = self._stop_loss_pct(values)
+        stop_loss = self._stop_loss_pct(
+            close=float(candidate["close"]),
+            atr=float(candidate["ATR"]) if "ATR" in df.columns else 0.0,
+        )
         score = self._score(values)
         base_asset = self.current_symbol_data.base_asset
         quote_asset = self.current_symbol_data.quote_asset
@@ -294,18 +328,27 @@ class TopGainerEarlyMomentum:
 
         indicators = {
             **values,
-            "entry_reason": entry_reason,
+            "breakout_reason": entry_reason,
+            "entry_reason": confirmation_reason,
+            "breakout_open_time": int(breakout_df.iloc[-1]["open_time"]),
+            "first_confirmation_close": float(first_confirmation["close"]),
+            "second_confirmation_close": float(candidate["close"]),
             "risk_reason": risk_reason,
             "route_reason": route_reason,
             "stop_loss_pct": stop_loss,
+            "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
+            "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
+            "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
         }
 
         msg = f"""
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
             - Current price: {round_numbers(float(current_price), decimals=self.price_precision)}
-            - Rule intent: BUY early top-gainer breakouts when price clears the recent high with volume expansion and positive relative strength
-            - Entry setup: {entry_reason}
+            - Rule intent: BUY confirmed top-gainer breakouts after price holds the recent high and then clears the breakout close
+            - Breakout setup: {entry_reason}
+            - Entry setup: {confirmation_reason}
+            - Breakout / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(float(first_confirmation["close"]), self.price_precision)} / {round_numbers(float(candidate["close"]), self.price_precision)}
             - 1h / 2h / 6h / extension return ({int(values["extension_window_bars"])} bars, cap {round_numbers(values["extension_cap"] * 100, 2)}%): {round_numbers(values["return_1h"] * 100, 2)}% / {round_numbers(values["return_2h"] * 100, 2)}% / {round_numbers(values["return_6h"] * 100, 2)}% / {round_numbers(values["extension_return"] * 100, 2)}%
             - Candle return: {round_numbers(values["candle_return"] * 100, 2)}%
             - Volume: {round_numbers(values["volume"], decimals=self.price_precision)} {base_asset} (ratio {round_numbers(values["volume_ratio"], 2)})
@@ -318,6 +361,8 @@ class TopGainerEarlyMomentum:
             - Autotrade route: {route_reason}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss: {stop_loss}%
+            - Trailing profit / deviation: {self.TRAILING_PROFIT_PCT}% / {self.TRAILING_DEVIATION_PCT}%
+            - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled outside staging"}
@@ -336,9 +381,13 @@ class TopGainerEarlyMomentum:
                 name=self.ALGO,
                 position=Position.long,
                 market_type=MarketType.FUTURES,
+                cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=True,
                 fiat_order_size=fiat_order_size,
                 stop_loss=stop_loss,
+                trailing=True,
+                trailing_deviation=self.TRAILING_DEVIATION_PCT,
+                trailing_profit=self.TRAILING_PROFIT_PCT,
                 margin_short_reversal=False,
             ),
             bb_spreads=HABollinguerSpread(
