@@ -158,287 +158,218 @@ def test_rsi_is_100_not_nan_when_window_has_no_losses() -> None:
     assert (tail == 100.0).all()
 
 
-def patch_rsi(monkeypatch: pytest.MonkeyPatch, value: float) -> None:
+def patch_rsi(
+    monkeypatch: pytest.MonkeyPatch, value: float, previous_value: float | None = None
+) -> None:
+    def rsi_series(cls, closes):  # noqa: ARG001
+        series = Series([value] * len(closes), index=closes.index)
+        if previous_value is not None and len(series) >= 2:
+            series.iloc[-2] = previous_value
+        return series
+
     monkeypatch.setattr(
         MeanReversionFade,
         "_rsi",
-        classmethod(
-            lambda cls, closes: Series([value] * len(closes), index=closes.index)
-        ),
+        classmethod(rsi_series),
     )
 
 
-@pytest.mark.asyncio
-async def test_long_entry_fires(monkeypatch: pytest.MonkeyPatch) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=99.0, last_close=100.0, last_volume=300.0, last_atr=1.0)
+def short_setup_df(
+    *,
+    last_volume: float = 300.0,
+    last_atr: float = 0.7,
+    baseline_atr: float = 0.7,
+) -> DataFrame:
+    return make_df(
+        last_open=101.0,
+        last_close=100.0,
+        last_volume=last_volume,
+        last_atr=last_atr,
+        baseline_atr=baseline_atr,
     )
-    strategy = MeanReversionFade(cast(Any, evaluator))
 
+
+async def emit_short(strategy: MeanReversionFade) -> None:
     await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
+        current_price=100.0,
+        bb_high=99.5,
+        bb_mid=98.0,
+        bb_low=95.0,
     )
-
-    evaluator.dispatch_signal_record.assert_called_once()
-    evaluator.telegram_consumer.dispatch_signal.assert_called_once()
-    evaluator.at_consumer.process_autotrade_restrictions.assert_awaited_once()
-    call = evaluator.dispatch_signal_record.call_args
-    value = call.kwargs["value"]
-    indicators = call.kwargs["indicators"]
-    assert value.direction == "LONG"
-    assert value.autotrade is True
-    assert value.bot_params.name == "mean_reversion_fade"
-    assert value.bot_params.market_type == MarketType.FUTURES
-    assert value.bot_params.position == Position.long
-    assert value.bot_params.dynamic_trailing is True
-    assert value.bot_params.margin_short_reversal is False
-    assert value.bot_params.fiat_order_size == MeanReversionFade.MAX_FIAT_ORDER_SIZE
-    assert value.bot_params.stop_loss == pytest.approx(
-        (2.0 * 1.0 / 100.0) * 100.0, rel=1e-3
-    )
-    assert indicators["entry_reason"] == "lower_band_rsi_oversold_green"
-    assert indicators["risk_reason"] == "risk_profile_allows_long"
 
 
 @pytest.mark.asyncio
-async def test_short_entry_fires(monkeypatch: pytest.MonkeyPatch) -> None:
-    patch_rsi(monkeypatch, 80.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=101.0, last_close=100.0, last_volume=300.0, last_atr=1.0)
-    )
+async def test_strategy_emits_fixed_target_short(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    evaluator = make_evaluator(df=short_setup_df())
     strategy = MeanReversionFade(cast(Any, evaluator))
 
-    await strategy.signal(current_price=100.0, bb_high=99.5, bb_mid=99.0, bb_low=90.0)
+    await emit_short(strategy)
 
-    evaluator.dispatch_signal_record.assert_called_once()
-    evaluator.at_consumer.process_autotrade_restrictions.assert_awaited_once()
     call = evaluator.dispatch_signal_record.call_args
     value = call.kwargs["value"]
     indicators = call.kwargs["indicators"]
     assert value.direction == "SHORT"
+    assert value.autotrade is True
     assert value.bot_params.position == Position.short
-    assert indicators["entry_reason"] == "upper_band_rsi_overbought_red"
+    assert value.bot_params.dynamic_trailing is False
+    assert value.bot_params.trailing is False
+    assert value.bot_params.take_profit == MeanReversionFade.TAKE_PROFIT_PCT
+    assert value.bot_params.cooldown == MeanReversionFade.ENTRY_COOLDOWN_MINUTES
+    assert value.bot_params.stop_loss == pytest.approx(1.4)
+    assert value.bot_params.margin_short_reversal is False
+    assert indicators["entry_reason"] == "upper_band_outside_rsi_hook_red"
+    assert indicators["max_holding_bars"] == MeanReversionFade.MAX_HOLDING_BARS
+    assert indicators["trend_score"] == pytest.approx(0.0)
 
 
 @pytest.mark.asyncio
-async def test_stop_loss_percent_derived_from_atr(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    patch_rsi(monkeypatch, 20.0)
+async def test_long_setup_never_emits(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_rsi(monkeypatch, 20.0, previous_value=19.0)
     evaluator = make_evaluator(
-        df=make_df(
-            last_open=99.0,
-            last_close=100.0,
-            last_volume=300.0,
-            last_atr=4.0,
-            baseline_atr=4.0,
-        )
+        df=make_df(last_open=99.0, last_close=100.0, last_volume=300.0)
     )
     strategy = MeanReversionFade(cast(Any, evaluator))
 
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
+    await strategy.signal(current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=99.5)
 
-    value = evaluator.dispatch_signal_record.call_args.kwargs["value"]
-    # ATR at the candidate bar is 4.0, entry price 100.0 -> 2.0x ATR / price * 100
-    assert value.bot_params.stop_loss == pytest.approx(8.0, rel=1e-2)
+    evaluator.dispatch_signal_record.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_stop_loss_percent_clamped_to_101(
+async def test_short_requires_close_outside_upper_band(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    patch_rsi(monkeypatch, 20.0)
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    evaluator = make_evaluator(df=short_setup_df())
+    strategy = MeanReversionFade(cast(Any, evaluator))
+
+    await strategy.signal(current_price=100.0, bb_high=100.5, bb_mid=98.0, bb_low=95.0)
+
+    evaluator.dispatch_signal_record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_short_requires_rsi_hook_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_rsi(monkeypatch, 80.0, previous_value=79.0)
+    evaluator = make_evaluator(df=short_setup_df())
+    strategy = MeanReversionFade(cast(Any, evaluator))
+
+    await emit_short(strategy)
+
+    evaluator.dispatch_signal_record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_short_rejected_above_trend_score_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    monkeypatch.setattr(
+        MeanReversionFade,
+        "_trend_score",
+        classmethod(lambda cls, closes: cls.MAX_TREND_SCORE + 0.0001),
+    )
+    evaluator = make_evaluator(df=short_setup_df())
+    strategy = MeanReversionFade(cast(Any, evaluator))
+
+    await emit_short(strategy)
+
+    evaluator.dispatch_signal_record.assert_not_called()
+
+
+def test_trend_score_is_zero_for_flat_market() -> None:
+    assert MeanReversionFade._trend_score(Series([100.0] * 50)) == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_entry_rejected_when_atr_stop_exceeds_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    evaluator = make_evaluator(df=short_setup_df(last_atr=0.8, baseline_atr=0.8))
+    strategy = MeanReversionFade(cast(Any, evaluator))
+
+    await emit_short(strategy)
+
+    evaluator.dispatch_signal_record.assert_not_called()
+    assert evaluator.strategy_cooldowns == {}
+
+
+@pytest.mark.asyncio
+async def test_low_volume_rejects_short(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    evaluator = make_evaluator(df=short_setup_df(last_volume=50.0))
+    strategy = MeanReversionFade(cast(Any, evaluator))
+
+    await emit_short(strategy)
+
+    evaluator.dispatch_signal_record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_atr_spike_rejects_short(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    evaluator = make_evaluator(df=short_setup_df(last_atr=5.0, baseline_atr=0.7))
+    strategy = MeanReversionFade(cast(Any, evaluator))
+
+    await emit_short(strategy)
+
+    evaluator.dispatch_signal_record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bullish_market_context_rejects_short(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
     evaluator = make_evaluator(
-        df=make_df(
-            last_open=0.5,
-            last_close=1.0,
-            last_volume=300.0,
-            last_atr=100.0,
-            baseline_atr=100.0,
-        )
+        df=short_setup_df(),
+        latest_market_context=make_market_context(
+            long_regime_score=0.5,
+            short_regime_score=0.4,
+        ),
     )
     strategy = MeanReversionFade(cast(Any, evaluator))
 
-    await strategy.signal(current_price=1.0, bb_high=110.0, bb_mid=101.0, bb_low=1.5)
+    await emit_short(strategy)
 
-    value = evaluator.dispatch_signal_record.call_args.kwargs["value"]
-    assert value.bot_params.stop_loss <= 101.0
+    evaluator.dispatch_signal_record.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_spot_market_never_emits(monkeypatch: pytest.MonkeyPatch) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator()
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    evaluator = make_evaluator(df=short_setup_df())
     evaluator.market_type = MarketType.SPOT
     strategy = MeanReversionFade(cast(Any, evaluator))
 
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
+    await emit_short(strategy)
 
     evaluator.dispatch_signal_record.assert_not_called()
-    evaluator.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_missing_atr_column_never_emits(monkeypatch: pytest.MonkeyPatch) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    df = make_df().drop(columns=["ATR"])
-    evaluator = make_evaluator(df=df)
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    evaluator = make_evaluator(df=short_setup_df().drop(columns=["ATR"]))
     strategy = MeanReversionFade(cast(Any, evaluator))
 
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
-
-    evaluator.dispatch_signal_record.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_rsi_not_oversold_rejects_long(monkeypatch: pytest.MonkeyPatch) -> None:
-    patch_rsi(monkeypatch, 40.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=99.0, last_close=100.0, last_volume=300.0, last_atr=1.0)
-    )
-    strategy = MeanReversionFade(cast(Any, evaluator))
-
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
-
-    evaluator.dispatch_signal_record.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_long_entry_rejected_when_market_context_has_short_edge(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=99.0, last_close=100.0, last_volume=300.0, last_atr=1.0),
-        latest_market_context=make_market_context(
-            long_regime_score=0.32,
-            short_regime_score=0.45,
-        ),
-    )
-    strategy = MeanReversionFade(cast(Any, evaluator))
-
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
-
-    evaluator.dispatch_signal_record.assert_not_called()
-    evaluator.at_consumer.process_autotrade_restrictions.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_long_entry_rejected_when_symbol_is_breaking_down(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=99.0, last_close=100.0, last_volume=300.0, last_atr=1.0),
-        latest_market_context=make_market_context(
-            symbol_features={
-                "TESTUSDTM": make_symbol_features(
-                    trend_score=-0.03,
-                    micro_regime="TREND_DOWN",
-                    micro_regime_transition="BREAKDOWN",
-                )
-            }
-        ),
-    )
-    strategy = MeanReversionFade(cast(Any, evaluator))
-
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
-
-    evaluator.dispatch_signal_record.assert_not_called()
-    evaluator.at_consumer.process_autotrade_restrictions.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_price_above_lower_band_rejects_long(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=99.0, last_close=100.0, last_volume=300.0, last_atr=1.0)
-    )
-    strategy = MeanReversionFade(cast(Any, evaluator))
-
-    # bb_low far below current close -> close > bb_low, gate fails
-    await strategy.signal(current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=50.0)
-
-    evaluator.dispatch_signal_record.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_red_candle_rejects_long(monkeypatch: pytest.MonkeyPatch) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(
-        # close < open -> red candle
-        df=make_df(last_open=101.0, last_close=100.0, last_volume=300.0, last_atr=1.0)
-    )
-    strategy = MeanReversionFade(cast(Any, evaluator))
-
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
-
-    evaluator.dispatch_signal_record.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_low_volume_rejects_long(monkeypatch: pytest.MonkeyPatch) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=99.0, last_close=100.0, last_volume=50.0, last_atr=1.0)
-    )
-    strategy = MeanReversionFade(cast(Any, evaluator))
-
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
-
-    evaluator.dispatch_signal_record.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_atr_volatility_spike_rejects_long(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=99.0, last_close=100.0, last_volume=300.0, last_atr=5.0)
-    )
-    strategy = MeanReversionFade(cast(Any, evaluator))
-
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
+    await emit_short(strategy)
 
     evaluator.dispatch_signal_record.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_emits_once_per_candle(monkeypatch: pytest.MonkeyPatch) -> None:
-    patch_rsi(monkeypatch, 20.0)
-    evaluator = make_evaluator(
-        df=make_df(last_open=99.0, last_close=100.0, last_volume=300.0, last_atr=1.0)
-    )
+    patch_rsi(monkeypatch, 80.0, previous_value=81.0)
+    evaluator = make_evaluator(df=short_setup_df())
     strategy = MeanReversionFade(cast(Any, evaluator))
 
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
-    await strategy.signal(
-        current_price=100.0, bb_high=110.0, bb_mid=101.0, bb_low=100.5
-    )
+    await emit_short(strategy)
+    await emit_short(strategy)
 
     evaluator.dispatch_signal_record.assert_called_once()
     evaluator.at_consumer.process_autotrade_restrictions.assert_awaited_once()

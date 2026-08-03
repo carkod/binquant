@@ -24,24 +24,20 @@ if TYPE_CHECKING:
 
 class MeanReversionFade:
     """
-    Pure mean-reversion fade of RSI + Bollinger Band extremes.
+    Short-only mean-reversion fade of RSI + Bollinger Band extremes.
 
-    No trend/regime filter — bet on a snap-back to the mean, not
-    continuation. Validated via a real-data P&L backtest (400 KuCoin futures
-    symbols, ~10 days of 15m candles): 220 trades, 44.5% win rate, profit
-    factor 1.34, +0.41%/trade net of fees.
-
-    Entry (long; short is the mirror):
-        - RSI(14) <= RSI_LONG_MAX (oversold)
-        - close <= lower Bollinger Band
-        - confirmation candle: close > open (green)
+    Entry:
+        - RSI(14) >= RSI_SHORT_MIN and hooks down from the prior candle
+        - bearish confirmation candle closes at or above the upper Bollinger Band
         - volume >= VOLUME_RATIO_MIN * its 20-bar moving average
         - ATR(14) not in a volatility blowup (< ATR_SPIKE_MAX * its own
-          20-bar average) — skip chaotic/parabolic conditions
+          20-bar average)
+        - EMA20-vs-EMA50 trend score <= MAX_TREND_SCORE, avoiding fades of
+          established uptrends
 
-    Exit is managed dynamically by binbot (dynamic_trailing=True): an
-    ATR-sized emergency stop-loss plus an RSI "thesis invalidation" early
-    exit, and a Bollinger mid-band reversion take-profit target.
+    Exit uses a fixed take profit and an ATR-sized emergency stop. The
+    eight-candle maximum holding period remains a lifecycle responsibility;
+    BotBase does not currently carry a maximum-holding field.
 
     RSI here is computed inline with Wilder/EWM smoothing to match exactly
     what was backtested — pybinbot's shared `Indicators.rsi` column uses a
@@ -54,20 +50,27 @@ class MeanReversionFade:
     CANDLE_INTERVAL_MS = 15 * 60 * 1000
 
     RSI_WINDOW = 14
-    RSI_LONG_MAX = 25.0
-    RSI_SHORT_MIN = 75.0
+    RSI_SHORT_MIN = 76.0
 
     VOLUME_MA_WINDOW = 20
-    VOLUME_RATIO_MIN = 1.0
+    VOLUME_RATIO_MIN = 0.8
 
     ATR_WINDOW = 14
     ATR_MA_WINDOW = 20
-    ATR_SPIKE_MAX = 2.0
+    ATR_SPIKE_MAX = 2.2
     ATR_STOP_MULT = 2.0
+    MAX_ENTRY_STOP_LOSS_PCT = 1.5
+    EMA_FAST_WINDOW = 20
+    EMA_SLOW_WINDOW = 50
+    MAX_TREND_SCORE = 0.005
+    TAKE_PROFIT_PCT = 2.4
+    MAX_HOLDING_BARS = 8
+    ENTRY_COOLDOWN_MINUTES = 60
     MAX_FIAT_ORDER_SIZE = 2.0
-    MAX_MARKET_STRESS_SCORE = 0.35
-    MAX_CONTEXT_COUNTER_TREND_GAP = 0.05
-    MAX_SYMBOL_ATR_PCT = 0.04
+    MAX_MARKET_STRESS_SCORE = 0.25
+    MAX_CONTEXT_COUNTER_TREND_GAP = 0.02
+    MAX_SYMBOL_ATR_PCT = 0.03
+    MIN_REJECTION_WICK_RATIO = 0.0
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -110,9 +113,11 @@ class MeanReversionFade:
         *,
         close: float,
         open_: float,
-        bb_low: float,
+        high: float,
+        low: float,
         bb_high: float,
         rsi_value: float,
+        previous_rsi: float,
         volume: float,
         volume_ma: float,
         atr: float,
@@ -123,21 +128,36 @@ class MeanReversionFade:
         if volume < self.VOLUME_RATIO_MIN * volume_ma:
             return None, "volume_below_average"
 
-        if rsi_value <= self.RSI_LONG_MAX and close <= bb_low and close > open_:
-            return Position.long, "lower_band_rsi_oversold_green"
+        candle_range = high - low
+        if candle_range <= 0:
+            return None, "invalid_candle_range"
 
-        if rsi_value >= self.RSI_SHORT_MIN and close >= bb_high and close < open_:
-            return Position.short, "upper_band_rsi_overbought_red"
+        upper_rejection_ratio = (high - max(open_, close)) / candle_range
+
+        short_outside_band = (
+            rsi_value >= self.RSI_SHORT_MIN
+            and rsi_value < previous_rsi
+            and close >= bb_high
+            and close < open_
+            and upper_rejection_ratio >= self.MIN_REJECTION_WICK_RATIO
+        )
+        if short_outside_band:
+            return Position.short, "upper_band_outside_rsi_hook_red"
 
         return None, "no_fade_setup"
 
-    def _score(self, rsi_value: float, position: Position) -> float:
-        if position == Position.long:
-            depth = max(0.0, (self.RSI_LONG_MAX - rsi_value) / self.RSI_LONG_MAX)
-        else:
-            depth = max(
-                0.0, (rsi_value - self.RSI_SHORT_MIN) / (100.0 - self.RSI_SHORT_MIN)
-            )
+    @classmethod
+    def _trend_score(cls, closes: Series) -> float:
+        ema_fast = closes.ewm(span=cls.EMA_FAST_WINDOW, adjust=False).mean().iloc[-1]
+        ema_slow = closes.ewm(span=cls.EMA_SLOW_WINDOW, adjust=False).mean().iloc[-1]
+        if ema_slow == 0:
+            return 0.0
+        return float((ema_fast - ema_slow) / abs(ema_slow))
+
+    def _score(self, rsi_value: float) -> float:
+        depth = max(
+            0.0, (rsi_value - self.RSI_SHORT_MIN) / (100.0 - self.RSI_SHORT_MIN)
+        )
         return round(1.0 + depth, 4)
 
     def _stop_loss_pct(self, atr: float, entry_price: float) -> float:
@@ -220,22 +240,30 @@ class MeanReversionFade:
         candidate = df.iloc[-1]
         candidate_open_time = int(candidate["open_time"])
 
-        rsi_value = float(self._rsi(df["close"]).iloc[-1])
+        rsi_series = self._rsi(df["close"])
+        rsi_value = float(rsi_series.iloc[-1])
+        previous_rsi = float(rsi_series.iloc[-2])
         volume = float(candidate["volume"])
         volume_ma = float(df["volume"].rolling(self.VOLUME_MA_WINDOW).mean().iloc[-1])
         atr = float(df["ATR"].iloc[-1])
         atr_ma = float(df["ATR"].rolling(self.ATR_MA_WINDOW).mean().iloc[-1])
+        trend_score = self._trend_score(df["close"])
 
-        if not all(isfinite(v) for v in (rsi_value, volume_ma, atr, atr_ma)):
+        if not all(
+            isfinite(v)
+            for v in (rsi_value, previous_rsi, volume_ma, atr, atr_ma, trend_score)
+        ):
             logging.info("%s skipped: indicators_not_ready", self.ALGO)
             return
 
         direction, entry_reason = self._resolve_entry(
             close=float(candidate["close"]),
             open_=float(candidate["open"]),
-            bb_low=float(bb_low),
+            high=float(candidate["high"]),
+            low=float(candidate["low"]),
             bb_high=float(bb_high),
             rsi_value=rsi_value,
+            previous_rsi=previous_rsi,
             volume=volume,
             volume_ma=volume_ma,
             atr=atr,
@@ -243,6 +271,9 @@ class MeanReversionFade:
         )
         if direction is None:
             logging.info("%s skipped: %s", self.ALGO, entry_reason)
+            return
+        if trend_score > self.MAX_TREND_SCORE:
+            logging.info("%s skipped: trend_score_above_max", self.ALGO)
             return
 
         context = self.ti.latest_market_context
@@ -260,12 +291,15 @@ class MeanReversionFade:
         if self._already_emitted(candidate_open_time):
             logging.info("%s skipped: candle_already_emitted", self.ALGO)
             return
-        self._mark_emitted(candidate_open_time)
 
         entry_price = float(current_price)
         stop_loss_pct = self._stop_loss_pct(atr, entry_price)
+        if stop_loss_pct > self.MAX_ENTRY_STOP_LOSS_PCT:
+            logging.info("%s skipped: entry_stop_loss_too_wide", self.ALGO)
+            return
+        self._mark_emitted(candidate_open_time)
         direction_label = direction.value.upper()
-        score = self._score(rsi_value, direction)
+        score = self._score(rsi_value)
 
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
@@ -285,9 +319,12 @@ class MeanReversionFade:
                 name=self.ALGO,
                 position=direction,
                 market_type=MarketType.FUTURES,
-                dynamic_trailing=True,
+                cooldown=self.ENTRY_COOLDOWN_MINUTES,
+                dynamic_trailing=False,
                 fiat_order_size=self.MAX_FIAT_ORDER_SIZE,
                 stop_loss=stop_loss_pct,
+                take_profit=self.TAKE_PROFIT_PCT,
+                trailing=False,
                 margin_short_reversal=False,
             ),
             bb_spreads=HABollinguerSpread(
@@ -309,9 +346,10 @@ class MeanReversionFade:
             - Volume: {round_numbers(volume, decimals=self.price_precision)} {base_asset} (20-bar avg {round_numbers(volume_ma, decimals=self.price_precision)})
             - ATR: {round_numbers(atr, decimals=self.price_precision)} {quote_asset} (20-bar avg {round_numbers(atr_ma, decimals=self.price_precision)})
             - Risk profile: {risk_reason}, max margin {self.MAX_FIAT_ORDER_SIZE} {quote_asset}
-            - Rule intent: mean-reversion fade of a Bollinger extreme when market and symbol context do not show strong continuation risk
-            - Stop intent: ATR-sized emergency stop (~{stop_loss_pct}%), tightened early on RSI thesis invalidation
-            - Take profit intent: reversion to the 20-bar Bollinger mid-band, managed dynamically
+            - EMA trend score: {round_numbers(trend_score, 5)} (maximum {self.MAX_TREND_SCORE})
+            - Rule intent: short-only mean-reversion fade outside the upper Bollinger Band when trend continuation risk is limited
+            - Stop intent: ATR-sized emergency stop (~{stop_loss_pct}%), capped at {self.MAX_ENTRY_STOP_LOSS_PCT}%
+            - Take profit intent: fixed {self.TAKE_PROFIT_PCT}% target; maximum holding intent {self.MAX_HOLDING_BARS} candles
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
             - Autotrade is enabled
@@ -324,6 +362,7 @@ class MeanReversionFade:
             indicators={
                 "entry_reason": entry_reason,
                 "rsi": rsi_value,
+                "previous_rsi": previous_rsi,
                 "bb_low": bb_low,
                 "bb_mid": bb_mid,
                 "bb_high": bb_high,
@@ -331,7 +370,12 @@ class MeanReversionFade:
                 "volume_ma": volume_ma,
                 "atr": atr,
                 "atr_ma": atr_ma,
+                "trend_score": trend_score,
+                "max_trend_score": self.MAX_TREND_SCORE,
                 "stop_loss_pct": stop_loss_pct,
+                "take_profit_pct": self.TAKE_PROFIT_PCT,
+                "max_holding_bars": self.MAX_HOLDING_BARS,
+                "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
                 "risk_reason": risk_reason,
                 "market_stress_score": context.market_stress_score,
                 "long_regime_score": context.long_regime_score,

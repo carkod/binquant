@@ -20,38 +20,27 @@ if TYPE_CHECKING:
 
 class LiquidationSweepPump:
     ALGO = "liquidation_sweep_pump"
-    SHORT_ADP_THRESHOLD = 0.3
     LONG_ADP_THRESHOLD = -0.4
-    BTC_STALLED_MOMENTUM_ABS = 0.002
+    LONG_STOP_LOSS_PCT = 2.0
+    LONG_TAKE_PROFIT_PCT = 2.5
 
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
         self.config = cls.config
         # Symbol / context
         self.symbol = cls.symbol
-        self.kucoin_symbol = cls.kucoin_symbol
         self.exchange = cls.exchange
-        self.binbot_api = cls.binbot_api
         self.telegram_consumer = cls.telegram_consumer
         self.market_type = cls.market_type
         self.at_consumer = cls.at_consumer
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
-        self.qty_precision = cls.qty_precision
         self.oi_growth = cls.oi_data
         self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
 
     @staticmethod
     def _context_adp(context: LiveMarketContext) -> float:
         return context.advancers_ratio - context.decliners_ratio
-
-    @staticmethod
-    def _has_weak_symbol_followthrough(features: SymbolMarketFeatures) -> bool:
-        return features.relative_strength_vs_btc <= 0 and (
-            features.trend_score <= 0
-            or not features.above_ema20
-            or features.micro_regime != "TREND_UP"
-        )
 
     def _adp_values(self, context: LiveMarketContext) -> list[float]:
         if (
@@ -65,50 +54,39 @@ class LiquidationSweepPump:
     def _latest_adp(self, context: LiveMarketContext) -> float:
         return self._adp_values(context)[-1]
 
-    def _is_breadth_falling(self, context: LiveMarketContext) -> bool:
-        values = self._adp_values(context)
-        return len(values) >= 2 and values[-1] < values[-2]
-
     def _is_breadth_increasing(self, context: LiveMarketContext) -> bool:
         values = self._adp_values(context)
         return len(values) >= 2 and values[-1] > values[-2]
 
-    def breadth_fade_routing(
+    def long_entry_routing(
         self,
         context: LiveMarketContext | None,
         symbol_features: SymbolMarketFeatures | None,
         btc_momentum: float,
-    ) -> tuple[Position | None, str]:
+    ) -> tuple[bool, str]:
         if context is None:
-            return None, "market_context_unavailable"
+            return False, "market_context_unavailable"
 
         if context.market_stress_score >= 0.35:
-            return None, "market_stress_too_high"
+            return False, "market_stress_too_high"
 
         adp = self._latest_adp(context)
 
-        if adp > self.SHORT_ADP_THRESHOLD:
-            if not self._is_breadth_falling(context):
-                return None, "hot_breadth_not_falling"
-            if abs(btc_momentum) > self.BTC_STALLED_MOMENTUM_ABS:
-                return None, "btc_not_stalled"
-            if symbol_features is None:
-                return None, "symbol_regime_unavailable"
-            if not self._has_weak_symbol_followthrough(symbol_features):
-                return None, "symbol_followthrough_not_weak"
-            return Position.short, "breadth_hot_fading_btc_stalled_symbol_weak"
-
         if adp <= self.LONG_ADP_THRESHOLD:
             if not self._is_breadth_increasing(context):
-                return None, "washed_out_breadth_not_increasing"
+                return False, "washed_out_breadth_not_increasing"
             if btc_momentum <= 0:
-                return None, "btc_not_increasing"
-            return Position.long, "breadth_washed_out_recovering_btc_up"
+                return False, "btc_not_increasing"
+            if symbol_features is None:
+                return False, "symbol_regime_unavailable"
+            if symbol_features.trend_score <= 0:
+                return False, "symbol_trend_not_up"
+            return True, "breadth_washed_out_recovering_btc_up_symbol_up"
 
-        return None, "adp_not_extreme"
+        return False, "adp_not_extreme"
 
     def compute_pump_score(
-        self, df: TypedDataFrame[KlineSchema], window_hours=3
+        self, df: TypedDataFrame[KlineSchema], momentum_bars: int = 3
     ) -> TypedDataFrame[KlineSchema]:
         """
         Compute pump score using:
@@ -121,16 +99,16 @@ class LiquidationSweepPump:
 
         # --- 1. Relative Volume ---
         df["rel_volume"] = df.volume / df.volume.rolling(
-            window=window_hours * 2
-        ).mean().shift(window_hours)
+            window=momentum_bars * 2
+        ).mean().shift(momentum_bars)
 
         # --- 2. Early Momentum ---
-        df["price_momentum"] = df.close.pct_change(periods=window_hours)
+        df["price_momentum"] = df.close.pct_change(periods=momentum_bars)
 
         # --- 3. Price Compression ---
         df["price_range_frac"] = (
-            df.high.rolling(window=window_hours * 2).max()
-            - df.low.rolling(window=window_hours * 2).min()
+            df.high.rolling(window=momentum_bars * 2).max()
+            - df.low.rolling(window=momentum_bars * 2).min()
         ) / df.close
 
         # --- 4. OI Growth ---
@@ -186,34 +164,33 @@ class LiquidationSweepPump:
 
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        bot_strategy, route_reason = self.breadth_fade_routing(
+        should_enter, route_reason = self.long_entry_routing(
             context=context,
             symbol_features=symbol_features,
             btc_momentum=float(btc_momentum),
         )
-        if bot_strategy is None:
+        if not should_enter:
             return
 
         kucoin_link, terminal_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
         )
-        action_label = f"{bot_strategy.value.upper()} ENTRY"
-        direction = bot_strategy.value.upper()
-        rule_intent = (
-            "SELL a liquidation-style pump when breadth is hot but fading, BTC is stalled, and this symbol is not following through"
-            if bot_strategy == Position.short
-            else "BUY a liquidation-style pump when breadth is washed out but recovering and BTC is increasing"
+        bot_params = BotBase(
+            pair=self.symbol,
+            name=algo,
+            position=Position.long,
+            market_type=self.market_type,
+            dynamic_trailing=False,
+            stop_loss=self.LONG_STOP_LOSS_PCT,
+            take_profit=self.LONG_TAKE_PROFIT_PCT,
+            trailing=False,
+            margin_short_reversal=False,
         )
 
         value = SignalsConsumer(
-            direction=direction,
+            direction="LONG",
             autotrade=True,
-            bot_params=BotBase(
-                pair=self.symbol,
-                name=algo,
-                position=bot_strategy,
-                market_type=self.market_type,
-            ),
+            bot_params=bot_params,
             current_price=current_price,
             volume=float(row.volume),
             bb_spreads=HABollinguerSpread(
@@ -223,14 +200,12 @@ class LiquidationSweepPump:
             ),
         )
 
-        value.autotrade = True
-
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
-            - Action: {action_label}
+            - Action: LONG ENTRY
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-            - Strategy: {bot_strategy.value}
-            - Rule intent: {rule_intent}
+            - Strategy: long
+            - Rule intent: BUY a liquidation-style pump when breadth is washed out but recovering, BTC is increasing, and the symbol trend is positive
             - Score: {trigger_score:.2f}
             - Volume: {round_numbers(float(row.volume), decimals=self.price_precision)} {base_asset}
             - OI Growth: {self.oi_growth:.2f}
@@ -243,6 +218,7 @@ class LiquidationSweepPump:
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
             - Autotrade route: {route_reason}
             - Market stress: {round_numbers(context.market_stress_score, 3) if context else 0}
+            - Exit profile: fixed {self.LONG_STOP_LOSS_PCT}% stop / {self.LONG_TAKE_PROFIT_PCT}% take profit / 8-candle maximum hold
             - Autotrade is enabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>

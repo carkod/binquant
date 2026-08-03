@@ -209,11 +209,11 @@ def test_process_data_prioritizes_price_tracker_before_ladder_deployer():
     assert safe_signal_names == [
         "ActivityBurstPump",
         "PriceTracker",
+        "TopGainerEarlyMomentum",
         "MarketRegimeNotifier",
-        "LiquidationSweepPump",
         "MeanReversionFade",
-        "SpikeHunterV3KuCoin",
         "RideMarketBreadth",
+        "LiquidationSweepPump",
         "LadderDeployer",
     ]
 

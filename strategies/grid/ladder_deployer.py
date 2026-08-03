@@ -18,26 +18,13 @@ class LadderDeployer:
     MIN_BREAKOUT_BUFFER_PCT = 0.5
     MAX_BREAKOUT_BUFFER_PCT = 4.0
     BREAKOUT_ATR_MULTIPLIER = 1.5
-    # Don't deploy into a market where breadth is overwhelmingly bearish.
-    # RANGE is the regime this strategy targets, and long_regime_score sits
-    # structurally low there (no trend breadth to score) even on healthy
-    # days — the stricter floor only means something outside RANGE, where a
-    # low score reflects genuinely bearish breadth rather than the regime
-    # itself.
-    MIN_LONG_REGIME_SCORE = 0.45
-    MIN_LONG_REGIME_SCORE_RANGE = 0.2
+    MIN_LONG_REGIME_SCORE = 0.2
     MIN_ENTRY_CONTRACTS = 2
-    # Two-sided grids on a netted KuCoin futures symbol are safe: the
-    # lifecycle's single-active-side guard (_guard_entry_side /
-    # _cancel_side_entries) already cancels whichever leg doesn't fill
-    # first, so keeping the short leg armed doesn't reintroduce the netting
-    # desync bug. Disabling it instead removes the downside hedge entirely,
-    # which produced worse outcomes than symmetric grids (see incident
-    # 2026-07-22 to 2026-07-26).
-    DISABLE_UPPER_BAND_SHORT_ENTRIES = False
+    DISABLE_UPPER_BAND_SHORT_ENTRIES = True
+    FIRST_CYCLE_TIMEOUT_HOURS = 12
     MIN_BB_WIDTH_STABILITY_CANDLES = 8
     MAX_BB_WIDTH_CHANGE_PCT = 20.0
-    ALLOWED_MICRO_REGIMES = ("RANGE", "TRANSITIONAL")
+    ALLOWED_MICRO_REGIMES = ("RANGE",)
     BLOCKING_MICRO_TRANSITIONS = (
         "BREAKDOWN",
         "VOLATILITY_EXPANSION",
@@ -87,6 +74,9 @@ class LadderDeployer:
         if context is None:
             logging.info("grid_ladder skipped: market_context_unavailable")
             return
+        if context.market_regime != "RANGE":
+            logging.info("grid_ladder skipped: market_regime_not_range")
+            return
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
         if (
             symbol_features is None
@@ -103,12 +93,7 @@ class LadderDeployer:
         if symbol_features.relative_strength_vs_btc <= 0:
             logging.info("grid_ladder skipped: relative_strength_vs_btc_not_positive")
             return
-        required_long_regime_score = (
-            self.MIN_LONG_REGIME_SCORE_RANGE
-            if context.market_regime == "RANGE"
-            else self.MIN_LONG_REGIME_SCORE
-        )
-        if context.long_regime_score < required_long_regime_score:
+        if context.long_regime_score < self.MIN_LONG_REGIME_SCORE:
             logging.info("grid_ladder skipped: long_regime_score_too_low")
             return
         if not self._bb_stable(
@@ -142,6 +127,7 @@ class LadderDeployer:
         context_payload["grid_ladder"] = {
             **existing_grid_context,
             "disable_upper_band_short_entries": self.DISABLE_UPPER_BAND_SHORT_ENTRIES,
+            "first_cycle_timeout_hours": self.FIRST_CYCLE_TIMEOUT_HOURS,
             "min_entry_contracts": self.MIN_ENTRY_CONTRACTS,
         }
         settings = self.at_consumer.autotrade_settings
@@ -170,6 +156,7 @@ class LadderDeployer:
                 "range_width_pct": range_width_pct,
                 "atr_buffer_pct": breakout_buffer_pct,
                 "disable_upper_band_short_entries": self.DISABLE_UPPER_BAND_SHORT_ENTRIES,
+                "first_cycle_timeout_hours": self.FIRST_CYCLE_TIMEOUT_HOURS,
                 "min_entry_contracts": self.MIN_ENTRY_CONTRACTS,
             },
             allocation_pct=settings.grid_allocation_pct,

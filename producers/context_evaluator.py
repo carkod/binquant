@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from numpy import isnan
 from numpy import log as logarithm
@@ -43,14 +43,18 @@ from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.ride_market_breadth import RideMarketBreadth
-from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
+from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 
-# SpikeHunterV3KuCoin still evaluates and dispatches signal records, but its
-# own signal class locks autotrade to shadow mode after negative production
-# expectancy.
+if TYPE_CHECKING:
+    from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
 
 
 class ContextEvaluator:
+    if TYPE_CHECKING:
+        # Legacy type-only declaration for strategies that are not mounted in
+        # this evaluator path. Do not instantiate SpikeHunter here.
+        sh3: SpikeHunterV3KuCoin
+
     def __init__(
         self,
         api: KucoinApi | BinanceApi | KucoinFutures,
@@ -219,7 +223,7 @@ class ContextEvaluator:
         Initialize algorithms that consume self.df_15m and broader market context.
         """
         self.mean_reversion_fade = MeanReversionFade(cls=self)
-        self.sh3 = SpikeHunterV3KuCoin(cls=self)
+        self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
         self.ride_market_breadth = RideMarketBreadth(cls=self)
@@ -432,20 +436,20 @@ class ContextEvaluator:
             spreads = self.bb_spreads(self.df_15m)
 
             await self._safe_signal(
-                "MarketRegimeNotifier",
-                self.market_regime_notifier.signal(),
-            )
-            self.last_market_regime = self.market_regime_notifier.last_market_regime
-
-            await self._safe_signal(
-                "LiquidationSweepPump",
-                self.lsp.signal(
+                "TopGainerEarlyMomentum",
+                self.top_gainer_early_momentum.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
                     bb_low=spreads.bb_low,
                 ),
             )
+
+            await self._safe_signal(
+                "MarketRegimeNotifier",
+                self.market_regime_notifier.signal(),
+            )
+            self.last_market_regime = self.market_regime_notifier.last_market_regime
 
             await self._safe_signal(
                 "MeanReversionFade",
@@ -458,8 +462,8 @@ class ContextEvaluator:
             )
 
             await self._safe_signal(
-                "SpikeHunterV3KuCoin",
-                self.sh3.signal(
+                "RideMarketBreadth",
+                self.ride_market_breadth.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
@@ -468,8 +472,8 @@ class ContextEvaluator:
             )
 
             await self._safe_signal(
-                "RideMarketBreadth",
-                self.ride_market_breadth.signal(
+                "LiquidationSweepPump",
+                self.lsp.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
