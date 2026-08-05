@@ -72,6 +72,7 @@ class KlinesProvider:
             is_enabled=self.autotrade_settings.telegram_signals,
         )
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
+        self.strategy_states: dict[tuple[str, str], dict[str, float | int]] = {}
 
         # Determine exchange
         if self.autotrade_settings.exchange_id == "kucoin":
@@ -361,6 +362,7 @@ class KlinesProvider:
             last_market_regime=self.last_market_regime,
             telegram_consumer=self.telegram_consumer,
             strategy_cooldowns=self.strategy_cooldowns,
+            strategy_states=self.strategy_states,
         )
         await crypto_analytics.process_data(
             candles=self.candles,

@@ -38,6 +38,7 @@ from shared.config import Config
 from shared.utils import format_context_timestamp_line
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.coinrule.price_tracker import PriceTracker
+from strategies.failed_spike_fade import FailedSpikeFade
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.market_regime_notifier import MarketRegimeNotifier
@@ -45,15 +46,11 @@ from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.ride_market_breadth import RideMarketBreadth
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 
-if TYPE_CHECKING:
-    from strategies.spike_hunter_v3_kucoin import SpikeHunterV3KuCoin
-
 
 class ContextEvaluator:
     if TYPE_CHECKING:
-        # Legacy type-only declaration for strategies that are not mounted in
-        # this evaluator path. Do not instantiate SpikeHunter here.
-        sh3: SpikeHunterV3KuCoin
+        # Compatibility for the unmounted legacy RangeFailedBreakoutFade.
+        sh3: Any
 
     def __init__(
         self,
@@ -69,6 +66,7 @@ class ContextEvaluator:
         binbot_api: BinbotApi,
         telegram_consumer: TelegramConsumer,
         strategy_cooldowns: dict[tuple[str, str], int] | None = None,
+        strategy_states: dict[tuple[str, str], dict[str, float | int]] | None = None,
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
@@ -111,6 +109,7 @@ class ContextEvaluator:
         self.price_precision = self.current_symbol_data.price_precision
         self.telegram_consumer = telegram_consumer
         self.strategy_cooldowns = strategy_cooldowns
+        self.strategy_states = strategy_states
         self.at_consumer = ac_api
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
@@ -224,6 +223,7 @@ class ContextEvaluator:
         """
         self.mean_reversion_fade = MeanReversionFade(cls=self)
         self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
+        self.failed_spike_fade = FailedSpikeFade(cls=self)
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
         self.ride_market_breadth = RideMarketBreadth(cls=self)
@@ -438,6 +438,16 @@ class ContextEvaluator:
             await self._safe_signal(
                 "TopGainerEarlyMomentum",
                 self.top_gainer_early_momentum.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            await self._safe_signal(
+                "FailedSpikeFade",
+                self.failed_spike_fade.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
