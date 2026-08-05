@@ -9,6 +9,7 @@ from pybinbot import (
     ExchangeId,
     MarketBreadthSeries,
     MarketType,
+    Position,
     SymbolModel,
 )
 
@@ -192,10 +193,12 @@ def make_last_spike(
     *,
     upward: bool = True,
     downward: bool = False,
+    **overrides: Any,
 ) -> dict[str, Any]:
-    return {
+    values = {
         "timestamp": "2026-04-15 00:00:00",
         "close": 100.8,
+        "close_open_ratio": 0.008,
         "label": 1,
         "label_pre": 1,
         "label_short": 0,
@@ -213,6 +216,73 @@ def make_last_spike(
         "upward": upward,
         "downward": downward,
     }
+    values.update(overrides)
+    return values
+
+
+def test_symbol_spike_rejects_volume_cluster_without_price_impulse():
+    confirmed, reason = SpikeHunterV3KuCoin.symbol_spike_confirms_direction(
+        make_last_spike(
+            price_break_flag=False,
+            cumulative_price_break_flag=False,
+            accel_spike_flag=False,
+            volume_cluster_flag=True,
+        ),
+        Position.long,
+    )
+
+    assert confirmed is False
+    assert reason == "symbol_price_impulse_missing"
+
+
+def test_symbol_spike_rejects_unlabelled_or_overextended_impulse():
+    unlabelled = make_last_spike(label=0, price_break_flag=True)
+    extended = make_last_spike(close_open_ratio=0.061, price_break_flag=True)
+
+    assert SpikeHunterV3KuCoin.symbol_spike_confirms_direction(
+        unlabelled, Position.long
+    ) == (False, "symbol_price_impulse_missing")
+    assert SpikeHunterV3KuCoin.symbol_spike_confirms_direction(
+        extended, Position.long
+    ) == (False, "symbol_spike_too_extended")
+
+
+def test_breadth_route_requires_half_point_momentum_and_long_market_edge():
+    context = make_market_context()
+    weak_algo, _ = make_algo(
+        context,
+        market_breadth_data=make_market_breadth_data(latest=0.104, previous=0.10),
+    )
+    opposing_algo, _ = make_algo(
+        make_market_context(long_regime_score=0.2, short_regime_score=0.3),
+        market_breadth_data=make_market_breadth_data(latest=0.12, previous=0.10),
+    )
+
+    assert weak_algo.breadth_momentum_direction(context) == (
+        None,
+        "breadth_momentum_flat",
+    )
+    assert opposing_algo.breadth_momentum_direction(
+        opposing_algo.ti.latest_market_context
+    ) == (None, "market_context_not_long")
+
+
+def test_post_spike_cooldown_suppresses_labels_for_eight_bars():
+    algo, _ = make_algo(make_market_context())
+    algo.df_15m = cast(
+        Any,
+        DataFrame(
+            {
+                "label": [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                "label_short": [0] * 10,
+            }
+        ),
+    )
+
+    algo.apply_cooldown()
+
+    assert algo.df_15m["label"].tolist() == [1, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    assert algo.df_15m["suppressed_label"].tolist() == [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
 
 
 @pytest.mark.asyncio
@@ -265,6 +335,11 @@ async def test_signal_dispatches_staging_long_with_reduced_margin_when_breadth_m
     assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "long"
     assert signal_value.bot_params.fiat_order_size == 2.0
+    assert signal_value.bot_params.cooldown == 120
+    assert signal_value.bot_params.dynamic_trailing is False
+    assert signal_value.bot_params.stop_loss == 4.0
+    assert signal_value.bot_params.take_profit == 6.0
+    assert signal_value.bot_params.trailing is False
 
 
 @pytest.mark.asyncio

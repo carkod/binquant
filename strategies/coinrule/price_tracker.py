@@ -34,6 +34,11 @@ class PriceTracker:
     ENTRY_COOLDOWN_BARS = 12
     DEFAULT_INTERVAL_MS = 300_000
     MIN_RELATIVE_STRENGTH_VS_BTC = 0.005
+    MAX_ABS_TREND_SCORE = 0.005
+    STOP_LOSS_PCT = 1.5
+    TRAILING_PROFIT_PCT = 1.5
+    TRAILING_DEVIATION_PCT = 0.5
+    MAX_HOLDING_BARS = 8
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -146,6 +151,9 @@ class PriceTracker:
             <= self.MIN_RELATIVE_STRENGTH_VS_BTC
         ):
             return False, "symbol_relative_strength_vs_btc_insufficient"
+
+        if abs(symbol_features.trend_score) > self.MAX_ABS_TREND_SCORE:
+            return False, "symbol_trend_score_outside_range"
 
         if symbol_features.micro_regime == "RANGE":
             return True, "symbol_range"
@@ -262,6 +270,12 @@ class PriceTracker:
                     name=algo,
                     position=bot_strategy,
                     market_type=self.market_type,
+                    dynamic_trailing=False,
+                    stop_loss=self.STOP_LOSS_PCT,
+                    take_profit=0,
+                    trailing=True,
+                    trailing_deviation=self.TRAILING_DEVIATION_PCT,
+                    trailing_profit=self.TRAILING_PROFIT_PCT,
                     margin_short_reversal=False,
                 ),
                 score=local_score,
@@ -291,6 +305,7 @@ class PriceTracker:
             - Short tailwind: {round_numbers(context.short_tailwind, 3)}
             - Breadth stable for mean-reversion: {"Yes" if breadth_is_stable else "No"}
             - Relative strength vs BTC: {round_numbers(symbol_features.relative_strength_vs_btc, 4) if symbol_features is not None else "UNAVAILABLE"}
+            - Absolute trend score: {round_numbers(abs(symbol_features.trend_score), 5) if symbol_features is not None else "UNAVAILABLE"} (maximum {self.MAX_ABS_TREND_SCORE})
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Context confidence: {round_numbers(context_score.confidence, 2) if context_score is not None else "UNAVAILABLE"}
@@ -298,6 +313,7 @@ class PriceTracker:
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3) if context_score is not None else "UNAVAILABLE"}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3) if evaluation is not None else "UNAVAILABLE"}
             - Autotrade route: {autotrade_route}
+            - Exit intent: {self.STOP_LOSS_PCT}% stop, trail after {self.TRAILING_PROFIT_PCT}% with {self.TRAILING_DEVIATION_PCT}% deviation, maximum {self.MAX_HOLDING_BARS} completed 15m candles
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>

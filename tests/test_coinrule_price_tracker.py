@@ -30,7 +30,7 @@ def make_symbol_features(**overrides: Any) -> SymbolMarketFeatures:
         "ema50": 99.0,
         "above_ema20": True,
         "above_ema50": True,
-        "trend_score": 0.02,
+        "trend_score": 0.002,
         "relative_strength_vs_btc": 0.06,
         "atr_pct": 0.02,
         "bb_width": 0.04,
@@ -340,6 +340,50 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     assert "&lt; 0" in telegram_msg
     assert "&lt; 20" in telegram_msg
     assert "Breadth stable for mean-reversion: Yes" in telegram_msg
+
+    dispatch_mock = cast(Mock, algo.ti.dispatch_signal_record)
+    signal_value = dispatch_mock.call_args.kwargs["value"]
+    assert signal_value.bot_params.dynamic_trailing is False
+    assert signal_value.bot_params.stop_loss == PriceTracker.STOP_LOSS_PCT
+    assert signal_value.bot_params.take_profit == 0
+    assert signal_value.bot_params.trailing is True
+    assert signal_value.bot_params.trailing_profit == PriceTracker.TRAILING_PROFIT_PCT
+    assert (
+        signal_value.bot_params.trailing_deviation
+        == PriceTracker.TRAILING_DEVIATION_PCT
+    )
+
+
+@pytest.mark.parametrize("trend_score", [-0.0051, 0.0051])
+def test_price_tracker_rejects_symbols_outside_flat_trend_range(
+    trend_score: float,
+):
+    algo = make_algo(make_ohlcv_df())
+    context = make_market_context()
+
+    allowed, reason = algo.regime_routing(
+        context=context,
+        symbol_features=make_symbol_features(trend_score=trend_score),
+    )
+
+    assert allowed is False
+    assert reason == "symbol_trend_score_outside_range"
+
+
+@pytest.mark.parametrize("trend_score", [-0.005, 0.005])
+def test_price_tracker_accepts_symbols_at_flat_trend_boundary(
+    trend_score: float,
+):
+    algo = make_algo(make_ohlcv_df())
+    context = make_market_context()
+
+    allowed, reason = algo.regime_routing(
+        context=context,
+        symbol_features=make_symbol_features(trend_score=trend_score),
+    )
+
+    assert allowed is True
+    assert reason == "symbol_range"
 
 
 @pytest.mark.asyncio
