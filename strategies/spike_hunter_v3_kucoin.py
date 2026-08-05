@@ -34,7 +34,11 @@ class SpikeHunterV3KuCoin:
     """
 
     MAX_MARKET_STRESS_SCORE = 0.35
-    MIN_BREADTH_MOMENTUM_POINTS = 0.0
+    MIN_BREADTH_MOMENTUM_POINTS = 0.5
+    MAX_CANDLE_RETURN = 0.06
+    STOP_LOSS_PCT = 4.0
+    TAKE_PROFIT_PCT = 6.0
+    ENTRY_COOLDOWN_MINUTES = 120
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
 
     def __init__(
@@ -73,9 +77,9 @@ class SpikeHunterV3KuCoin:
         self.accel_volume_deriv_min = 0.45
         self.accel_price_change_min = 0.015
         self.require_both_patterns = False
-        self.post_spike_cooldown_bars = 0
+        self.post_spike_cooldown_bars = 8
         self.require_bullish_spike = True
-        self.body_size_pct_min = 0.0
+        self.body_size_pct_min = 0.005
 
     @staticmethod
     def _coerce_breadth_value(value: Any) -> float | None:
@@ -150,13 +154,16 @@ class SpikeHunterV3KuCoin:
         if context.market_stress_score >= self.MAX_MARKET_STRESS_SCORE:
             return None, "market_stress_too_high"
 
+        if context.long_regime_score <= context.short_regime_score:
+            return None, "market_context_not_long"
+
         momentum_points, source = self._breadth_momentum_points()
         if momentum_points is None:
             return None, "breadth_momentum_unavailable"
 
-        if momentum_points > self.MIN_BREADTH_MOMENTUM_POINTS:
+        if momentum_points >= self.MIN_BREADTH_MOMENTUM_POINTS:
             return Position.long, f"breadth_momentum_up_{source}"
-        if momentum_points < -self.MIN_BREADTH_MOMENTUM_POINTS:
+        if momentum_points <= -self.MIN_BREADTH_MOMENTUM_POINTS:
             return Position.short, f"breadth_momentum_down_{source}"
 
         return None, "breadth_momentum_flat"
@@ -167,13 +174,17 @@ class SpikeHunterV3KuCoin:
         direction: Position,
     ) -> tuple[bool, str]:
         if direction == Position.long:
-            long_flags = (
-                last_spike["cumulative_price_break_flag"]
-                or last_spike["volume_cluster_flag"]
+            price_impulse = (
+                last_spike["price_break_flag"]
+                or last_spike["cumulative_price_break_flag"]
                 or last_spike["accel_spike_flag"]
             )
-            if long_flags and last_spike["upward"]:
-                return True, "symbol_upward_spike"
+            if not last_spike["label"] or not price_impulse:
+                return False, "symbol_price_impulse_missing"
+            if last_spike["close_open_ratio"] > SpikeHunterV3KuCoin.MAX_CANDLE_RETURN:
+                return False, "symbol_spike_too_extended"
+            if last_spike["upward"]:
+                return True, "symbol_confirmed_upward_price_impulse"
             return False, "symbol_upward_spike_missing"
 
         short_flags = (
@@ -534,6 +545,7 @@ class SpikeHunterV3KuCoin:
         return {
             "timestamp": timestamp,
             "close": float(row.get("close", 0)),
+            "close_open_ratio": float(row.get("close_open_ratio", 0)),
             "label": int(row.get("label", 0) == 1),
             "label_pre": int(row.get("label_pre", 0) == 1),
             "label_short": int(row.get("label_short", 0) == 1),
@@ -639,6 +651,8 @@ class SpikeHunterV3KuCoin:
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
             - Autotrade route: {route_reason}
             - Max margin: {fiat_order_size} {quote_asset}
+            - Stop loss / take profit: {self.STOP_LOSS_PCT}% / {self.TAKE_PROFIT_PCT}%
+            - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
@@ -652,7 +666,12 @@ class SpikeHunterV3KuCoin:
                 name=algo,
                 position=bot_strategy,
                 market_type=self.market_type,
+                cooldown=self.ENTRY_COOLDOWN_MINUTES,
+                dynamic_trailing=False,
                 fiat_order_size=fiat_order_size,
+                stop_loss=self.STOP_LOSS_PCT,
+                take_profit=self.TAKE_PROFIT_PCT,
+                trailing=False,
                 margin_short_reversal=False,
             ),
             bb_spreads=HABollinguerSpread(
