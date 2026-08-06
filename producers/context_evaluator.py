@@ -43,7 +43,6 @@ from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.mean_reversion_fade import MeanReversionFade
-from strategies.ride_market_breadth import RideMarketBreadth
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 
 
@@ -226,7 +225,6 @@ class ContextEvaluator:
         self.failed_spike_fade = FailedSpikeFade(cls=self)
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
-        self.ride_market_breadth = RideMarketBreadth(cls=self)
         self.grid_ladder = LadderDeployer(cls=self)
 
     def indicators_enrichment(
@@ -464,16 +462,6 @@ class ContextEvaluator:
             await self._safe_signal(
                 "MeanReversionFade",
                 self.mean_reversion_fade.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-
-            await self._safe_signal(
-                "RideMarketBreadth",
-                self.ride_market_breadth.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
