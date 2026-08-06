@@ -33,6 +33,7 @@ class AutotradeConsumer:
             "coinrule_price_tracker",
             "mean_reversion_fade",
             "liquidation_sweep_pump",
+            "relative_strength_impulse_rider",
         }
     )
     # Circuit breaker: stop opening new real bots/ladders once today's

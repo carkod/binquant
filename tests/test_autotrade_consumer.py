@@ -434,6 +434,7 @@ class TestAutotradeConsumer:
             "coinrule_price_tracker",
             "mean_reversion_fade",
             "liquidation_sweep_pump",
+            "relative_strength_impulse_rider",
         ],
     )
     async def test_grid_only_policy_allows_approved_real_bot_strategies(

@@ -43,6 +43,7 @@ from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import LiquidationSweepPump
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.mean_reversion_fade import MeanReversionFade
+from strategies.relative_strength_impulse_rider import RelativeStrengthImpulseRider
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 
 
@@ -220,6 +221,7 @@ class ContextEvaluator:
         """
         Initialize algorithms that consume self.df_15m and broader market context.
         """
+        self.relative_strength_impulse_rider = RelativeStrengthImpulseRider(cls=self)
         self.mean_reversion_fade = MeanReversionFade(cls=self)
         self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
         self.failed_spike_fade = FailedSpikeFade(cls=self)
@@ -432,6 +434,16 @@ class ContextEvaluator:
 
             close_price = float(self.df_15m["close"].iloc[-1])
             spreads = self.bb_spreads(self.df_15m)
+
+            await self._safe_signal(
+                "RelativeStrengthImpulseRider",
+                self.relative_strength_impulse_rider.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
             await self._safe_signal(
                 "TopGainerEarlyMomentum",
