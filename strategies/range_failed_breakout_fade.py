@@ -22,7 +22,7 @@ class RangeFailedBreakoutFade:
     """
     Fade the failed breakout in RANGE.
 
-    Reuses the spike_hunter v3 breakout detector to find bullish spike
+    Reuses the legacy spike-breakout detector to find bullish spike
     candidates (volume cluster / price break / acceleration on an upward
     streak) and shorts them when the broader market is *not* rallying:
 

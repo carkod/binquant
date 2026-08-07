@@ -22,6 +22,8 @@ class LadderDeployer:
     MIN_ENTRY_CONTRACTS = 2
     DISABLE_UPPER_BAND_SHORT_ENTRIES = True
     FIRST_CYCLE_TIMEOUT_HOURS = 12
+    MAX_LIFETIME_HOURS = 12
+    MAX_COMPLETED_CYCLES = 2
     MIN_BB_WIDTH_STABILITY_CANDLES = 8
     MAX_BB_WIDTH_CHANGE_PCT = 20.0
     ALLOWED_MICRO_REGIMES = ("RANGE",)
@@ -128,6 +130,9 @@ class LadderDeployer:
             **existing_grid_context,
             "disable_upper_band_short_entries": self.DISABLE_UPPER_BAND_SHORT_ENTRIES,
             "first_cycle_timeout_hours": self.FIRST_CYCLE_TIMEOUT_HOURS,
+            "max_lifetime_hours": self.MAX_LIFETIME_HOURS,
+            "max_completed_cycles": self.MAX_COMPLETED_CYCLES,
+            "max_bb_width_change_pct": self.MAX_BB_WIDTH_CHANGE_PCT,
             "min_entry_contracts": self.MIN_ENTRY_CONTRACTS,
         }
         settings = self.at_consumer.autotrade_settings
@@ -157,6 +162,9 @@ class LadderDeployer:
                 "atr_buffer_pct": breakout_buffer_pct,
                 "disable_upper_band_short_entries": self.DISABLE_UPPER_BAND_SHORT_ENTRIES,
                 "first_cycle_timeout_hours": self.FIRST_CYCLE_TIMEOUT_HOURS,
+                "max_lifetime_hours": self.MAX_LIFETIME_HOURS,
+                "max_completed_cycles": self.MAX_COMPLETED_CYCLES,
+                "max_bb_width_change_pct": self.MAX_BB_WIDTH_CHANGE_PCT,
                 "min_entry_contracts": self.MIN_ENTRY_CONTRACTS,
             },
             allocation_pct=settings.grid_allocation_pct,

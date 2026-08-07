@@ -434,6 +434,7 @@ class TestAutotradeConsumer:
             "coinrule_price_tracker",
             "mean_reversion_fade",
             "liquidation_sweep_pump",
+            "relative_strength_impulse_rider",
         ],
     )
     async def test_grid_only_policy_allows_approved_real_bot_strategies(
@@ -538,13 +539,13 @@ class TestAutotradeConsumer:
         self.mock_binbot_api.get_available_fiat.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_spike_hunter_shadow_signal_never_creates_real_bot(self):
+    async def test_failed_spike_fade_shadow_signal_never_creates_real_bot(self):
         signal = SignalsConsumer(
             autotrade=False,
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDT",
-                name="spike_hunter_v3_kucoin",
+                name="failed_spike_fade",
                 market_type=MarketType.SPOT,
                 position=Position.long,
                 fiat="USDT",
@@ -561,7 +562,7 @@ class TestAutotradeConsumer:
         autotrade_cls.assert_called_once_with(
             pair="BTCUSDT",
             settings=self.test_settings,
-            algorithm_name="spike_hunter_v3_kucoin",
+            algorithm_name="failed_spike_fade",
             binbot_api=self.mock_binbot_api,
         )
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
@@ -818,7 +819,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDTM",
-                name="spike_hunter_v3_kucoin",
+                name="failed_spike_fade",
                 market_type=MarketType.FUTURES,
                 position=Position.long,
             ),
@@ -828,7 +829,7 @@ class TestAutotradeConsumer:
             autotrade = Autotrade(
                 pair="BTCUSDTM",
                 settings=settings,
-                algorithm_name="spike_hunter_v3_kucoin",
+                algorithm_name="failed_spike_fade",
                 db_collection_name="bots",
                 binbot_api=self.mock_binbot_api,
             )
@@ -852,7 +853,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDTM",
-                name="spike_hunter_v3_kucoin",
+                name="failed_spike_fade",
                 market_type=MarketType.FUTURES,
                 position=Position.long,
                 recovery_params=None,
@@ -863,7 +864,7 @@ class TestAutotradeConsumer:
             autotrade = Autotrade(
                 pair="BTCUSDTM",
                 settings=settings,
-                algorithm_name="spike_hunter_v3_kucoin",
+                algorithm_name="failed_spike_fade",
                 db_collection_name="bots",
                 binbot_api=self.mock_binbot_api,
             )
@@ -882,7 +883,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDTM",
-                name="spike_hunter_v3_kucoin",
+                name="failed_spike_fade",
                 market_type=MarketType.FUTURES,
                 position=Position.short,
                 fiat_order_size=10,
@@ -900,7 +901,7 @@ class TestAutotradeConsumer:
             autotrade = Autotrade(
                 pair="BTCUSDTM",
                 settings=settings,
-                algorithm_name="spike_hunter_v3_kucoin",
+                algorithm_name="failed_spike_fade",
                 db_collection_name="bots",
                 binbot_api=self.mock_binbot_api,
             )
@@ -923,7 +924,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDTM",
-                name="spike_hunter_v3_kucoin",
+                name="failed_spike_fade",
                 market_type=MarketType.FUTURES,
                 position=Position.short,
                 fiat_order_size=10,
@@ -942,7 +943,7 @@ class TestAutotradeConsumer:
             autotrade = Autotrade(
                 pair="BTCUSDTM",
                 settings=settings,
-                algorithm_name="spike_hunter_v3_kucoin",
+                algorithm_name="failed_spike_fade",
                 db_collection_name="bots",
                 binbot_api=self.mock_binbot_api,
             )

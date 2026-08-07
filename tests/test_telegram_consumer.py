@@ -64,18 +64,18 @@ class TestTelegramConsumer:
         telegram_consumer.bot = mock_bot_instance
 
         first_message = """
-            - [production] <strong>#spike_hunter_v3_kucoin algorithm</strong> #TAUSDTM
+            - [production] <strong>#failed_spike_fade algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             - Current price: 0.071
-            - Strategy: spike_hunter_v3_kucoin
+            - Strategy: failed_spike_fade
             - Autotrade route: market_trend_up_symbol_trend_up
             - Autotrade is enabled
         """
         duplicate_message = """
-            - [production] <strong>#spike_hunter_v3_kucoin algorithm</strong> #TAUSDTM
+            - [production] <strong>#failed_spike_fade algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             - Current price: 0.074
-            - Strategy: spike_hunter_v3_kucoin
+            - Strategy: failed_spike_fade
             - Autotrade route: market_trend_up_symbol_trend_up
             - Autotrade is enabled
         """

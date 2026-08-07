@@ -1,13 +1,22 @@
+import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from math import isfinite
 from os import getenv
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+from pandas import DataFrame, concat
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
     KlineSchema,
     MarketBreadthSeries,
+    MarketType,
     Position,
     SignalsConsumer,
     round_numbers,
+    timestamp_sort_key,
 )
 from pandera.typing import DataFrame as TypedDataFrame
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
@@ -18,11 +27,81 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
+@dataclass(frozen=True)
+class LiquidationSweepCandidate:
+    candle_open_time: int
+    symbol: str
+    rank_score: float
+    dispatch: Callable[[], Awaitable[None]]
+
+
+class LiquidationSweepPortfolioSelector:
+    """Select one cross-symbol liquidation-sweep candidate per candle cohort."""
+
+    def __init__(self) -> None:
+        self._latest_candle_open_time: int | None = None
+        self._candidates: dict[int, dict[str, LiquidationSweepCandidate]] = {}
+
+    async def observe(self, candle_open_time: int) -> None:
+        latest = self._latest_candle_open_time
+        if latest is not None and candle_open_time <= latest:
+            return
+
+        for completed_candle in sorted(self._candidates):
+            if completed_candle >= candle_open_time:
+                break
+            await self._dispatch_winner(completed_candle)
+        self._latest_candle_open_time = candle_open_time
+
+    async def submit(self, candidate: LiquidationSweepCandidate) -> bool:
+        await self.observe(candidate.candle_open_time)
+        if (
+            self._latest_candle_open_time is not None
+            and candidate.candle_open_time < self._latest_candle_open_time
+        ):
+            return False
+
+        cohort = self._candidates.setdefault(candidate.candle_open_time, {})
+        current = cohort.get(candidate.symbol)
+        if current is None or candidate.rank_score >= current.rank_score:
+            cohort[candidate.symbol] = candidate
+        return True
+
+    async def flush(self) -> None:
+        for candle_open_time in sorted(self._candidates):
+            await self._dispatch_winner(candle_open_time)
+
+    async def _dispatch_winner(self, candle_open_time: int) -> None:
+        cohort = self._candidates.pop(candle_open_time, {})
+        if not cohort:
+            return
+        winner = max(
+            cohort.values(),
+            key=lambda candidate: (candidate.rank_score, candidate.symbol),
+        )
+        try:
+            await winner.dispatch()
+        except Exception:
+            logging.exception(
+                "Liquidation sweep portfolio winner failed for %s.", winner.symbol
+            )
+
+
 class LiquidationSweepPump:
     ALGO = "liquidation_sweep_pump"
-    LONG_ADP_THRESHOLD = -0.4
+    LONG_MARKET_BREADTH_THRESHOLD = -0.2
+    MIN_MARKET_BREADTH_RECOVERY = 0.02
+    MOMENTUM_BARS = 3
+    COMPRESSION_BARS = 6
+    SCORE_LOOKBACK = 48
+    SCORE_QUANTILE = 0.80
+    VOLUME_LOOKBACK = 20
+    MIN_MOMENTUM_ATR = 0.75
+    MAX_MOMENTUM_ATR = 3.0
+    MIN_CLOSE_LOCATION = 0.70
     LONG_STOP_LOSS_PCT = 2.0
     LONG_TAKE_PROFIT_PCT = 2.5
+    ENTRY_COOLDOWN_MINUTES = 60
 
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
@@ -37,26 +116,50 @@ class LiquidationSweepPump:
         self.price_precision = cls.price_precision
         self.oi_growth = cls.oi_data
         self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
+        self.portfolio_selector: LiquidationSweepPortfolioSelector | None = getattr(
+            cls, "liquidation_sweep_portfolio_selector", None
+        )
 
     @staticmethod
-    def _context_adp(context: LiveMarketContext) -> float:
+    def _context_market_breadth(context: LiveMarketContext) -> float:
         return context.advancers_ratio - context.decliners_ratio
 
-    def _adp_values(self, context: LiveMarketContext) -> list[float]:
-        if (
-            self.market_breadth_data is not None
-            and len(self.market_breadth_data.timestamp) >= 2
-            and len(self.market_breadth_data.market_breadth) >= 2
-        ):
-            return [float(value) for value in self.market_breadth_data.market_breadth]
-        return [self._context_adp(context)]
+    @staticmethod
+    def _coerce_market_breadth(value: Any) -> float | None:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if isfinite(parsed) else None
 
-    def _latest_adp(self, context: LiveMarketContext) -> float:
-        return self._adp_values(context)[-1]
+    def _market_breadth_values(self, context: LiveMarketContext) -> list[float]:
+        breadth = self.market_breadth_data
+        if breadth is not None and len(breadth.market_breadth) >= 2:
+            timestamped_values = []
+            for timestamp, value in zip(
+                breadth.timestamp, breadth.market_breadth, strict=False
+            ):
+                sort_key = timestamp_sort_key(timestamp)
+                parsed = self._coerce_market_breadth(value)
+                if sort_key is not None and parsed is not None:
+                    timestamped_values.append((sort_key, parsed))
 
-    def _is_breadth_increasing(self, context: LiveMarketContext) -> bool:
-        values = self._adp_values(context)
-        return len(values) >= 2 and values[-1] > values[-2]
+            if len(timestamped_values) >= 2:
+                return [
+                    value
+                    for _, value in sorted(timestamped_values, key=lambda item: item[0])
+                ]
+
+        return [self._context_market_breadth(context)]
+
+    def _latest_market_breadth(self, context: LiveMarketContext) -> float:
+        return self._market_breadth_values(context)[-1]
+
+    def _market_breadth_recovery(self, context: LiveMarketContext) -> float | None:
+        values = self._market_breadth_values(context)
+        if len(values) < 3:
+            return None
+        return values[-1] - values[-3]
 
     def long_entry_routing(
         self,
@@ -70,97 +173,165 @@ class LiquidationSweepPump:
         if context.market_stress_score >= 0.35:
             return False, "market_stress_too_high"
 
-        adp = self._latest_adp(context)
+        market_breadth = self._latest_market_breadth(context)
 
-        if adp <= self.LONG_ADP_THRESHOLD:
-            if not self._is_breadth_increasing(context):
-                return False, "washed_out_breadth_not_increasing"
-            if btc_momentum <= 0:
-                return False, "btc_not_increasing"
-            if symbol_features is None:
-                return False, "symbol_regime_unavailable"
-            if symbol_features.trend_score <= 0:
-                return False, "symbol_trend_not_up"
-            return True, "breadth_washed_out_recovering_btc_up_symbol_up"
+        if market_breadth > self.LONG_MARKET_BREADTH_THRESHOLD:
+            return False, "market_breadth_not_washed_out"
 
-        return False, "adp_not_extreme"
+        market_breadth_recovery = self._market_breadth_recovery(context)
+        if (
+            market_breadth_recovery is None
+            or market_breadth_recovery < self.MIN_MARKET_BREADTH_RECOVERY
+        ):
+            return False, "market_breadth_not_recovering"
+        if btc_momentum <= 0:
+            return False, "btc_not_increasing"
+        if symbol_features is None:
+            return False, "symbol_regime_unavailable"
+        if symbol_features.trend_score <= 0:
+            return False, "symbol_trend_not_up"
+        return True, "market_breadth_recovering_btc_up_symbol_up"
 
     def compute_pump_score(
-        self, df: TypedDataFrame[KlineSchema], momentum_bars: int = 3
+        self,
+        df: TypedDataFrame[KlineSchema],
+        df_btc: TypedDataFrame[KlineSchema],
     ) -> TypedDataFrame[KlineSchema]:
-        """
-        Compute pump score using:
-        - Relative volume
-        - Early momentum
-        - Price compression
-        - OI growth (cached per asset; defaults to 1.0 if unavailable)
-        """
-        df = df.copy()
+        result = df.copy()
+        close = result["close"].astype(float)
+        high = result["high"].astype(float)
+        low = result["low"].astype(float)
+        volume = result["volume"].astype(float)
 
-        # --- 1. Relative Volume ---
-        df["rel_volume"] = df.volume / df.volume.rolling(
-            window=momentum_bars * 2
-        ).mean().shift(momentum_bars)
+        previous_close = close.shift(1)
+        true_range = concat(
+            [
+                high - low,
+                (high - previous_close).abs(),
+                (low - previous_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        result["candidate_atr"] = true_range.ewm(
+            alpha=1 / 14, adjust=False, min_periods=14
+        ).mean()
+        result["momentum_3"] = close.pct_change(self.MOMENTUM_BARS)
+        result["relative_volume"] = (
+            volume / volume.shift(1).rolling(self.VOLUME_LOOKBACK).mean()
+        )
+        result["pre_breakout_compression"] = (
+            high.shift(1).rolling(self.COMPRESSION_BARS).max()
+            - low.shift(1).rolling(self.COMPRESSION_BARS).min()
+        ) / close.shift(1)
+        result["pump_score"] = (
+            result["relative_volume"]
+            * result["momentum_3"].clip(lower=0)
+            / result["pre_breakout_compression"].replace(0, np.nan)
+        )
+        result["score_threshold"] = (
+            result["pump_score"]
+            .shift(1)
+            .rolling(self.SCORE_LOOKBACK)
+            .quantile(self.SCORE_QUANTILE)
+        )
+        result["score_cross"] = (result["pump_score"] >= result["score_threshold"]) & (
+            result["pump_score"].shift(1) < result["score_threshold"].shift(1)
+        )
+        result["volume_threshold"] = (
+            result["relative_volume"]
+            .shift(1)
+            .rolling(self.SCORE_LOOKBACK)
+            .quantile(self.SCORE_QUANTILE)
+        )
+        result["prior_high"] = high.shift(1).rolling(self.COMPRESSION_BARS).max()
+        result["close_location"] = (close - low) / (high - low).replace(0, np.nan)
+        result["ema20"] = close.ewm(span=20, adjust=False).mean()
+        result["ema50"] = close.ewm(span=50, adjust=False).mean()
+        result["trend_score"] = (result["ema20"] - result["ema50"]) / result["ema50"]
+        result["momentum_atr"] = result["momentum_3"] / (
+            result["candidate_atr"] / close
+        )
 
-        # --- 2. Early Momentum ---
-        df["price_momentum"] = df.close.pct_change(periods=momentum_bars)
+        btc_by_open_time = DataFrame(
+            {
+                "open_time": df_btc["open_time"].astype("int64"),
+                "btc_close": df_btc["close"].astype(float),
+            }
+        ).drop_duplicates("open_time", keep="last")
+        benchmark = result[["open_time"]].merge(
+            btc_by_open_time, on="open_time", how="left", sort=False
+        )["btc_close"]
+        result["btc_momentum_3"] = benchmark.pct_change(self.MOMENTUM_BARS).to_numpy()
+        btc_ema20 = benchmark.ewm(span=20, adjust=False).mean()
+        btc_ema50 = benchmark.ewm(span=50, adjust=False).mean()
+        result["btc_trend_score"] = ((btc_ema20 - btc_ema50) / btc_ema50).to_numpy()
+        result["relative_strength"] = result["momentum_3"] - result["btc_momentum_3"]
+        return result
 
-        # --- 3. Price Compression ---
-        df["price_range_frac"] = (
-            df.high.rolling(window=momentum_bars * 2).max()
-            - df.low.rolling(window=momentum_bars * 2).min()
-        ) / df.close
-
-        # --- 4. OI Growth ---
-        oi_growth = 1 + max(0, (self.oi_growth - 1)) if self.oi_growth else 1.0
-
-        # --- 5. Pump Score ---
-        df["pump_score"] = (
-            df["rel_volume"] * (1 + df["price_momentum"]) * oi_growth
-        ) / df["price_range_frac"]
-        df["pump_score_smooth"] = df["pump_score"].rolling(window=2).mean()
-
-        return df
+    def _is_candidate(self, row: Any) -> bool:
+        required_values = (
+            row["pump_score"],
+            row["score_threshold"],
+            row["momentum_atr"],
+            row["close"],
+            row["prior_high"],
+            row["close_location"],
+            row["relative_volume"],
+            row["volume_threshold"],
+            row["trend_score"],
+            row["ema20"],
+            row["relative_strength"],
+            row["btc_momentum_3"],
+            row["btc_trend_score"],
+        )
+        if not all(isfinite(float(value)) for value in required_values):
+            return False
+        return bool(
+            row["score_cross"]
+            and self.MIN_MOMENTUM_ATR <= row["momentum_atr"] <= self.MAX_MOMENTUM_ATR
+            and row["close"] > row["prior_high"]
+            and row["close_location"] >= self.MIN_CLOSE_LOCATION
+            and row["relative_volume"] >= row["volume_threshold"]
+            and row["trend_score"] > 0
+            and row["close"] > row["ema20"]
+            and row["relative_strength"] > 0
+            and row["btc_momentum_3"] > 0
+            and row["btc_trend_score"] > 0
+        )
 
     async def signal(
         self, current_price: float, bb_high: float, bb_mid: float, bb_low: float
     ) -> None:
-        """
-        Generate signal if pump score exceeds threshold and OI growth filter
-        """
+        """Collect a qualified candidate for cross-symbol portfolio selection."""
         df = self.ti.df_15m
         df_btc = self.ti.df_btc_15m
-        if df is None or df.empty:
-            return None
+        if (
+            self.market_type != MarketType.FUTURES
+            or df is None
+            or df.empty
+            or df_btc is None
+            or df_btc.empty
+            or len(df) < self.SCORE_LOOKBACK + self.COMPRESSION_BARS + 2
+            or "open_time" not in df
+            or "open_time" not in df_btc
+        ):
+            return
 
         algo = self.ALGO
         base_asset = self.current_symbol_data.base_asset
+        df = self.compute_pump_score(df, df_btc)
+        row = df.iloc[-2]
+        candle_open_time = int(row["open_time"])
+        if self.portfolio_selector is not None:
+            await self.portfolio_selector.observe(candle_open_time)
 
-        df = self.compute_pump_score(df)
-
-        # --- Filters ---
-        # Take last N candles (say 48 for 12h)
-        recent_scores = df["pump_score_smooth"].iloc[-48:]
-        btc_momentum = (
-            df_btc.close.pct_change().iloc[-1]
-            if df_btc is not None and not df_btc.empty and len(df_btc) > 1
-            else 0.0
-        )
-
-        # Keep the trigger selective, but allow strong setups that land in the
-        # top quintile of recent pump-score readings instead of only rarer outliers.
-        PUMP_SCORE_THRESHOLD = recent_scores.quantile(0.80)
-        row = df.iloc[-1]
-        latest_score = row["pump_score_smooth"]
-        latest_raw_score = row["pump_score"]
-        trigger_score = max(float(latest_score), float(latest_raw_score))
-
-        if latest_score is None or trigger_score < PUMP_SCORE_THRESHOLD:
+        if not self._is_candidate(row):
             return
-
-        # Optional OI confirmation
-        if self.oi_growth is not None and self.oi_growth < 1.02:
+        score_threshold = float(row["score_threshold"])
+        if score_threshold <= 0:
             return
+        rank_score = float(row["pump_score"]) / score_threshold
+        btc_momentum = float(row["btc_momentum_3"])
 
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
@@ -180,6 +351,7 @@ class LiquidationSweepPump:
             name=algo,
             position=Position.long,
             market_type=self.market_type,
+            cooldown=self.ENTRY_COOLDOWN_MINUTES,
             dynamic_trailing=False,
             stop_loss=self.LONG_STOP_LOSS_PCT,
             take_profit=self.LONG_TAKE_PROFIT_PCT,
@@ -191,6 +363,7 @@ class LiquidationSweepPump:
             direction="LONG",
             autotrade=True,
             bot_params=bot_params,
+            score=rank_score,
             current_price=current_price,
             volume=float(row.volume),
             bb_spreads=HABollinguerSpread(
@@ -200,16 +373,25 @@ class LiquidationSweepPump:
             ),
         )
 
+        market_breadth = self._latest_market_breadth(context) if context else None
+        market_breadth_recovery = (
+            self._market_breadth_recovery(context) if context else None
+        )
+        oi_growth = (
+            f"{self.oi_growth:.2f}" if self.oi_growth is not None else "UNAVAILABLE"
+        )
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - Strategy: long
-            - Rule intent: BUY a liquidation-style pump when breadth is washed out but recovering, BTC is increasing, and the symbol trend is positive
-            - Score: {trigger_score:.2f}
+            - Rule intent: BUY only the strongest cross-symbol liquidation-style impulse from the completed candle cohort
+            - Portfolio rank score: {rank_score:.2f}
+            - Pump score / threshold: {float(row["pump_score"]):.4f} / {score_threshold:.4f}
             - Volume: {round_numbers(float(row.volume), decimals=self.price_precision)} {base_asset}
-            - OI Growth: {self.oi_growth:.2f}
-            - ADP: {round_numbers(self._latest_adp(context), 3) if context else "UNAVAILABLE"}
+            - OI Growth: {oi_growth} (reported only; not an entry filter)
+            - Market breadth: {round_numbers(market_breadth, 3) if market_breadth is not None else "UNAVAILABLE"}
+            - Market breadth recovery: {round_numbers(market_breadth_recovery, 3) if market_breadth_recovery is not None else "UNAVAILABLE"}
             - BTC momentum: {round_numbers(float(btc_momentum), 5)}
             - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
@@ -218,12 +400,39 @@ class LiquidationSweepPump:
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
             - Autotrade route: {route_reason}
             - Market stress: {round_numbers(context.market_stress_score, 3) if context else 0}
+            - Trigger candle: {candle_open_time}
+            - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Exit profile: fixed {self.LONG_STOP_LOSS_PCT}% stop / {self.LONG_TAKE_PROFIT_PCT}% take profit / 8-candle maximum hold
             - Autotrade is enabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
-        self.ti.dispatch_signal_record(value=value)
-        self.telegram_consumer.dispatch_signal(msg)
-        await self.at_consumer.process_autotrade_restrictions(value)
+        async def dispatch_winner() -> None:
+            self.ti.dispatch_signal_record(
+                value=value,
+                indicators={
+                    "candidate_open_time": candle_open_time,
+                    "portfolio_rank_score": rank_score,
+                    "pump_score": float(row["pump_score"]),
+                    "score_threshold": score_threshold,
+                    "market_breadth": market_breadth,
+                    "market_breadth_recovery": market_breadth_recovery,
+                    "momentum_atr": float(row["momentum_atr"]),
+                    "relative_volume": float(row["relative_volume"]),
+                    "relative_strength": float(row["relative_strength"]),
+                },
+            )
+            self.telegram_consumer.dispatch_signal(msg)
+            await self.at_consumer.process_autotrade_restrictions(value)
+
+        candidate = LiquidationSweepCandidate(
+            candle_open_time=candle_open_time,
+            symbol=self.symbol,
+            rank_score=rank_score,
+            dispatch=dispatch_winner,
+        )
+        if self.portfolio_selector is None:
+            await dispatch_winner()
+            return
+        await self.portfolio_selector.submit(candidate)

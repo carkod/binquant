@@ -24,6 +24,7 @@ from market_regime.models import LiveMarketContext
 from market_regime.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
+from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from time import time
 
 
@@ -72,6 +73,8 @@ class KlinesProvider:
             is_enabled=self.autotrade_settings.telegram_signals,
         )
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
+        self.strategy_states: dict[tuple[str, str], dict[str, float | int]] = {}
+        self.liquidation_sweep_portfolio_selector = LiquidationSweepPortfolioSelector()
 
         # Determine exchange
         if self.autotrade_settings.exchange_id == "kucoin":
@@ -361,6 +364,10 @@ class KlinesProvider:
             last_market_regime=self.last_market_regime,
             telegram_consumer=self.telegram_consumer,
             strategy_cooldowns=self.strategy_cooldowns,
+            strategy_states=self.strategy_states,
+            liquidation_sweep_portfolio_selector=(
+                self.liquidation_sweep_portfolio_selector
+            ),
         )
         await crypto_analytics.process_data(
             candles=self.candles,

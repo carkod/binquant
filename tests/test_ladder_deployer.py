@@ -101,10 +101,16 @@ async def test_ladder_deployer_uses_three_total_levels(
     assert value.grid_params.context["grid_ladder"] == {
         "disable_upper_band_short_entries": True,
         "first_cycle_timeout_hours": 12,
+        "max_lifetime_hours": 12,
+        "max_completed_cycles": 2,
+        "max_bb_width_change_pct": 20.0,
         "min_entry_contracts": 2,
     }
     assert value.grid_params.indicators["disable_upper_band_short_entries"] is True
     assert value.grid_params.indicators["first_cycle_timeout_hours"] == 12
+    assert value.grid_params.indicators["max_lifetime_hours"] == 12
+    assert value.grid_params.indicators["max_completed_cycles"] == 2
+    assert value.grid_params.indicators["max_bb_width_change_pct"] == 20.0
     assert value.grid_params.indicators["min_entry_contracts"] == 2
 
 

@@ -10,6 +10,7 @@ from pybinbot import (
     BotBase,
     HABollinguerSpread,
     MarketBreadthSeries,
+    MarketType,
     Position,
     SignalsConsumer,
     round_numbers,
@@ -25,16 +26,21 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class SpikeHunterV3KuCoin:
+class FailedSpikeFade:
     """
-    KuCoin-compatible Spike Hunter v3:
-    - Uses OHLCV + quote volume (turnover)
-    - Removes unavailable KuCoin features: taker-based ratios, number_of_trades
-    - Keeps thresholds + auto-calibration flow
+    Short a qualified bullish spike only after it fails.
+
+    A source spike is recorded while breadth momentum and the market regime
+    favor longs. For the following eight 15-minute candles, the strategy waits
+    for price to revisit the spike high, close bearish below the spike close,
+    and coincide with breadth momentum reversing downward.
     """
 
+    ALGO = "failed_spike_fade"
     MAX_MARKET_STRESS_SCORE = 0.35
     MIN_BREADTH_MOMENTUM_POINTS = 0.5
+    FAILURE_WINDOW_BARS = 8
+    MAX_POST_SPIKE_EXTENSION = 0.06
     MAX_CANDLE_RETURN = 0.06
     STOP_LOSS_PCT = 4.0
     TAKE_PROFIT_PCT = 6.0
@@ -54,6 +60,8 @@ class SpikeHunterV3KuCoin:
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
         self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
+        self.strategy_states = getattr(cls, "strategy_states", None)
+        self._pending_spike: dict[str, float | int] | None = None
 
         # Thresholds (v2-like defaults preserved)
         self.volume_cluster_min_ratio = 1.6
@@ -144,57 +152,74 @@ class SpikeHunterV3KuCoin:
 
         return None, "unavailable"
 
-    def breadth_momentum_direction(
-        self,
-        context: LiveMarketContext | None,
-    ) -> tuple[Position | None, str]:
+    def source_market_allows(
+        self, context: LiveMarketContext | None
+    ) -> tuple[bool, str]:
         if context is None:
-            return None, "market_context_unavailable"
+            return False, "market_context_unavailable"
 
         if context.market_stress_score >= self.MAX_MARKET_STRESS_SCORE:
-            return None, "market_stress_too_high"
+            return False, "market_stress_too_high"
 
         if context.long_regime_score <= context.short_regime_score:
-            return None, "market_context_not_long"
+            return False, "market_context_not_long"
 
         momentum_points, source = self._breadth_momentum_points()
         if momentum_points is None:
-            return None, "breadth_momentum_unavailable"
+            return False, "breadth_momentum_unavailable"
 
         if momentum_points >= self.MIN_BREADTH_MOMENTUM_POINTS:
-            return Position.long, f"breadth_momentum_up_{source}"
-        if momentum_points <= -self.MIN_BREADTH_MOMENTUM_POINTS:
-            return Position.short, f"breadth_momentum_down_{source}"
+            return True, f"source_breadth_up_{source}"
+        return False, "source_breadth_not_up"
 
-        return None, "breadth_momentum_flat"
+    def failure_market_allows(
+        self, context: LiveMarketContext | None
+    ) -> tuple[bool, str]:
+        if context is None:
+            return False, "market_context_unavailable"
+        if context.market_stress_score >= self.MAX_MARKET_STRESS_SCORE:
+            return False, "market_stress_too_high"
+
+        momentum_points, source = self._breadth_momentum_points()
+        if momentum_points is None:
+            return False, "breadth_momentum_unavailable"
+        if momentum_points <= -self.MIN_BREADTH_MOMENTUM_POINTS:
+            return True, f"failure_breadth_down_{source}"
+        return False, "failure_breadth_not_down"
 
     @staticmethod
-    def symbol_spike_confirms_direction(
-        last_spike: dict,
-        direction: Position,
-    ) -> tuple[bool, str]:
-        if direction == Position.long:
-            price_impulse = (
-                last_spike["price_break_flag"]
-                or last_spike["cumulative_price_break_flag"]
-                or last_spike["accel_spike_flag"]
-            )
-            if not last_spike["label"] or not price_impulse:
-                return False, "symbol_price_impulse_missing"
-            if last_spike["close_open_ratio"] > SpikeHunterV3KuCoin.MAX_CANDLE_RETURN:
-                return False, "symbol_spike_too_extended"
-            if last_spike["upward"]:
-                return True, "symbol_confirmed_upward_price_impulse"
-            return False, "symbol_upward_spike_missing"
-
-        short_flags = (
-            last_spike["cumulative_price_break_short_flag"]
-            or last_spike["volume_cluster_flag"]
-            or last_spike["accel_spike_short_flag"]
+    def source_spike_allows(last_spike: dict) -> tuple[bool, str]:
+        price_impulse = (
+            last_spike["price_break_flag"]
+            or last_spike["cumulative_price_break_flag"]
+            or last_spike["accel_spike_flag"]
         )
-        if short_flags and last_spike["downward"]:
-            return True, "symbol_downward_spike"
-        return False, "symbol_downward_spike_missing"
+        if not last_spike["label"] or not price_impulse:
+            return False, "symbol_price_impulse_missing"
+        if last_spike["close_open_ratio"] > FailedSpikeFade.MAX_CANDLE_RETURN:
+            return False, "symbol_spike_too_extended"
+        if last_spike["upward"]:
+            return True, "symbol_confirmed_upward_price_impulse"
+        return False, "symbol_upward_spike_missing"
+
+    @property
+    def _state_key(self) -> tuple[str, str]:
+        return self.ALGO, self.symbol
+
+    def _get_pending_spike(self) -> dict[str, float | int] | None:
+        if self.strategy_states is None:
+            return self._pending_spike
+        return self.strategy_states.get(self._state_key)
+
+    def _set_pending_spike(self, state: dict[str, float | int]) -> None:
+        self._pending_spike = state
+        if self.strategy_states is not None:
+            self.strategy_states[self._state_key] = state
+
+    def _clear_pending_spike(self) -> None:
+        self._pending_spike = None
+        if self.strategy_states is not None:
+            self.strategy_states.pop(self._state_key, None)
 
     def _fiat_order_size(self) -> float:
         settings = getattr(self.at_consumer, "autotrade_settings", None)
@@ -574,57 +599,105 @@ class SpikeHunterV3KuCoin:
         bb_high: float,
         bb_low: float,
         bb_mid: float,
-    ):
-        # Get the updated df_15m
+    ) -> None:
+        if self.market_type != MarketType.FUTURES:
+            return
         self.df_15m = self.ti.df_15m.copy()
         last_spike = self.latest_signal()
-
-        if not last_spike:
-            logging.info("No recent spike detected for breakout.")
+        if not last_spike or self.df_15m.empty or "open_time" not in self.df_15m:
+            logging.info("%s skipped: candle_or_spike_data_unavailable", self.ALGO)
             return
 
-        algo = "spike_hunter_v3_kucoin"
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        bot_strategy, market_route = self.breadth_momentum_direction(context)
+        candidate = self.df_15m.iloc[-1]
+        candidate_open_time = int(candidate["open_time"])
+        pending = self._get_pending_spike()
+        failure_reason = "failure_not_evaluated"
 
-        if bot_strategy is None:
-            logging.info(
-                "Spike Hunter skipped %s because market breadth route is %s.",
-                self.symbol,
-                market_route,
-            )
-            return
-        if bot_strategy != Position.long:
-            logging.info(
-                "Spike Hunter skipped %s because long_only_reenable excludes %s.",
-                self.symbol,
-                bot_strategy.value,
-            )
+        if pending is None:
+            source_allowed, source_reason = self.source_spike_allows(last_spike)
+            market_allowed, market_reason = self.source_market_allows(context)
+            if source_allowed and market_allowed:
+                self._set_pending_spike(
+                    {
+                        "open_time": candidate_open_time,
+                        "high": float(candidate["high"]),
+                        "close": float(candidate["close"]),
+                        "volume": float(last_spike["volume"]),
+                        "quote_asset_volume": float(last_spike["quote_asset_volume"]),
+                    }
+                )
+                logging.info(
+                    "%s recorded source spike for %s: %s, %s",
+                    self.ALGO,
+                    self.symbol,
+                    source_reason,
+                    market_reason,
+                )
+            else:
+                logging.info(
+                    "%s skipped source spike for %s: %s, %s",
+                    self.ALGO,
+                    self.symbol,
+                    source_reason,
+                    market_reason,
+                )
             return
 
-        symbol_confirmed, symbol_route = self.symbol_spike_confirms_direction(
-            last_spike=last_spike,
-            direction=bot_strategy,
+        source_positions = np.flatnonzero(
+            self.df_15m["open_time"].astype("int64").to_numpy()
+            == int(pending["open_time"])
         )
-        if not symbol_confirmed:
+        if len(source_positions) == 0:
+            self._clear_pending_spike()
+            logging.info("%s cleared source spike: candle_expired", self.ALGO)
+            return
+
+        source_index = int(source_positions[-1])
+        current_index = len(self.df_15m) - 1
+        bars_elapsed = current_index - source_index
+        if bars_elapsed <= 0:
+            return
+        if bars_elapsed > self.FAILURE_WINDOW_BARS:
+            self._clear_pending_spike()
+            logging.info("%s cleared source spike: failure_window_expired", self.ALGO)
+            return
+
+        post_spike_high = float(
+            self.df_15m["high"].iloc[source_index + 1 : current_index + 1].max()
+        )
+        if post_spike_high > float(pending["high"]) * (
+            1 + self.MAX_POST_SPIKE_EXTENSION
+        ):
+            self._clear_pending_spike()
             logging.info(
-                "Spike Hunter skipped %s because %s did not confirm %s.",
-                self.symbol,
-                symbol_route,
-                bot_strategy.value,
+                "%s cleared source spike: extension_invalidated_fade", self.ALGO
             )
             return
 
+        failed_new_high = (
+            float(candidate["high"]) >= float(pending["high"])
+            and float(candidate["close"]) < float(candidate["open"])
+            and float(candidate["close"]) < float(pending["close"])
+        )
+        market_allowed, failure_reason = self.failure_market_allows(context)
+        if not failed_new_high or not market_allowed:
+            logging.info(
+                "%s waiting for failed spike on %s: failed_new_high=%s, market=%s",
+                self.ALGO,
+                self.symbol,
+                failed_new_high,
+                failure_reason,
+            )
+            return
+
+        self._clear_pending_spike()
         autotrade = getenv("ENV") == "staging"
         route_reason = (
-            "staging_long_only_reenable" if autotrade else "staging_only_long_shadow"
+            "staging_short_fade" if autotrade else "staging_only_short_shadow"
         )
         fiat_order_size = self._fiat_order_size()
-
-        streak = "📈"
-        action_label = "LONG ENTRY"
-        rule_intent = "BUY when bullish market breadth is confirmed by an upward spike"
 
         base_asset = self.current_symbol_data.base_asset
         quote_asset = self.current_symbol_data.quote_asset
@@ -636,14 +709,17 @@ class SpikeHunterV3KuCoin:
         )
 
         msg = f"""
-            - {streak} [{getenv("ENV")}] <strong>#spike_hunter_v3_kucoin algorithm</strong> #{self.symbol}
-            - Action: {action_label}
+            - 📉 [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
+            - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
-            - Strategy: {bot_strategy.value}
-            - Rule intent: {rule_intent}
-            - Candle time: {last_spike["timestamp"]}
-            - Volume: {round_numbers(last_spike["volume"], decimals=self.price_precision)} {base_asset}
-            - Quote volume: {round_numbers(last_spike["quote_asset_volume"], decimals=self.price_precision)} {quote_asset}
+            - Strategy: short
+            - Rule intent: short a qualified bullish spike after a failed new high and downward breadth reversal
+            - Source spike candle: {int(pending["open_time"])}
+            - Failure candle: {candidate_open_time}
+            - Failure window: {bars_elapsed} / {self.FAILURE_WINDOW_BARS} candles
+            - Breadth route: {failure_reason}
+            - Source volume: {round_numbers(float(pending["volume"]), decimals=self.price_precision)} {base_asset}
+            - Source quote volume: {round_numbers(float(pending["quote_asset_volume"]), decimals=self.price_precision)} {quote_asset}
             - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}
             {format_context_timestamp_line(context)}
@@ -659,12 +735,13 @@ class SpikeHunterV3KuCoin:
             """
 
         value = SignalsConsumer(
+            direction=Position.short.value.upper(),
             autotrade=autotrade,
             current_price=current_price,
             bot_params=BotBase(
                 pair=self.symbol,
-                name=algo,
-                position=bot_strategy,
+                name=self.ALGO,
+                position=Position.short,
                 market_type=self.market_type,
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=False,
