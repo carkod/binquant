@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from numpy import isnan
 from numpy import log as logarithm
@@ -51,10 +51,6 @@ from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 
 
 class ContextEvaluator:
-    if TYPE_CHECKING:
-        # Compatibility for the unmounted legacy RangeFailedBreakoutFade.
-        sh3: Any
-
     def __init__(
         self,
         api: KucoinApi | BinanceApi | KucoinFutures,
