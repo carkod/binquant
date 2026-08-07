@@ -1,5 +1,6 @@
+from math import isfinite
 from os import getenv
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
@@ -8,6 +9,7 @@ from pybinbot import (
     Position,
     SignalsConsumer,
     round_numbers,
+    timestamp_sort_key,
 )
 from pandera.typing import DataFrame as TypedDataFrame
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
@@ -20,7 +22,7 @@ if TYPE_CHECKING:
 
 class LiquidationSweepPump:
     ALGO = "liquidation_sweep_pump"
-    LONG_ADP_THRESHOLD = -0.4
+    LONG_MARKET_BREADTH_THRESHOLD = -0.4
     LONG_STOP_LOSS_PCT = 2.0
     LONG_TAKE_PROFIT_PCT = 2.5
 
@@ -39,23 +41,42 @@ class LiquidationSweepPump:
         self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
 
     @staticmethod
-    def _context_adp(context: LiveMarketContext) -> float:
+    def _context_market_breadth(context: LiveMarketContext) -> float:
         return context.advancers_ratio - context.decliners_ratio
 
-    def _adp_values(self, context: LiveMarketContext) -> list[float]:
-        if (
-            self.market_breadth_data is not None
-            and len(self.market_breadth_data.timestamp) >= 2
-            and len(self.market_breadth_data.market_breadth) >= 2
-        ):
-            return [float(value) for value in self.market_breadth_data.market_breadth]
-        return [self._context_adp(context)]
+    @staticmethod
+    def _coerce_market_breadth(value: Any) -> float | None:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if isfinite(parsed) else None
 
-    def _latest_adp(self, context: LiveMarketContext) -> float:
-        return self._adp_values(context)[-1]
+    def _market_breadth_values(self, context: LiveMarketContext) -> list[float]:
+        breadth = self.market_breadth_data
+        if breadth is not None and len(breadth.market_breadth) >= 2:
+            timestamped_values = []
+            for timestamp, value in zip(
+                breadth.timestamp, breadth.market_breadth, strict=False
+            ):
+                sort_key = timestamp_sort_key(timestamp)
+                parsed = self._coerce_market_breadth(value)
+                if sort_key is not None and parsed is not None:
+                    timestamped_values.append((sort_key, parsed))
 
-    def _is_breadth_increasing(self, context: LiveMarketContext) -> bool:
-        values = self._adp_values(context)
+            if len(timestamped_values) >= 2:
+                return [
+                    value
+                    for _, value in sorted(timestamped_values, key=lambda item: item[0])
+                ]
+
+        return [self._context_market_breadth(context)]
+
+    def _latest_market_breadth(self, context: LiveMarketContext) -> float:
+        return self._market_breadth_values(context)[-1]
+
+    def _is_market_breadth_increasing(self, context: LiveMarketContext) -> bool:
+        values = self._market_breadth_values(context)
         return len(values) >= 2 and values[-1] > values[-2]
 
     def long_entry_routing(
@@ -70,10 +91,10 @@ class LiquidationSweepPump:
         if context.market_stress_score >= 0.35:
             return False, "market_stress_too_high"
 
-        adp = self._latest_adp(context)
+        market_breadth = self._latest_market_breadth(context)
 
-        if adp <= self.LONG_ADP_THRESHOLD:
-            if not self._is_breadth_increasing(context):
+        if market_breadth <= self.LONG_MARKET_BREADTH_THRESHOLD:
+            if not self._is_market_breadth_increasing(context):
                 return False, "washed_out_breadth_not_increasing"
             if btc_momentum <= 0:
                 return False, "btc_not_increasing"
@@ -83,7 +104,7 @@ class LiquidationSweepPump:
                 return False, "symbol_trend_not_up"
             return True, "breadth_washed_out_recovering_btc_up_symbol_up"
 
-        return False, "adp_not_extreme"
+        return False, "market_breadth_not_extreme"
 
     def compute_pump_score(
         self, df: TypedDataFrame[KlineSchema], momentum_bars: int = 3
@@ -209,7 +230,7 @@ class LiquidationSweepPump:
             - Score: {trigger_score:.2f}
             - Volume: {round_numbers(float(row.volume), decimals=self.price_precision)} {base_asset}
             - OI Growth: {self.oi_growth:.2f}
-            - ADP: {round_numbers(self._latest_adp(context), 3) if context else "UNAVAILABLE"}
+            - Market breadth: {round_numbers(self._latest_market_breadth(context), 3) if context else "UNAVAILABLE"}
             - BTC momentum: {round_numbers(float(btc_momentum), 5)}
             - Market regime: {context.market_regime if context and context.market_regime is not None else "UNAVAILABLE"}
             - Market transition: {context.market_regime_transition if context and context.market_regime_transition is not None else "None"}

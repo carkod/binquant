@@ -349,3 +349,20 @@ async def test_signal_skips_long_when_btc_is_not_increasing(monkeypatch):
 
     send_signal_mock.assert_not_called()
     process_mock.assert_not_awaited()
+
+
+def test_breadth_routing_orders_newest_first_api_series_by_timestamp() -> None:
+    context = make_market_context(advancers_ratio=0.29, decliners_ratio=0.71)
+    breadth = make_market_breadth_series([-0.42, -0.46, -0.52])
+    breadth.timestamp = list(reversed(breadth.timestamp))
+    algo, _ = make_algo(context, market_breadth_data=breadth)
+
+    should_enter, reason = algo.long_entry_routing(
+        context=context,
+        symbol_features=make_symbol_features(),
+        btc_momentum=0.003,
+    )
+
+    assert algo._latest_market_breadth(context) == -0.42
+    assert should_enter is True
+    assert reason == "breadth_washed_out_recovering_btc_up_symbol_up"
