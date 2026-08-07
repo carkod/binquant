@@ -198,7 +198,7 @@ def make_context(
 
 
 @pytest.mark.asyncio
-async def test_signal_dispatches_staging_long_with_reduced_margin(monkeypatch):
+async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     df = make_breakout_candles()
     algo = TopGainerEarlyMomentum(
@@ -242,7 +242,7 @@ async def test_signal_dispatches_staging_long_with_reduced_margin(monkeypatch):
 
     assert "Breakout setup: top_gainer_breakout_ignition" in telegram_msg
     assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
-    assert "Autotrade route: staging_top_gainer_long" in telegram_msg
+    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
     assert "Max margin: 2.0 USDT" in telegram_msg
     assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "long"
@@ -255,7 +255,7 @@ async def test_signal_dispatches_staging_long_with_reduced_margin(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_records_shadow_long_outside_staging(monkeypatch):
+async def test_signal_autotrades_outside_staging(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     df = make_breakout_candles()
     algo = TopGainerEarlyMomentum(
@@ -297,9 +297,9 @@ async def test_signal_records_shadow_long_outside_staging(monkeypatch):
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert "Autotrade route: staging_only_shadow" in telegram_msg
-    assert "Autotrade is disabled outside staging" in telegram_msg
-    assert signal_value.autotrade is False
+    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
+    assert "Autotrade is enabled" in telegram_msg
+    assert signal_value.autotrade is True
     assert signal_value.bot_params.fiat_order_size == 2.0
 
 
@@ -473,7 +473,7 @@ async def test_signal_persists_symbol_specific_risk_rejection_once_per_candle(
 
 
 @pytest.mark.asyncio
-async def test_signal_allows_confirmed_volatility_expansion(monkeypatch):
+async def test_signal_rejects_confirmed_volatility_expansion(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     df = make_breakout_candles()
     market_context = make_market_context(
@@ -495,17 +495,15 @@ async def test_signal_allows_confirmed_volatility_expansion(monkeypatch):
         bb_low=98.0,
     )
 
-    context.dispatch_signal_record.assert_called_once()
-    indicators = context.dispatch_signal_record.call_args.kwargs["indicators"]
-    assert (
-        indicators["risk_reason"] == "confirmed_breakout_volatility_expansion_override"
-    )
-    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
-    context.binbot_api.dispatch_create_signal.assert_not_called()
+    context.dispatch_signal_record.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    payload = context.binbot_api.dispatch_create_signal.call_args.kwargs
+    assert payload["signal_kind"] == "risk_rejection"
+    assert payload["indicators"]["risk_reason"] == "symbol_transition_not_long"
 
 
 @pytest.mark.asyncio
-async def test_volatility_expansion_does_not_override_symbol_downtrend(monkeypatch):
+async def test_symbol_downtrend_remains_blocked(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     df = make_breakout_candles()
     market_context = make_market_context(
@@ -513,7 +511,7 @@ async def test_volatility_expansion_does_not_override_symbol_downtrend(monkeypat
             "TESTUSDTM": make_symbol_features(
                 micro_regime="TREND_DOWN",
                 trend_score=-0.05,
-                micro_regime_transition="VOLATILITY_EXPANSION",
+                micro_regime_transition="BREAKOUT_UP",
             )
         }
     )
@@ -558,7 +556,7 @@ async def test_volatility_expansion_does_not_override_symbol_downtrend(monkeypat
         ),
     ],
 )
-def test_volatility_expansion_override_preserves_risk_guards(
+def test_risk_profile_preserves_stress_atr_and_bearish_transition_guards(
     context: LiveMarketContext,
     features: SymbolMarketFeatures,
     expected_reason: str,

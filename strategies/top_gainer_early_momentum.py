@@ -32,6 +32,9 @@ class TopGainerEarlyMomentum:
     return, volume expansion, and a candle closing near its high. This strategy
     waits for two closes to confirm that ignition while rejecting
     already-vertical blow-offs.
+
+    Conservative version. Do not make changes unless we are sure
+    the strategy will perform better
     """
 
     ALGO = "top_gainer_early_momentum"
@@ -223,12 +226,11 @@ class TopGainerEarlyMomentum:
         if features.micro_regime_transition in {
             "BREAKDOWN",
             "ENTERED_TREND_DOWN",
+            "VOLATILITY_EXPANSION",
         }:
             return False, "symbol_transition_not_long"
         if features.micro_regime == "TREND_DOWN" and features.trend_score < 0:
             return False, "symbol_trend_down"
-        if features.micro_regime_transition == "VOLATILITY_EXPANSION":
-            return True, "confirmed_breakout_volatility_expansion_override"
         return True, "risk_profile_allows_long"
 
     def _stop_loss_pct(self, close: float, atr: float) -> float:
@@ -410,8 +412,8 @@ class TopGainerEarlyMomentum:
             return
         self._mark_emitted(candidate_open_time)
 
-        autotrade = getenv("ENV") == "staging"
-        route_reason = "staging_top_gainer_long" if autotrade else "staging_only_shadow"
+        autotrade = True
+        route_reason = "confirmed_top_gainer_long"
         fiat_order_size = self._fiat_order_size()
         stop_loss = self._stop_loss_pct(
             close=float(candidate["close"]),
@@ -466,7 +468,7 @@ class TopGainerEarlyMomentum:
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled outside staging"}
+            - Autotrade is enabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
