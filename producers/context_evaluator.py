@@ -40,7 +40,10 @@ from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.coinrule.price_tracker import PriceTracker
 from strategies.failed_spike_fade import FailedSpikeFade
 from strategies.grid.ladder_deployer import LadderDeployer
-from strategies.liquidation_sweep_pump import LiquidationSweepPump
+from strategies.liquidation_sweep_pump import (
+    LiquidationSweepPortfolioSelector,
+    LiquidationSweepPump,
+)
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.mean_reversion_fade import MeanReversionFade
 from strategies.relative_strength_impulse_rider import RelativeStrengthImpulseRider
@@ -67,6 +70,9 @@ class ContextEvaluator:
         telegram_consumer: TelegramConsumer,
         strategy_cooldowns: dict[tuple[str, str], int] | None = None,
         strategy_states: dict[tuple[str, str], dict[str, float | int]] | None = None,
+        liquidation_sweep_portfolio_selector: (
+            LiquidationSweepPortfolioSelector | None
+        ) = None,
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
@@ -110,6 +116,7 @@ class ContextEvaluator:
         self.telegram_consumer = telegram_consumer
         self.strategy_cooldowns = strategy_cooldowns
         self.strategy_states = strategy_states
+        self.liquidation_sweep_portfolio_selector = liquidation_sweep_portfolio_selector
         self.at_consumer = ac_api
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at

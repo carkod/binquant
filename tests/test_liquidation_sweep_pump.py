@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, MarketBreadthSeries, MarketType, Position, SymbolModel
-from strategies.liquidation_sweep_pump import LiquidationSweepPump
+from strategies.liquidation_sweep_pump import (
+    LiquidationSweepCandidate,
+    LiquidationSweepPortfolioSelector,
+    LiquidationSweepPump,
+)
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 
 
@@ -79,10 +83,12 @@ def make_market_context(**overrides: Any) -> LiveMarketContext:
 def make_price_df() -> DataFrame:
     rows = []
     price = 100.0
-    for idx in range(50):
+    for idx in range(80):
         price *= 1.002
         rows.append(
             {
+                "open_time": 1_700_000_000_000 + idx * 900_000,
+                "close_time": 1_700_000_899_999 + idx * 900_000,
                 "open": price * 0.998,
                 "high": price * 1.004,
                 "low": price * 0.996,
@@ -100,12 +106,23 @@ def make_btc_df(last_change: float) -> DataFrame:
     return df
 
 
-def make_pump_ready_df(df: DataFrame) -> DataFrame:
+def make_pump_ready_df(df: DataFrame, *, btc_momentum: float = 0.003) -> DataFrame:
     enriched = df.copy()
     enriched["pump_score"] = 1.0
-    enriched["pump_score_smooth"] = 1.0
-    enriched.loc[enriched.index[-1], "pump_score"] = 12.0
-    enriched.loc[enriched.index[-1], "pump_score_smooth"] = 10.0
+    enriched["score_threshold"] = 1.0
+    enriched["score_cross"] = False
+    enriched["momentum_atr"] = 1.5
+    enriched["prior_high"] = enriched["close"] - 1
+    enriched["close_location"] = 0.8
+    enriched["relative_volume"] = 2.0
+    enriched["volume_threshold"] = 1.5
+    enriched["trend_score"] = 0.02
+    enriched["ema20"] = enriched["close"] - 1
+    enriched["relative_strength"] = 0.01
+    enriched["btc_momentum_3"] = btc_momentum
+    enriched["btc_trend_score"] = 0.02
+    enriched.loc[enriched.index[-2], "pump_score"] = 12.0
+    enriched.loc[enriched.index[-2], "score_cross"] = True
     return enriched
 
 
@@ -137,7 +154,7 @@ def make_context(
         exchange=ExchangeId.KUCOIN,
         dispatch_signal_record=Mock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
-        market_type=MarketType.SPOT,
+        market_type=MarketType.FUTURES,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data=SymbolModel(
             id="TESTUSDT",
@@ -206,7 +223,7 @@ async def test_signal_does_not_emit_short_when_hot_breadth_fades(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
 
-    monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
+    monkeypatch.setattr(algo, "compute_pump_score", lambda *_: make_pump_ready_df(df))
     await algo.signal(
         current_price=float(df.close.iloc[-1]),
         bb_high=110.0,
@@ -240,7 +257,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
 
-    monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
+    monkeypatch.setattr(algo, "compute_pump_score", lambda *_: make_pump_ready_df(df))
     monkeypatch.setattr(
         "strategies.liquidation_sweep_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
@@ -270,13 +287,11 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     assert signal_value.bot_params.dynamic_trailing is False
     assert signal_value.bot_params.stop_loss == 2.0
     assert signal_value.bot_params.take_profit == 2.5
+    assert signal_value.bot_params.cooldown == 60
     assert signal_value.bot_params.trailing is False
     assert signal_value.bot_params.margin_short_reversal is False
     assert "Action: LONG ENTRY" in telegram_msg
-    assert (
-        "Autotrade route: breadth_washed_out_recovering_btc_up_symbol_up"
-        in telegram_msg
-    )
+    assert "Autotrade route: market_breadth_recovering_btc_up_symbol_up" in telegram_msg
 
 
 @pytest.mark.asyncio
@@ -305,7 +320,7 @@ async def test_signal_skips_long_when_symbol_trend_is_not_up(monkeypatch):
     algo.at_consumer = cast(
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
-    monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
+    monkeypatch.setattr(algo, "compute_pump_score", lambda *_: make_pump_ready_df(df))
 
     await algo.signal(
         current_price=float(df.close.iloc[-1]),
@@ -338,7 +353,11 @@ async def test_signal_skips_long_when_btc_is_not_increasing(monkeypatch):
         Any, SimpleNamespace(process_autotrade_restrictions=process_mock)
     )
 
-    monkeypatch.setattr(algo, "compute_pump_score", lambda _: make_pump_ready_df(df))
+    monkeypatch.setattr(
+        algo,
+        "compute_pump_score",
+        lambda *_: make_pump_ready_df(df, btc_momentum=0.0),
+    )
 
     await algo.signal(
         current_price=float(df.close.iloc[-1]),
@@ -365,4 +384,44 @@ def test_breadth_routing_orders_newest_first_api_series_by_timestamp() -> None:
 
     assert algo._latest_market_breadth(context) == -0.42
     assert should_enter is True
-    assert reason == "breadth_washed_out_recovering_btc_up_symbol_up"
+    assert reason == "market_breadth_recovering_btc_up_symbol_up"
+
+
+@pytest.mark.asyncio
+async def test_portfolio_selector_dispatches_only_highest_ranked_candidate() -> None:
+    selector = LiquidationSweepPortfolioSelector()
+    dispatched: list[str] = []
+
+    async def dispatch_low() -> None:
+        dispatched.append("LOW")
+
+    async def dispatch_high() -> None:
+        dispatched.append("HIGH")
+
+    await selector.submit(LiquidationSweepCandidate(1_000, "LOW", 2.0, dispatch_low))
+    await selector.submit(LiquidationSweepCandidate(1_000, "HIGH", 5.0, dispatch_high))
+
+    assert dispatched == []
+
+    await selector.observe(2_000)
+
+    assert dispatched == ["HIGH"]
+
+
+@pytest.mark.asyncio
+async def test_portfolio_selector_rejects_late_candidate_for_flushed_cohort() -> None:
+    selector = LiquidationSweepPortfolioSelector()
+    dispatched: list[str] = []
+
+    async def dispatch() -> None:
+        dispatched.append("winner")
+
+    await selector.submit(LiquidationSweepCandidate(1_000, "FIRST", 2.0, dispatch))
+    await selector.observe(2_000)
+
+    accepted = await selector.submit(
+        LiquidationSweepCandidate(1_000, "LATE", 10.0, dispatch)
+    )
+
+    assert accepted is False
+    assert dispatched == ["winner"]
