@@ -435,6 +435,7 @@ class TestAutotradeConsumer:
             "mean_reversion_fade",
             "liquidation_sweep_pump",
             "relative_strength_impulse_rider",
+            "top_gainer_early_momentum",
         ],
     )
     async def test_grid_only_policy_allows_approved_real_bot_strategies(

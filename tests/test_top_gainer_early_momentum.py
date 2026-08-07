@@ -173,6 +173,7 @@ def make_context(
         symbol="TESTUSDTM",
         market_type=MarketType.FUTURES,
         df_15m=df_15m,
+        binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
         dispatch_signal_record=Mock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(
@@ -427,6 +428,145 @@ async def test_signal_skips_when_relative_strength_is_not_positive(monkeypatch):
     send_signal_mock.assert_not_called()
     record_mock.assert_not_called()
     process_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_persists_symbol_specific_risk_rejection_once_per_candle(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    market_context = make_market_context(
+        symbol_features={
+            "TESTUSDTM": make_symbol_features(relative_strength_vs_btc=0.0)
+        }
+    )
+    context = make_context(
+        df_15m=df,
+        latest_market_context=market_context,
+    )
+    algo = TopGainerEarlyMomentum(cast(Any, context))
+
+    for _ in range(2):
+        await algo.signal(
+            current_price=float(df.close.iloc[-1]),
+            bb_high=115.0,
+            bb_mid=106.0,
+            bb_low=98.0,
+        )
+
+    context.binbot_api.dispatch_create_signal.assert_called_once()
+    payload = context.binbot_api.dispatch_create_signal.call_args.kwargs
+    indicators = payload["indicators"]
+
+    assert payload["algorithm_name"] == "top_gainer_early_momentum"
+    assert payload["symbol"] == "TESTUSDTM"
+    assert payload["direction"] == "long"
+    assert payload["autotrade"] is False
+    assert payload["signal_kind"] == "risk_rejection"
+    assert indicators["risk_reason"] == "relative_strength_vs_btc_not_positive"
+    assert indicators["relative_strength_vs_btc"] == 0.0
+    assert indicators["symbol_atr_pct"] == 0.025
+    assert indicators["symbol_micro_regime_transition"] == "BREAKOUT_UP"
+    context.dispatch_signal_record.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_allows_confirmed_volatility_expansion(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    market_context = make_market_context(
+        symbol_features={
+            "TESTUSDTM": make_symbol_features(
+                micro_regime_transition="VOLATILITY_EXPANSION"
+            )
+        }
+    )
+    context = make_context(
+        df_15m=df,
+        latest_market_context=market_context,
+    )
+
+    await TopGainerEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    context.dispatch_signal_record.assert_called_once()
+    indicators = context.dispatch_signal_record.call_args.kwargs["indicators"]
+    assert (
+        indicators["risk_reason"] == "confirmed_breakout_volatility_expansion_override"
+    )
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
+    context.binbot_api.dispatch_create_signal.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_volatility_expansion_does_not_override_symbol_downtrend(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    market_context = make_market_context(
+        symbol_features={
+            "TESTUSDTM": make_symbol_features(
+                micro_regime="TREND_DOWN",
+                trend_score=-0.05,
+                micro_regime_transition="VOLATILITY_EXPANSION",
+            )
+        }
+    )
+    context = make_context(
+        df_15m=df,
+        latest_market_context=market_context,
+    )
+
+    await TopGainerEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    context.dispatch_signal_record.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    payload = context.binbot_api.dispatch_create_signal.call_args.kwargs
+    assert payload["indicators"]["risk_reason"] == "symbol_trend_down"
+
+
+@pytest.mark.parametrize(
+    ("context", "features", "expected_reason"),
+    [
+        (
+            make_market_context(market_stress_score=0.25),
+            make_symbol_features(micro_regime_transition="VOLATILITY_EXPANSION"),
+            "market_stress_too_high",
+        ),
+        (
+            make_market_context(),
+            make_symbol_features(
+                atr_pct=0.061,
+                micro_regime_transition="VOLATILITY_EXPANSION",
+            ),
+            "symbol_atr_too_high",
+        ),
+        (
+            make_market_context(),
+            make_symbol_features(micro_regime_transition="BREAKDOWN"),
+            "symbol_transition_not_long",
+        ),
+    ],
+)
+def test_volatility_expansion_override_preserves_risk_guards(
+    context: LiveMarketContext,
+    features: SymbolMarketFeatures,
+    expected_reason: str,
+) -> None:
+    assert TopGainerEarlyMomentum._risk_profile_allows(
+        context=context,
+        features=features,
+    ) == (False, expected_reason)
 
 
 @pytest.mark.asyncio

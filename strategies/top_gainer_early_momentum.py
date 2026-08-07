@@ -64,6 +64,7 @@ class TopGainerEarlyMomentum:
     ENTRY_COOLDOWN_MINUTES = 60
     TRAILING_PROFIT_PCT = 3.0
     TRAILING_DEVIATION_PCT = 1.5
+    RISK_REJECTION_ALGO = f"{ALGO}:risk_rejection"
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -77,6 +78,7 @@ class TopGainerEarlyMomentum:
         self.at_consumer = cls.at_consumer
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_candle: int | None = None
+        self._last_risk_rejection_candle: int | None = None
 
     def _fiat_order_size(self) -> float:
         settings = getattr(self.at_consumer, "autotrade_settings", None)
@@ -221,11 +223,12 @@ class TopGainerEarlyMomentum:
         if features.micro_regime_transition in {
             "BREAKDOWN",
             "ENTERED_TREND_DOWN",
-            "VOLATILITY_EXPANSION",
         }:
             return False, "symbol_transition_not_long"
         if features.micro_regime == "TREND_DOWN" and features.trend_score < 0:
             return False, "symbol_trend_down"
+        if features.micro_regime_transition == "VOLATILITY_EXPANSION":
+            return True, "confirmed_breakout_volatility_expansion_override"
         return True, "risk_profile_allows_long"
 
     def _stop_loss_pct(self, close: float, atr: float) -> float:
@@ -256,6 +259,94 @@ class TopGainerEarlyMomentum:
         self._last_emitted_candle = candle_open_time
         if self.strategy_cooldowns is not None:
             self.strategy_cooldowns[(self.ALGO, self.symbol)] = candle_open_time
+
+    def _risk_rejection_already_recorded(self, candle_open_time: int) -> bool:
+        if self.strategy_cooldowns is None:
+            return self._last_risk_rejection_candle == candle_open_time
+        return (
+            self.strategy_cooldowns.get((self.RISK_REJECTION_ALGO, self.symbol))
+            == candle_open_time
+        )
+
+    def _record_risk_rejection(
+        self,
+        *,
+        candle_open_time: int,
+        current_price: float,
+        context: LiveMarketContext | None,
+        features: SymbolMarketFeatures | None,
+        values: dict[str, float],
+        risk_reason: str,
+    ) -> None:
+        if self._risk_rejection_already_recorded(candle_open_time):
+            return
+
+        self._last_risk_rejection_candle = candle_open_time
+        if self.strategy_cooldowns is not None:
+            self.strategy_cooldowns[(self.RISK_REJECTION_ALGO, self.symbol)] = (
+                candle_open_time
+            )
+
+        indicators = {
+            "observation": "risk_rejection",
+            "risk_reason": risk_reason,
+            "candidate_open_time": candle_open_time,
+            "current_price": current_price,
+            "market_regime": context.market_regime if context else None,
+            "market_regime_transition": (
+                context.market_regime_transition if context else None
+            ),
+            "market_stress_score": context.market_stress_score if context else None,
+            "btc_return": context.btc_return if context else None,
+            "btc_regime_score": context.btc_regime_score if context else None,
+            "symbol_micro_regime": features.micro_regime if features else None,
+            "symbol_micro_regime_transition": (
+                features.micro_regime_transition if features else None
+            ),
+            "symbol_trend_score": features.trend_score if features else None,
+            "symbol_atr_pct": features.atr_pct if features else None,
+            "relative_strength_vs_btc": (
+                features.relative_strength_vs_btc if features else None
+            ),
+            "return_1h": values["return_1h"],
+            "return_2h": values["return_2h"],
+            "return_6h": values["return_6h"],
+            "volume_ratio": values["volume_ratio"],
+        }
+        logging.info(
+            "%s risk rejected: symbol=%s reason=%s market_regime=%s "
+            "market_transition=%s symbol_regime=%s symbol_transition=%s "
+            "atr_pct=%s relative_strength_vs_btc=%s",
+            self.ALGO,
+            self.symbol,
+            risk_reason,
+            indicators["market_regime"],
+            indicators["market_regime_transition"],
+            indicators["symbol_micro_regime"],
+            indicators["symbol_micro_regime_transition"],
+            indicators["symbol_atr_pct"],
+            indicators["relative_strength_vs_btc"],
+        )
+        try:
+            self.ti.binbot_api.dispatch_create_signal(
+                algorithm_name=self.ALGO,
+                symbol=self.symbol,
+                generated_at=datetime.now(UTC),
+                direction=Position.long.value,
+                autotrade=False,
+                current_regime=context.market_regime if context else None,
+                context=context.model_dump(mode="json") if context else {},
+                signal_kind="risk_rejection",
+                bot_params={},
+                grid_params={},
+                indicators=indicators,
+            )
+        except Exception:
+            logging.exception(
+                "%s risk-rejection persistence failed for %s",
+                self.ALGO,
+                self.symbol,
+            )
 
     async def signal(
         self,
@@ -302,7 +393,14 @@ class TopGainerEarlyMomentum:
             features=symbol_features,
         )
         if not risk_allowed:
-            logging.info("%s skipped: %s", self.ALGO, risk_reason)
+            self._record_risk_rejection(
+                candle_open_time=int(candidate["open_time"]),
+                current_price=current_price,
+                context=context,
+                features=symbol_features,
+                values=values,
+                risk_reason=risk_reason,
+            )
             return
         assert context is not None
 
