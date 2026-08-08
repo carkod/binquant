@@ -173,6 +173,7 @@ def make_context(
         symbol="TESTUSDTM",
         market_type=MarketType.FUTURES,
         df_15m=df_15m,
+        binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
         dispatch_signal_record=Mock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(
@@ -197,7 +198,7 @@ def make_context(
 
 
 @pytest.mark.asyncio
-async def test_signal_dispatches_staging_long_with_reduced_margin(monkeypatch):
+async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     df = make_breakout_candles()
     algo = TopGainerEarlyMomentum(
@@ -241,7 +242,7 @@ async def test_signal_dispatches_staging_long_with_reduced_margin(monkeypatch):
 
     assert "Breakout setup: top_gainer_breakout_ignition" in telegram_msg
     assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
-    assert "Autotrade route: staging_top_gainer_long" in telegram_msg
+    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
     assert "Max margin: 2.0 USDT" in telegram_msg
     assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "long"
@@ -254,7 +255,7 @@ async def test_signal_dispatches_staging_long_with_reduced_margin(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_records_shadow_long_outside_staging(monkeypatch):
+async def test_signal_autotrades_outside_staging(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     df = make_breakout_candles()
     algo = TopGainerEarlyMomentum(
@@ -296,9 +297,9 @@ async def test_signal_records_shadow_long_outside_staging(monkeypatch):
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert "Autotrade route: staging_only_shadow" in telegram_msg
-    assert "Autotrade is disabled outside staging" in telegram_msg
-    assert signal_value.autotrade is False
+    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
+    assert "Autotrade is enabled" in telegram_msg
+    assert signal_value.autotrade is True
     assert signal_value.bot_params.fiat_order_size == 2.0
 
 
@@ -427,6 +428,143 @@ async def test_signal_skips_when_relative_strength_is_not_positive(monkeypatch):
     send_signal_mock.assert_not_called()
     record_mock.assert_not_called()
     process_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_persists_symbol_specific_risk_rejection_once_per_candle(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    market_context = make_market_context(
+        symbol_features={
+            "TESTUSDTM": make_symbol_features(relative_strength_vs_btc=0.0)
+        }
+    )
+    context = make_context(
+        df_15m=df,
+        latest_market_context=market_context,
+    )
+    algo = TopGainerEarlyMomentum(cast(Any, context))
+
+    for _ in range(2):
+        await algo.signal(
+            current_price=float(df.close.iloc[-1]),
+            bb_high=115.0,
+            bb_mid=106.0,
+            bb_low=98.0,
+        )
+
+    context.binbot_api.dispatch_create_signal.assert_called_once()
+    payload = context.binbot_api.dispatch_create_signal.call_args.kwargs
+    indicators = payload["indicators"]
+
+    assert payload["algorithm_name"] == "top_gainer_early_momentum"
+    assert payload["symbol"] == "TESTUSDTM"
+    assert payload["direction"] == "long"
+    assert payload["autotrade"] is False
+    assert payload["signal_kind"] == "risk_rejection"
+    assert indicators["risk_reason"] == "relative_strength_vs_btc_not_positive"
+    assert indicators["relative_strength_vs_btc"] == 0.0
+    assert indicators["symbol_atr_pct"] == 0.025
+    assert indicators["symbol_micro_regime_transition"] == "BREAKOUT_UP"
+    context.dispatch_signal_record.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_rejects_confirmed_volatility_expansion(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    market_context = make_market_context(
+        symbol_features={
+            "TESTUSDTM": make_symbol_features(
+                micro_regime_transition="VOLATILITY_EXPANSION"
+            )
+        }
+    )
+    context = make_context(
+        df_15m=df,
+        latest_market_context=market_context,
+    )
+
+    await TopGainerEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    context.dispatch_signal_record.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    payload = context.binbot_api.dispatch_create_signal.call_args.kwargs
+    assert payload["signal_kind"] == "risk_rejection"
+    assert payload["indicators"]["risk_reason"] == "symbol_transition_not_long"
+
+
+@pytest.mark.asyncio
+async def test_symbol_downtrend_remains_blocked(monkeypatch):
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    market_context = make_market_context(
+        symbol_features={
+            "TESTUSDTM": make_symbol_features(
+                micro_regime="TREND_DOWN",
+                trend_score=-0.05,
+                micro_regime_transition="BREAKOUT_UP",
+            )
+        }
+    )
+    context = make_context(
+        df_15m=df,
+        latest_market_context=market_context,
+    )
+
+    await TopGainerEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    context.dispatch_signal_record.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    payload = context.binbot_api.dispatch_create_signal.call_args.kwargs
+    assert payload["indicators"]["risk_reason"] == "symbol_trend_down"
+
+
+@pytest.mark.parametrize(
+    ("context", "features", "expected_reason"),
+    [
+        (
+            make_market_context(market_stress_score=0.25),
+            make_symbol_features(micro_regime_transition="VOLATILITY_EXPANSION"),
+            "market_stress_too_high",
+        ),
+        (
+            make_market_context(),
+            make_symbol_features(
+                atr_pct=0.061,
+                micro_regime_transition="VOLATILITY_EXPANSION",
+            ),
+            "symbol_atr_too_high",
+        ),
+        (
+            make_market_context(),
+            make_symbol_features(micro_regime_transition="BREAKDOWN"),
+            "symbol_transition_not_long",
+        ),
+    ],
+)
+def test_risk_profile_preserves_stress_atr_and_bearish_transition_guards(
+    context: LiveMarketContext,
+    features: SymbolMarketFeatures,
+    expected_reason: str,
+) -> None:
+    assert TopGainerEarlyMomentum._risk_profile_allows(
+        context=context,
+        features=features,
+    ) == (False, expected_reason)
 
 
 @pytest.mark.asyncio

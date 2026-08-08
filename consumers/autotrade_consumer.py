@@ -34,6 +34,8 @@ class AutotradeConsumer:
             "mean_reversion_fade",
             "liquidation_sweep_pump",
             "relative_strength_impulse_rider",
+            "top_gainer_early_momentum",
+            "gradual_gainer_retest",
         }
     )
     # Circuit breaker: stop opening new real bots/ladders once today's
