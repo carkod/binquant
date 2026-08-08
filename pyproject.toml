@@ -16,7 +16,7 @@ dependencies = [
     "python-telegram-bot>=22.1",
     "requests-cache>=1.2.0",
     "requests-html>=0.10.0",
-    "scikit-learn==1.7.0",
+    "scikit-learn==1.9.0",
     "uvicorn>=0.37.0",
 ]
 
