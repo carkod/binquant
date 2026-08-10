@@ -1,3 +1,4 @@
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -114,6 +115,7 @@ def make_breakout_candles() -> DataFrame:
         rows.append(
             {
                 "open_time": 1_700_000_000_000 + index * 900_000,
+                "close_time": 1_700_000_000_000 + (index + 1) * 900_000 - 1,
                 "open": open_price,
                 "high": high,
                 "low": low,
@@ -702,3 +704,38 @@ async def test_signal_requires_both_confirmation_closes(
     context.dispatch_signal_record.assert_not_called()
     context.telegram_consumer.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_does_not_use_forming_candle_as_second_confirmation(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakout_candles()
+    df.loc[df.index[-1], "close_time"] = (
+        int(datetime.now().timestamp() * 1000) + 900_000
+    )
+    context = make_context(df_15m=df, latest_market_context=make_market_context())
+
+    await TopGainerEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    context.dispatch_signal_record.assert_not_called()
+    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+def test_confirmation_requires_second_close_to_retain_momentum() -> None:
+    assert TopGainerEarlyMomentum._confirmation_allows(
+        breakout_close=112.0,
+        previous_high=111.0,
+        first_confirmation_close=112.5,
+        second_confirmation_open=112.4,
+        second_confirmation_high=112.7,
+        second_confirmation_low=111.8,
+        second_confirmation_close=112.2,
+    ) == (False, "second_confirmation_did_not_retain_momentum")

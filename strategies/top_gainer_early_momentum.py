@@ -188,17 +188,44 @@ class TopGainerEarlyMomentum:
         return True, "top_gainer_breakout_ignition"
 
     @staticmethod
+    def _completed_candles(df: "DataFrame", now_ms: int) -> "DataFrame":
+        if "close_time" not in df.columns:
+            return df.iloc[0:0]
+        return df.loc[df["close_time"] < now_ms]
+
+    @classmethod
     def _confirmation_allows(
+        cls,
         *,
         breakout_close: float,
         previous_high: float,
         first_confirmation_close: float,
+        second_confirmation_open: float,
+        second_confirmation_high: float,
+        second_confirmation_low: float,
         second_confirmation_close: float,
     ) -> tuple[bool, str]:
         if first_confirmation_close <= previous_high:
             return False, "first_confirmation_did_not_hold_breakout"
         if second_confirmation_close <= breakout_close:
             return False, "second_confirmation_did_not_clear_breakout_close"
+        if second_confirmation_close <= first_confirmation_close:
+            return False, "second_confirmation_did_not_retain_momentum"
+
+        confirmation_range = second_confirmation_high - second_confirmation_low
+        if confirmation_range <= 0:
+            return False, "second_confirmation_range_invalid"
+        range_position = (
+            second_confirmation_close - second_confirmation_low
+        ) / confirmation_range
+        upper_wick_fraction = (
+            second_confirmation_high
+            - max(second_confirmation_open, second_confirmation_close)
+        ) / confirmation_range
+        if range_position < cls.MIN_CLOSE_RANGE_POSITION:
+            return False, "second_confirmation_close_not_near_high"
+        if upper_wick_fraction > cls.MAX_UPPER_WICK_FRACTION:
+            return False, "second_confirmation_upper_wick_too_large"
         return True, "top_gainer_breakout_two_close_confirmation"
 
     @classmethod
@@ -360,7 +387,10 @@ class TopGainerEarlyMomentum:
         if self.market_type != MarketType.FUTURES:
             return
 
-        df = self.ti.df_15m
+        df = self._completed_candles(
+            self.ti.df_15m,
+            now_ms=int(datetime.now(UTC).timestamp() * 1000),
+        )
         if len(df) < self.MIN_HISTORY + 2:
             logging.info("%s skipped: history_too_short", self.ALGO)
             return
@@ -382,6 +412,9 @@ class TopGainerEarlyMomentum:
             breakout_close=values["close"],
             previous_high=values["previous_high"],
             first_confirmation_close=float(first_confirmation["close"]),
+            second_confirmation_open=float(candidate["open"]),
+            second_confirmation_high=float(candidate["high"]),
+            second_confirmation_low=float(candidate["low"]),
             second_confirmation_close=float(candidate["close"]),
         )
         if not confirmation_allowed:
