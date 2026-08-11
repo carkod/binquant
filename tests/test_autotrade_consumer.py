@@ -438,7 +438,7 @@ class TestAutotradeConsumer:
             "top_gainer_early_momentum",
         ],
     )
-    async def test_grid_only_policy_allows_approved_real_bot_strategies(
+    async def test_grid_only_policy_blocks_previously_allowlisted_strategies(
         self, algorithm_name
     ):
         self.consumer.grid_only_policy = active_grid_only_policy()
@@ -456,19 +456,9 @@ class TestAutotradeConsumer:
         )
 
         with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
-            autotrade_instance = autotrade_cls.return_value
-            autotrade_instance.activate_autotrade = AsyncMock()
-
             await self.consumer.process_autotrade_restrictions(signal)
 
-        autotrade_cls.assert_called_once_with(
-            pair="BTCUSDT",
-            settings=self.settings,
-            algorithm_name=algorithm_name,
-            db_collection_name="bots",
-            binbot_api=self.mock_binbot_api,
-        )
-        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+        autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_grid_only_policy_allowlist_still_blocks_active_grid_symbol(self):

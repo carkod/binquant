@@ -28,16 +28,6 @@ from shared.config import Config
 class AutotradeConsumer:
     FUTURES_REVERSAL_BUFFER = 1.40
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
-    GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
-        {
-            "coinrule_price_tracker",
-            "mean_reversion_fade",
-            "liquidation_sweep_pump",
-            "relative_strength_impulse_rider",
-            "top_gainer_early_momentum",
-            "gradual_gainer_retest",
-        }
-    )
     # Circuit breaker: stop opening new real bots/ladders once today's
     # estimated realized PnL (UTC calendar day) drops to this quote-currency
     # amount or below. Expressed in absolute quote terms rather than a % of
@@ -513,18 +503,11 @@ class AutotradeConsumer:
                 await test_autotrade.activate_autotrade(result)
 
         if self.grid_only_policy.block_standard_bots and result.autotrade:
-            if algorithm_name in self.GRID_ONLY_STANDARD_BOT_ALLOWLIST:
-                logging.info(
-                    "Allowing autotrade through grid-only policy exception: %s (%s)",
-                    algorithm_name,
-                    self.grid_only_policy.reason,
-                )
-            else:
-                logging.info(
-                    "Skipping autotrade: grid_only_block (%s)",
-                    self.grid_only_policy.reason,
-                )
-                return
+            logging.info(
+                "Skipping autotrade: grid_only_block (%s)",
+                self.grid_only_policy.reason,
+            )
+            return
 
         if self.grid_only_policy.block_standard_bots and not result.autotrade:
             logging.info(
