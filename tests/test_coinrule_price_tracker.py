@@ -305,7 +305,75 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
         TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context()
+    monkeypatch.setenv("ENV", "production")
 
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.Indicators.mfi",
+        staticmethod(lambda df, window=14: 15.0),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
+        lambda **kwargs: SimpleNamespace(
+            adjusted_score=1.2,
+            emit=True,
+            context_score=SimpleNamespace(
+                confidence=0.7,
+                followthrough_score=0.2,
+                adverse_excursion_risk=0.2,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.is_autotrade_suppressed",
+        lambda **kwargs: False,
+    )
+
+    await algo.signal(
+        close_price=float(df["close"].iloc[-1]),
+        bb_high=115.0,
+        bb_low=85.0,
+        bb_mid=100.0,
+    )
+
+    at_mock.assert_awaited_once()
+    tg_mock.assert_called_once()
+
+    tg_await_args = tg_mock.call_args
+    assert tg_await_args is not None
+    telegram_msg = tg_await_args.args[0]
+    assert "&lt; 30" in telegram_msg
+    assert "&lt; 0" in telegram_msg
+    assert "&lt; 20" in telegram_msg
+    assert "Breadth stable for mean-reversion: Yes" in telegram_msg
+
+    dispatch_mock = cast(Mock, algo.ti.dispatch_signal_record)
+    signal_value = dispatch_mock.call_args.kwargs["value"]
+    assert signal_value.autotrade is True
+    assert signal_value.bot_params.dynamic_trailing is False
+    assert signal_value.bot_params.stop_loss == PriceTracker.STOP_LOSS_PCT
+    assert signal_value.bot_params.take_profit == 0
+    assert signal_value.bot_params.trailing is True
+    assert signal_value.bot_params.trailing_profit == PriceTracker.TRAILING_PROFIT_PCT
+    assert (
+        signal_value.bot_params.trailing_deviation
+        == PriceTracker.TRAILING_DEVIATION_PCT
+    )
+
+
+@pytest.mark.asyncio
+async def test_price_tracker_keeps_eligible_staging_signal_shadow_only(monkeypatch):
+    df = make_ohlcv_df(n=50, oversold=True)
+    algo = make_algo(df)
+    at_mock = AsyncMock()
+    tg_mock = Mock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    )
+    algo.ti.latest_market_context = make_market_context()
+    monkeypatch.setenv("ENV", "staging")
     monkeypatch.setattr(
         "strategies.coinrule.price_tracker.Indicators.mfi",
         staticmethod(lambda df, window=14: 15.0),
@@ -330,28 +398,13 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
         bb_mid=100.0,
     )
 
-    at_mock.assert_awaited_once()
-    tg_mock.assert_called_once()
-
-    tg_await_args = tg_mock.call_args
-    assert tg_await_args is not None
-    telegram_msg = tg_await_args.args[0]
-    assert "&lt; 30" in telegram_msg
-    assert "&lt; 0" in telegram_msg
-    assert "&lt; 20" in telegram_msg
-    assert "Breadth stable for mean-reversion: Yes" in telegram_msg
-
     dispatch_mock = cast(Mock, algo.ti.dispatch_signal_record)
     signal_value = dispatch_mock.call_args.kwargs["value"]
-    assert signal_value.bot_params.dynamic_trailing is False
-    assert signal_value.bot_params.stop_loss == PriceTracker.STOP_LOSS_PCT
-    assert signal_value.bot_params.take_profit == 0
-    assert signal_value.bot_params.trailing is True
-    assert signal_value.bot_params.trailing_profit == PriceTracker.TRAILING_PROFIT_PCT
-    assert (
-        signal_value.bot_params.trailing_deviation
-        == PriceTracker.TRAILING_DEVIATION_PCT
-    )
+    assert signal_value.autotrade is False
+    at_mock.assert_awaited_once_with(signal_value)
+    telegram_msg = tg_mock.call_args.args[0]
+    assert "Autotrade route: staging_autotrade_disabled" in telegram_msg
+    assert "Autotrade is disabled" in telegram_msg
 
 
 @pytest.mark.parametrize("trend_score", [-0.0051, 0.0051])
