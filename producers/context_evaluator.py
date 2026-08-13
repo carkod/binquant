@@ -39,10 +39,6 @@ from shared.utils import format_context_timestamp_line
 from strategies.activity_burst_pump import ActivityBurstPump
 from strategies.coinrule.price_tracker import PriceTracker
 from strategies.failed_spike_fade import FailedSpikeFade
-from strategies.gradual_gainer_retest import (
-    GradualGainerPortfolioSelector,
-    GradualGainerRetest,
-)
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import (
     LiquidationSweepPortfolioSelector,
@@ -72,7 +68,6 @@ class ContextEvaluator:
         liquidation_sweep_portfolio_selector: (
             LiquidationSweepPortfolioSelector | None
         ) = None,
-        gradual_gainer_portfolio_selector: GradualGainerPortfolioSelector | None = None,
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         oi_data: float = None,
@@ -117,7 +112,6 @@ class ContextEvaluator:
         self.strategy_cooldowns = strategy_cooldowns
         self.strategy_states = strategy_states if strategy_states is not None else {}
         self.liquidation_sweep_portfolio_selector = liquidation_sweep_portfolio_selector
-        self.gradual_gainer_portfolio_selector = gradual_gainer_portfolio_selector
         self.at_consumer = ac_api
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
@@ -231,7 +225,6 @@ class ContextEvaluator:
         """
         self.relative_strength_impulse_rider = RelativeStrengthImpulseRider(cls=self)
         self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
-        self.gradual_gainer_retest = GradualGainerRetest(cls=self)
         self.failed_spike_fade = FailedSpikeFade(cls=self)
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
@@ -456,16 +449,6 @@ class ContextEvaluator:
             await self._safe_signal(
                 "TopGainerEarlyMomentum",
                 self.top_gainer_early_momentum.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-
-            await self._safe_signal(
-                "GradualGainerRetest",
-                self.gradual_gainer_retest.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,
