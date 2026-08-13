@@ -250,7 +250,10 @@ class PriceTracker:
                 return
             self._mark_entry_cooldown(close_time)
 
-            if autotrade and is_autotrade_suppressed(context=context):
+            if autotrade and os.getenv("ENV") == "staging":
+                autotrade = False
+                autotrade_route = "staging_autotrade_disabled"
+            elif autotrade and is_autotrade_suppressed(context=context):
                 autotrade = False
                 autotrade_route = "time_of_day_quiet_hours"
                 self.telegram_consumer.dispatch_signal(

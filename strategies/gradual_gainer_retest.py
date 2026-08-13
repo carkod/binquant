@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from os import getenv
 from typing import TYPE_CHECKING, Any, cast
 
@@ -72,7 +73,12 @@ class GradualGainerPortfolioSelector:
 
 
 class GradualGainerRetest:
-    """Buy a shallow, confirmed retest from a sustained relative-strength leader."""
+    """Buy a completed-candle reclaim from a sustained relative-strength leader.
+
+    Once the reclaim closes, binbot places a discounted retest limit for one
+    configured candle. This avoids buying an intrabar wick or chasing the
+    confirmation candle at its live price.
+    """
 
     ALGO = "gradual_gainer_retest"
     MIN_HISTORY = 100
@@ -89,6 +95,8 @@ class GradualGainerRetest:
     STOP_LOSS_PCT = 2.0
     TRAILING_PROFIT_PCT = 3.0
     TRAILING_DEVIATION_PCT = 1.5
+    RETEST_DISCOUNT_PCT = 0.5
+    RETEST_WAIT_BARS = 1
     ENTRY_COOLDOWN_MINUTES = 240
 
     def __init__(self, cls: "ContextEvaluator") -> None:
@@ -127,6 +135,12 @@ class GradualGainerRetest:
     def _clear_watchlist(self) -> None:
         if self.strategy_states is not None:
             self.strategy_states.pop(self._state_key, None)
+
+    @staticmethod
+    def _completed_candles(df: "DataFrame", now_ms: int) -> "DataFrame":
+        if "close_time" not in df.columns:
+            return df.iloc[0:0]
+        return df.loc[df["close_time"] < now_ms]
 
     @staticmethod
     def _relative_strengths(
@@ -224,7 +238,9 @@ class GradualGainerRetest:
     ) -> None:
         if self.market_type != MarketType.FUTURES:
             return
-        df, btc_df = self.ti.df_15m, self.ti.df_btc_15m
+        now_ms = int(datetime.now(UTC).timestamp() * 1000)
+        df = self._completed_candles(self.ti.df_15m, now_ms=now_ms)
+        btc_df = self._completed_candles(self.ti.df_btc_15m, now_ms=now_ms)
         if len(df) < self.MIN_HISTORY or not {
             "open_time",
             "open",
@@ -339,6 +355,8 @@ class GradualGainerRetest:
         indicators = {
             **values,
             "entry_reason": "watchlisted_shallow_retest_green_reclaim",
+            "retest_discount_pct": self.RETEST_DISCOUNT_PCT,
+            "retest_wait_bars": self.RETEST_WAIT_BARS,
             "route_reason": "staging_gradual_gainer_retest"
             if autotrade
             else "staging_only_shadow",
@@ -376,6 +394,7 @@ class GradualGainerRetest:
             - Portfolio rank score: {values["rank_score"]}
             - 2h / 6h relative strength vs BTC: {round_numbers(values["rs_2h"] * 100, 2)}% / {round_numbers(values["rs_6h"] * 100, 2)}%
             - Breakout level / EMA20: {round_numbers(values["breakout_level"], self.price_precision)} / {round_numbers(values["ema20"], self.price_precision)}
+            - Entry limit: {self.RETEST_DISCOUNT_PCT}% below the completed reclaim close, valid for {self.RETEST_WAIT_BARS} candle
             - Activity burst / price-tracker early warning: {"Yes" if values["activity_warning"] else "No"} / {"Yes" if values["price_tracker_warning"] else "No"}
             - Market regime: {context.market_regime if context and context.market_regime else "UNAVAILABLE"}
             {format_context_timestamp_line(context)}

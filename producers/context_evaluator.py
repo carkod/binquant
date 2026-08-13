@@ -115,7 +115,7 @@ class ContextEvaluator:
         self.price_precision = self.current_symbol_data.price_precision
         self.telegram_consumer = telegram_consumer
         self.strategy_cooldowns = strategy_cooldowns
-        self.strategy_states = strategy_states
+        self.strategy_states = strategy_states if strategy_states is not None else {}
         self.liquidation_sweep_portfolio_selector = liquidation_sweep_portfolio_selector
         self.gradual_gainer_portfolio_selector = gradual_gainer_portfolio_selector
         self.at_consumer = ac_api

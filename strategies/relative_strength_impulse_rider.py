@@ -4,7 +4,7 @@ import logging
 from datetime import UTC, datetime
 from math import isfinite
 from os import getenv
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pybinbot import (
     BotBase,
@@ -24,11 +24,12 @@ if TYPE_CHECKING:
 
 
 class RelativeStrengthImpulseRider:
-    """Buy isolated one-hour impulses after one closed-candle confirmation.
+    """Buy isolated one-hour impulses after a confirmed one-candle retest.
 
-    The emitted KuCoin futures bot places a limit one percent below the
-    confirmation close. Binbot owns the three-candle pending-entry window and
-    the eight-candle maximum holding period for this algorithm.
+    A setup is armed after the impulse confirmation closes. The immediately
+    following completed candle must touch the one-percent discount, reclaim it
+    with a bullish close, and avoid invalidating the trigger. Binbot then owns
+    prompt entry execution and the eight-candle maximum holding period.
     """
 
     ALGO = "relative_strength_impulse_rider"
@@ -44,7 +45,8 @@ class RelativeStrengthImpulseRider:
     MAX_ATR_PCT = 0.06
 
     RETEST_DISCOUNT_PCT = 1.0
-    RETEST_WAIT_BARS = 3
+    RETEST_WAIT_BARS = 1
+    MAX_RETEST_INVALIDATION_PCT = 2.0
     STOP_LOSS_PCT = 2.0
     TRAILING_ACTIVATION_PCT = 5.0
     TRAILING_DEVIATION_PCT = 2.0
@@ -64,7 +66,27 @@ class RelativeStrengthImpulseRider:
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
         self.strategy_cooldowns = cls.strategy_cooldowns
+        self.strategy_states = cls.strategy_states
         self._last_emitted_candle: int | None = None
+
+    @property
+    def _state_key(self) -> tuple[str, str]:
+        return self.ALGO, self.symbol
+
+    def _state(self) -> dict[str, float | int] | None:
+        return self.strategy_states.get(self._state_key)
+
+    def _set_state(self, state: dict[str, float | int]) -> None:
+        self.strategy_states[self._state_key] = state
+
+    def _clear_state(self) -> None:
+        self.strategy_states.pop(self._state_key, None)
+
+    @staticmethod
+    def _completed_candles(df: DataFrame, now_ms: int) -> DataFrame:
+        if "close_time" not in df.columns:
+            return df.iloc[0:0]
+        return df.loc[df["close_time"] < now_ms]
 
     @staticmethod
     def _btc_return_at(btc_df: DataFrame, open_time: int) -> float | None:
@@ -177,7 +199,6 @@ class RelativeStrengthImpulseRider:
         if confirmation_close_location < cls.MIN_CONFIRMATION_CLOSE_LOCATION:
             return None, "confirmation_close_not_near_high"
 
-        entry_limit_price = confirmation_close * (1 - cls.RETEST_DISCOUNT_PCT / 100)
         return (
             {
                 "trigger_open_time": trigger_open_time,
@@ -192,7 +213,6 @@ class RelativeStrengthImpulseRider:
                 "confirmation_return_15m": confirmation_return,
                 "confirmation_close_location": confirmation_close_location,
                 "atr_pct": atr_pct,
-                "entry_limit_price": entry_limit_price,
             },
             "relative_strength_impulse_confirmed",
         )
@@ -201,6 +221,46 @@ class RelativeStrengthImpulseRider:
         settings = getattr(self.at_consumer, "autotrade_settings", None)
         base_order_size = float(getattr(settings, "base_order_size", 0.0) or 0.0)
         return round_numbers(base_order_size * self.FIAT_ORDER_SIZE_FRACTION, 8)
+
+    @classmethod
+    def _confirmed_retest(
+        cls,
+        candle: Any,
+        state: dict[str, float | int],
+    ) -> tuple[dict[str, float | int] | None, str]:
+        open_ = float(candle["open"])
+        high = float(candle["high"])
+        low = float(candle["low"])
+        close = float(candle["close"])
+        retest_level = float(state["retest_level"])
+        invalidation_level = float(state["invalidation_level"])
+        if not all(
+            isfinite(value) and value > 0
+            for value in (open_, high, low, close, retest_level, invalidation_level)
+        ):
+            return None, "retest_values_invalid"
+        if low < invalidation_level:
+            return None, "retest_invalidated_trigger"
+        if low > retest_level:
+            return None, "retest_level_not_touched"
+        if close < retest_level:
+            return None, "retest_level_not_reclaimed"
+        if close <= open_:
+            return None, "retest_candle_not_bullish"
+
+        candle_range = high - low
+        close_location = (close - low) / candle_range if candle_range > 0 else 1.0
+        return (
+            {
+                **state,
+                "retest_open_time": int(candle["open_time"]),
+                "retest_open": open_,
+                "retest_low": low,
+                "retest_close": close,
+                "retest_close_location": close_location,
+            },
+            "relative_strength_retest_reclaimed",
+        )
 
     def _already_emitted(self, candle_open_time: int) -> bool:
         if self.strategy_cooldowns is None:
@@ -222,17 +282,58 @@ class RelativeStrengthImpulseRider:
         if self.market_type != MarketType.FUTURES or self.symbol == self.BTC_SYMBOL:
             return
 
-        btc_df = self.ti.df_btc_15m
-        features, reason = self._features(self.ti.df_15m, btc_df)
-        if features is None:
-            logging.info("%s skipped: %s", self.ALGO, reason)
+        now_ms = int(datetime.now(UTC).timestamp() * 1000)
+        df = self._completed_candles(self.ti.df_15m, now_ms)
+        btc_df = self._completed_candles(self.ti.df_btc_15m, now_ms)
+        state = self._state()
+        if state is not None:
+            if df.empty:
+                return
+            candle = df.iloc[-1]
+            candle_open_time = int(candle["open_time"])
+            expected_retest_open_time = int(state["expected_retest_open_time"])
+            if candle_open_time < expected_retest_open_time:
+                return
+            self._clear_state()
+            if candle_open_time > expected_retest_open_time:
+                logging.info("%s skipped: retest_window_expired", self.ALGO)
+                return
+            features, reason = self._confirmed_retest(candle, state)
+            if features is None:
+                logging.info("%s skipped: %s", self.ALGO, reason)
+                return
+        else:
+            features, reason = self._features(df, btc_df)
+            if features is None:
+                logging.info("%s skipped: %s", self.ALGO, reason)
+                return
+            trigger_open_time = int(features["trigger_open_time"])
+            confirmation_open_time = int(features["confirmation_open_time"])
+            interval_ms = confirmation_open_time - trigger_open_time
+            if interval_ms <= 0:
+                logging.info("%s skipped: candle_interval_invalid", self.ALGO)
+                return
+            confirmation_close = float(features["confirmation_close"])
+            trigger_close = float(features["trigger_close"])
+            self._set_state(
+                {
+                    **features,
+                    "retest_level": confirmation_close
+                    * (1 - self.RETEST_DISCOUNT_PCT / 100),
+                    "invalidation_level": trigger_close
+                    * (1 - self.MAX_RETEST_INVALIDATION_PCT / 100),
+                    "expected_retest_open_time": confirmation_open_time
+                    + interval_ms * self.RETEST_WAIT_BARS,
+                }
+            )
+            logging.info("%s armed: awaiting_confirmed_retest", self.ALGO)
             return
 
-        confirmation_open_time = int(features["confirmation_open_time"])
-        if self._already_emitted(confirmation_open_time):
-            logging.info("%s skipped: confirmation_already_emitted", self.ALGO)
+        retest_open_time = int(features["retest_open_time"])
+        if self._already_emitted(retest_open_time):
+            logging.info("%s skipped: retest_already_emitted", self.ALGO)
             return
-        self._mark_emitted(confirmation_open_time)
+        self._mark_emitted(retest_open_time)
 
         autotrade = getenv("ENV") == "staging"
         route_reason = (
@@ -240,7 +341,6 @@ class RelativeStrengthImpulseRider:
         )
         fiat_order_size = self._fiat_order_size()
         score = round_numbers(1 + float(features["relative_strength_1h"]), 4)
-        entry_limit_price = float(features["entry_limit_price"])
         quote_asset = self.current_symbol_data.quote_asset
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
@@ -255,6 +355,7 @@ class RelativeStrengthImpulseRider:
             "route_reason": route_reason,
             "retest_discount_pct": self.RETEST_DISCOUNT_PCT,
             "retest_wait_bars": self.RETEST_WAIT_BARS,
+            "max_retest_invalidation_pct": self.MAX_RETEST_INVALIDATION_PCT,
             "stop_loss_pct": self.STOP_LOSS_PCT,
             "trailing_activation_pct": self.TRAILING_ACTIVATION_PCT,
             "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
@@ -264,13 +365,13 @@ class RelativeStrengthImpulseRider:
         }
         msg = f"""
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
-            - Action: LONG RETEST ENTRY
+            - Action: LONG CONFIRMED RETEST ENTRY
             - Confirmation close: {round_numbers(float(features["confirmation_close"]), self.price_precision)}
-            - Entry limit: {round_numbers(entry_limit_price, self.price_precision)} ({self.RETEST_DISCOUNT_PCT}% below confirmation)
+            - Retest level / low / reclaim close: {round_numbers(float(features["retest_level"]), self.price_precision)} / {round_numbers(float(features["retest_low"]), self.price_precision)} / {round_numbers(float(features["retest_close"]), self.price_precision)}
             - 1h impulse / BTC / relative strength: {round_numbers(float(features["impulse_return_1h"]) * 100, 2)}% / {round_numbers(float(features["btc_return_1h"]) * 100, 2)}% / {round_numbers(float(features["relative_strength_1h"]) * 100, 2)}%
             - Confirmation return / close location: {round_numbers(float(features["confirmation_return_15m"]) * 100, 2)}% / {round_numbers(float(features["confirmation_close_location"]) * 100, 2)}%
             - ATR: {round_numbers(float(features["atr_pct"]) * 100, 2)}%
-            - Pending entry window: {self.RETEST_WAIT_BARS} candles
+            - Retest confirmation window: {self.RETEST_WAIT_BARS} candle
             - Stop / trailing activation / deviation / target: {self.STOP_LOSS_PCT}% / {self.TRAILING_ACTIVATION_PCT}% / {self.TRAILING_DEVIATION_PCT}% / {self.TAKE_PROFIT_PCT}%
             - Maximum holding: {self.MAX_HOLDING_BARS} candles after fill
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes

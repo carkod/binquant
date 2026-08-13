@@ -35,6 +35,20 @@ def test_leadership_requires_positive_top_quantile_relative_strength():
     assert rs_6h > 0
 
 
+def test_completed_candles_excludes_forming_reclaim_candle():
+    frame = DataFrame(
+        [
+            {"open_time": 1, "close_time": 999, "close": 100.0},
+            {"open_time": 2, "close_time": 1_001, "close": 120.0},
+        ]
+    )
+
+    completed = GradualGainerRetest._completed_candles(frame, now_ms=1_000)
+
+    assert completed["open_time"].tolist() == [1]
+    assert completed["close"].tolist() == [100.0]
+
+
 @pytest.mark.asyncio
 async def test_portfolio_selector_dispatches_only_best_candidate_per_hour():
     selector = GradualGainerPortfolioSelector()
