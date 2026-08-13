@@ -25,7 +25,6 @@ from market_regime.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
-from strategies.gradual_gainer_retest import GradualGainerPortfolioSelector
 from time import time
 
 
@@ -76,7 +75,6 @@ class KlinesProvider:
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
         self.strategy_states: dict[tuple[str, str], dict[str, float | int]] = {}
         self.liquidation_sweep_portfolio_selector = LiquidationSweepPortfolioSelector()
-        self.gradual_gainer_portfolio_selector = GradualGainerPortfolioSelector()
 
         # Determine exchange
         if self.autotrade_settings.exchange_id == "kucoin":
@@ -370,7 +368,6 @@ class KlinesProvider:
             liquidation_sweep_portfolio_selector=(
                 self.liquidation_sweep_portfolio_selector
             ),
-            gradual_gainer_portfolio_selector=self.gradual_gainer_portfolio_selector,
         )
         await crypto_analytics.process_data(
             candles=self.candles,
