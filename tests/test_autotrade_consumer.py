@@ -431,14 +431,14 @@ class TestAutotradeConsumer:
     @pytest.mark.parametrize(
         "algorithm_name",
         [
-            "coinrule_price_tracker",
             "mean_reversion_fade",
             "liquidation_sweep_pump",
             "relative_strength_impulse_rider",
             "top_gainer_early_momentum",
+            "activity_burst_pump",
         ],
     )
-    async def test_grid_only_policy_blocks_previously_allowlisted_strategies(
+    async def test_grid_only_policy_blocks_non_allowlisted_strategies(
         self, algorithm_name
     ):
         self.consumer.grid_only_policy = active_grid_only_policy()
@@ -461,6 +461,43 @@ class TestAutotradeConsumer:
         autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "algorithm_name",
+        ["coinrule_price_tracker", "failed_spike_fade"],
+    )
+    async def test_grid_only_policy_allows_allowlisted_strategies(
+        self, algorithm_name
+    ):
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name=algorithm_name,
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_called_once_with(
+            pair="BTCUSDT",
+            settings=self.settings,
+            algorithm_name=algorithm_name,
+            db_collection_name="bots",
+            binbot_api=self.mock_binbot_api,
+        )
+        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+
+    @pytest.mark.asyncio
     async def test_grid_only_policy_allowlist_still_blocks_active_grid_symbol(self):
         self.consumer.grid_only_policy = active_grid_only_policy()
         self.mock_binbot_api.get_active_grid_ladders.return_value = [
@@ -471,7 +508,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDT",
-                name="mean_reversion_fade",
+                name="coinrule_price_tracker",
                 market_type=MarketType.SPOT,
                 position=Position.long,
                 fiat="USDT",
