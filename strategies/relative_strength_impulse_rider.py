@@ -363,26 +363,6 @@ class RelativeStrengthImpulseRider:
             "max_holding_bars": self.MAX_HOLDING_BARS,
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
         }
-        msg = f"""
-            - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
-            - Action: LONG CONFIRMED RETEST ENTRY
-            - Confirmation close: {round_numbers(float(features["confirmation_close"]), self.price_precision)}
-            - Retest level / low / reclaim close: {round_numbers(float(features["retest_level"]), self.price_precision)} / {round_numbers(float(features["retest_low"]), self.price_precision)} / {round_numbers(float(features["retest_close"]), self.price_precision)}
-            - 1h impulse / BTC / relative strength: {round_numbers(float(features["impulse_return_1h"]) * 100, 2)}% / {round_numbers(float(features["btc_return_1h"]) * 100, 2)}% / {round_numbers(float(features["relative_strength_1h"]) * 100, 2)}%
-            - Confirmation return / close location: {round_numbers(float(features["confirmation_return_15m"]) * 100, 2)}% / {round_numbers(float(features["confirmation_close_location"]) * 100, 2)}%
-            - ATR: {round_numbers(float(features["atr_pct"]) * 100, 2)}%
-            - Retest confirmation window: {self.RETEST_WAIT_BARS} candle
-            - Stop / trailing activation / deviation / target: {self.STOP_LOSS_PCT}% / {self.TRAILING_ACTIVATION_PCT}% / {self.TRAILING_DEVIATION_PCT}% / {self.TAKE_PROFIT_PCT}%
-            - Maximum holding: {self.MAX_HOLDING_BARS} candles after fill
-            - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
-            - Max margin: {fiat_order_size} {quote_asset}
-            - Autotrade route: {route_reason}
-            - Confidence score: {score}
-            - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled outside staging"}
-            - <a href='{kucoin_link}'>KuCoin</a>
-            - <a href='{terminal_link}'>Dashboard trade</a>
-        """
 
         value = SignalsConsumer(
             direction=Position.long.value.upper(),
@@ -410,6 +390,30 @@ class RelativeStrengthImpulseRider:
                 bb_low=bb_low,
             ),
         )
+        self.ti.finalize_signal_bot_params(value)
+        assert value.bot_params is not None
+        fiat_order_size = value.bot_params.fiat_order_size
+
+        msg = f"""
+            - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
+            - Action: LONG CONFIRMED RETEST ENTRY
+            - Confirmation close: {round_numbers(float(features["confirmation_close"]), self.price_precision)}
+            - Retest level / low / reclaim close: {round_numbers(float(features["retest_level"]), self.price_precision)} / {round_numbers(float(features["retest_low"]), self.price_precision)} / {round_numbers(float(features["retest_close"]), self.price_precision)}
+            - 1h impulse / BTC / relative strength: {round_numbers(float(features["impulse_return_1h"]) * 100, 2)}% / {round_numbers(float(features["btc_return_1h"]) * 100, 2)}% / {round_numbers(float(features["relative_strength_1h"]) * 100, 2)}%
+            - Confirmation return / close location: {round_numbers(float(features["confirmation_return_15m"]) * 100, 2)}% / {round_numbers(float(features["confirmation_close_location"]) * 100, 2)}%
+            - ATR: {round_numbers(float(features["atr_pct"]) * 100, 2)}%
+            - Retest confirmation window: {self.RETEST_WAIT_BARS} candle
+            - Stop / trailing activation / deviation / target: {self.STOP_LOSS_PCT}% / {self.TRAILING_ACTIVATION_PCT}% / {self.TRAILING_DEVIATION_PCT}% / {self.TAKE_PROFIT_PCT}%
+            - Maximum holding: {self.MAX_HOLDING_BARS} candles after fill
+            - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
+            - Max margin: {fiat_order_size} {quote_asset}
+            - Autotrade route: {route_reason}
+            - Confidence score: {score}
+            - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled outside staging"}
+            - <a href='{kucoin_link}'>KuCoin</a>
+            - <a href='{terminal_link}'>Dashboard trade</a>
+        """
         self.ti.dispatch_signal_record(value=value, indicators=indicators)
         self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

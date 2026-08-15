@@ -3,7 +3,11 @@ from market_regime.live_market_context_accumulator import (
 )
 from market_regime.context_scoring import RuleBasedMarketContextModel
 from market_regime.market_state_store import MarketStateStore
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.models import (
+    DerivativesPositioningFeatures,
+    LiveMarketContext,
+    SymbolMarketFeatures,
+)
 from market_regime.regime_routing import (
     allows_long_autotrade,
 )
@@ -326,6 +330,102 @@ def test_transition_flag_stays_true_for_transitional_regime() -> None:
     assert current_context.market_regime == "TRANSITIONAL"
     assert current_context.market_regime_transition is None
     assert current_context.regime_is_transitioning is True
+
+
+def test_derivatives_stress_increases_market_stress_score() -> None:
+    store = MarketStateStore()
+    accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
+    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(39)]
+    context = None
+
+    for index, symbol in enumerate(symbols):
+        accumulator.update_derivatives_positioning(
+            symbol,
+            DerivativesPositioningFeatures(
+                timestamp=2_000,
+                open_interest=1_000.0,
+                open_interest_notional=100_000.0,
+                derivatives_stress_score=1.0,
+            ),
+        )
+        seed_symbol(store, symbol, 1_000, 100 + index)
+        context = accumulator.on_closed_candle(
+            symbol,
+            make_candle(2_000, 100 + index),
+        )
+
+    assert context is not None
+    assert context.metadata["derivatives_coverage_ratio"] == 1.0
+    assert context.metadata["derivatives_stress_score"] == 1.0
+    assert context.market_stress_score > context.metadata["price_stress_score"]
+
+
+def test_stale_derivatives_are_excluded_from_market_stress() -> None:
+    store = MarketStateStore()
+    accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
+    symbols = ["BTCUSDT"] + [f"ALT{index}USDT" for index in range(39)]
+    context = None
+
+    for index, symbol in enumerate(symbols):
+        accumulator.update_derivatives_positioning(
+            symbol,
+            DerivativesPositioningFeatures(
+                timestamp=1,
+                open_interest=1_000.0,
+                open_interest_notional=100_000.0,
+                derivatives_stress_score=1.0,
+            ),
+        )
+        seed_symbol(store, symbol, 1_000, 100 + index)
+        context = accumulator.on_closed_candle(
+            symbol,
+            make_candle(2_000_000, 100 + index),
+        )
+
+    assert context is not None
+    assert context.metadata["derivatives_coverage_ratio"] == 0.0
+    assert context.metadata["derivatives_stress_score"] == 0.0
+    assert context.market_stress_score == context.metadata["price_stress_score"]
+
+
+def test_price_up_oi_down_with_short_liquidations_is_a_short_squeeze() -> None:
+    detector = RegimeTransitionDetector()
+    features = make_symbol_features(
+        return_pct=0.02,
+        derivatives=DerivativesPositioningFeatures(
+            timestamp=2_000,
+            open_interest=1_000.0,
+            open_interest_notional=100_000.0,
+            oi_change_15m=-0.03,
+            long_liquidation_notional=1_000.0,
+            short_liquidation_notional=20_000.0,
+        ),
+    )
+    context = make_live_context(symbol_features={features.symbol: features})
+
+    detector.annotate_context(context)
+
+    assert features.derivatives is not None
+    assert features.derivatives.positioning_state == "SHORT_SQUEEZE"
+
+
+def test_small_oi_noise_does_not_create_a_positioning_regime() -> None:
+    detector = RegimeTransitionDetector()
+    features = make_symbol_features(
+        return_pct=0.02,
+        derivatives=DerivativesPositioningFeatures(
+            timestamp=2_000,
+            open_interest=1_000.0,
+            open_interest_notional=100_000.0,
+            oi_change_15m=0.0001,
+        ),
+    )
+    context = make_live_context(symbol_features={features.symbol: features})
+
+    detector.annotate_context(context)
+
+    assert features.derivatives is not None
+    assert features.derivatives.positioning_state == "NEUTRAL"
 
 
 def test_autotrade_routing_blocks_transitioning_context() -> None:

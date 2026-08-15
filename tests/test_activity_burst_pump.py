@@ -6,6 +6,7 @@ import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType, SymbolModel
 
+from market_regime.models import DerivativesPositioningFeatures
 from strategies.activity_burst_pump import ActivityBurstPump
 
 
@@ -146,3 +147,43 @@ async def test_signal_generator_skips_when_price_jump_is_too_small():
 
     send_signal_mock.assert_not_called()
     process_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_generator_records_but_does_not_trade_cascade_risk(
+    monkeypatch,
+):
+    df = make_low_liquidity_df()
+    context = make_context(df)
+    context.latest_market_context = SimpleNamespace(
+        get_symbol_features=lambda symbol: SimpleNamespace(
+            derivatives=DerivativesPositioningFeatures(
+                timestamp=1_700_000_000_000,
+                open_interest=1_000.0,
+                open_interest_notional=100_000.0,
+                derivatives_stress_score=0.8,
+                positioning_state="CASCADE_RISK",
+            )
+        )
+    )
+    algo = ActivityBurstPump(cast(Any, context))
+    monkeypatch.setattr(
+        "strategies.activity_burst_pump.allows_long_autotrade",
+        lambda context, symbol: True,
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=1.05,
+        bb_mid=1.03,
+        bb_low=1.01,
+    )
+
+    context.dispatch_signal_record.assert_called_once()
+    dispatched = context.dispatch_signal_record.call_args.kwargs
+    assert dispatched["value"].autotrade is False
+    assert dispatched["indicators"]["activity_burst_entry_block_reason"] == (
+        "derivatives_cascade_risk"
+    )
+    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()

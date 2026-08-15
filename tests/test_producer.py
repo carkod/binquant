@@ -1,6 +1,7 @@
 from inspect import getsource
 from re import findall
 from asyncio import Queue
+from datetime import UTC, datetime
 from os import environ
 from types import SimpleNamespace
 from typing import Any
@@ -19,6 +20,7 @@ from pybinbot import (
     SignalsConsumer,
     SymbolModel,
 )
+from market_regime.models import DerivativesPositioningFeatures
 
 
 @pytest.fixture
@@ -182,6 +184,12 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
         ),
     )
 
+    evaluator.finalize_signal_bot_params(value)
+
+    assert value.bot_params is not None
+    assert value.bot_params.fiat_order_size == 4.0
+    assert "fiat_order_size" in value.bot_params.model_fields_set
+    assert value.open_interest_sizing is None
     evaluator.dispatch_signal_record(value=value)
 
     evaluator.binbot_api.dispatch_create_signal.assert_called_once()
@@ -192,11 +200,96 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
     assert payload["bot_params"]["market_type"] == "FUTURES"
     assert payload["bot_params"]["position"] == "long"
     assert payload["bot_params"]["quote_asset"] == "USDC"
+    assert payload["bot_params"]["fiat_order_size"] == 4.0
     assert payload["indicators"]["bb_spreads"] == {
         "bb_high": 0.019,
         "bb_mid": 0.018,
         "bb_low": 0.017,
     }
+
+
+def test_dispatch_signal_record_snapshots_derivatives_in_indicators():
+    evaluator = object.__new__(ContextEvaluator)
+    evaluator.symbol = "MOVEUSDTM"
+    snapshot_timestamp = int(datetime.now(UTC).timestamp() * 1000)
+    derivatives = DerivativesPositioningFeatures(
+        timestamp=snapshot_timestamp,
+        open_interest=1_000.0,
+        open_interest_notional=100_000.0,
+        oi_change_15m=-0.02,
+        short_liquidation_notional=25_000.0,
+        positioning_state="SHORT_SQUEEZE",
+    )
+    context = Mock()
+    context.timestamp = snapshot_timestamp
+    context.market_regime = "TREND_UP"
+    context.get_symbol_features.return_value = SimpleNamespace(derivatives=derivatives)
+    context.model_dump.return_value = {}
+    evaluator.latest_market_context = context
+    evaluator.binbot_api = Mock()
+    value = SignalsConsumer(
+        direction="LONG",
+        bot_params=BotBase(
+            pair="MOVEUSDTM",
+            name="liquidation_sweep_pump",
+            position=Position.long,
+            market_type=MarketType.FUTURES,
+        ),
+    )
+
+    evaluator.finalize_signal_bot_params(value)
+
+    assert value.bot_params is not None
+    assert value.bot_params.fiat_order_size == 8.0
+    assert "fiat_order_size" in value.bot_params.model_fields_set
+    assert value.open_interest_sizing is not None
+    assert value.open_interest_sizing.evidence == "STRONGLY_SUPPORTIVE"
+    evaluator.dispatch_signal_record(value=value)
+
+    payload = evaluator.binbot_api.dispatch_create_signal.call_args.kwargs
+    assert payload["indicators"]["derivatives_positioning"] == derivatives.model_dump(
+        mode="json"
+    )
+    assert payload["bot_params"]["fiat_order_size"] == 8.0
+    assert payload["bot_params"]["logs"] == []
+    assert payload["indicators"]["estimated_initial_margin"] == 8.0
+    assert payload["indicators"]["open_interest_sizing"]["evidence"] == (
+        "STRONGLY_SUPPORTIVE"
+    )
+
+
+def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
+    evaluator = object.__new__(ContextEvaluator)
+    evaluator.symbol = "MOVEUSDTM"
+    stale_timestamp = int(datetime.now(UTC).timestamp() * 1000) - 16 * 60 * 1000
+    derivatives = DerivativesPositioningFeatures(
+        timestamp=stale_timestamp,
+        open_interest=1_000.0,
+        open_interest_notional=100_000.0,
+        oi_change_15m=-0.02,
+        short_liquidation_notional=25_000.0,
+        positioning_state="SHORT_SQUEEZE",
+    )
+    context = Mock()
+    context.timestamp = stale_timestamp
+    context.get_symbol_features.return_value = SimpleNamespace(derivatives=derivatives)
+    evaluator.latest_market_context = context
+    value = SignalsConsumer(
+        direction="LONG",
+        bot_params=BotBase(
+            pair="MOVEUSDTM",
+            name="liquidation_sweep_pump",
+            position=Position.long,
+            market_type=MarketType.FUTURES,
+            fiat_order_size=2.0,
+        ),
+    )
+
+    evaluator.finalize_signal_bot_params(value)
+
+    assert value.bot_params is not None
+    assert value.bot_params.fiat_order_size == 4.0
+    assert value.open_interest_sizing is None
 
 
 def test_process_data_prioritizes_price_tracker_before_ladder_deployer():

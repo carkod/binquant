@@ -102,6 +102,11 @@ class LiquidationSweepPump:
     LONG_STOP_LOSS_PCT = 2.0
     LONG_TAKE_PROFIT_PCT = 2.5
     ENTRY_COOLDOWN_MINUTES = 60
+    FULL_OI_CONTRACTION = 0.01
+    FULL_LIQUIDATION_INTENSITY = 0.10
+    FULL_NEGATIVE_ANNUALIZED_FUNDING = 0.25
+    FULL_NEGATIVE_BASIS_BPS = 25.0
+    MAX_POSITIONING_RANK_BONUS = 0.20
 
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
@@ -114,7 +119,6 @@ class LiquidationSweepPump:
         self.at_consumer = cls.at_consumer
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
-        self.oi_growth = cls.oi_data
         self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
         self.portfolio_selector: LiquidationSweepPortfolioSelector | None = getattr(
             cls, "liquidation_sweep_portfolio_selector", None
@@ -191,6 +195,95 @@ class LiquidationSweepPump:
         if symbol_features.trend_score <= 0:
             return False, "symbol_trend_not_up"
         return True, "market_breadth_recovering_btc_up_symbol_up"
+
+    @staticmethod
+    def _unit_score(value: float) -> float:
+        return max(0.0, min(value, 1.0))
+
+    def _positioning_evidence(
+        self,
+        symbol_features: SymbolMarketFeatures | None,
+    ) -> dict[str, float | int]:
+        positioning = symbol_features.derivatives if symbol_features else None
+        if positioning is None:
+            return {
+                "positioning_available": 0,
+                "oi_contraction_score": 0.0,
+                "short_liquidation_dominance_score": 0.0,
+                "liquidation_intensity_score": 0.0,
+                "negative_funding_score": 0.0,
+                "negative_basis_score": 0.0,
+                "positioning_evidence_score": 0.0,
+                "positioning_rank_multiplier": 1.0,
+            }
+
+        oi_changes = (
+            (0.50, positioning.oi_change_5m),
+            (0.30, positioning.oi_change_15m),
+            (0.20, positioning.oi_change_1h),
+        )
+        available_oi_scores = [
+            (weight, self._unit_score(-change / self.FULL_OI_CONTRACTION))
+            for weight, change in oi_changes
+            if change is not None
+        ]
+        oi_weight = sum(weight for weight, _ in available_oi_scores)
+        oi_contraction_score = (
+            sum(weight * score for weight, score in available_oi_scores) / oi_weight
+            if oi_weight > 0
+            else 0.0
+        )
+
+        total_liquidations = (
+            positioning.long_liquidation_notional
+            + positioning.short_liquidation_notional
+        )
+        short_liquidation_dominance_score = 0.0
+        if total_liquidations > 0:
+            short_share = positioning.short_liquidation_notional / total_liquidations
+            short_liquidation_dominance_score = self._unit_score(
+                (short_share - 0.5) / 0.5
+            )
+
+        liquidation_intensity_score = self._unit_score(
+            (positioning.liquidation_intensity or 0.0) / self.FULL_LIQUIDATION_INTENSITY
+        )
+        funding_rate_score = self._unit_score(
+            -(positioning.annualized_funding_rate or 0.0)
+            / self.FULL_NEGATIVE_ANNUALIZED_FUNDING
+        )
+        funding_percentile_score = (
+            self._unit_score((0.5 - positioning.funding_percentile) / 0.5)
+            if positioning.funding_percentile is not None
+            else 0.0
+        )
+        negative_funding_score = max(
+            funding_rate_score,
+            funding_percentile_score,
+        )
+        negative_basis_score = self._unit_score(
+            -(positioning.mark_index_basis_bps or 0.0) / self.FULL_NEGATIVE_BASIS_BPS
+        )
+
+        evidence_score = self._unit_score(
+            0.40 * oi_contraction_score
+            + 0.30 * short_liquidation_dominance_score
+            + 0.15 * liquidation_intensity_score
+            + 0.10 * negative_funding_score
+            + 0.05 * negative_basis_score
+        )
+        return {
+            "positioning_available": 1,
+            "oi_contraction_score": oi_contraction_score,
+            "short_liquidation_dominance_score": short_liquidation_dominance_score,
+            "liquidation_intensity_score": liquidation_intensity_score,
+            "negative_funding_score": negative_funding_score,
+            "negative_basis_score": negative_basis_score,
+            "positioning_evidence_score": evidence_score,
+            "positioning_rank_multiplier": (
+                1 + self.MAX_POSITIONING_RANK_BONUS * evidence_score
+            ),
+        }
 
     def compute_pump_score(
         self,
@@ -330,7 +423,7 @@ class LiquidationSweepPump:
         score_threshold = float(row["score_threshold"])
         if score_threshold <= 0:
             return
-        rank_score = float(row["pump_score"]) / score_threshold
+        base_rank_score = float(row["pump_score"]) / score_threshold
         btc_momentum = float(row["btc_momentum_3"])
 
         context = self.ti.latest_market_context
@@ -342,6 +435,11 @@ class LiquidationSweepPump:
         )
         if not should_enter:
             return
+
+        positioning_evidence = self._positioning_evidence(symbol_features)
+        rank_score = base_rank_score * float(
+            positioning_evidence["positioning_rank_multiplier"]
+        )
 
         kucoin_link, terminal_link = build_links_msg(
             self.config.env, self.exchange, self.market_type, self.symbol
@@ -377,19 +475,20 @@ class LiquidationSweepPump:
         market_breadth_recovery = (
             self._market_breadth_recovery(context) if context else None
         )
-        oi_growth = (
-            f"{self.oi_growth:.2f}" if self.oi_growth is not None else "UNAVAILABLE"
-        )
+        positioning = symbol_features.derivatives if symbol_features else None
         msg = f"""
             - [{getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
             - Current price: {round_numbers(current_price, decimals=self.price_precision)}
             - Strategy: long
-            - Rule intent: BUY only the strongest cross-symbol liquidation-style impulse from the completed candle cohort
-            - Portfolio rank score: {rank_score:.2f}
+            - Rule intent: BUY the strongest price-qualified liquidation-style impulse; derivatives evidence promotes candidates but never blocks them
+            - Portfolio rank score (base / evidence-adjusted): {base_rank_score:.2f} / {rank_score:.2f}
+            - Positioning evidence / rank multiplier: {float(positioning_evidence["positioning_evidence_score"]):.2f} / {float(positioning_evidence["positioning_rank_multiplier"]):.3f}
             - Pump score / threshold: {float(row["pump_score"]):.4f} / {score_threshold:.4f}
             - Volume: {round_numbers(float(row.volume), decimals=self.price_precision)} {base_asset}
-            - OI Growth: {oi_growth} (reported only; not an entry filter)
+            - OI change (15m): {round_numbers(positioning.oi_change_15m, 5) if positioning and positioning.oi_change_15m is not None else "UNAVAILABLE"}
+            - Long / short liquidations: {round_numbers(positioning.long_liquidation_notional, 2) if positioning else "UNAVAILABLE"} / {round_numbers(positioning.short_liquidation_notional, 2) if positioning else "UNAVAILABLE"}
+            - Liquidation intensity: {round_numbers(positioning.liquidation_intensity, 5) if positioning and positioning.liquidation_intensity is not None else "UNAVAILABLE"}
             - Market breadth: {round_numbers(market_breadth, 3) if market_breadth is not None else "UNAVAILABLE"}
             - Market breadth recovery: {round_numbers(market_breadth_recovery, 3) if market_breadth_recovery is not None else "UNAVAILABLE"}
             - BTC momentum: {round_numbers(float(btc_momentum), 5)}
@@ -409,10 +508,12 @@ class LiquidationSweepPump:
         """
 
         async def dispatch_winner() -> None:
+            self.ti.finalize_signal_bot_params(value)
             self.ti.dispatch_signal_record(
                 value=value,
                 indicators={
                     "candidate_open_time": candle_open_time,
+                    "base_portfolio_rank_score": base_rank_score,
                     "portfolio_rank_score": rank_score,
                     "pump_score": float(row["pump_score"]),
                     "score_threshold": score_threshold,
@@ -421,6 +522,11 @@ class LiquidationSweepPump:
                     "momentum_atr": float(row["momentum_atr"]),
                     "relative_volume": float(row["relative_volume"]),
                     "relative_strength": float(row["relative_strength"]),
+                    **positioning_evidence,
+                    "derivatives_positioning": (
+                        positioning.model_dump(mode="json") if positioning else None
+                    ),
+                    "max_positioning_rank_bonus": self.MAX_POSITIONING_RANK_BONUS,
                 },
             )
             self.telegram_consumer.dispatch_signal(msg)

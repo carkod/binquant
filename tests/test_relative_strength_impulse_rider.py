@@ -100,6 +100,7 @@ def make_context(
             ),
             process_autotrade_restrictions=AsyncMock(),
         ),
+        finalize_signal_bot_params=Mock(),
         dispatch_signal_record=Mock(),
         strategy_cooldowns={},
         strategy_states={},
@@ -112,6 +113,11 @@ def make_context(
 async def test_signal_waits_for_completed_bullish_retest_reclaim(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     context = make_context()
+
+    def finalize_to_eight(value: Any) -> None:
+        value.bot_params.fiat_order_size = 8.0
+
+    context.finalize_signal_bot_params.side_effect = finalize_to_eight
     algo = RelativeStrengthImpulseRider(cast(Any, context))
 
     await algo.signal(110.0, 112.0, 105.0, 98.0)
@@ -137,7 +143,7 @@ async def test_signal_waits_for_completed_bullish_retest_reclaim(monkeypatch):
     assert signal.autotrade is True
     assert signal.bot_params.name == "relative_strength_impulse_rider"
     assert signal.bot_params.position == "long"
-    assert signal.bot_params.fiat_order_size == 2.0
+    assert signal.bot_params.fiat_order_size == 8.0
     assert signal.bot_params.cooldown == 240
     assert signal.bot_params.stop_loss == 2.0
     assert signal.bot_params.take_profit == 12.0
@@ -145,6 +151,8 @@ async def test_signal_waits_for_completed_bullish_retest_reclaim(monkeypatch):
     assert signal.bot_params.trailing is True
     assert signal.bot_params.trailing_profit == 5.0
     assert signal.bot_params.trailing_deviation == 2.0
+    telegram_msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Max margin: 8.0 USDT" in telegram_msg
     assert indicators["retest_level"] == pytest.approx(108.9)
     assert indicators["retest_low"] == pytest.approx(108.5)
     assert indicators["retest_close"] == pytest.approx(109.2)

@@ -15,6 +15,7 @@ from typing import Protocol
 
 from pybinbot import configure_logging
 from consumers.klines_provider import KlinesProvider
+from market_regime.liquidation_state_store import LiquidationStateStore
 from shared.streaming.websocket_factory import WebsocketClientFactory
 
 configure_logging(force=True)
@@ -56,9 +57,13 @@ async def consume_loop(klines_provider: KlinesProvider, queue: asyncio.Queue) ->
 
 async def main() -> None:
     queue: asyncio.Queue = asyncio.Queue()
+    liquidation_store = LiquidationStateStore()
 
-    factory = WebsocketClientFactory(queue=queue)
-    klines_provider = KlinesProvider()
+    factory = WebsocketClientFactory(
+        queue=queue,
+        liquidation_store=liquidation_store,
+    )
+    klines_provider = KlinesProvider(liquidation_store=liquidation_store)
     clients = await factory.create_connector()
 
     await asyncio.gather(

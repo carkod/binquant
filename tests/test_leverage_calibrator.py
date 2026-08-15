@@ -4,7 +4,11 @@ import pytest
 from pybinbot import ExchangeId, SymbolModel
 
 from calibrators.leverage_calibrator import LeverageCalibrator
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.models import (
+    DerivativesPositioningFeatures,
+    LiveMarketContext,
+    SymbolMarketFeatures,
+)
 
 
 def _make_features(
@@ -140,6 +144,21 @@ class TestTargetLeverage:
         context = _make_context(
             market_regime="TREND_UP", symbol_features={"SOLUSDTM": features}
         )
+        assert self.calibrator.target_leverage("SOLUSDTM", 89.0, context) == 1
+
+    def test_derivatives_cascade_risk_forces_1x(self) -> None:
+        features = _make_features("SOLUSDTM", close=89.0, atr_pct=0.01)
+        features.derivatives = DerivativesPositioningFeatures(
+            timestamp=1_700_000_000_000,
+            open_interest=1_000.0,
+            open_interest_notional=100_000.0,
+            derivatives_stress_score=0.8,
+            positioning_state="CASCADE_RISK",
+        )
+        context = _make_context(
+            market_regime="TREND_UP", symbol_features={"SOLUSDTM": features}
+        )
+
         assert self.calibrator.target_leverage("SOLUSDTM", 89.0, context) == 1
 
 

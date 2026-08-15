@@ -10,13 +10,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "passlib",
-    "pybinbot>=1.11.11",
+    "pybinbot>=1.11.13",
     "pydantic-settings>=2.14.1",
     "python-jose",
     "python-telegram-bot>=22.1",
     "requests-cache>=1.2.0",
     "requests-html>=0.10.0",
     "uvicorn>=0.37.0",
+    "websockets>=15.0",
 ]
 
 [project.optional-dependencies]

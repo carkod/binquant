@@ -20,6 +20,8 @@ from consumers.telegram_consumer import TelegramConsumer
 from market_regime.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
 )
+from market_regime.derivatives_positioning import DerivativesPositioningProvider
+from market_regime.liquidation_state_store import LiquidationStateStore
 from market_regime.models import LiveMarketContext
 from market_regime.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
@@ -38,7 +40,10 @@ class KlinesProvider:
 
     LIMIT = 400
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        liquidation_store: LiquidationStateStore | None = None,
+    ) -> None:
         self.config = Config()
         self.binbot_api = BinbotApi(
             base_url=self.config.backend_domain,
@@ -47,11 +52,6 @@ class KlinesProvider:
         )
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.api: KucoinApi | BinanceApi | KucoinFutures
-        self.kucoin_futures_api = KucoinFutures(
-            key=self.config.kucoin_key,
-            secret=self.config.kucoin_secret,
-            passphrase=self.config.kucoin_passphrase,
-        )
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.interval_15m: BinanceKlineIntervals | KucoinKlineIntervals
@@ -63,10 +63,21 @@ class KlinesProvider:
         self.btc_candles_15m: list[list] = []
         self.market_state_store = MarketStateStore(max_bars_per_symbol=self.LIMIT)
         self.market_breadth_data: MarketBreadthSeries | None = None
-        # Open interest cache
-        # symbol -> {timestamp: openInterest}
-        self.oi_cache: dict[str, tuple[int, float]] = {}
-        self.CACHE_TTL_MS = 5000
+        self.liquidation_store = liquidation_store or LiquidationStateStore()
+        self.kucoin_futures_api = KucoinFutures(
+            key=self.config.kucoin_key,
+            secret=self.config.kucoin_secret,
+            passphrase=self.config.kucoin_passphrase,
+        )
+        self.binance_api = BinanceApi(
+            key=self.config.binance_key,
+            secret=self.config.binance_secret,
+        )
+        self.derivatives_positioning_provider = DerivativesPositioningProvider(
+            kucoin_futures_api=self.kucoin_futures_api,
+            binance_api=self.binance_api,
+            liquidation_store=self.liquidation_store,
+        )
         self.telegram_consumer = TelegramConsumer(
             token=self.config.telegram_bot_key,
             chat_id=self.config.telegram_user_id,
@@ -90,9 +101,7 @@ class KlinesProvider:
             self.futures_benchmark_symbol = "XBTUSDTM"
         else:
             self.exchange = ExchangeId.BINANCE
-            self.api = BinanceApi(
-                key=self.config.binance_key, secret=self.config.binance_secret
-            )
+            self.api = self.binance_api
             self.interval = BinanceKlineIntervals.five_minutes
             self.interval_15m = BinanceKlineIntervals.fifteen_minutes
             self.benchmark_symbol = "BTCUSDC"
@@ -217,6 +226,15 @@ class KlinesProvider:
             ui_klines=self.candles_15m,
         )
         self._store_btc_history(market_type=market_type)
+        if market_type == MarketType.FUTURES:
+            positioning = self.derivatives_positioning_provider.get_positioning(
+                api_symbol,
+                self.candles_15m,
+            )
+            self.market_context_accumulator.update_derivatives_positioning(
+                api_symbol,
+                positioning,
+            )
         if closed_symbol_candles:
             latest_candle = closed_symbol_candles[-1]
             self._refresh_latest_market_context(
@@ -251,32 +269,6 @@ class KlinesProvider:
 
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
         self._last_market_breadth_bucket = bucket
-
-    def retrieve_oi(self, kucoin_symbol: str) -> float:
-        """
-        Fetch current open interest from KuCoin with caching and compute OI growth.
-        Returns a float: growth factor relative to last cached OI (1.0 if first tick or no change)
-        """
-        now_ms = int(time() * 1000)
-        # Fetch fresh OI from API
-        current_oi = float(self.kucoin_futures_api.get_open_interest(kucoin_symbol))
-
-        if kucoin_symbol in self.oi_cache:
-            last_ts, last_oi = self.oi_cache[kucoin_symbol]
-            if now_ms - last_ts < self.CACHE_TTL_MS:
-                current_oi = last_oi
-        else:
-            # Update cache
-            self.oi_cache[kucoin_symbol] = (now_ms, current_oi)
-            last_oi = 1.0
-
-        oi_growth: float = max(current_oi / last_oi, 0.0)
-        if last_oi is None or last_oi == 0:
-            oi_growth = 1.0
-
-        # Update last OI for next tick
-        self.oi_cache[kucoin_symbol] = (now_ms, current_oi)
-        return oi_growth
 
     async def load_data_on_start(self):
         """Load initial BTC benchmark candles and market data."""
@@ -324,11 +316,7 @@ class KlinesProvider:
         # Convert payload into standardized candle dict
         klines = KlineProduceModel.model_validate(payload)
         if klines.market_type == MarketType.FUTURES:
-            self.api = KucoinFutures(
-                key=self.config.kucoin_key,
-                secret=self.config.kucoin_secret,
-                passphrase=self.config.kucoin_passphrase,
-            )
+            self.api = self.kucoin_futures_api
         market_type = klines.market_type or MarketType.SPOT
 
         kucoin_symbol = klines.symbol
@@ -358,7 +346,6 @@ class KlinesProvider:
             first_seen_at=self.first_seen_at,
             interval=self.interval,
             market_type=market_type,
-            oi_data=self.retrieve_oi(kucoin_symbol),
             latest_market_context=self.latest_market_context,
             binbot_api=self.binbot_api,
             last_market_regime=self.last_market_regime,

@@ -176,6 +176,7 @@ def make_context(
         market_type=MarketType.FUTURES,
         df_15m=df_15m,
         binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
+        finalize_signal_bot_params=Mock(),
         dispatch_signal_record=Mock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(
@@ -227,6 +228,11 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
     )
     monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
 
+    def finalize_to_eight(value: Any) -> None:
+        value.bot_params.fiat_order_size = 8.0
+
+    cast(Mock, algo.ti.finalize_signal_bot_params).side_effect = finalize_to_eight
+
     await algo.signal(
         current_price=float(df.close.iloc[-1]),
         bb_high=115.0,
@@ -245,10 +251,10 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
     assert "Breakout setup: top_gainer_breakout_ignition" in telegram_msg
     assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
     assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
-    assert "Max margin: 2.0 USDT" in telegram_msg
+    assert "Max margin: 8.0 USDT" in telegram_msg
     assert signal_value.autotrade is True
     assert signal_value.bot_params.position == "long"
-    assert signal_value.bot_params.fiat_order_size == 2.0
+    assert signal_value.bot_params.fiat_order_size == 8.0
     assert signal_value.bot_params.stop_loss > 0
     assert signal_value.bot_params.cooldown == 60
     assert signal_value.bot_params.trailing is True

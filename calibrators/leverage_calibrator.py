@@ -14,9 +14,10 @@ class LeverageCalibrator:
       3. High market stress (market_stress_score > stress_threshold) → 1x.
       4. Low confidence (< confidence_floor) → 1x.
       5. Spiky symbols (atr_pct > atr_high_threshold) → 1x.
-      6. RANGE → 2x.
-      7. TREND_UP / TREND_DOWN → 3x.
-      8. Default → 1x.
+      6. Crowded derivatives or a squeeze/flush/cascade → 1x.
+      7. RANGE → 2x.
+      8. TREND_UP / TREND_DOWN → 3x.
+      9. Default → 1x.
 
     Writes back via `binbot_api.edit_symbol` only when target differs from
     the symbol's current `futures_leverage`. The binbot backend caps
@@ -29,6 +30,7 @@ class LeverageCalibrator:
     DEFAULT_STRESS_THRESHOLD = 0.7
     DEFAULT_CONFIDENCE_FLOOR = 0.5
     DEFAULT_ATR_HIGH_THRESHOLD = 0.04
+    DEFAULT_DERIVATIVES_STRESS_THRESHOLD = 0.6
 
     def __init__(
         self,
@@ -39,6 +41,7 @@ class LeverageCalibrator:
         stress_threshold: float = DEFAULT_STRESS_THRESHOLD,
         confidence_floor: float = DEFAULT_CONFIDENCE_FLOOR,
         atr_high_threshold: float = DEFAULT_ATR_HIGH_THRESHOLD,
+        derivatives_stress_threshold: float = DEFAULT_DERIVATIVES_STRESS_THRESHOLD,
     ) -> None:
         self.binbot_api = binbot_api
         self.exchange = exchange
@@ -46,6 +49,7 @@ class LeverageCalibrator:
         self.stress_threshold = stress_threshold
         self.confidence_floor = confidence_floor
         self.atr_high_threshold = atr_high_threshold
+        self.derivatives_stress_threshold = derivatives_stress_threshold
 
     def target_leverage(
         self,
@@ -68,6 +72,14 @@ class LeverageCalibrator:
 
         features = context.get_symbol_features(symbol)
         if features is not None and features.atr_pct > self.atr_high_threshold:
+            return 1
+
+        positioning = features.derivatives if features is not None else None
+        if positioning is not None and (
+            positioning.derivatives_stress_score >= self.derivatives_stress_threshold
+            or positioning.positioning_state
+            in {"SHORT_SQUEEZE", "DELEVERAGING_FLUSH", "CASCADE_RISK"}
+        ):
             return 1
 
         if regime == "RANGE":

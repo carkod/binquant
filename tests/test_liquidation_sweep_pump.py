@@ -10,7 +10,11 @@ from strategies.liquidation_sweep_pump import (
     LiquidationSweepPortfolioSelector,
     LiquidationSweepPump,
 )
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.models import (
+    DerivativesPositioningFeatures,
+    LiveMarketContext,
+    SymbolMarketFeatures,
+)
 
 
 def make_symbol_features(**overrides: Any) -> SymbolMarketFeatures:
@@ -31,6 +35,15 @@ def make_symbol_features(**overrides: Any) -> SymbolMarketFeatures:
         "micro_regime_strength": 0.8,
         "micro_regime_transition": "ENTERED_TREND_UP",
         "micro_regime_transition_strength": 0.4,
+        "derivatives": DerivativesPositioningFeatures(
+            timestamp=1_000,
+            open_interest=1_000.0,
+            open_interest_notional=100_000.0,
+            oi_change_15m=-0.01,
+            long_liquidation_notional=1_000.0,
+            short_liquidation_notional=10_000.0,
+            liquidation_intensity=0.1,
+        ),
     }
     values.update(overrides)
     return SymbolMarketFeatures(**values)
@@ -152,6 +165,7 @@ def make_context(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
         exchange=ExchangeId.KUCOIN,
+        finalize_signal_bot_params=Mock(),
         dispatch_signal_record=Mock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.FUTURES,
@@ -165,7 +179,6 @@ def make_context(
             qty_precision=8,
         ),
         price_precision=8,
-        oi_data=1.05,
         market_breadth_data=market_breadth_data
         or make_market_breadth_series([0.0, 0.0]),
         latest_market_context=latest_market_context,
@@ -292,6 +305,18 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     assert signal_value.bot_params.margin_short_reversal is False
     assert "Action: LONG ENTRY" in telegram_msg
     assert "Autotrade route: market_breadth_recovering_btc_up_symbol_up" in telegram_msg
+    indicators = cast(Mock, algo.ti.dispatch_signal_record).call_args.kwargs[
+        "indicators"
+    ]
+    assert indicators["base_portfolio_rank_score"] == 12.0
+    assert indicators["oi_contraction_score"] == 1.0
+    assert indicators["short_liquidation_dominance_score"] == pytest.approx(9 / 11)
+    assert indicators["liquidation_intensity_score"] == 1.0
+    assert indicators["positioning_evidence_score"] > 0.0
+    assert indicators["positioning_rank_multiplier"] > 1.0
+    assert indicators["portfolio_rank_score"] > 12.0
+    assert signal_value.score == indicators["portfolio_rank_score"]
+    assert indicators["derivatives_positioning"]["oi_change_15m"] == -0.01
 
 
 @pytest.mark.asyncio
@@ -385,6 +410,60 @@ def test_breadth_routing_orders_newest_first_api_series_by_timestamp() -> None:
     assert algo._latest_market_breadth(context) == -0.42
     assert should_enter is True
     assert reason == "market_breadth_recovering_btc_up_symbol_up"
+
+
+def test_long_routing_keeps_price_setup_when_oi_expands() -> None:
+    context = make_market_context(advancers_ratio=0.29, decliners_ratio=0.71)
+    breadth = make_market_breadth_series([-0.52, -0.46, -0.42])
+    algo, _ = make_algo(context, market_breadth_data=breadth)
+    features = make_symbol_features()
+    assert features.derivatives is not None
+    features.derivatives.oi_change_15m = 0.01
+
+    should_enter, reason = algo.long_entry_routing(
+        context=context,
+        symbol_features=features,
+        btc_momentum=0.003,
+    )
+
+    assert should_enter is True
+    assert reason == "market_breadth_recovering_btc_up_symbol_up"
+
+
+def test_positioning_evidence_is_neutral_when_derivatives_are_unavailable() -> None:
+    context = make_market_context(
+        advancers_ratio=0.29,
+        decliners_ratio=0.71,
+        symbol_features={"TESTUSDT": make_symbol_features(derivatives=None)},
+    )
+    breadth = make_market_breadth_series([-0.52, -0.46, -0.42])
+    algo, _ = make_algo(context, market_breadth_data=breadth)
+    features = context.get_symbol_features("TESTUSDT")
+
+    should_enter, _ = algo.long_entry_routing(
+        context=context,
+        symbol_features=features,
+        btc_momentum=0.003,
+    )
+    evidence = algo._positioning_evidence(features)
+
+    assert should_enter is True
+    assert evidence["positioning_available"] == 0
+    assert evidence["positioning_evidence_score"] == 0.0
+    assert evidence["positioning_rank_multiplier"] == 1.0
+
+
+def test_positioning_evidence_weights_recent_oi_contraction_most() -> None:
+    algo, _ = make_algo(make_market_context())
+    features = make_symbol_features()
+    assert features.derivatives is not None
+    features.derivatives.oi_change_5m = -0.01
+    features.derivatives.oi_change_15m = 0.01
+    features.derivatives.oi_change_1h = 0.01
+
+    evidence = algo._positioning_evidence(features)
+
+    assert evidence["oi_contraction_score"] == pytest.approx(0.5)
 
 
 @pytest.mark.asyncio

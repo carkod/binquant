@@ -289,6 +289,7 @@ class PriceTracker:
                     bb_low=bb_low,
                 ),
             )
+            self.ti.finalize_signal_bot_params(value)
 
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
