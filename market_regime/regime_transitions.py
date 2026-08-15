@@ -21,6 +21,7 @@ class RegimeTransitionDetector:
     """
 
     _transition_strength_floor = 0.08
+    _positioning_oi_change_floor = 0.002
 
     def annotate_context(
         self,
@@ -164,11 +165,20 @@ class RegimeTransitionDetector:
         features: SymbolMarketFeatures,
         previous_features: SymbolMarketFeatures | None,
     ) -> None:
+        self._classify_positioning(features)
+        positioning = features.derivatives
+        positioning_state = (
+            positioning.positioning_state if positioning is not None else "NEUTRAL"
+        )
+        derivatives_stress = (
+            positioning.derivatives_stress_score if positioning is not None else 0.0
+        )
         up_score = clamp(
             0.45 * non_negative(features.trend_score * 30.0)
             + 0.2 * float(features.above_ema20)
             + 0.15 * float(features.above_ema50)
-            + 0.2 * non_negative(features.relative_strength_vs_btc * 20.0),
+            + 0.2 * non_negative(features.relative_strength_vs_btc * 20.0)
+            + 0.15 * float(positioning_state in {"NEW_LEVERAGE_LONG", "SHORT_SQUEEZE"}),
             0.0,
             1.0,
         )
@@ -176,7 +186,9 @@ class RegimeTransitionDetector:
             0.45 * non_negative(-features.trend_score * 30.0)
             + 0.2 * float(not features.above_ema20)
             + 0.15 * float(not features.above_ema50)
-            + 0.2 * non_negative(-features.relative_strength_vs_btc * 20.0),
+            + 0.2 * non_negative(-features.relative_strength_vs_btc * 20.0)
+            + 0.15
+            * float(positioning_state in {"NEW_LEVERAGE_SHORT", "DELEVERAGING_FLUSH"}),
             0.0,
             1.0,
         )
@@ -189,7 +201,8 @@ class RegimeTransitionDetector:
         )
         volatile_score = clamp(
             0.55 * min(features.atr_pct / 0.05, 1.0)
-            + 0.45 * min(features.bb_width / 0.12, 1.0),
+            + 0.45 * min(features.bb_width / 0.12, 1.0)
+            + 0.30 * derivatives_stress,
             0.0,
             1.0,
         )
@@ -230,6 +243,45 @@ class RegimeTransitionDetector:
         features.micro_regime_strength = regime_strength
         features.micro_regime_transition = transition
         features.micro_regime_transition_strength = transition_strength
+
+    @staticmethod
+    def _classify_positioning(features: SymbolMarketFeatures) -> None:
+        positioning = features.derivatives
+        if positioning is None:
+            return
+        if positioning.derivatives_stress_score >= 0.7:
+            positioning.positioning_state = "CASCADE_RISK"
+            return
+
+        oi_change = positioning.oi_change_15m
+        if oi_change is None:
+            positioning.positioning_state = "NEUTRAL"
+        elif (
+            features.return_pct > 0
+            and oi_change >= RegimeTransitionDetector._positioning_oi_change_floor
+        ):
+            positioning.positioning_state = "NEW_LEVERAGE_LONG"
+        elif (
+            features.return_pct < 0
+            and oi_change >= RegimeTransitionDetector._positioning_oi_change_floor
+        ):
+            positioning.positioning_state = "NEW_LEVERAGE_SHORT"
+        elif (
+            features.return_pct > 0
+            and oi_change <= -RegimeTransitionDetector._positioning_oi_change_floor
+            and positioning.short_liquidation_notional
+            > positioning.long_liquidation_notional
+        ):
+            positioning.positioning_state = "SHORT_SQUEEZE"
+        elif (
+            features.return_pct < 0
+            and oi_change <= -RegimeTransitionDetector._positioning_oi_change_floor
+            and positioning.long_liquidation_notional
+            > positioning.short_liquidation_notional
+        ):
+            positioning.positioning_state = "DELEVERAGING_FLUSH"
+        else:
+            positioning.positioning_state = "NEUTRAL"
 
     @staticmethod
     def _market_transition_event(

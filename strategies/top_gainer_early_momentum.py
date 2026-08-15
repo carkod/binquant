@@ -477,6 +477,36 @@ class TopGainerEarlyMomentum:
             "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
         }
 
+        value = SignalsConsumer(
+            direction=Position.long.value.upper(),
+            autotrade=autotrade,
+            current_price=float(current_price),
+            volume=values["volume"],
+            score=score,
+            bot_params=BotBase(
+                pair=self.symbol,
+                name=self.ALGO,
+                position=Position.long,
+                market_type=MarketType.FUTURES,
+                cooldown=self.ENTRY_COOLDOWN_MINUTES,
+                dynamic_trailing=True,
+                fiat_order_size=fiat_order_size,
+                stop_loss=stop_loss,
+                trailing=True,
+                trailing_deviation=self.TRAILING_DEVIATION_PCT,
+                trailing_profit=self.TRAILING_PROFIT_PCT,
+                margin_short_reversal=False,
+            ),
+            bb_spreads=HABollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+        self.ti.finalize_signal_bot_params(value)
+        assert value.bot_params is not None
+        fiat_order_size = value.bot_params.fiat_order_size
+
         msg = f"""
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
@@ -505,33 +535,6 @@ class TopGainerEarlyMomentum:
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
-
-        value = SignalsConsumer(
-            direction=Position.long.value.upper(),
-            autotrade=autotrade,
-            current_price=float(current_price),
-            volume=values["volume"],
-            score=score,
-            bot_params=BotBase(
-                pair=self.symbol,
-                name=self.ALGO,
-                position=Position.long,
-                market_type=MarketType.FUTURES,
-                cooldown=self.ENTRY_COOLDOWN_MINUTES,
-                dynamic_trailing=True,
-                fiat_order_size=fiat_order_size,
-                stop_loss=stop_loss,
-                trailing=True,
-                trailing_deviation=self.TRAILING_DEVIATION_PCT,
-                trailing_profit=self.TRAILING_PROFIT_PCT,
-                margin_short_reversal=False,
-            ),
-            bb_spreads=HABollinguerSpread(
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            ),
-        )
         self.ti.dispatch_signal_record(value=value, indicators=indicators)
         self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

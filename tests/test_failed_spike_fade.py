@@ -143,6 +143,7 @@ def make_algo() -> FailedSpikeFade:
         symbol="TESTUSDT",
         market_type=MarketType.FUTURES,
         df_15m=df,
+        finalize_signal_bot_params=Mock(),
         dispatch_signal_record=Mock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(
@@ -248,6 +249,11 @@ async def record_source(algo: FailedSpikeFade, monkeypatch) -> None:
 async def test_signal_dispatches_staging_short_after_failed_new_high(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     algo = make_algo()
+
+    def finalize_to_eight(value: Any) -> None:
+        value.bot_params.fiat_order_size = 8.0
+
+    cast(Mock, algo.ti.finalize_signal_bot_params).side_effect = finalize_to_eight
     await record_source(algo, monkeypatch)
     algo.ti.df_15m = cast(
         Any, concat([source_candles(), failure_candle()], ignore_index=True)
@@ -265,12 +271,14 @@ async def test_signal_dispatches_staging_short_after_failed_new_high(monkeypatch
     assert signal.direction == "SHORT"
     assert signal.bot_params.name == "failed_spike_fade"
     assert signal.bot_params.position == "short"
-    assert signal.bot_params.fiat_order_size == 2.0
+    assert signal.bot_params.fiat_order_size == 8.0
     assert signal.bot_params.stop_loss == 4.0
     assert signal.bot_params.take_profit == 6.0
     assert signal.bot_params.cooldown == 120
     assert signal.bot_params.dynamic_trailing is False
     assert signal.bot_params.trailing is False
+    telegram_msg = cast(Mock, algo.telegram_consumer.dispatch_signal).call_args.args[0]
+    assert "Max margin: 8.0 USDT" in telegram_msg
     assert (algo.ALGO, algo.symbol) not in state_store(algo)
 
 

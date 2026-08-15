@@ -1,21 +1,27 @@
 import asyncio
 import logging
+from typing import Protocol
 from pybinbot import (
     ExchangeId,
     configure_logging,
     KucoinKlineIntervals,
     BinanceKlineIntervals,
     BinbotApi,
-    AsyncSpotWebsocketStreamClient,
     AsyncKucoinWebsocketClient,
     MarketType,
     SymbolModel,
 )
 from producers.klines_connector import KlinesConnector
+from market_regime.liquidation_state_store import LiquidationStateStore
+from shared.streaming.binance_liquidation_stream import BinanceLiquidationStream
 from shared.config import Config
 
 
 configure_logging()
+
+
+class StreamingClient(Protocol):
+    async def run_forever(self) -> None: ...
 
 
 class WebsocketClientFactory:
@@ -29,7 +35,11 @@ class WebsocketClientFactory:
 
     MAX_TOPICS_PER_CONNECTION = 300
 
-    def __init__(self, queue: asyncio.Queue) -> None:
+    def __init__(
+        self,
+        queue: asyncio.Queue,
+        liquidation_store: LiquidationStateStore | None = None,
+    ) -> None:
         self.config = Config()
         self.binbot_api = BinbotApi(
             base_url=self.config.backend_domain,
@@ -40,6 +50,7 @@ class WebsocketClientFactory:
         self.fiat = self.autotrade_settings.fiat
         self.exchange = ExchangeId(self.autotrade_settings.exchange_id)
         self.queue = queue
+        self.liquidation_store = liquidation_store or LiquidationStateStore()
         self.interval = (
             KucoinKlineIntervals.FIFTEEN_MINUTES
             if self.exchange == ExchangeId.KUCOIN
@@ -144,15 +155,16 @@ class WebsocketClientFactory:
 
     async def create_connector(
         self,
-    ) -> list[AsyncSpotWebsocketStreamClient] | list[AsyncKucoinWebsocketClient]:
+    ) -> list[StreamingClient]:
         """
         Create a KlinesConnector instance
         based on exchange
         """
         if self.exchange == ExchangeId.KUCOIN:
-            clients = await self.start_future_stream()
+            clients: list[StreamingClient] = list(await self.start_future_stream())
+            clients.append(BinanceLiquidationStream(self.liquidation_store))
             return clients
         else:
             connector = KlinesConnector(queue=self.queue)
             await connector.start_stream()
-            return connector.clients
+            return list(connector.clients)

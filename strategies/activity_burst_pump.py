@@ -12,6 +12,9 @@ from pybinbot import (
     round_numbers,
 )
 
+from market_regime.open_interest_order_sizing import (
+    activity_burst_derivatives_block_reason,
+)
 from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
 
@@ -182,6 +185,27 @@ class ActivityBurstPump:
         row = df.iloc[-1]
 
         if not bool(row["qualified_signal"]):
+            return None
+
+        positioning = symbol_features.derivatives if symbol_features else None
+        derivatives_block_reason = activity_burst_derivatives_block_reason(positioning)
+        if derivatives_block_reason is not None:
+            self.ti.dispatch_signal_record(
+                value=SignalsConsumer(
+                    autotrade=False,
+                    current_price=current_price,
+                    bot_params=BotBase(
+                        pair=self.symbol,
+                        name=algo,
+                        position=bot_strategy,
+                        market_type=MarketType.FUTURES,
+                    ),
+                ),
+                indicators={
+                    "activity_burst_entry_block_reason": derivatives_block_reason,
+                    "activity_burst_score": float(row["activity_burst_score"]),
+                },
+            )
             return None
 
         score = float(row["activity_burst_score"])

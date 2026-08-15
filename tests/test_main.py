@@ -12,15 +12,17 @@ async def test_main_bootstraps_websocket_subscriptions_before_consuming(
     events: list[str] = []
 
     class FakeFactory:
-        def __init__(self, queue: Any) -> None:
+        def __init__(self, queue: Any, liquidation_store: Any) -> None:
             self.queue = queue
+            self.liquidation_store = liquidation_store
 
         async def create_connector(self) -> list[str]:
             events.append("subscriptions_ready")
             return ["client"]
 
     class FakeKlinesProvider:
-        pass
+        def __init__(self, liquidation_store: Any) -> None:
+            self.liquidation_store = liquidation_store
 
     async def fake_ingest_loop(clients: list[str]) -> None:
         assert clients == ["client"]

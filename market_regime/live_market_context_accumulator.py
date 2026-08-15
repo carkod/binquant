@@ -6,12 +6,18 @@ from typing import Any
 from pandas import DataFrame, Series, concat
 
 from market_regime.market_state_store import MarketStateStore
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.models import (
+    DerivativesPositioningFeatures,
+    LiveMarketContext,
+    SymbolMarketFeatures,
+)
 from market_regime.regime_transitions import RegimeTransitionDetector
 from shared.utils import clamp, safe_pct
 
 REQUIRED_FRESH_SYMBOLS = 40
 MIN_COVERAGE_RATIO = 0.70
+MAX_DERIVATIVES_AGE_MS = 15 * 60 * 1000
+MAX_DERIVATIVES_FUTURE_SKEW_MS = 5 * 60 * 1000
 
 
 class LiveMarketContextAccumulator:
@@ -34,6 +40,17 @@ class LiveMarketContextAccumulator:
         self.regime_transition_detector = RegimeTransitionDetector()
         self._contexts_by_timestamp: dict[int, LiveMarketContext] = {}
         self._context_order: deque[int] = deque(maxlen=64)
+        self._derivatives_by_symbol: dict[str, DerivativesPositioningFeatures] = {}
+
+    def update_derivatives_positioning(
+        self,
+        symbol: str,
+        positioning: DerivativesPositioningFeatures | None,
+    ) -> None:
+        if positioning is None:
+            self._derivatives_by_symbol.pop(symbol, None)
+            return
+        self._derivatives_by_symbol[symbol] = positioning
 
     def on_closed_candle(
         self,
@@ -103,11 +120,19 @@ class LiveMarketContextAccumulator:
 
         symbol_features: dict[str, SymbolMarketFeatures] = {}
         btc_history = self.state_store.get_symbol_history(self.btc_symbol)
-        btc_features = self._compute_symbol_features(self.btc_symbol, btc_history)
+        btc_features = self._compute_symbol_features(
+            self.btc_symbol,
+            btc_history,
+            self._positioning_for_timestamp(self.btc_symbol, timestamp),
+        )
 
         for symbol in fresh_symbols:
             history = self.state_store.get_symbol_history(symbol)
-            features = self._compute_symbol_features(symbol, history)
+            features = self._compute_symbol_features(
+                symbol,
+                history,
+                self._positioning_for_timestamp(symbol, timestamp),
+            )
             if features is None:
                 continue
             symbol_features[symbol] = features
@@ -173,10 +198,35 @@ class LiveMarketContextAccumulator:
         stress_from_volatility = clamp((average_atr_pct - 0.02) * 12.0, 0.0, 1.0)
         stress_from_bandwidth = clamp((average_bb_width - 0.08) * 4.0, 0.0, 1.0)
         stress_from_selloff = clamp((-average_return) * 16.0, 0.0, 1.0)
-        market_stress_score = (
+        price_stress_score = (
             0.4 * stress_from_volatility
             + 0.25 * stress_from_bandwidth
             + 0.35 * stress_from_selloff
+        )
+        derivatives_stress_values = sorted(
+            (
+                item.derivatives.derivatives_stress_score
+                for item in symbol_features.values()
+                if item.derivatives is not None
+            ),
+            reverse=True,
+        )
+        stressed_symbol_count = max(1, ceil(len(derivatives_stress_values) * 0.25))
+        derivatives_stress_score = (
+            sum(derivatives_stress_values[:stressed_symbol_count])
+            / stressed_symbol_count
+            if derivatives_stress_values
+            else 0.0
+        )
+        derivatives_coverage_ratio = len(derivatives_stress_values) / effective_count
+        market_stress_score = clamp(
+            price_stress_score
+            + (1.0 - price_stress_score)
+            * 0.35
+            * derivatives_stress_score
+            * min(derivatives_coverage_ratio / MIN_COVERAGE_RATIO, 1.0),
+            0.0,
+            1.0,
         )
         long_tailwind = clamp(
             0.4 * breadth_balance
@@ -238,13 +288,30 @@ class LiveMarketContextAccumulator:
                 "btc_used_for_regime": btc_features is not None,
                 "fresh_symbols": sorted(symbol_features.keys()),
                 "fresh_symbol_count": effective_count,
+                "price_stress_score": price_stress_score,
+                "derivatives_stress_score": derivatives_stress_score,
+                "derivatives_coverage_ratio": derivatives_coverage_ratio,
             },
         )
+
+    def _positioning_for_timestamp(
+        self,
+        symbol: str,
+        timestamp: int,
+    ) -> DerivativesPositioningFeatures | None:
+        positioning = self._derivatives_by_symbol.get(symbol)
+        if positioning is None:
+            return None
+        age_ms = timestamp - positioning.timestamp
+        if age_ms > MAX_DERIVATIVES_AGE_MS or age_ms < -MAX_DERIVATIVES_FUTURE_SKEW_MS:
+            return None
+        return positioning
 
     @staticmethod
     def _compute_symbol_features(
         symbol: str,
         history: DataFrame,
+        derivatives: DerivativesPositioningFeatures | None = None,
     ) -> SymbolMarketFeatures | None:
         if history.empty or len(history) < 2:
             return None
@@ -294,4 +361,5 @@ class LiveMarketContextAccumulator:
             relative_strength_vs_btc=0.0,
             atr_pct=atr_pct,
             bb_width=bb_width,
+            derivatives=(derivatives.model_copy(deep=True) if derivatives else None),
         )

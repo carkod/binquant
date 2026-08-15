@@ -708,6 +708,33 @@ class FailedSpikeFade:
             self.symbol,
         )
 
+        value = SignalsConsumer(
+            direction=Position.short.value.upper(),
+            autotrade=autotrade,
+            current_price=current_price,
+            bot_params=BotBase(
+                pair=self.symbol,
+                name=self.ALGO,
+                position=Position.short,
+                market_type=self.market_type,
+                cooldown=self.ENTRY_COOLDOWN_MINUTES,
+                dynamic_trailing=False,
+                fiat_order_size=fiat_order_size,
+                stop_loss=self.STOP_LOSS_PCT,
+                take_profit=self.TAKE_PROFIT_PCT,
+                trailing=False,
+                margin_short_reversal=False,
+            ),
+            bb_spreads=HABollinguerSpread(
+                bb_high=bb_high,
+                bb_mid=bb_mid,
+                bb_low=bb_low,
+            ),
+        )
+        self.ti.finalize_signal_bot_params(value)
+        assert value.bot_params is not None
+        fiat_order_size = value.bot_params.fiat_order_size
+
         msg = f"""
             - 📉 [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
@@ -733,30 +760,6 @@ class FailedSpikeFade:
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
-
-        value = SignalsConsumer(
-            direction=Position.short.value.upper(),
-            autotrade=autotrade,
-            current_price=current_price,
-            bot_params=BotBase(
-                pair=self.symbol,
-                name=self.ALGO,
-                position=Position.short,
-                market_type=self.market_type,
-                cooldown=self.ENTRY_COOLDOWN_MINUTES,
-                dynamic_trailing=False,
-                fiat_order_size=fiat_order_size,
-                stop_loss=self.STOP_LOSS_PCT,
-                take_profit=self.TAKE_PROFIT_PCT,
-                trailing=False,
-                margin_short_reversal=False,
-            ),
-            bb_spreads=HABollinguerSpread(
-                bb_high=bb_high,
-                bb_mid=bb_mid,
-                bb_low=bb_low,
-            ),
-        )
         self.ti.dispatch_signal_record(value=value)
         self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

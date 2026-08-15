@@ -465,9 +465,7 @@ class TestAutotradeConsumer:
         "algorithm_name",
         ["coinrule_price_tracker", "failed_spike_fade"],
     )
-    async def test_grid_only_policy_allows_allowlisted_strategies(
-        self, algorithm_name
-    ):
+    async def test_grid_only_policy_allows_allowlisted_strategies(self, algorithm_name):
         self.consumer.grid_only_policy = active_grid_only_policy()
         signal = SignalsConsumer(
             autotrade=True,

@@ -41,6 +41,15 @@ MicroRegimeTransition: TypeAlias = Literal[
     "ENTERED_TRANSITIONAL",
 ]
 
+PositioningState: TypeAlias = Literal[
+    "NEUTRAL",
+    "NEW_LEVERAGE_LONG",
+    "NEW_LEVERAGE_SHORT",
+    "SHORT_SQUEEZE",
+    "DELEVERAGING_FLUSH",
+    "CASCADE_RISK",
+]
+
 
 def _normalize_direction(value: str) -> str:
     return value.upper().strip()
@@ -48,6 +57,75 @@ def _normalize_direction(value: str) -> str:
 
 def _canonicalize_symbol(value: str) -> str:
     return value.upper().strip().replace("-", "").replace("_", "")
+
+
+class DerivativesPositioningFeatures(BaseModel):
+    """Point-in-time derivatives positioning attached to one symbol."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    timestamp: int
+    open_interest: float = Field(ge=0.0)
+    open_interest_notional: float = Field(ge=0.0)
+    oi_change_5m: float | None = None
+    oi_change_15m: float | None = None
+    oi_change_1h: float | None = None
+    oi_zscore: float | None = None
+    current_funding_rate: float | None = None
+    annualized_funding_rate: float | None = None
+    funding_percentile: float | None = Field(default=None, ge=0.0, le=1.0)
+    funding_dispersion: float | None = Field(default=None, ge=0.0)
+    funding_rates_by_exchange: dict[str, float] = Field(default_factory=dict)
+    mark_index_basis_bps: float | None = None
+    long_liquidation_notional: float = Field(default=0.0, ge=0.0)
+    short_liquidation_notional: float = Field(default=0.0, ge=0.0)
+    liquidation_intensity: float | None = Field(default=None, ge=0.0)
+    stablecoin_margined_oi: float | None = Field(default=None, ge=0.0)
+    coin_margined_oi: float | None = Field(default=None, ge=0.0)
+    oi_to_volume_ratio: float | None = Field(default=None, ge=0.0)
+    derivatives_stress_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    positioning_state: PositioningState = "NEUTRAL"
+    source: str = "kucoin"
+    liquidation_source: str | None = None
+
+    @field_validator("timestamp")
+    @classmethod
+    def validate_positioning_timestamp(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("timestamp must be non-negative")
+        return value
+
+
+class LiquidationEvent(BaseModel):
+    """One normalized forced-position close from a public liquidation feed."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    timestamp: int = Field(ge=0)
+    symbol: str
+    position_side: Literal["LONG", "SHORT"]
+    notional: float = Field(gt=0.0)
+
+    @field_validator("symbol")
+    @classmethod
+    def validate_liquidation_symbol(cls, value: str) -> str:
+        normalized = value.upper().strip()
+        if not normalized:
+            raise ValueError("symbol must not be empty")
+        return normalized
+
+
+class LiquidationWindow(BaseModel):
+    """Aggregated long and short liquidations over one rolling window."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    long_notional: float = Field(default=0.0, ge=0.0)
+    short_notional: float = Field(default=0.0, ge=0.0)
+
+    @property
+    def total_notional(self) -> float:
+        return self.long_notional + self.short_notional
 
 
 class SymbolMarketFeatures(BaseModel):
@@ -65,6 +143,7 @@ class SymbolMarketFeatures(BaseModel):
     relative_strength_vs_btc: float
     atr_pct: float
     bb_width: float
+    derivatives: DerivativesPositioningFeatures | None = None
     micro_regime: MicroRegime | None = None
     micro_regime_strength: float = Field(default=0.0, ge=0.0, le=1.0)
     micro_regime_transition: MicroRegimeTransition | None = None

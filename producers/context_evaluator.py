@@ -33,6 +33,10 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import LiveMarketContext
+from market_regime.open_interest_order_sizing import (
+    OI_SIZED_STRATEGIES,
+    apply_open_interest_sizing,
+)
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.utils import format_context_timestamp_line
@@ -70,7 +74,6 @@ class ContextEvaluator:
         ) = None,
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
-        oi_data: float = None,
         latest_market_context: LiveMarketContext | None = None,
         last_market_regime: str | None = None,
     ) -> None:
@@ -115,7 +118,6 @@ class ContextEvaluator:
         self.at_consumer = ac_api
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
-        self.oi_data = oi_data
         self.latest_market_context = latest_market_context
         self.last_market_regime = last_market_regime
         self.grid_only_policy = GridOnlyPolicy.disabled("not_evaluated")
@@ -270,6 +272,28 @@ class ContextEvaluator:
                 self.symbol,
             )
 
+    def finalize_signal_bot_params(self, value: SignalsConsumer) -> None:
+        """Finalize context-derived bot parameters before persistence or execution."""
+        bot_params = value.bot_params
+        if (
+            bot_params is None
+            or bot_params.market_type != MarketType.FUTURES
+            or bot_params.name not in OI_SIZED_STRATEGIES
+        ):
+            return
+
+        context = self.latest_market_context
+        symbol_features = (
+            context.get_symbol_features(self.symbol) if context is not None else None
+        )
+        value.open_interest_sizing = apply_open_interest_sizing(
+            bot_params=bot_params,
+            positioning=(
+                symbol_features.derivatives if symbol_features is not None else None
+            ),
+            signal_timestamp=int(datetime.now(UTC).timestamp() * 1000),
+        )
+
     def dispatch_signal_record(
         self,
         value: SignalsConsumer,
@@ -287,6 +311,11 @@ class ContextEvaluator:
             grid_params = value.grid_params
 
             context = self.latest_market_context
+            symbol_features = (
+                context.get_symbol_features(self.symbol)
+                if context is not None
+                else None
+            )
             if bot_params is not None:
                 position = bot_params.position
                 direction = (
@@ -305,6 +334,21 @@ class ContextEvaluator:
             )
 
             merged_indicators: dict[str, Any] = dict(indicators or {})
+            if bot_params is not None and bot_params.market_type == MarketType.FUTURES:
+                merged_indicators.setdefault(
+                    "estimated_initial_margin",
+                    bot_params.fiat_order_size,
+                )
+            if value.open_interest_sizing is not None:
+                merged_indicators.setdefault(
+                    "open_interest_sizing",
+                    value.open_interest_sizing.model_dump(mode="json"),
+                )
+            if symbol_features is not None and symbol_features.derivatives is not None:
+                merged_indicators.setdefault(
+                    "derivatives_positioning",
+                    symbol_features.derivatives.model_dump(mode="json"),
+                )
             if value.bb_spreads is not None:
                 merged_indicators.setdefault(
                     "bb_spreads", value.bb_spreads.model_dump(mode="json")
