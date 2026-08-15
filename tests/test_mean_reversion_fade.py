@@ -140,7 +140,7 @@ def make_evaluator(
             if latest_market_context is not None
             else make_market_context()
         ),
-        dispatch_signal_record=Mock(),
+        dispatch_signal_record=AsyncMock(),
     )
 
 

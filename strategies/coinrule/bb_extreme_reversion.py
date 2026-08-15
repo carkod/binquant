@@ -349,7 +349,7 @@ class BBExtremeReversion(StrategyMixin):
                 bb_low=bb_low,
             ),
         )
-        self.ti.dispatch_signal_record(
+        await self.ti.dispatch_signal_record(
             value=value,
             indicators={
                 "bb_extreme_rsi_window": decision.rsi_window,

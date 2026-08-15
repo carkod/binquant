@@ -111,7 +111,7 @@ def make_context(df: DataFrame, context: LiveMarketContext | None) -> SimpleName
         symbol="TESTUSDT",
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,
-        dispatch_signal_record=Mock(),
+        dispatch_signal_record=AsyncMock(),
         binbot_api=SimpleNamespace(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.SPOT,

@@ -177,7 +177,7 @@ def make_context(
         df_15m=df_15m,
         binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
         finalize_signal_bot_params=Mock(),
-        dispatch_signal_record=Mock(),
+        dispatch_signal_record=AsyncMock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
@@ -212,7 +212,7 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
     )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
-    record_mock = Mock()
+    record_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
@@ -274,7 +274,7 @@ async def test_signal_autotrades_outside_staging(monkeypatch):
     )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
-    record_mock = Mock()
+    record_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
@@ -323,7 +323,7 @@ async def test_signal_labels_short_history_extension_window(monkeypatch):
     )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
-    record_mock = Mock()
+    record_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
@@ -368,7 +368,7 @@ async def test_signal_skips_short_history_when_scaled_extension_cap_is_exceeded(
     )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
-    record_mock = Mock()
+    record_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
@@ -410,7 +410,7 @@ async def test_signal_skips_when_relative_strength_is_not_positive(monkeypatch):
     )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
-    record_mock = Mock()
+    record_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
@@ -585,7 +585,7 @@ async def test_signal_skips_when_symbol_features_are_missing(monkeypatch):
     )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
-    record_mock = Mock()
+    record_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
@@ -634,7 +634,7 @@ async def test_signal_skips_when_one_hour_move_is_too_extended(monkeypatch):
     )
     send_signal_mock = Mock()
     process_mock = AsyncMock()
-    record_mock = Mock()
+    record_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )

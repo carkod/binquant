@@ -357,7 +357,7 @@ class MeanReversionFade:
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
-        self.ti.dispatch_signal_record(
+        await self.ti.dispatch_signal_record(
             value=value,
             indicators={
                 "entry_reason": entry_reason,

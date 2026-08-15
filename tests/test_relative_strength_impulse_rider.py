@@ -101,7 +101,7 @@ def make_context(
             process_autotrade_restrictions=AsyncMock(),
         ),
         finalize_signal_bot_params=Mock(),
-        dispatch_signal_record=Mock(),
+        dispatch_signal_record=AsyncMock(),
         strategy_cooldowns={},
         strategy_states={},
         df_15m=symbol_candles,

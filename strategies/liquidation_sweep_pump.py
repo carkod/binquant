@@ -509,7 +509,7 @@ class LiquidationSweepPump:
 
         async def dispatch_winner() -> None:
             self.ti.finalize_signal_bot_params(value)
-            self.ti.dispatch_signal_record(
+            await self.ti.dispatch_signal_record(
                 value=value,
                 indicators={
                     "candidate_open_time": candle_open_time,
