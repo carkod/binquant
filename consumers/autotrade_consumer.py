@@ -28,6 +28,19 @@ from shared.config import Config
 class AutotradeConsumer:
     FUTURES_REVERSAL_BUFFER = 1.40
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
+    # Mean-reversion/fade strategies whose entry logic is structurally suited
+    # to a bounded/ranging market — allowed to run alongside grid ladders even
+    # when the grid-only policy would otherwise block standard bots. Breakout
+    # and momentum-continuation algorithms (activity_burst_pump,
+    # relative_strength_impulse_rider, liquidation_sweep_pump,
+    # top_gainer_early_momentum) are deliberately excluded since they fight
+    # RANGE conditions.
+    GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
+        {
+            "coinrule_price_tracker",
+            "failed_spike_fade",
+        }
+    )
     # Circuit breaker: stop opening new real bots/ladders once today's
     # estimated realized PnL (UTC calendar day) drops to this quote-currency
     # amount or below. Expressed in absolute quote terms rather than a % of
@@ -503,11 +516,18 @@ class AutotradeConsumer:
                 await test_autotrade.activate_autotrade(result)
 
         if self.grid_only_policy.block_standard_bots and result.autotrade:
-            logging.info(
-                "Skipping autotrade: grid_only_block (%s)",
-                self.grid_only_policy.reason,
-            )
-            return
+            if algorithm_name in self.GRID_ONLY_STANDARD_BOT_ALLOWLIST:
+                logging.info(
+                    "Allowing autotrade through grid-only policy exception: %s (%s)",
+                    algorithm_name,
+                    self.grid_only_policy.reason,
+                )
+            else:
+                logging.info(
+                    "Skipping autotrade: grid_only_block (%s)",
+                    self.grid_only_policy.reason,
+                )
+                return
 
         if self.grid_only_policy.block_standard_bots and not result.autotrade:
             logging.info(
