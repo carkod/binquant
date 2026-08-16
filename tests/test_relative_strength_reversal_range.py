@@ -120,7 +120,7 @@ def make_evaluator(
         kucoin_symbol="TEST-USDT",
         market_type=MarketType.SPOT,
         df_15m=df,
-        dispatch_signal_record=Mock(),
+        dispatch_signal_record=AsyncMock(),
         binbot_api=MagicMock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),

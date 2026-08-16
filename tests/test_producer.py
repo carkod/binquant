@@ -1,6 +1,6 @@
 from inspect import getsource
 from re import findall
-from asyncio import Queue
+from asyncio import Event, Queue
 from datetime import UTC, datetime
 from os import environ
 from types import SimpleNamespace
@@ -14,6 +14,8 @@ from producers.klines_connector import KlinesConnector
 from pybinbot import (
     AutotradeSettingsSchema,
     BotBase,
+    ExchangeId,
+    GridDeploymentRequest,
     HABollinguerSpread,
     MarketType,
     Position,
@@ -160,11 +162,13 @@ async def test_usdt_filtering():
                 assert symbol in ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 
-def test_dispatch_signal_record_uses_json_mode_payloads():
+@pytest.mark.asyncio
+async def test_dispatch_signal_record_uses_json_mode_payloads_and_links_bot():
     evaluator = object.__new__(ContextEvaluator)
     evaluator.symbol = "MOVEUSDTM"
     evaluator.latest_market_context = None
     evaluator.binbot_api = Mock()
+    evaluator.binbot_api.create_signal = AsyncMock(return_value=SimpleNamespace(id=42))
 
     value = SignalsConsumer(
         autotrade=True,
@@ -190,10 +194,10 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
     assert value.bot_params.fiat_order_size == 4.0
     assert "fiat_order_size" in value.bot_params.model_fields_set
     assert value.open_interest_sizing is None
-    evaluator.dispatch_signal_record(value=value)
+    await evaluator.dispatch_signal_record(value=value)
 
-    evaluator.binbot_api.dispatch_create_signal.assert_called_once()
-    payload = evaluator.binbot_api.dispatch_create_signal.call_args.kwargs
+    evaluator.binbot_api.create_signal.assert_awaited_once()
+    payload = evaluator.binbot_api.create_signal.call_args.kwargs
     assert payload["algorithm_name"] == "coinrule_price_tracker"
     assert payload["symbol"] == "MOVEUSDTM"
     assert payload["direction"] == "long"
@@ -206,9 +210,82 @@ def test_dispatch_signal_record_uses_json_mode_payloads():
         "bb_mid": 0.018,
         "bb_low": 0.017,
     }
+    assert value.bot_params.signal_id == 42
 
 
-def test_dispatch_signal_record_snapshots_derivatives_in_indicators():
+@pytest.mark.asyncio
+async def test_dispatch_signal_record_links_grid_ladder():
+    evaluator = object.__new__(ContextEvaluator)
+    evaluator.symbol = "BTCUSDTM"
+    evaluator.latest_market_context = None
+    evaluator.binbot_api = Mock()
+    evaluator.binbot_api.create_signal = AsyncMock(return_value=SimpleNamespace(id=43))
+    grid_params = GridDeploymentRequest(
+        symbol="BTCUSDTM",
+        fiat="USDT",
+        exchange=ExchangeId.KUCOIN,
+        market_type=MarketType.FUTURES,
+        algorithm_name="grid_ladder",
+        generated_at=datetime.now(UTC),
+        range_low=95,
+        range_high=105,
+        level_count=3,
+        total_margin=10,
+        breakout_low=94,
+        breakout_high=106,
+        current_price=100,
+        allocation_pct=50,
+        cash_reserve_pct=25,
+    )
+    value = SignalsConsumer(
+        signal_kind="grid_deploy",
+        direction="grid",
+        grid_params=grid_params,
+    )
+
+    await evaluator.dispatch_signal_record(value=value)
+
+    assert grid_params.signal_id == 43
+    payload = evaluator.binbot_api.create_signal.call_args.kwargs
+    assert payload["signal_kind"] == "grid_deploy"
+    assert payload["grid_params"]["symbol"] == "BTCUSDTM"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_signal_record_timeout_does_not_block_trade_path(caplog):
+    evaluator = object.__new__(ContextEvaluator)
+    evaluator.symbol = "MOVEUSDTM"
+    evaluator.latest_market_context = None
+    evaluator.SIGNAL_PERSISTENCE_TIMEOUT_SECONDS = 0.01
+    evaluator.binbot_api = Mock()
+    request_started = Event()
+    request_cancelled = Event()
+
+    async def stalled_create_signal(**_):
+        request_started.set()
+        try:
+            await Event().wait()
+        finally:
+            request_cancelled.set()
+
+    evaluator.binbot_api.create_signal = AsyncMock(side_effect=stalled_create_signal)
+    value = SignalsConsumer(
+        autotrade=True,
+        bot_params=BotBase(pair="MOVEUSDTM", name="coinrule_price_tracker"),
+    )
+
+    with caplog.at_level("WARNING"):
+        await evaluator.dispatch_signal_record(value=value)
+
+    assert request_started.is_set()
+    assert request_cancelled.is_set()
+    assert value.bot_params is not None
+    assert value.bot_params.signal_id is None
+    assert "trade path continues without signal_id" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_dispatch_signal_record_snapshots_derivatives_in_indicators():
     evaluator = object.__new__(ContextEvaluator)
     evaluator.symbol = "MOVEUSDTM"
     snapshot_timestamp = int(datetime.now(UTC).timestamp() * 1000)
@@ -227,6 +304,7 @@ def test_dispatch_signal_record_snapshots_derivatives_in_indicators():
     context.model_dump.return_value = {}
     evaluator.latest_market_context = context
     evaluator.binbot_api = Mock()
+    evaluator.binbot_api.create_signal = AsyncMock(return_value=SimpleNamespace(id=43))
     value = SignalsConsumer(
         direction="LONG",
         bot_params=BotBase(
@@ -244,9 +322,9 @@ def test_dispatch_signal_record_snapshots_derivatives_in_indicators():
     assert "fiat_order_size" in value.bot_params.model_fields_set
     assert value.open_interest_sizing is not None
     assert value.open_interest_sizing.evidence == "STRONGLY_SUPPORTIVE"
-    evaluator.dispatch_signal_record(value=value)
+    await evaluator.dispatch_signal_record(value=value)
 
-    payload = evaluator.binbot_api.dispatch_create_signal.call_args.kwargs
+    payload = evaluator.binbot_api.create_signal.call_args.kwargs
     assert payload["indicators"]["derivatives_positioning"] == derivatives.model_dump(
         mode="json"
     )

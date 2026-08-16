@@ -131,7 +131,7 @@ def make_evaluator(
         market_type=MarketType.FUTURES,
         binbot_api=MagicMock(),
         df_15m=df,
-        dispatch_signal_record=Mock(),
+        dispatch_signal_record=AsyncMock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,

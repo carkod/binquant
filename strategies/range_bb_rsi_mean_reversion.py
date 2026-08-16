@@ -319,7 +319,7 @@ class RangeBbRsiMeanReversion:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
-        self.ti.dispatch_signal_record(
+        await self.ti.dispatch_signal_record(
             value=value,
             indicators={
                 "range_bb_rsi_adx": adx_value,

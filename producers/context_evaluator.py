@@ -1,4 +1,5 @@
 import logging
+from asyncio import timeout
 from collections.abc import Awaitable
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -54,6 +55,8 @@ from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 
 
 class ContextEvaluator:
+    SIGNAL_PERSISTENCE_TIMEOUT_SECONDS = 2.0
+
     def __init__(
         self,
         api: KucoinApi | BinanceApi | KucoinFutures,
@@ -294,14 +297,14 @@ class ContextEvaluator:
             signal_timestamp=int(datetime.now(UTC).timestamp() * 1000),
         )
 
-    def dispatch_signal_record(
+    async def dispatch_signal_record(
         self,
         value: SignalsConsumer,
         indicators: dict[str, Any] | None = None,
     ) -> None:
         """
-        Fire-and-forget POST /signals so every strategy emission lands in the
-        analytics table, regardless of whether autotrade actually fires.
+        Persist every strategy emission and attach its database ID to any bot
+        or grid payload before autotrade dispatches it.
         """
         grid_params = value.grid_params
         signal_kind = value.signal_kind
@@ -358,22 +361,38 @@ class ContextEvaluator:
             if value.score:
                 merged_indicators.setdefault("score", value.score)
 
-            self.binbot_api.dispatch_create_signal(
-                algorithm_name=(
-                    bot_params.name if bot_params is not None else "grid_ladder"
-                ),
-                symbol=self.symbol,
-                generated_at=datetime.now(UTC),
-                direction=direction,
-                autotrade=value.autotrade,
-                current_regime=regime,
-                context=context.model_dump(mode="json") if context else {},
-                signal_kind=signal_kind,
-                bot_params=(bot_params.model_dump(mode="json") if bot_params else {}),
-                grid_params=(
-                    grid_params.model_dump(mode="json") if grid_params else {}
-                ),
-                indicators=merged_indicators,
+            async with timeout(self.SIGNAL_PERSISTENCE_TIMEOUT_SECONDS):
+                signal = await self.binbot_api.create_signal(
+                    algorithm_name=(
+                        bot_params.name if bot_params is not None else "grid_ladder"
+                    ),
+                    symbol=self.symbol,
+                    generated_at=datetime.now(UTC),
+                    direction=direction,
+                    autotrade=value.autotrade,
+                    current_regime=regime,
+                    context=context.model_dump(mode="json") if context else {},
+                    signal_kind=signal_kind,
+                    bot_params=(
+                        bot_params.model_dump(mode="json") if bot_params else {}
+                    ),
+                    grid_params=(
+                        grid_params.model_dump(mode="json") if grid_params else {}
+                    ),
+                    indicators=merged_indicators,
+                )
+            if signal is None or signal.id is None:
+                return
+            if grid_params is not None:
+                grid_params.signal_id = signal.id
+            if bot_params is not None:
+                bot_params.signal_id = signal.id
+        except TimeoutError:
+            logging.warning(
+                "Signal persistence for %s exceeded %.1fs; "
+                "trade path continues without signal_id.",
+                self.symbol,
+                self.SIGNAL_PERSISTENCE_TIMEOUT_SECONDS,
             )
         except Exception:
             logging.exception(

@@ -190,7 +190,7 @@ class ActivityBurstPump:
         positioning = symbol_features.derivatives if symbol_features else None
         derivatives_block_reason = activity_burst_derivatives_block_reason(positioning)
         if derivatives_block_reason is not None:
-            self.ti.dispatch_signal_record(
+            await self.ti.dispatch_signal_record(
                 value=SignalsConsumer(
                     autotrade=False,
                     current_price=current_price,
@@ -259,6 +259,6 @@ class ActivityBurstPump:
                 bb_low=bb_low,
             ),
         )
-        self.ti.dispatch_signal_record(value=value)
+        await self.ti.dispatch_signal_record(value=value)
         self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

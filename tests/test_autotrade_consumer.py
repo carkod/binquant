@@ -755,6 +755,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDT",
+                signal_id=41,
                 name="coinrule_buy_the_dip",
                 market_type=MarketType.SPOT,
                 position=Position.long,
@@ -776,6 +777,7 @@ class TestAutotradeConsumer:
 
         create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
         assert create_payload["pair"] == "BTCUSDT"
+        assert create_payload["signal_id"] == 41
         assert create_payload["name"] == "coinrule_buy_the_dip"
         assert create_payload["market_type"] == "SPOT"
         assert create_payload["position"] == "long"
@@ -1130,6 +1132,7 @@ class TestAutotradeConsumer:
             grid_params=self._grid_params("BTCUSDT"),
         )
         assert signal.grid_params is not None
+        signal.grid_params.signal_id = 42
         signal.grid_params.total_margin = 1.0  # placeholder from LadderDeployer
 
         await self.consumer.process_autotrade_restrictions(signal)
@@ -1145,6 +1148,7 @@ class TestAutotradeConsumer:
         ]
         assert calculated_payload["total_margin"] == 1.0
         assert payload["total_margin"] == 1.0
+        assert payload["signal_id"] == 42
         assert signal.grid_params.total_margin == 1.0
         assert method_names.index("calculate_grid_levels") < method_names.index(
             "create_grid_ladder"

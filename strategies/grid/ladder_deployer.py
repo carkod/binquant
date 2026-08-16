@@ -179,9 +179,6 @@ class LadderDeployer:
             autotrade=self.AUTOTRADE,
             grid_params=grid_params,
         )
-        # Run autotrade gate first so it can resolve the actual total_margin
-        # on the signal (the value built above carries a candidate placeholder).
-        # Then dispatch the analytics record so the row reflects what was
-        # actually deployed.
+        # Persist first so the ladder create payload can link back to this signal.
+        await self.ti.dispatch_signal_record(value=value)
         await self.at_consumer.process_autotrade_restrictions(value)
-        self.ti.dispatch_signal_record(value=value)

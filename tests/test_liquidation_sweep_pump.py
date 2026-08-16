@@ -166,7 +166,7 @@ def make_context(
         symbol="TESTUSDT",
         exchange=ExchangeId.KUCOIN,
         finalize_signal_bot_params=Mock(),
-        dispatch_signal_record=Mock(),
+        dispatch_signal_record=AsyncMock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         market_type=MarketType.FUTURES,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),

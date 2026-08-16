@@ -44,7 +44,7 @@ class FakeContextEvaluator:
         )
         self.dispatched_values: list[SignalsConsumer] = []
 
-    def dispatch_signal_record(self, value) -> None:
+    async def dispatch_signal_record(self, value) -> None:
         self.dispatched_values.append(value)
 
 

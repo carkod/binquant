@@ -144,7 +144,7 @@ def make_algo() -> FailedSpikeFade:
         market_type=MarketType.FUTURES,
         df_15m=df,
         finalize_signal_bot_params=Mock(),
-        dispatch_signal_record=Mock(),
+        dispatch_signal_record=AsyncMock(),
         telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
