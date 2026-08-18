@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from os import getenv
 from typing import Any
 
 from pybinbot import (
@@ -518,7 +519,15 @@ class AutotradeConsumer:
                 )
                 await test_autotrade.activate_autotrade(result)
 
-        if self.grid_only_policy.block_standard_bots and result.autotrade:
+        # TEMPORARY (staging-only): grid-only policy normally blocks
+        # liquidation_sweep_pump / top_gainer_early_momentum / relative_strength_impulse_rider
+        # during RANGE conditions. Bypassed in staging so we can monitor how
+        # they actually perform in range markets. Remove once we've decided.
+        grid_only_active = self.grid_only_policy.block_standard_bots and getenv(
+            "ENV"
+        ) != "staging"
+
+        if grid_only_active and result.autotrade:
             if algorithm_name in self.GRID_ONLY_STANDARD_BOT_ALLOWLIST:
                 logging.info(
                     "Allowing autotrade through grid-only policy exception: %s (%s)",
@@ -532,7 +541,7 @@ class AutotradeConsumer:
                 )
                 return
 
-        if self.grid_only_policy.block_standard_bots and not result.autotrade:
+        if grid_only_active and not result.autotrade:
             logging.info(
                 "Skipping real autotrade gate for paper signal: grid-only policy active (%s)",
                 self.grid_only_policy.reason,
