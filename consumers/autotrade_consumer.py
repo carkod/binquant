@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from os import getenv
 from typing import Any
 
 from pybinbot import (
@@ -511,10 +512,14 @@ class AutotradeConsumer:
                 )
                 await test_autotrade.activate_autotrade(result)
 
-        grid_only_active = (
-            self.autotrade_settings.enable_grid_ladders
-            and self.grid_only_policy.block_standard_bots
-        )
+        # TEMPORARY (staging-only): grid-only policy normally blocks
+        # liquidation_sweep_pump / top_gainer_early_momentum / relative_strength_impulse_rider
+        # during RANGE conditions. Bypassed in staging so we can monitor how
+        # they actually perform in range markets. Remove once we've decided.
+        grid_only_active = self.grid_only_policy.block_standard_bots and getenv(
+            "ENV"
+        ) != "staging"
+
         if grid_only_active and result.autotrade:
             if algorithm_name in self.GRID_ONLY_STANDARD_BOT_ALLOWLIST:
                 logging.info(
