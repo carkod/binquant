@@ -134,10 +134,13 @@ class ContextEvaluator:
         self._autotrade_stress_threshold = 0.35
 
     def refresh_grid_only_policy(self) -> GridOnlyPolicy:
-        self.grid_only_policy = GridOnlyPolicy.resolve(
-            self.latest_market_context,
-            self.market_breadth_data,
-        )
+        if not self.at_consumer.autotrade_settings.enable_grid_ladders:
+            self.grid_only_policy = GridOnlyPolicy.disabled("grid_ladders_disabled")
+        else:
+            self.grid_only_policy = GridOnlyPolicy.resolve(
+                self.latest_market_context,
+                self.market_breadth_data,
+            )
         self.at_consumer.grid_only_policy = self.grid_only_policy
         return self.grid_only_policy
 

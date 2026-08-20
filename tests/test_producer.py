@@ -22,6 +22,7 @@ from pybinbot import (
     SignalsConsumer,
     SymbolModel,
 )
+from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import DerivativesPositioningFeatures
 
 
@@ -421,7 +422,9 @@ async def test_process_data_runs_price_tracker_when_15m_history_is_empty(monkeyp
     evaluator.symbol = "TESTUSDT"
     evaluator.latest_market_context = None
     evaluator.market_breadth_data = None
-    evaluator.at_consumer = SimpleNamespace()
+    evaluator.at_consumer = SimpleNamespace(
+        autotrade_settings=AutotradeSettingsSchema(enable_grid_ladders=False)
+    )
     evaluator.symbol_dependent_data = Mock()
     evaluator.indicators_enrichment = lambda df: df
     evaluator.bb_spreads = lambda df: HABollinguerSpread(
@@ -445,3 +448,45 @@ async def test_process_data_runs_price_tracker_when_15m_history_is_empty(monkeyp
         bb_mid=100.0,
         bb_low=99.0,
     )
+
+
+def test_grid_only_policy_is_disabled_with_grid_ladder_switch() -> None:
+    evaluator: Any = object.__new__(ContextEvaluator)
+    evaluator.at_consumer = SimpleNamespace(
+        autotrade_settings=AutotradeSettingsSchema(enable_grid_ladders=False)
+    )
+    evaluator.latest_market_context = SimpleNamespace(market_regime="RANGE")
+    evaluator.market_breadth_data = None
+
+    policy = evaluator.refresh_grid_only_policy()
+
+    assert policy.allow_grid_ladder is False
+    assert policy.block_standard_bots is False
+    assert policy.reason == "grid_ladders_disabled"
+    assert evaluator.at_consumer.grid_only_policy is policy
+
+
+def test_grid_only_policy_is_resolved_with_grid_ladder_switch(monkeypatch) -> None:
+    evaluator: Any = object.__new__(ContextEvaluator)
+    evaluator.at_consumer = SimpleNamespace(
+        autotrade_settings=AutotradeSettingsSchema(enable_grid_ladders=True)
+    )
+    evaluator.latest_market_context = SimpleNamespace(market_regime="RANGE")
+    evaluator.market_breadth_data = None
+    resolved = GridOnlyPolicy.active(
+        direction="toward_range",
+        source="market_breadth_ma",
+        latest=0.10,
+        previous=0.12,
+    )
+    resolve = Mock(return_value=resolved)
+    monkeypatch.setattr(GridOnlyPolicy, "resolve", resolve)
+
+    policy = evaluator.refresh_grid_only_policy()
+
+    assert policy is resolved
+    resolve.assert_called_once_with(
+        evaluator.latest_market_context,
+        evaluator.market_breadth_data,
+    )
+    assert evaluator.at_consumer.grid_only_policy is resolved
