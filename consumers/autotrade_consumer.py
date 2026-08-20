@@ -1,6 +1,5 @@
 import logging
 from datetime import UTC, datetime
-from os import getenv
 from typing import Any
 
 from pybinbot import (

@@ -100,6 +100,7 @@ async def test_ladder_deployer_uses_three_total_levels(
 ) -> None:
     evaluator = FakeContextEvaluator()
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
@@ -145,6 +146,7 @@ async def test_ladder_deployer_skips_when_grid_only_policy_is_inactive(
     evaluator = FakeContextEvaluator()
     evaluator.grid_only_policy = GridOnlyPolicy.disabled("breadth_momentum_flat")
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
 
     await deployer.signal(
         current_price=100.0,
@@ -166,6 +168,7 @@ async def test_ladder_deployer_reaches_market_checks(
     caplog.set_level("INFO")
     evaluator = FakeContextEvaluator()
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: False)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
@@ -194,6 +197,7 @@ async def test_ladder_deployer_skips_outside_range_market_regime(
     evaluator = FakeContextEvaluator()
     evaluator.latest_market_context.market_regime = "TREND_DOWN"
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
@@ -220,6 +224,7 @@ async def test_ladder_deployer_skips_transitional_symbol_regime(
     caplog.set_level("INFO")
     evaluator = FakeContextEvaluator()
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
         lambda context, symbol: make_symbol_features(micro_regime="TRANSITIONAL"),
@@ -247,6 +252,7 @@ async def test_ladder_deployer_skips_in_range_regime_below_range_floor(
     evaluator.latest_market_context.market_regime = "RANGE"
     evaluator.latest_market_context.long_regime_score = 0.15
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
@@ -275,6 +281,7 @@ async def test_ladder_deployer_deploys_in_range_regime_with_low_long_regime_scor
     # strategy targets and long_regime_score sits structurally low there.
     evaluator.latest_market_context.long_regime_score = 0.31
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
@@ -299,6 +306,7 @@ async def test_ladder_deployer_skips_when_symbol_is_below_both_emas(
     caplog.set_level("INFO")
     evaluator = FakeContextEvaluator()
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
@@ -328,6 +336,7 @@ async def test_ladder_deployer_skips_when_relative_strength_vs_btc_is_not_positi
     caplog.set_level("INFO")
     evaluator = FakeContextEvaluator()
     deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    deployer.ENABLED = True
     monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
     monkeypatch.setattr(
         "strategies.grid.ladder_deployer.resolve_symbol_features",
