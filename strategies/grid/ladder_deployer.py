@@ -58,7 +58,9 @@ class LadderDeployer:
     async def signal(
         self, current_price: float, bb_high: float, bb_mid: float, bb_low: float
     ) -> None:
-        if not self.ENABLED:
+        settings = self.at_consumer.autotrade_settings
+        if not settings.enable_grid_ladders:
+            logging.info("grid_ladder skipped: enable_grid_ladders_disabled")
             return
         # binbot's grid-ladder endpoint only accepts FUTURES; emitting a
         # SPOT grid signal would always 400 at the API. Skip early.

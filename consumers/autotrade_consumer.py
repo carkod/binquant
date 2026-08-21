@@ -395,6 +395,9 @@ class AutotradeConsumer:
         if not params or not autotrade:
             logging.info("grid_ladder skipped: missing params or autotrade is false")
             return
+        if not self.autotrade_settings.enable_grid_ladders:
+            logging.info("grid_ladder skipped: enable_grid_ladders_disabled")
+            return
         if self._grid_ladder_attempted_recently(params):
             return
         if self.daily_loss_limit_reached():
