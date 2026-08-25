@@ -16,6 +16,7 @@ class FakeAutotradeConsumer:
             grid_level_count=3,
             grid_allocation_pct=1.0,
             grid_cash_reserve_pct=0.0,
+            enable_grid_ladders=True,
         )
         self.values: list[SignalsConsumer] = []
 

@@ -74,6 +74,7 @@ class TestAutotradeConsumer:
             autotrade=True,
             grid_max_active_ladders=3,
             grid_total_margin=1.0,
+            enable_grid_ladders=True,
         )
         self.test_settings = TestAutotradeSettingsSchema(
             max_active_autotrade_bots=1,
@@ -1153,6 +1154,29 @@ class TestAutotradeConsumer:
         assert method_names.index("calculate_grid_levels") < method_names.index(
             "create_grid_ladder"
         )
+
+    @pytest.mark.asyncio
+    async def test_process_grid_deployment_skips_when_enable_grid_ladders_is_false(
+        self, caplog
+    ):
+        """enable_grid_ladders is the master switch (mirrors GridLadderLifecycle's
+        gate on the binbot side): off blocks ladder creation even with a
+        fully valid, autotrade-approved grid_deploy signal."""
+        caplog.set_level("INFO")
+        self.settings.enable_grid_ladders = False
+        self.mock_binbot_api.get_active_grid_ladders.return_value = []
+
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+
+        await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.calculate_grid_levels.assert_not_called()
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+        assert "grid_ladder skipped: enable_grid_ladders_disabled" in caplog.text
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_calculate_400_skips_create_endpoint(
