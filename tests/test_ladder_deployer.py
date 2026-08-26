@@ -63,6 +63,28 @@ def make_symbol_features(**overrides):
 
 
 @pytest.mark.asyncio
+async def test_ladder_deployer_skips_when_grid_ladders_disabled(monkeypatch) -> None:
+    evaluator = FakeContextEvaluator()
+    evaluator.at_consumer.autotrade_settings.enable_grid_ladders = False
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: make_symbol_features(),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert evaluator.at_consumer.values == []
+    assert evaluator.dispatched_values == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("bb_low", "bb_high"),
     [
@@ -137,7 +159,7 @@ async def test_ladder_deployer_skips_when_grid_only_policy_is_inactive(
 
 
 @pytest.mark.asyncio
-async def test_ladder_deployer_reaches_existing_checks_when_policy_is_active(
+async def test_ladder_deployer_reaches_market_checks(
     monkeypatch,
     caplog,
 ) -> None:

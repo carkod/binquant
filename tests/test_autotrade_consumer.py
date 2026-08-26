@@ -35,6 +35,15 @@ from shared.exceptions import AutotradeError
 BOT_ID = "00000000-0000-0000-0000-000000000001"
 
 
+def active_grid_only_policy() -> GridOnlyPolicy:
+    return GridOnlyPolicy.active(
+        direction="toward_range",
+        source="market_breadth_ma",
+        latest=0.10,
+        previous=0.12,
+    )
+
+
 def make_autotrade_settings(
     *,
     exchange_id: ExchangeId | str = ExchangeId.BINANCE,
@@ -53,15 +62,6 @@ def make_autotrade_settings(
     )
 
 
-def active_grid_only_policy() -> GridOnlyPolicy:
-    return GridOnlyPolicy.active(
-        direction="toward_range",
-        source="market_breadth_ma",
-        latest=0.10,
-        previous=0.12,
-    )
-
-
 class TestAutotradeConsumer:
     def setup_method(self):
         environ["BACKEND_DOMAIN"] = "http://test-url"
@@ -72,9 +72,9 @@ class TestAutotradeConsumer:
             base_order_size=10,
             stop_loss=3,
             autotrade=True,
+            enable_grid_ladders=False,
             grid_max_active_ladders=3,
             grid_total_margin=1.0,
-            enable_grid_ladders=True,
         )
         self.test_settings = TestAutotradeSettingsSchema(
             max_active_autotrade_bots=1,
@@ -344,6 +344,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_blocks_on_daily_loss_limit(self):
+        self.settings.enable_grid_ladders = True
         self.mock_binbot_api.get_bots_by_status.return_value = [
             self._closed_bot(opening_price=100.0, closing_price=90.0, opening_qty=1.0)
         ]
@@ -407,31 +408,12 @@ class TestAutotradeConsumer:
         autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_grid_only_policy_blocks_standard_real_bots(self):
-        self.consumer.grid_only_policy = active_grid_only_policy()
-        signal = SignalsConsumer(
-            autotrade=True,
-            current_price=100,
-            bot_params=BotBase(
-                pair="BTCUSDT",
-                name="coinrule_buy_the_dip",
-                market_type=MarketType.SPOT,
-                position=Position.long,
-                fiat="USDT",
-                fiat_order_size=25,
-            ),
-        )
-
-        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
-            await self.consumer.process_autotrade_restrictions(signal)
-
-        self.mock_binbot_api.get_available_fiat.assert_not_called()
-        autotrade_cls.assert_not_called()
-
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "algorithm_name",
         [
+            "coinrule_buy_the_dip",
+            "coinrule_price_tracker",
+            "failed_spike_fade",
             "mean_reversion_fade",
             "liquidation_sweep_pump",
             "relative_strength_impulse_rider",
@@ -439,34 +421,7 @@ class TestAutotradeConsumer:
             "activity_burst_pump",
         ],
     )
-    async def test_grid_only_policy_blocks_non_allowlisted_strategies(
-        self, algorithm_name
-    ):
-        self.consumer.grid_only_policy = active_grid_only_policy()
-        signal = SignalsConsumer(
-            autotrade=True,
-            current_price=100,
-            bot_params=BotBase(
-                pair="BTCUSDT",
-                name=algorithm_name,
-                market_type=MarketType.SPOT,
-                position=Position.long,
-                fiat="USDT",
-                fiat_order_size=25,
-            ),
-        )
-
-        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
-            await self.consumer.process_autotrade_restrictions(signal)
-
-        autotrade_cls.assert_not_called()
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "algorithm_name",
-        ["coinrule_price_tracker", "failed_spike_fade"],
-    )
-    async def test_grid_only_policy_allows_allowlisted_strategies(self, algorithm_name):
+    async def test_standard_strategies_autotrade(self, algorithm_name):
         self.consumer.grid_only_policy = active_grid_only_policy()
         signal = SignalsConsumer(
             autotrade=True,
@@ -497,8 +452,60 @@ class TestAutotradeConsumer:
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
 
     @pytest.mark.asyncio
-    async def test_grid_only_policy_allowlist_still_blocks_active_grid_symbol(self):
+    async def test_grid_only_policy_blocks_momentum_when_grid_ladders_enabled(self):
+        self.settings.enable_grid_ladders = True
         self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="top_gainer_early_momentum",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "algorithm_name", ["coinrule_price_tracker", "failed_spike_fade"]
+    )
+    async def test_grid_only_policy_allows_range_strategy_exceptions(
+        self, algorithm_name
+    ):
+        self.settings.enable_grid_ladders = True
+        self.consumer.grid_only_policy = active_grid_only_policy()
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name=algorithm_name,
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+
+    @pytest.mark.asyncio
+    async def test_active_grid_ladder_still_blocks_standard_bot_on_same_symbol(self):
+        """A symbol owned by an active grid ladder remains unavailable."""
         self.mock_binbot_api.get_active_grid_ladders.return_value = [
             {"symbol": "BTCUSDT", "market_type": "SPOT"}
         ]
@@ -521,8 +528,8 @@ class TestAutotradeConsumer:
         autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_grid_only_policy_does_not_block_grid_deployment(self):
-        self.consumer.grid_only_policy = active_grid_only_policy()
+    async def test_grid_deployment_is_processed(self):
+        self.settings.enable_grid_ladders = True
         signal = SignalsConsumer(
             autotrade=True,
             signal_kind="grid_deploy",
@@ -535,7 +542,21 @@ class TestAutotradeConsumer:
         self.mock_binbot_api.create_grid_ladder.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_grid_only_policy_still_allows_paper_trading(self):
+    async def test_grid_deployment_skips_when_grid_ladders_disabled(self):
+        signal = SignalsConsumer(
+            autotrade=True,
+            signal_kind="grid_deploy",
+            grid_params=self._grid_params("BTCUSDT"),
+        )
+
+        await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.calculate_grid_levels.assert_not_called()
+        self.mock_binbot_api.create_grid_ladder.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_paper_trading_activates(self):
+        self.settings.enable_grid_ladders = True
         self.consumer.grid_only_policy = active_grid_only_policy()
         signal = SignalsConsumer(
             autotrade=False,
@@ -563,7 +584,6 @@ class TestAutotradeConsumer:
             binbot_api=self.mock_binbot_api,
         )
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
-        self.mock_binbot_api.get_available_fiat.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_failed_spike_fade_shadow_signal_never_creates_real_bot(self):
@@ -987,6 +1007,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_skips_when_autotrade_false(self):
+        self.settings.enable_grid_ladders = True
         signal = SignalsConsumer(
             autotrade=False,
             signal_kind="grid_deploy",
@@ -997,6 +1018,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_rejects_limit_and_duplicate(self):
+        self.settings.enable_grid_ladders = True
         self.consumer.autotrade_settings.grid_max_active_ladders = 2
         self.mock_binbot_api.get_active_grid_ladders.return_value = [
             {"symbol": "BTCUSDT"},
@@ -1024,6 +1046,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_rejects_duplicate_model_record(self):
+        self.settings.enable_grid_ladders = True
         self.consumer.autotrade_settings.grid_max_active_ladders = 2
         self.mock_binbot_api.get_active_grid_ladders.return_value = [
             GridLadderRecord(
@@ -1054,6 +1077,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_skips_when_active_bot_owns_symbol(self):
+        self.settings.enable_grid_ladders = True
         self.mock_binbot_api.get_active_pairs.return_value = ["BTCUSDT"]
 
         signal = SignalsConsumer(
@@ -1125,6 +1149,7 @@ class TestAutotradeConsumer:
         Success path: binquant asks binbot to calculate/validate levels before
         creating the ladder, and keeps the signal-emitted total_margin.
         """
+        self.settings.enable_grid_ladders = True
         self.mock_binbot_api.get_active_grid_ladders.return_value = []
 
         signal = SignalsConsumer(
@@ -1182,6 +1207,7 @@ class TestAutotradeConsumer:
     async def test_process_grid_deployment_calculate_400_skips_create_endpoint(
         self, caplog
     ):
+        self.settings.enable_grid_ladders = True
         caplog.set_level("INFO")
         self.mock_binbot_api.get_active_grid_ladders.return_value = []
         self.mock_binbot_api.calculate_grid_levels.side_effect = BinbotErrors(
@@ -1206,6 +1232,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_does_not_cool_down_failed_calculate(self):
+        self.settings.enable_grid_ladders = True
         self.mock_binbot_api.get_active_grid_ladders.return_value = []
         self.mock_binbot_api.calculate_grid_levels.side_effect = [
             BinbotErrors(
@@ -1236,6 +1263,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_skips_recent_create_attempt(self):
+        self.settings.enable_grid_ladders = True
         self.mock_binbot_api.get_active_grid_ladders.return_value = []
         self.mock_binbot_api.get_available_fiat.return_value = 1000
         generated_at = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
@@ -1261,6 +1289,7 @@ class TestAutotradeConsumer:
 
     @pytest.mark.asyncio
     async def test_process_grid_deployment_allows_attempt_after_cooldown(self):
+        self.settings.enable_grid_ladders = True
         self.mock_binbot_api.get_active_grid_ladders.return_value = []
         self.mock_binbot_api.get_available_fiat.return_value = 1000
         generated_at = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
@@ -1290,6 +1319,7 @@ class TestAutotradeConsumer:
         the GET and POST. The POST may then 400 against binbot's partial
         unique index — log and continue instead of bubbling out.
         """
+        self.settings.enable_grid_ladders = True
         self.mock_binbot_api.get_active_grid_ladders.return_value = []
         self.mock_binbot_api.get_available_fiat.return_value = 1000
         self.mock_binbot_api.create_grid_ladder.side_effect = RuntimeError(

@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
 class LadderDeployer:
     ALGO = "grid_ladder"
-    ENABLED = True
     AUTOTRADE = True
     MIN_RANGE_WIDTH_PCT = 1.5
     MAX_RANGE_WIDTH_PCT = 8.0

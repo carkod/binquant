@@ -28,13 +28,6 @@ from shared.config import Config
 class AutotradeConsumer:
     FUTURES_REVERSAL_BUFFER = 1.40
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
-    # Mean-reversion/fade strategies whose entry logic is structurally suited
-    # to a bounded/ranging market — allowed to run alongside grid ladders even
-    # when the grid-only policy would otherwise block standard bots. Breakout
-    # and momentum-continuation algorithms (activity_burst_pump,
-    # relative_strength_impulse_rider, liquidation_sweep_pump,
-    # top_gainer_early_momentum) are deliberately excluded since they fight
-    # RANGE conditions.
     GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
         {
             "coinrule_price_tracker",
@@ -390,13 +383,13 @@ class AutotradeConsumer:
         self.grid_ladder_attempts[key] = self._grid_ladder_attempt_timestamp(params)
 
     async def process_grid_deployment(self, data: SignalsConsumer) -> None:
+        if not self.autotrade_settings.enable_grid_ladders:
+            logging.info("grid_ladder skipped: enable_grid_ladders_disabled")
+            return
         params = data.grid_params
         autotrade = data.autotrade and self.autotrade_settings.autotrade
         if not params or not autotrade:
             logging.info("grid_ladder skipped: missing params or autotrade is false")
-            return
-        if not self.autotrade_settings.enable_grid_ladders:
-            logging.info("grid_ladder skipped: enable_grid_ladders_disabled")
             return
         if self._grid_ladder_attempted_recently(params):
             return
@@ -518,7 +511,11 @@ class AutotradeConsumer:
                 )
                 await test_autotrade.activate_autotrade(result)
 
-        if self.grid_only_policy.block_standard_bots and result.autotrade:
+        grid_only_active = (
+            self.autotrade_settings.enable_grid_ladders
+            and self.grid_only_policy.block_standard_bots
+        )
+        if grid_only_active and result.autotrade:
             if algorithm_name in self.GRID_ONLY_STANDARD_BOT_ALLOWLIST:
                 logging.info(
                     "Allowing autotrade through grid-only policy exception: %s (%s)",
@@ -531,13 +528,6 @@ class AutotradeConsumer:
                     self.grid_only_policy.reason,
                 )
                 return
-
-        if self.grid_only_policy.block_standard_bots and not result.autotrade:
-            logging.info(
-                "Skipping real autotrade gate for paper signal: grid-only policy active (%s)",
-                self.grid_only_policy.reason,
-            )
-            return
 
         # Check balance to avoid failed autotrades
         balance_check = self.binbot_api.get_available_fiat(
