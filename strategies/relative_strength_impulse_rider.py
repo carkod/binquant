@@ -335,10 +335,10 @@ class RelativeStrengthImpulseRider:
             return
         self._mark_emitted(retest_open_time)
 
-        autotrade = getenv("ENV") == "staging"
-        route_reason = (
-            "staging_relative_strength_retest" if autotrade else "staging_only_shadow"
-        )
+        # Live in every environment. Staging carries too little balance to ever
+        # open a position, so a staging-only gate meant this never traded at all.
+        autotrade = True
+        route_reason = "relative_strength_retest"
         fiat_order_size = self._fiat_order_size()
         score = round_numbers(1 + float(features["relative_strength_1h"]), 4)
         quote_asset = self.current_symbol_data.quote_asset
@@ -410,7 +410,7 @@ class RelativeStrengthImpulseRider:
             - Autotrade route: {route_reason}
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled outside staging"}
+            - Autotrade is enabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

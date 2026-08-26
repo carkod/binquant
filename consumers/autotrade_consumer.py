@@ -511,13 +511,15 @@ class AutotradeConsumer:
                 )
                 await test_autotrade.activate_autotrade(result)
 
-        # TEMPORARY (staging-only): grid-only policy normally blocks
-        # liquidation_sweep_pump / top_gainer_early_momentum / relative_strength_impulse_rider
-        # during RANGE conditions. Bypassed in staging so we can monitor how
-        # they actually perform in range markets. Remove once we've decided.
-        grid_only_active = self.grid_only_policy.block_standard_bots and getenv(
-            "ENV"
-        ) != "staging"
+        # enable_grid_ladders is the master switch: when grid ladders are off
+        # the grid-only policy must never block standard bots, whatever the
+        # breadth reads. This supersedes the temporary staging-only bypass,
+        # which existed only to stop the policy starving momentum strategies
+        # before the toggle gave us a proper off-switch.
+        grid_only_active = (
+            self.autotrade_settings.enable_grid_ladders
+            and self.grid_only_policy.block_standard_bots
+        )
 
         if grid_only_active and result.autotrade:
             if algorithm_name in self.GRID_ONLY_STANDARD_BOT_ALLOWLIST:

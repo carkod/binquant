@@ -135,12 +135,20 @@ class SymbolMarketFeatures(BaseModel):
     timestamp: int
     close: float
     return_pct: float
+    # Multi-bar return over RELATIVE_STRENGTH_HORIZON_BARS. `return_pct` is a
+    # single-bar return, which is far too noisy to judge sustained strength.
+    return_pct_horizon: float = 0.0
     ema20: float
     ema50: float
     above_ema20: bool
     above_ema50: bool
     trend_score: float
+    # Single-bar spread vs BTC. Useful for "is it outperforming right now",
+    # but not for whether a coin has been sustainably stronger than BTC.
     relative_strength_vs_btc: float
+    # Spread vs BTC measured over RELATIVE_STRENGTH_HORIZON_BARS. Strategies
+    # whose thesis is a multi-hour move must use this one.
+    relative_strength_vs_btc_horizon: float = 0.0
     atr_pct: float
     bb_width: float
     derivatives: DerivativesPositioningFeatures | None = None

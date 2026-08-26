@@ -9,6 +9,8 @@ from market_regime.models import LiveMarketContext
 from pybinbot import (
     AutotradeSettingsSchema,
     KucoinKlineIntervals,
+    GainerLoserEntry,
+    GainersLosersSnapshot,
     MarketBreadthSeries,
     MarketType,
     TestAutotradeSettingsSchema,
@@ -47,6 +49,7 @@ class TestKlinesProvider:
         api_instance.get_symbols.return_value = []
         api_instance.get_active_pairs.return_value = set()
         api_instance.get_market_breadth = AsyncMock(return_value={})
+        api_instance.get_gainers_losers_series = AsyncMock(return_value=[])
         api_instance.get_autotrade_settings.return_value = AutotradeSettingsSchema(
             exchange_id="kucoin"
         )
@@ -176,13 +179,30 @@ def make_provider(
     return provider
 
 
-def make_market_breadth_refresh_provider() -> Any:
+def make_market_tape_refresh_provider() -> Any:
     provider = cast(Any, object.__new__(KlinesProvider))
-    provider.binbot_api = SimpleNamespace(get_market_breadth=AsyncMock())
+    provider.binbot_api = SimpleNamespace(
+        get_market_breadth=AsyncMock(),
+        get_gainers_losers_series=AsyncMock(return_value=[]),
+    )
     provider.market_breadth_data = make_market_breadth_series(0.1, 0.09)
-    provider._last_market_breadth_bucket = None
+    provider.gainers_losers_series = []
+    provider._last_market_tape_bucket = None
     provider.interval_15m = KucoinKlineIntervals.FIFTEEN_MINUTES
     return provider
+
+
+def make_gainers_losers_snapshot(
+    symbol: str, price_change_percent: float
+) -> GainersLosersSnapshot:
+    return GainersLosersSnapshot(
+        source="kucoin_futures",
+        recorded_at="2026-07-04T12:00:00+00:00",
+        top_gainers=[
+            GainerLoserEntry(symbol=symbol, price_change_percent=price_change_percent)
+        ],
+        top_losers=[],
+    )
 
 
 def make_market_breadth_series(latest: float, previous: float) -> MarketBreadthSeries:
@@ -203,21 +223,25 @@ def make_market_breadth_series(latest: float, previous: float) -> MarketBreadthS
 
 
 @pytest.mark.asyncio
-async def test_refresh_market_breadth_once_per_15m_bucket():
-    provider = make_market_breadth_refresh_provider()
+async def test_refresh_market_tape_once_per_15m_bucket():
+    provider = make_market_tape_refresh_provider()
     refreshed = make_market_breadth_series(0.12, 0.1)
     provider.binbot_api.get_market_breadth.return_value = refreshed
+    snapshots = [make_gainers_losers_snapshot("BTRUSDTM", 181.88)]
+    provider.binbot_api.get_gainers_losers_series.return_value = snapshots
 
-    await provider._refresh_market_breadth_for_bucket(datetime(2026, 7, 4, 12, 15, 1))
-    await provider._refresh_market_breadth_for_bucket(datetime(2026, 7, 4, 12, 29, 59))
+    await provider._refresh_market_tape_for_bucket(datetime(2026, 7, 4, 12, 15, 1))
+    await provider._refresh_market_tape_for_bucket(datetime(2026, 7, 4, 12, 29, 59))
 
     provider.binbot_api.get_market_breadth.assert_awaited_once()
+    provider.binbot_api.get_gainers_losers_series.assert_awaited_once()
     assert provider.market_breadth_data == refreshed
+    assert provider.gainers_losers_series == snapshots
 
 
 @pytest.mark.asyncio
-async def test_refresh_market_breadth_again_on_next_15m_bucket():
-    provider = make_market_breadth_refresh_provider()
+async def test_refresh_market_tape_again_on_next_15m_bucket():
+    provider = make_market_tape_refresh_provider()
     first_refresh = make_market_breadth_series(0.12, 0.1)
     second_refresh = make_market_breadth_series(0.09, 0.12)
     provider.binbot_api.get_market_breadth.side_effect = [
@@ -225,10 +249,11 @@ async def test_refresh_market_breadth_again_on_next_15m_bucket():
         second_refresh,
     ]
 
-    await provider._refresh_market_breadth_for_bucket(datetime(2026, 7, 4, 12, 15))
-    await provider._refresh_market_breadth_for_bucket(datetime(2026, 7, 4, 12, 30))
+    await provider._refresh_market_tape_for_bucket(datetime(2026, 7, 4, 12, 15))
+    await provider._refresh_market_tape_for_bucket(datetime(2026, 7, 4, 12, 30))
 
     assert provider.binbot_api.get_market_breadth.await_count == 2
+    assert provider.binbot_api.get_gainers_losers_series.await_count == 2
     assert provider.market_breadth_data == second_refresh
 
 

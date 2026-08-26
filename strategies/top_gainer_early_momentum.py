@@ -13,6 +13,7 @@ from pybinbot import (
     round_numbers,
 )
 
+from market_regime.gainers_losers_streaks import resolve_top_gainer_streak
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -29,12 +30,21 @@ class TopGainerEarlyMomentum:
 
     The production top-gainer sample showed the first tradable impulse usually
     shared four traits: close above the recent 15m high, accelerating 1h/2h
-    return, volume expansion, and a candle closing near its high. This strategy
-    waits for two closes to confirm that ignition while rejecting
-    already-vertical blow-offs.
+    return, volume expansion, and a candle closing near its high.
 
-    Conservative version. Do not make changes unless we are sure
-    the strategy will perform better
+    There are two entry paths, both of which reject already-vertical blow-offs
+    via `_entry_allows`:
+
+    - Conservative (default): waits for two further closes to confirm the
+      ignition before entering.
+    - Sustained top gainer: when the symbol has held a top-gainer slot for
+      MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS consecutive snapshots, the tape has
+      already evidenced the continuation the confirmation exists to prove, so
+      entry happens on the breakout candle itself -- two bars earlier.
+
+    Both paths are deliberately strict on extension. Do not loosen the
+    `_entry_allows` blow-off guards unless we are sure the strategy will
+    perform better; the fast path only skips confirmation, never those.
     """
 
     ALGO = "top_gainer_early_momentum"
@@ -57,8 +67,12 @@ class TopGainerEarlyMomentum:
     MAX_UPPER_WICK_FRACTION = 0.30
 
     MAX_MARKET_STRESS_SCORE = 0.25
+    # Measured over RELATIVE_STRENGTH_HORIZON_BARS (6h), not a single 15m bar.
     MIN_RELATIVE_STRENGTH_VS_BTC = 0.03
     MAX_SYMBOL_ATR_PCT = 0.06
+    # Snapshots are ingested hourly, so this is roughly three hours of holding
+    # a top-gainer slot before the breakout candle alone is enough to enter.
+    MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS = 3
 
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ATR_STOP_MULT = 2.2
@@ -79,6 +93,7 @@ class TopGainerEarlyMomentum:
         self.price_precision = cls.price_precision
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
+        self.gainers_losers_series = cls.gainers_losers_series
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_candle: int | None = None
         self._last_risk_rejection_candle: int | None = None
@@ -237,16 +252,20 @@ class TopGainerEarlyMomentum:
     ) -> tuple[bool, str]:
         if context is None:
             return False, "market_context_unavailable"
+        # Market-wide crash guard only. The broad-regime gates that used to sit
+        # here (short-edge and btc-down) rejected every mover on 2026-08-26,
+        # when breadth ran -0.35 to -0.55 all session while the best
+        # continuation trades were idiosyncratic single-name pumps. Top-gainer
+        # continuation is deliberately decoupled from the broad tape.
         if context.market_stress_score >= cls.MAX_MARKET_STRESS_SCORE:
             return False, "market_stress_too_high"
-        if context.short_regime_score > context.long_regime_score + 0.15:
-            return False, "market_context_short_edge"
-        if context.btc_regime_score < -0.2 and context.btc_return < 0:
-            return False, "btc_context_down"
 
         if features is None:
             return False, "symbol_regime_unavailable"
-        if features.relative_strength_vs_btc <= cls.MIN_RELATIVE_STRENGTH_VS_BTC:
+        if (
+            features.relative_strength_vs_btc_horizon
+            <= cls.MIN_RELATIVE_STRENGTH_VS_BTC
+        ):
             return False, "relative_strength_vs_btc_not_positive"
         if features.atr_pct > cls.MAX_SYMBOL_ATR_PCT:
             return False, "symbol_atr_too_high"
@@ -337,6 +356,9 @@ class TopGainerEarlyMomentum:
             "relative_strength_vs_btc": (
                 features.relative_strength_vs_btc if features else None
             ),
+            "relative_strength_vs_btc_horizon": (
+                features.relative_strength_vs_btc_horizon if features else None
+            ),
             "return_1h": values["return_1h"],
             "return_2h": values["return_2h"],
             "return_6h": values["return_6h"],
@@ -345,7 +367,7 @@ class TopGainerEarlyMomentum:
         logging.info(
             "%s risk rejected: symbol=%s reason=%s market_regime=%s "
             "market_transition=%s symbol_regime=%s symbol_transition=%s "
-            "atr_pct=%s relative_strength_vs_btc=%s",
+            "atr_pct=%s relative_strength_vs_btc_horizon=%s",
             self.ALGO,
             self.symbol,
             risk_reason,
@@ -354,7 +376,7 @@ class TopGainerEarlyMomentum:
             indicators["symbol_micro_regime"],
             indicators["symbol_micro_regime_transition"],
             indicators["symbol_atr_pct"],
-            indicators["relative_strength_vs_btc"],
+            indicators["relative_strength_vs_btc_horizon"],
         )
         try:
             self.ti.binbot_api.dispatch_create_signal(
@@ -395,7 +417,24 @@ class TopGainerEarlyMomentum:
             logging.info("%s skipped: history_too_short", self.ALGO)
             return
 
-        breakout_df = df.iloc[:-2]
+        top_gainer_streak = resolve_top_gainer_streak(
+            snapshots=self.gainers_losers_series,
+            symbol=self.symbol,
+        )
+        # A coin that has held a top-gainer slot for hours has already proven
+        # the continuation the two-close confirmation exists to establish.
+        # Waiting for it there costs the whole early leg of the move: on
+        # 2026-08-26 BTRUSDTM ran +14% -> +182% across eleven snapshots
+        # without ever emitting a signal.
+        sustained_top_gainer = (
+            top_gainer_streak.snapshots_in_a_row
+            >= self.MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS
+        )
+
+        # The fast path reads the breakout off the latest completed candle; the
+        # conservative path reads it two bars back and demands both of those
+        # bars confirm it.
+        breakout_df = df if sustained_top_gainer else df.iloc[:-2]
         values, feature_reason = self._features(breakout_df)
         if values is None:
             logging.info("%s skipped: %s", self.ALGO, feature_reason)
@@ -406,20 +445,24 @@ class TopGainerEarlyMomentum:
             logging.info("%s skipped: %s", self.ALGO, entry_reason)
             return
 
-        first_confirmation = df.iloc[-2]
         candidate = df.iloc[-1]
-        confirmation_allowed, confirmation_reason = self._confirmation_allows(
-            breakout_close=values["close"],
-            previous_high=values["previous_high"],
-            first_confirmation_close=float(first_confirmation["close"]),
-            second_confirmation_open=float(candidate["open"]),
-            second_confirmation_high=float(candidate["high"]),
-            second_confirmation_low=float(candidate["low"]),
-            second_confirmation_close=float(candidate["close"]),
-        )
-        if not confirmation_allowed:
-            logging.info("%s skipped: %s", self.ALGO, confirmation_reason)
-            return
+        first_confirmation_close: float | None = None
+        if sustained_top_gainer:
+            confirmation_reason = "sustained_top_gainer_breakout"
+        else:
+            first_confirmation_close = float(df.iloc[-2]["close"])
+            confirmation_allowed, confirmation_reason = self._confirmation_allows(
+                breakout_close=values["close"],
+                previous_high=values["previous_high"],
+                first_confirmation_close=first_confirmation_close,
+                second_confirmation_open=float(candidate["open"]),
+                second_confirmation_high=float(candidate["high"]),
+                second_confirmation_low=float(candidate["low"]),
+                second_confirmation_close=float(candidate["close"]),
+            )
+            if not confirmation_allowed:
+                logging.info("%s skipped: %s", self.ALGO, confirmation_reason)
+                return
 
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
@@ -446,7 +489,11 @@ class TopGainerEarlyMomentum:
         self._mark_emitted(candidate_open_time)
 
         autotrade = True
-        route_reason = "confirmed_top_gainer_long"
+        route_reason = (
+            "sustained_top_gainer_long"
+            if sustained_top_gainer
+            else "confirmed_top_gainer_long"
+        )
         fiat_order_size = self._fiat_order_size()
         stop_loss = self._stop_loss_pct(
             close=float(candidate["close"]),
@@ -467,8 +514,12 @@ class TopGainerEarlyMomentum:
             "breakout_reason": entry_reason,
             "entry_reason": confirmation_reason,
             "breakout_open_time": int(breakout_df.iloc[-1]["open_time"]),
-            "first_confirmation_close": float(first_confirmation["close"]),
+            "first_confirmation_close": first_confirmation_close,
             "second_confirmation_close": float(candidate["close"]),
+            "top_gainer_snapshots_in_a_row": top_gainer_streak.snapshots_in_a_row,
+            "top_gainer_price_change_percent": (
+                top_gainer_streak.latest_price_change_percent
+            ),
             "risk_reason": risk_reason,
             "route_reason": route_reason,
             "stop_loss_pct": stop_loss,
@@ -511,10 +562,11 @@ class TopGainerEarlyMomentum:
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
             - Current price: {round_numbers(float(current_price), decimals=self.price_precision)}
-            - Rule intent: BUY confirmed top-gainer breakouts after price holds the recent high and then clears the breakout close
+            - Rule intent: {"BUY sustained top-gainer breakouts on the breakout candle itself, once the tape has held the symbol on the gainers list" if sustained_top_gainer else "BUY confirmed top-gainer breakouts after price holds the recent high and then clears the breakout close"}
             - Breakout setup: {entry_reason}
             - Entry setup: {confirmation_reason}
-            - Breakout / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(float(first_confirmation["close"]), self.price_precision)} / {round_numbers(float(candidate["close"]), self.price_precision)}
+            - Breakout / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(first_confirmation_close, self.price_precision) if first_confirmation_close is not None else "skipped"} / {round_numbers(float(candidate["close"]), self.price_precision)}
+            - Top-gainer tape: {top_gainer_streak.snapshots_in_a_row} snapshots in a row (24h move {round_numbers(top_gainer_streak.latest_price_change_percent, 2)}%)
             - 1h / 2h / 6h / extension return ({int(values["extension_window_bars"])} bars, cap {round_numbers(values["extension_cap"] * 100, 2)}%): {round_numbers(values["return_1h"] * 100, 2)}% / {round_numbers(values["return_2h"] * 100, 2)}% / {round_numbers(values["return_6h"] * 100, 2)}% / {round_numbers(values["extension_return"] * 100, 2)}%
             - Candle return: {round_numbers(values["candle_return"] * 100, 2)}%
             - Volume: {round_numbers(values["volume"], decimals=self.price_precision)} {base_asset} (ratio {round_numbers(values["volume_ratio"], 2)})

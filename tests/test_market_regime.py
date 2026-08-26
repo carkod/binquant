@@ -1,4 +1,5 @@
 from market_regime.live_market_context_accumulator import (
+    RELATIVE_STRENGTH_HORIZON_BARS,
     LiveMarketContextAccumulator,
 )
 from market_regime.context_scoring import RuleBasedMarketContextModel
@@ -438,3 +439,42 @@ def test_autotrade_routing_blocks_transitioning_context() -> None:
     )
 
     assert allows_long_autotrade(context=context, symbol="ALT0USDT") is False
+
+
+def test_relative_strength_horizon_survives_a_flat_final_bar() -> None:
+    """
+    The BMTUSDTM rejection on 2026-08-25: a coin up ~22% over 6h against a
+    flat BTC was rejected as having no relative strength, because the old
+    single-bar measure only saw the quiet 15m bar it happened to land on.
+    The horizon measure must report the sustained move instead.
+    """
+    store = MarketStateStore()
+    accumulator = LiveMarketContextAccumulator(store, btc_symbol="BTCUSDT")
+
+    # BTC drifts nowhere over the whole window.
+    for bar in range(RELATIVE_STRENGTH_HORIZON_BARS + 1):
+        store.update("BTCUSDT", make_candle(1_000 + bar, 100.0))
+
+    # The mover ramps 100 -> 122 then prints a flat final bar.
+    for index in range(40):
+        symbol = f"ALT{index}USDT"
+        for bar in range(RELATIVE_STRENGTH_HORIZON_BARS):
+            store.update(
+                symbol,
+                make_candle(1_000 + bar, 100.0 + bar * (22.0 / 24.0)),
+            )
+
+    context = None
+    for index in range(40):
+        symbol = f"ALT{index}USDT"
+        context = accumulator.on_closed_candle(
+            symbol,
+            make_candle(1_000 + RELATIVE_STRENGTH_HORIZON_BARS, 122.0),
+        )
+
+    assert context is not None
+    features = context.symbol_features["ALT0USDT"]
+    # The final bar barely moved, so the single-bar measure sees ~nothing.
+    assert features.relative_strength_vs_btc < 0.01
+    # The 6h horizon sees the whole 22% ramp and clears the 3% gate.
+    assert features.relative_strength_vs_btc_horizon > 0.20

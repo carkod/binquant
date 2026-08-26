@@ -21,6 +21,7 @@ from pybinbot import (
     KucoinApi,
     KucoinFutures,
     KucoinKlineIntervals,
+    GainersLosersSnapshot,
     MarketBreadthSeries,
     MarketDominance,
     MarketType,
@@ -63,6 +64,7 @@ class ContextEvaluator:
         symbol: str,
         current_symbol_data: SymbolModel,
         market_breadth_data: MarketBreadthSeries | None,
+        gainers_losers_series: list[GainersLosersSnapshot],
         all_symbols: list[SymbolModel],
         ac_api: AutotradeConsumer,
         exchange: ExchangeId,
@@ -105,6 +107,7 @@ class ContextEvaluator:
         self.market_domination_reversal: bool = False
         self.bot_strategy: Position = Position.long
         self.market_breadth_data = market_breadth_data
+        self.gainers_losers_series = gainers_losers_series
         self.btc_correlation: float = 0
         self.btc_beta: float = 0
         self.btc_price_change: float = 0
