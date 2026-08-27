@@ -1,6 +1,9 @@
 from pybinbot import GainerLoserEntry, GainersLosersSnapshot
 
-from market_regime.gainers_losers_streaks import resolve_top_gainer_streak
+from market_regime.gainers_losers_streaks import (
+    resolve_top_gainer_streak,
+    resolve_top_loser_streak,
+)
 
 
 def make_snapshot(*gainers: tuple[str, float]) -> GainersLosersSnapshot:
@@ -62,3 +65,48 @@ def test_streak_is_zero_without_any_snapshots() -> None:
 
     assert streak.snapshots_in_a_row == 0
     assert streak.latest_price_change_percent == 0.0
+
+
+def test_top_loser_streak_includes_latest_rank_and_hourly_change() -> None:
+    snapshots = [
+        GainersLosersSnapshot(
+            source="kucoin_futures",
+            recorded_at="2026-08-26T12:00:00+00:00",
+            top_gainers=[],
+            top_losers=[
+                GainerLoserEntry(symbol="OTHERUSDTM", price_change_percent=-20.0),
+                GainerLoserEntry(symbol="TESTUSDTM", price_change_percent=-18.0),
+            ],
+        ),
+        GainersLosersSnapshot(
+            source="kucoin_futures",
+            recorded_at="2026-08-26T11:00:00+00:00",
+            top_gainers=[],
+            top_losers=[
+                GainerLoserEntry(symbol="OTHERUSDTM", price_change_percent=-17.0),
+                GainerLoserEntry(symbol="THIRDUSDTM", price_change_percent=-15.0),
+                GainerLoserEntry(symbol="TESTUSDTM", price_change_percent=-14.0),
+            ],
+        ),
+    ]
+
+    streak = resolve_top_loser_streak(snapshots=snapshots, symbol="TESTUSDTM")
+
+    assert streak.snapshots_in_a_row == 2
+    assert streak.latest_rank == 2
+    assert streak.latest_price_change_percent == -18.0
+    assert streak.rank_change == -1
+    assert streak.price_change_percent_change == -4.0
+
+
+def test_top_loser_streak_is_zero_when_symbol_is_absent() -> None:
+    streak = resolve_top_loser_streak(
+        snapshots=[make_snapshot(("TESTUSDTM", 12.0))],
+        symbol="TESTUSDTM",
+    )
+
+    assert streak.snapshots_in_a_row == 0
+    assert streak.latest_rank is None
+    assert streak.latest_price_change_percent == 0.0
+    assert streak.rank_change is None
+    assert streak.price_change_percent_change is None

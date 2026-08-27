@@ -6,6 +6,8 @@ import pytest
 from pandas import DataFrame
 from pybinbot import (
     ExchangeId,
+    GainerLoserEntry,
+    GainersLosersSnapshot,
     Indicators,
     MarketBreadthSeries,
     MarketDominance,
@@ -88,7 +90,11 @@ def make_market_context(**overrides: Any) -> LiveMarketContext:
     return LiveMarketContext(**values)
 
 
-def make_context(df: DataFrame) -> SimpleNamespace:
+def make_context(
+    df: DataFrame,
+    *,
+    gainers_losers_series: list[GainersLosersSnapshot] | None = None,
+) -> SimpleNamespace:
     binbot_api = MagicMock()
     binbot_api.get_bots_by_name.return_value = []
     return SimpleNamespace(
@@ -124,6 +130,9 @@ def make_context(df: DataFrame) -> SimpleNamespace:
             avg_loss=[-0.03, -0.02, -0.01],
             total_volume=[900, 1000, 1100],
             strength_index=[0, 0.1, 0.2],
+        ),
+        gainers_losers_series=(
+            gainers_losers_series if gainers_losers_series is not None else []
         ),
         bot_strategy=Position.long,
         current_market_dominance=MarketDominance.NEUTRAL,
@@ -189,6 +198,25 @@ def make_ohlcv_df(n: int = 50, oversold: bool = False) -> DataFrame:
     df["rsi"] = 25.0 if oversold else 60.0
     df["macd"] = -0.5 if oversold else 0.5
     return df
+
+
+def make_mover_snapshot(
+    *,
+    gainers: list[tuple[str, float]] | None = None,
+    losers: list[tuple[str, float]] | None = None,
+) -> GainersLosersSnapshot:
+    return GainersLosersSnapshot(
+        source="kucoin_futures",
+        recorded_at="2026-08-26T12:00:00+00:00",
+        top_gainers=[
+            GainerLoserEntry(symbol=symbol, price_change_percent=pct)
+            for symbol, pct in gainers or []
+        ],
+        top_losers=[
+            GainerLoserEntry(symbol=symbol, price_change_percent=pct)
+            for symbol, pct in losers or []
+        ],
+    )
 
 
 def make_range_bound_df(n: int = 50) -> DataFrame:
@@ -297,6 +325,7 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     """
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
+    algo.gainers_losers_series = [make_mover_snapshot(gainers=[("TESTUSDT", 12.5)])]
     at_mock = AsyncMock()
     tg_mock = Mock()
     algo.at_consumer = cast(
@@ -358,6 +387,119 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     assert (
         signal_value.bot_params.trailing_deviation
         == PriceTracker.TRAILING_DEVIATION_PCT
+    )
+    signal_indicators = dispatch_mock.call_args.kwargs["indicators"]
+    assert signal_indicators["top_gainer_snapshots_in_a_row"] == 1
+    assert signal_indicators["top_gainer_price_change_percent"] == 12.5
+    assert signal_indicators["top_loser_snapshots_in_a_row"] == 0
+
+
+@pytest.mark.parametrize(
+    (
+        "losers_by_snapshot",
+        "expected_autotrade",
+        "expected_route",
+        "expected_recovery",
+    ),
+    [
+        (
+            [[("TESTUSDT", -12.0)]],
+            True,
+            "symbol_range",
+            False,
+        ),
+        (
+            [
+                [("TESTUSDT", -14.0)],
+                [("TESTUSDT", -12.0)],
+            ],
+            False,
+            "persistent_top_loser",
+            False,
+        ),
+        (
+            [
+                [("TESTUSDT", -10.0)],
+                [("TESTUSDT", -14.0)],
+            ],
+            False,
+            "persistent_top_loser",
+            False,
+        ),
+        (
+            [
+                [("OTHERUSDT", -16.0), ("TESTUSDT", -14.0)],
+                [("TESTUSDT", -12.0)],
+            ],
+            False,
+            "persistent_top_loser",
+            False,
+        ),
+        (
+            [
+                [("OTHERUSDT", -12.0), ("TESTUSDT", -10.0)],
+                [("TESTUSDT", -14.0)],
+            ],
+            True,
+            "top_loser_recovery",
+            True,
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_price_tracker_times_top_loser_entries_from_tape_recovery(
+    monkeypatch,
+    losers_by_snapshot: list[list[tuple[str, float]]],
+    expected_autotrade: bool,
+    expected_route: str,
+    expected_recovery: bool,
+) -> None:
+    df = make_ohlcv_df(n=50, oversold=True)
+    snapshots = [make_mover_snapshot(losers=losers) for losers in losers_by_snapshot]
+    context = make_context(df, gainers_losers_series=snapshots)
+    context.latest_market_context = make_market_context()
+    algo = PriceTracker(cast(Any, context))
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.Indicators.mfi",
+        staticmethod(lambda df, window=14: 15.0),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
+        lambda **kwargs: SimpleNamespace(
+            adjusted_score=1.2,
+            emit=True,
+            context_score=SimpleNamespace(
+                confidence=0.7,
+                followthrough_score=0.2,
+                adverse_excursion_risk=0.2,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.is_autotrade_suppressed",
+        lambda **kwargs: False,
+    )
+
+    await algo.signal(
+        close_price=float(df["close"].iloc[-1]),
+        bb_high=115.0,
+        bb_low=85.0,
+        bb_mid=100.0,
+    )
+
+    dispatch_mock = cast(Mock, algo.ti.dispatch_signal_record)
+    signal_value = dispatch_mock.call_args.kwargs["value"]
+    indicators = dispatch_mock.call_args.kwargs["indicators"]
+    assert signal_value.autotrade is expected_autotrade
+    assert indicators["route_reason"] == expected_route
+    assert indicators["top_loser_snapshots_in_a_row"] == len(losers_by_snapshot)
+    assert indicators["top_loser_recovery_confirmed"] is expected_recovery
+    telegram_mock = cast(Mock, algo.telegram_consumer.dispatch_signal)
+    assert f"Autotrade route: {expected_route}" in telegram_mock.call_args.args[0]
+    assert (
+        f"Top-loser recovery confirmed: {'Yes' if expected_recovery else 'No'}"
+        in telegram_mock.call_args.args[0]
     )
 
 

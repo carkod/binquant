@@ -11,13 +11,17 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.score_signal_candidate_with_context import (
-    score_signal_candidate_with_context,
+from market_regime.gainers_losers_streaks import (
+    resolve_top_gainer_streak,
+    resolve_top_loser_streak,
 )
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import (
     resolve_symbol_features,
 )
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.score_signal_candidate_with_context import (
+    score_signal_candidate_with_context,
+)
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.time_of_day_filter import (
     build_quiet_hours_signal_msg,
@@ -39,6 +43,7 @@ class PriceTracker:
     TRAILING_PROFIT_PCT = 1.5
     TRAILING_DEVIATION_PCT = 0.5
     MAX_HOLDING_BARS = 8
+    MAX_TOP_LOSER_SNAPSHOTS_FOR_AUTOTRADE = 1
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -48,6 +53,7 @@ class PriceTracker:
         self.market_type = cls.market_type
         self.exchange = cls.exchange
         self.market_breadth_data = cls.market_breadth_data
+        self.gainers_losers_series = cls.gainers_losers_series
         self.symbol = cls.symbol
         self.telegram_consumer = cls.telegram_consumer
         self.at_consumer = cls.at_consumer
@@ -250,6 +256,33 @@ class PriceTracker:
                 return
             self._mark_entry_cooldown(close_time)
 
+            top_gainer_streak = resolve_top_gainer_streak(
+                snapshots=self.gainers_losers_series,
+                symbol=self.symbol,
+            )
+            top_loser_streak = resolve_top_loser_streak(
+                snapshots=self.gainers_losers_series,
+                symbol=self.symbol,
+            )
+
+            persistent_top_loser = (
+                top_loser_streak.snapshots_in_a_row
+                > self.MAX_TOP_LOSER_SNAPSHOTS_FOR_AUTOTRADE
+            )
+            top_loser_recovery_confirmed = (
+                persistent_top_loser
+                and top_loser_streak.rank_change is not None
+                and top_loser_streak.rank_change > 0
+                and top_loser_streak.price_change_percent_change is not None
+                and top_loser_streak.price_change_percent_change > 0
+            )
+
+            if autotrade and top_loser_recovery_confirmed:
+                autotrade_route = "top_loser_recovery"
+            elif autotrade and persistent_top_loser:
+                autotrade = False
+                autotrade_route = "persistent_top_loser"
+
             if autotrade and os.getenv("ENV") == "staging":
                 autotrade = False
                 autotrade_route = "staging_autotrade_disabled"
@@ -291,6 +324,27 @@ class PriceTracker:
             )
             self.ti.finalize_signal_bot_params(value)
 
+            indicators = {
+                "rsi": rsi_value,
+                "macd": macd_value,
+                "mfi": mfi_value,
+                "route_reason": autotrade_route,
+                "top_gainer_snapshots_in_a_row": (top_gainer_streak.snapshots_in_a_row),
+                "top_gainer_price_change_percent": (
+                    top_gainer_streak.latest_price_change_percent
+                ),
+                "top_loser_snapshots_in_a_row": (top_loser_streak.snapshots_in_a_row),
+                "top_loser_rank": top_loser_streak.latest_rank,
+                "top_loser_rank_change": top_loser_streak.rank_change,
+                "top_loser_price_change_percent": (
+                    top_loser_streak.latest_price_change_percent
+                ),
+                "top_loser_price_change_percent_change": (
+                    top_loser_streak.price_change_percent_change
+                ),
+                "top_loser_recovery_confirmed": top_loser_recovery_confirmed,
+            }
+
             msg = f"""
             - [{os.getenv("ENV")}] <strong>#{algo} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
@@ -298,6 +352,9 @@ class PriceTracker:
             - RSI (14) &lt; 30: {round_numbers(rsi_value, 2)}
             - MACD &lt; 0: {round_numbers(macd_value, 6)}
             - MFI &lt; 20: {round_numbers(mfi_value, 2)}
+            - Top-gainer tape: {top_gainer_streak.snapshots_in_a_row} snapshots in a row (24h move {round_numbers(top_gainer_streak.latest_price_change_percent, 2)}%)
+            - Top-loser tape: {top_loser_streak.snapshots_in_a_row} snapshots in a row (rank {top_loser_streak.latest_rank if top_loser_streak.latest_rank is not None else "N/A"}, 24h move {round_numbers(top_loser_streak.latest_price_change_percent, 2)}%)
+            - Top-loser recovery confirmed: {"Yes" if top_loser_recovery_confirmed else "No"}
             - Strategy: {bot_strategy.value}
             - Rule intent: BUY after 5m oversold mean-reversion in a balanced range market, only when the coin is also leading BTC
             - Market regime: {context.market_regime}
@@ -323,7 +380,7 @@ class PriceTracker:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
-            await self.ti.dispatch_signal_record(value=value)
+            await self.ti.dispatch_signal_record(value=value, indicators=indicators)
             self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
