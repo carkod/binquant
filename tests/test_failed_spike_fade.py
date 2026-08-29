@@ -300,9 +300,17 @@ async def test_signal_keeps_waiting_without_breadth_reversal(monkeypatch):
 async def test_signal_invalidates_excessive_post_spike_extension(monkeypatch):
     algo = make_algo()
     await record_source(algo, monkeypatch)
+    # Derived from the cap so the rule stays protected when the cap is retuned.
+    source_spike_high = float(source_candles()["high"].iloc[0])
+    excessive_high = (
+        source_spike_high * (1 + FailedSpikeFade.MAX_POST_SPIKE_EXTENSION) + 1.0
+    )
     algo.ti.df_15m = cast(
         Any,
-        concat([source_candles(), failure_candle(high=107.1)], ignore_index=True),
+        concat(
+            [source_candles(), failure_candle(high=excessive_high)],
+            ignore_index=True,
+        ),
     )
     algo.market_breadth_data = make_market_breadth_data(latest=0.10, previous=0.12)
 

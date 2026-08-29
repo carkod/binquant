@@ -16,6 +16,9 @@ from shared.utils import clamp, safe_pct
 
 REQUIRED_FRESH_SYMBOLS = 40
 MIN_COVERAGE_RATIO = 0.70
+# 24 bars of 15m history = 6h. Relative strength over a single 15m bar is
+# noise; sustained-move strategies need a horizon that matches their thesis.
+RELATIVE_STRENGTH_HORIZON_BARS = 24
 MAX_DERIVATIVES_AGE_MS = 15 * 60 * 1000
 MAX_DERIVATIVES_FUTURE_SKEW_MS = 5 * 60 * 1000
 
@@ -145,6 +148,9 @@ class LiveMarketContextAccumulator:
                     continue
                 features.relative_strength_vs_btc = (
                     features.return_pct - btc_features.return_pct
+                )
+                features.relative_strength_vs_btc_horizon = (
+                    features.return_pct_horizon - btc_features.return_pct_horizon
                 )
 
         effective_count = len(symbol_features)
@@ -340,6 +346,11 @@ class LiveMarketContextAccumulator:
 
         latest_close = float(closes.iloc[-1])
         prev_close = float(closes.iloc[-2])
+        # Falls back to the oldest close available so a symbol with a short
+        # history reports the strength it can actually evidence rather than 0.
+        horizon_close = float(
+            closes.iloc[-min(RELATIVE_STRENGTH_HORIZON_BARS + 1, len(closes))]
+        )
         atr_pct = float(atr / latest_close) if latest_close else 0.0
         bb_width = (
             float((bb_upper.iloc[-1] - bb_lower.iloc[-1]) / abs(mid.iloc[-1]))
@@ -353,6 +364,7 @@ class LiveMarketContextAccumulator:
             timestamp=int(working.iloc[-1]["timestamp"]),
             close=latest_close,
             return_pct=safe_pct(latest_close, prev_close),
+            return_pct_horizon=safe_pct(latest_close, horizon_close),
             ema20=float(ema20),
             ema50=float(ema50),
             above_ema20=latest_close > float(ema20),

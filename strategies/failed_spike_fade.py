@@ -39,8 +39,14 @@ class FailedSpikeFade:
     ALGO = "failed_spike_fade"
     MAX_MARKET_STRESS_SCORE = 0.35
     MIN_BREADTH_MOMENTUM_POINTS = 0.5
-    FAILURE_WINDOW_BARS = 8
-    MAX_POST_SPIKE_EXTENSION = 0.06
+    # 24 bars of 15m = 6h. The 2h window this replaced expired before most
+    # reversals happened: the gainer -> loser round trips observed on
+    # 2026-08-26 (STARUSDTM, PORTALUSDTM, PROMUSDTM) took 5-8h to complete.
+    FAILURE_WINDOW_BARS = 24
+    # Widened with the window. STARUSDTM ran to +41% before rolling over, so a
+    # 6% extension cap would invalidate nearly every pending spike long before
+    # the longer window had a chance to see the failure.
+    MAX_POST_SPIKE_EXTENSION = 0.15
     MAX_CANDLE_RETURN = 0.06
     STOP_LOSS_PCT = 4.0
     TAKE_PROFIT_PCT = 6.0

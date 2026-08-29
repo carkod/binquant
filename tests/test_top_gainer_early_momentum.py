@@ -8,6 +8,8 @@ from pandas import DataFrame
 from pybinbot import (
     AutotradeSettingsSchema,
     ExchangeId,
+    GainerLoserEntry,
+    GainersLosersSnapshot,
     MarketType,
     SymbolModel,
 )
@@ -28,6 +30,8 @@ def make_symbol_features(**overrides: Any) -> SymbolMarketFeatures:
         "above_ema50": True,
         "trend_score": 0.05,
         "relative_strength_vs_btc": 0.04,
+        "return_pct_horizon": 0.22,
+        "relative_strength_vs_btc_horizon": 0.21,
         "atr_pct": 0.025,
         "bb_width": 0.05,
         "micro_regime": "TREND_UP",
@@ -169,9 +173,13 @@ def make_context(
     *,
     df_15m: DataFrame,
     latest_market_context: LiveMarketContext,
+    gainers_losers_series: list[GainersLosersSnapshot] | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
+        gainers_losers_series=(
+            gainers_losers_series if gainers_losers_series is not None else []
+        ),
         symbol="TESTUSDTM",
         market_type=MarketType.FUTURES,
         df_15m=df_15m,
@@ -402,7 +410,7 @@ async def test_signal_skips_when_relative_strength_is_not_positive(monkeypatch):
     df = make_breakout_candles()
     context = make_market_context(
         symbol_features={
-            "TESTUSDTM": make_symbol_features(relative_strength_vs_btc=0.0)
+            "TESTUSDTM": make_symbol_features(relative_strength_vs_btc_horizon=0.0)
         }
     )
     algo = TopGainerEarlyMomentum(
@@ -446,7 +454,7 @@ async def test_signal_persists_symbol_specific_risk_rejection_once_per_candle(
     df = make_breakout_candles()
     market_context = make_market_context(
         symbol_features={
-            "TESTUSDTM": make_symbol_features(relative_strength_vs_btc=0.0)
+            "TESTUSDTM": make_symbol_features(relative_strength_vs_btc_horizon=0.0)
         }
     )
     context = make_context(
@@ -473,7 +481,7 @@ async def test_signal_persists_symbol_specific_risk_rejection_once_per_candle(
     assert payload["autotrade"] is False
     assert payload["signal_kind"] == "risk_rejection"
     assert indicators["risk_reason"] == "relative_strength_vs_btc_not_positive"
-    assert indicators["relative_strength_vs_btc"] == 0.0
+    assert indicators["relative_strength_vs_btc_horizon"] == 0.0
     assert indicators["symbol_atr_pct"] == 0.025
     assert indicators["symbol_micro_regime_transition"] == "BREAKOUT_UP"
     context.dispatch_signal_record.assert_not_called()
@@ -745,3 +753,106 @@ def test_confirmation_requires_second_close_to_retain_momentum() -> None:
         second_confirmation_low=111.8,
         second_confirmation_close=112.2,
     ) == (False, "second_confirmation_did_not_retain_momentum")
+
+
+def make_top_gainer_snapshots(count: int) -> list[GainersLosersSnapshot]:
+    return [
+        GainersLosersSnapshot(
+            source="kucoin_futures",
+            recorded_at=f"2026-08-26T{11 - index:02d}:11:34.771019+01:00",
+            top_gainers=[
+                GainerLoserEntry(symbol="TESTUSDTM", price_change_percent=181.88)
+            ],
+            top_losers=[],
+        )
+        for index in range(count)
+    ]
+
+
+async def run_signal_with_streak(
+    monkeypatch, snapshot_count: int, df: DataFrame
+) -> tuple[str, dict]:
+    context = make_context(
+        df_15m=df,
+        latest_market_context=make_market_context(),
+        gainers_losers_series=make_top_gainer_snapshots(snapshot_count),
+    )
+    algo = TopGainerEarlyMomentum(cast(Any, context))
+    send_signal_mock = Mock()
+    record_mock = AsyncMock()
+    algo.telegram_consumer = cast(
+        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
+    )
+    algo.at_consumer = cast(
+        Any,
+        SimpleNamespace(
+            autotrade_settings=AutotradeSettingsSchema(
+                fiat="USDT",
+                base_order_size=6.0,
+            ),
+            process_autotrade_restrictions=AsyncMock(),
+        ),
+    )
+    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    send_signal_mock.assert_called_once()
+    record_mock.assert_called_once()
+    return (
+        send_signal_mock.call_args.args[0],
+        record_mock.call_args.kwargs["indicators"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_sustained_top_gainer_enters_on_the_breakout_candle(monkeypatch):
+    """
+    A coin holding a top-gainer slot for hours has already evidenced the
+    continuation the two-close confirmation exists to establish, so the
+    breakout candle itself is the entry.
+    """
+    monkeypatch.setenv("ENV", "production")
+    # Truncating the two confirmation bars leaves the breakout as the latest
+    # completed candle -- the fast path fires two bars earlier than the
+    # two-close path, which is the whole point of it.
+    df = make_breakout_candles().iloc[:-2]
+
+    telegram_msg, indicators = await run_signal_with_streak(
+        monkeypatch,
+        TopGainerEarlyMomentum.MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS,
+        df,
+    )
+
+    assert "Entry setup: sustained_top_gainer_breakout" in telegram_msg
+    assert "Autotrade route: sustained_top_gainer_long" in telegram_msg
+    assert "Top-gainer tape: 3 snapshots in a row" in telegram_msg
+    # No confirmation bars were consumed: the breakout IS the latest candle.
+    assert indicators["breakout_open_time"] == int(df["open_time"].iloc[-1])
+    assert indicators["first_confirmation_close"] is None
+    assert indicators["top_gainer_snapshots_in_a_row"] == 3
+
+
+@pytest.mark.asyncio
+async def test_streak_below_threshold_still_requires_two_close_confirmation(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "production")
+    df = make_breakout_candles()
+
+    telegram_msg, indicators = await run_signal_with_streak(
+        monkeypatch,
+        TopGainerEarlyMomentum.MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS - 1,
+        df,
+    )
+
+    assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
+    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
+    # The breakout sits three bars back, with two confirmation bars after it.
+    assert indicators["breakout_open_time"] == int(df["open_time"].iloc[-3])
+    assert indicators["first_confirmation_close"] == float(df["close"].iloc[-2])

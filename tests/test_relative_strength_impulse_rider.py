@@ -268,7 +268,11 @@ def test_features_reject_invalid_trigger_or_confirmation(mutate, reason):
 
 
 @pytest.mark.asyncio
-async def test_signal_records_shadow_only_outside_staging(monkeypatch):
+async def test_signal_autotrades_in_production(monkeypatch):
+    """
+    Staging holds too little balance to ever open a position, so this
+    strategy autotrades in production rather than shadowing there.
+    """
     monkeypatch.setenv("ENV", "production")
     context = make_context()
     algo = RelativeStrengthImpulseRider(cast(Any, context))
@@ -278,4 +282,4 @@ async def test_signal_records_shadow_only_outside_staging(monkeypatch):
     await algo.signal(109.2, 112.0, 105.0, 98.0)
 
     signal = context.at_consumer.process_autotrade_restrictions.await_args.args[0]
-    assert signal.autotrade is False
+    assert signal.autotrade is True

@@ -13,6 +13,7 @@ from pybinbot import (
     KucoinFutures,
     SymbolModel,
     MarketBreadthSeries,
+    GainersLosersSnapshot,
 )
 from calibrators.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -63,6 +64,7 @@ class KlinesProvider:
         self.btc_candles_15m: list[list] = []
         self.market_state_store = MarketStateStore(max_bars_per_symbol=self.LIMIT)
         self.market_breadth_data: MarketBreadthSeries | None = None
+        self.gainers_losers_series: list[GainersLosersSnapshot] = []
         self.liquidation_store = liquidation_store or LiquidationStateStore()
         self.kucoin_futures_api = KucoinFutures(
             key=self.config.kucoin_key,
@@ -132,7 +134,7 @@ class KlinesProvider:
             binbot_api=self.binbot_api, exchange=self.exchange
         )
         self._last_calibration_bucket: int | None = None
-        self._last_market_breadth_bucket: int | None = None
+        self._last_market_tape_bucket: int | None = None
 
     def _get_benchmark_symbol(self, market_type: MarketType = MarketType.SPOT) -> str:
         if market_type == MarketType.FUTURES:
@@ -262,20 +264,29 @@ class KlinesProvider:
                 limit=self.LIMIT,
             )
 
-    async def _refresh_market_breadth_for_bucket(self, current_time: datetime) -> None:
+    async def _refresh_market_tape_for_bucket(self, current_time: datetime) -> None:
+        """
+        Reload the market-wide tape feeds once per 15m bucket.
+
+        The gainers/losers snapshots are only ingested hourly upstream, so a
+        15m cadence re-reads the same snapshot a few times rather than missing
+        one, which is the cheaper failure of the two.
+        """
         bucket = int(current_time.timestamp() * 1000 // self.interval_15m.get_ms())
-        if bucket == self._last_market_breadth_bucket:
+        if bucket == self._last_market_tape_bucket:
             return
 
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
-        self._last_market_breadth_bucket = bucket
+        self.gainers_losers_series = await self.binbot_api.get_gainers_losers_series()
+        self._last_market_tape_bucket = bucket
 
     async def load_data_on_start(self):
         """Load initial BTC benchmark candles and market data."""
         # Load market-level data
         self.active_pairs = self.binbot_api.get_active_pairs()
         self.market_breadth_data = await self.binbot_api.get_market_breadth()
-        self._last_market_breadth_bucket = int(
+        self.gainers_losers_series = await self.binbot_api.get_gainers_losers_series()
+        self._last_market_tape_bucket = int(
             datetime.now().timestamp() * 1000 // self.interval_15m.get_ms()
         )
 
@@ -290,10 +301,10 @@ class KlinesProvider:
     async def aggregate_data(self, payload: dict):
         """
         Merge new asset candle and pass data to ContextEvaluator.
-        - Reload market breadth once per 15-minute bucket
+        - Reload market breadth and gainers/losers once per 15-minute bucket
         """
         current_time = datetime.now()
-        await self._refresh_market_breadth_for_bucket(current_time)
+        await self._refresh_market_tape_for_bucket(current_time)
 
         # Recalibrate per-symbol futures_leverage on each 15m boundary, but
         # only once per bucket so multiple kline payloads in the same minute
@@ -340,6 +351,7 @@ class KlinesProvider:
             symbol=symbol,
             current_symbol_data=current_symbol_data,
             market_breadth_data=self.market_breadth_data,
+            gainers_losers_series=self.gainers_losers_series,
             all_symbols=self.all_symbols,
             ac_api=self.ac_api,
             exchange=self.exchange,
