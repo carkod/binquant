@@ -412,7 +412,6 @@ class TestAutotradeConsumer:
         "algorithm_name",
         [
             "coinrule_buy_the_dip",
-            "coinrule_price_tracker",
             "failed_spike_fade",
             "mean_reversion_fade",
             "liquidation_sweep_pump",
@@ -475,9 +474,7 @@ class TestAutotradeConsumer:
         autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "algorithm_name", ["coinrule_price_tracker", "failed_spike_fade"]
-    )
+    @pytest.mark.parametrize("algorithm_name", ["failed_spike_fade"])
     async def test_grid_only_policy_allows_range_strategy_exceptions(
         self, algorithm_name
     ):
@@ -514,6 +511,26 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDT",
+                name="failed_spike_fade",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disabled_price_tracker_cannot_activate_from_queued_signal(self):
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
                 name="coinrule_price_tracker",
                 market_type=MarketType.SPOT,
                 position=Position.long,
@@ -525,6 +542,7 @@ class TestAutotradeConsumer:
         with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
             await self.consumer.process_autotrade_restrictions(signal)
 
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
         autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio

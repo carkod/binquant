@@ -60,6 +60,26 @@ class TestKlinesProvider:
         await provider.load_data_on_start()
         assert hasattr(provider, "ac_api")
 
+    @pytest.mark.asyncio
+    @patch("consumers.klines_provider.BinbotApi")
+    @patch("consumers.klines_provider.BinanceApi")
+    async def test_load_data_on_start_survives_gainers_losers_failure(
+        self, MockBinanceApi, MockBinbotApi
+    ):
+        provider = KlinesProvider()
+        api_instance = MagicMock()
+        api_instance.get_active_pairs.return_value = set()
+        api_instance.get_market_breadth = AsyncMock(return_value={})
+        api_instance.get_gainers_losers_series = AsyncMock(
+            side_effect=RuntimeError("backend unavailable")
+        )
+        provider.binbot_api = api_instance
+
+        await provider.load_data_on_start()
+
+        assert provider.gainers_losers_series == []
+        assert provider._last_market_tape_bucket is not None
+
     @patch(
         "consumers.klines_provider.BinbotApi.get_autotrade_settings",
         return_value=AutotradeSettingsSchema(exchange_id="binance"),
@@ -255,6 +275,26 @@ async def test_refresh_market_tape_again_on_next_15m_bucket():
     assert provider.binbot_api.get_market_breadth.await_count == 2
     assert provider.binbot_api.get_gainers_losers_series.await_count == 2
     assert provider.market_breadth_data == second_refresh
+
+
+@pytest.mark.asyncio
+async def test_refresh_market_tape_retains_previous_series_after_failure():
+    provider = make_market_tape_refresh_provider()
+    previous = [make_gainers_losers_snapshot("OLDUSDTM", 8.0)]
+    refreshed_breadth = make_market_breadth_series(0.12, 0.1)
+    provider.gainers_losers_series = previous
+    provider.binbot_api.get_market_breadth.return_value = refreshed_breadth
+    provider.binbot_api.get_gainers_losers_series.side_effect = RuntimeError(
+        "deployment skew"
+    )
+    current_time = datetime(2026, 7, 4, 12, 15, 1)
+
+    await provider._refresh_market_tape_for_bucket(current_time)
+    await provider._refresh_market_tape_for_bucket(current_time)
+
+    assert provider.market_breadth_data == refreshed_breadth
+    assert provider.gainers_losers_series == previous
+    provider.binbot_api.get_gainers_losers_series.assert_awaited_once()
 
 
 def test_refresh_latest_market_context_keeps_existing_context_when_refresh_is_none():

@@ -28,9 +28,9 @@ from shared.config import Config
 class AutotradeConsumer:
     FUTURES_REVERSAL_BUFFER = 1.40
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
+    DISABLED_STRATEGIES = frozenset({"coinrule_price_tracker"})
     GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
         {
-            "coinrule_price_tracker",
             "failed_spike_fade",
         }
     )
@@ -479,6 +479,10 @@ class AutotradeConsumer:
 
         symbol = bot_params.pair
         algorithm_name = bot_params.name
+        if algorithm_name in self.DISABLED_STRATEGIES:
+            logging.info("Skipping disabled strategy: %s", algorithm_name)
+            return
+
         fiat = self._signal_value(bot_params, "fiat", self.autotrade_settings.fiat)
         requested_fiat_order_size = self._signal_value(
             bot_params,

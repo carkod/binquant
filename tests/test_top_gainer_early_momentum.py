@@ -266,8 +266,8 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
     assert signal_value.bot_params.stop_loss > 0
     assert signal_value.bot_params.cooldown == 60
     assert signal_value.bot_params.trailing is True
-    assert signal_value.bot_params.trailing_profit == 3.0
-    assert signal_value.bot_params.trailing_deviation == 1.5
+    assert signal_value.bot_params.trailing_profit == 6.0
+    assert signal_value.bot_params.trailing_deviation == 2.5
 
 
 @pytest.mark.asyncio

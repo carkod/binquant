@@ -276,16 +276,32 @@ class KlinesProvider:
         if bucket == self._last_market_tape_bucket:
             return
 
-        self.market_breadth_data = await self.binbot_api.get_market_breadth()
-        self.gainers_losers_series = await self.binbot_api.get_gainers_losers_series()
+        await self._refresh_market_tape()
         self._last_market_tape_bucket = bucket
+
+    async def _refresh_market_tape(self) -> None:
+        """Refresh independent market feeds without invalidating cached data."""
+        try:
+            self.market_breadth_data = await self.binbot_api.get_market_breadth()
+        except Exception:
+            logging.exception(
+                "Market breadth refresh failed; retaining the previous snapshot."
+            )
+
+        try:
+            self.gainers_losers_series = (
+                await self.binbot_api.get_gainers_losers_series()
+            )
+        except Exception:
+            logging.exception(
+                "Gainers/losers series refresh failed; retaining the previous series."
+            )
 
     async def load_data_on_start(self):
         """Load initial BTC benchmark candles and market data."""
         # Load market-level data
         self.active_pairs = self.binbot_api.get_active_pairs()
-        self.market_breadth_data = await self.binbot_api.get_market_breadth()
-        self.gainers_losers_series = await self.binbot_api.get_gainers_losers_series()
+        await self._refresh_market_tape()
         self._last_market_tape_bucket = int(
             datetime.now().timestamp() * 1000 // self.interval_15m.get_ms()
         )

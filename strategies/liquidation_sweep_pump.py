@@ -99,8 +99,9 @@ class LiquidationSweepPump:
     MIN_MOMENTUM_ATR = 0.75
     MAX_MOMENTUM_ATR = 3.0
     MIN_CLOSE_LOCATION = 0.70
-    LONG_STOP_LOSS_PCT = 2.0
-    LONG_TAKE_PROFIT_PCT = 2.5
+    LONG_STOP_LOSS_PCT = 2.5
+    LONG_TRAILING_PROFIT_PCT = 0.5
+    LONG_TRAILING_DEVIATION_PCT = 0.2
     ENTRY_COOLDOWN_MINUTES = 60
     FULL_OI_CONTRACTION = 0.01
     FULL_LIQUIDATION_INTENSITY = 0.10
@@ -452,8 +453,10 @@ class LiquidationSweepPump:
             cooldown=self.ENTRY_COOLDOWN_MINUTES,
             dynamic_trailing=False,
             stop_loss=self.LONG_STOP_LOSS_PCT,
-            take_profit=self.LONG_TAKE_PROFIT_PCT,
-            trailing=False,
+            take_profit=0,
+            trailing=True,
+            trailing_profit=self.LONG_TRAILING_PROFIT_PCT,
+            trailing_deviation=self.LONG_TRAILING_DEVIATION_PCT,
             margin_short_reversal=False,
         )
 
@@ -501,7 +504,7 @@ class LiquidationSweepPump:
             - Market stress: {round_numbers(context.market_stress_score, 3) if context else 0}
             - Trigger candle: {candle_open_time}
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
-            - Exit profile: fixed {self.LONG_STOP_LOSS_PCT}% stop / {self.LONG_TAKE_PROFIT_PCT}% take profit / 8-candle maximum hold
+            - Exit profile: {self.LONG_STOP_LOSS_PCT}% stop / trailing after {self.LONG_TRAILING_PROFIT_PCT}% with {self.LONG_TRAILING_DEVIATION_PCT}% deviation / 8-candle maximum hold
             - Autotrade is enabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
