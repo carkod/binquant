@@ -1,3 +1,4 @@
+import warnings
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -210,15 +211,41 @@ def test_post_spike_label_cooldown_suppresses_eight_bars():
         Any,
         DataFrame(
             {
-                "label": [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-                "label_short": [0] * 10,
+                "label": [
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                ],
+                "label_short": [False] * 10,
             }
         ),
     )
 
-    algo.apply_cooldown()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        algo.apply_cooldown()
 
-    assert algo.df_15m["label"].tolist() == [1, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    assert algo.df_15m["label"].tolist() == [
+        True,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        True,
+    ]
+    assert algo.df_15m["label"].dtype == bool
+    assert algo.df_15m["label_short"].dtype == bool
 
 
 @pytest.mark.asyncio

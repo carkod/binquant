@@ -518,7 +518,7 @@ class FailedSpikeFade:
                         and (i - last_idx) <= self.post_spike_cooldown_bars
                     ):
                         self.df_15m.at[i, suppressed_col] = 1
-                        self.df_15m.at[i, label_col] = 0
+                        self.df_15m.at[i, label_col] = False
                         suppressed += 1
                     else:
                         last_idx = i
