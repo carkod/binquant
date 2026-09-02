@@ -305,15 +305,15 @@ class TestAutotradeConsumer:
         ]
         assert self.consumer.estimated_daily_realized_pnl() == pytest.approx(0.0)
 
-    def test_daily_loss_limit_not_reached_below_threshold(self):
+    def test_daily_loss_limit_not_reached_above_threshold(self):
         self.mock_binbot_api.get_bots_by_status.return_value = [
-            self._closed_bot(opening_price=100.0, closing_price=99.9, opening_qty=1.0)
+            self._closed_bot(opening_price=100.0, closing_price=99.501, opening_qty=1.0)
         ]
         assert not self.consumer.daily_loss_limit_reached()
 
-    def test_daily_loss_limit_reached_past_threshold(self):
+    def test_daily_loss_limit_reached_at_threshold(self):
         self.mock_binbot_api.get_bots_by_status.return_value = [
-            self._closed_bot(opening_price=100.0, closing_price=99.0, opening_qty=1.0)
+            self._closed_bot(opening_price=100.0, closing_price=99.5, opening_qty=1.0)
         ]
         assert self.consumer.daily_loss_limit_reached()
 

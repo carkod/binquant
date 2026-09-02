@@ -39,9 +39,10 @@ class AutotradeConsumer:
     # amount or below. Expressed in absolute quote terms rather than a % of
     # account balance because "available balance" swings with how much is
     # currently locked in open positions and isn't a stable denominator.
-    # Default reflects roughly -1.5% of the current ~10 USDT futures pool —
-    # revisit if the deployable capital base changes materially.
-    DAILY_LOSS_LIMIT_QUOTE = -0.15
+    # The limit allows roughly two fully stopped 4 USDT-margin positions at
+    # 3x leverage while still capping a genuine same-day losing cascade.
+    # Revisit if the deployable capital base changes materially.
+    DAILY_LOSS_LIMIT_QUOTE = -0.50
 
     def __init__(
         self,
