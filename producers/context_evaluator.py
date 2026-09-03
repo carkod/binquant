@@ -13,6 +13,7 @@ from pybinbot import (
     BinanceApi,
     BinanceKlineIntervals,
     BinbotApi,
+    BotModel,
     Candles,
     ExchangeId,
     HABollinguerSpread,
@@ -52,6 +53,8 @@ from strategies.liquidation_sweep_pump import (
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.relative_strength_impulse_rider import RelativeStrengthImpulseRider
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
+from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
+from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 
 
 class ContextEvaluator:
@@ -80,6 +83,8 @@ class ContextEvaluator:
         market_type: MarketType = MarketType.SPOT,
         latest_market_context: LiveMarketContext | None = None,
         last_market_regime: str | None = None,
+        top_gainer_recovery_bots: list[BotModel] | None = None,
+        top_gainer_recovery_attempted_source_ids: set[str] | None = None,
     ) -> None:
         """
         Only variables no data requests (third party or db)
@@ -119,6 +124,12 @@ class ContextEvaluator:
         self.telegram_consumer = telegram_consumer
         self.strategy_cooldowns = strategy_cooldowns
         self.strategy_states = strategy_states if strategy_states is not None else {}
+        self.top_gainer_recovery_bots = top_gainer_recovery_bots or []
+        self.top_gainer_recovery_attempted_source_ids = (
+            top_gainer_recovery_attempted_source_ids
+            if top_gainer_recovery_attempted_source_ids is not None
+            else set()
+        )
         self.liquidation_sweep_portfolio_selector = liquidation_sweep_portfolio_selector
         self.at_consumer = ac_api
         # Countdown for Apex Flow score system
@@ -234,10 +245,12 @@ class ContextEvaluator:
         """
         self.relative_strength_impulse_rider = RelativeStrengthImpulseRider(cls=self)
         self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
+        self.top_gainer_momentum_recovery = TopGainerMomentumRecovery(cls=self)
         self.failed_spike_fade = FailedSpikeFade(cls=self)
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
         self.grid_ladder = LadderDeployer(cls=self)
+        self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
 
     def indicators_enrichment(
         self, df: TypedDataFrame[KlineSchema]
@@ -512,6 +525,16 @@ class ContextEvaluator:
             )
 
             await self._safe_signal(
+                "TopGainerMomentumRecovery",
+                self.top_gainer_momentum_recovery.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            await self._safe_signal(
                 "FailedSpikeFade",
                 self.failed_spike_fade.signal(
                     current_price=close_price,
@@ -540,6 +563,18 @@ class ContextEvaluator:
             await self._safe_signal(
                 "LadderDeployer",
                 self.grid_ladder.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
+
+            # Keep the short-side mirror last so TopGainerEarlyMomentum gets
+            # first refusal when both strategies qualify in this cycle.
+            await self._safe_signal(
+                "TopLoserEarlyMomentum",
+                self.top_loser_early_momentum.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,

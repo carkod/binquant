@@ -29,6 +29,10 @@ class AutotradeConsumer:
     FUTURES_REVERSAL_BUFFER = 1.40
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
     DISABLED_STRATEGIES = frozenset({"coinrule_price_tracker"})
+    MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES = {
+        "top_gainer_early_momentum": "top_loser_early_momentum",
+        "top_loser_early_momentum": "top_gainer_early_momentum",
+    }
     GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
         {
             "failed_spike_fade",
@@ -219,6 +223,31 @@ class AutotradeConsumer:
                 return True
 
         return False
+
+    def conflicting_momentum_bot(
+        self, algorithm_name: str, collection_name: str
+    ) -> BotModel | None:
+        """Return an active or pending opposite early-momentum bot, if any."""
+        opposite_algorithm = self.MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES.get(
+            algorithm_name
+        )
+        if opposite_algorithm is None:
+            return None
+
+        for status in (Status.active, Status.pending):
+            bots = self.binbot_api.get_bots_by_status(
+                start_date=None,
+                end_date=None,
+                collection_name=collection_name,
+                status=status,
+            )
+            conflict = next(
+                (bot for bot in bots if bot.name == opposite_algorithm), None
+            )
+            if conflict is not None:
+                return conflict
+
+        return None
 
     def _futures_contract_multiplier(self, symbol: str) -> float | None:
         """KuCoin futures order fills record `filled_size` as a contract
@@ -502,6 +531,15 @@ class AutotradeConsumer:
                 logging.info(
                     "Reached maximum number of paper_trading active bots set in controller settings"
                 )
+            elif conflict := self.conflicting_momentum_bot(
+                algorithm_name, "paper_trading"
+            ):
+                logging.info(
+                    "Skipping paper trading: %s conflicts with %s bot on %s",
+                    algorithm_name,
+                    conflict.name,
+                    conflict.pair,
+                )
             elif symbol in self.active_test_bots:
                 logging.info(
                     "Skipping paper trading: active bot already exists for %s", symbol
@@ -574,6 +612,13 @@ class AutotradeConsumer:
             if self.reached_max_active_autobots("bots"):
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
+                )
+            elif conflict := self.conflicting_momentum_bot(algorithm_name, "bots"):
+                logging.info(
+                    "Skipping autotrade: %s conflicts with %s bot on %s",
+                    algorithm_name,
+                    conflict.name,
+                    conflict.pair,
                 )
             elif self.daily_loss_limit_reached():
                 logging.warning(

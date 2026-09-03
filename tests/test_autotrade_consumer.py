@@ -417,6 +417,7 @@ class TestAutotradeConsumer:
             "liquidation_sweep_pump",
             "relative_strength_impulse_rider",
             "top_gainer_early_momentum",
+            "top_loser_early_momentum",
             "activity_burst_pump",
         ],
     )
@@ -449,6 +450,130 @@ class TestAutotradeConsumer:
             binbot_api=self.mock_binbot_api,
         )
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("algorithm_name", "opposite_algorithm", "opposite_status"),
+        [
+            (
+                "top_gainer_early_momentum",
+                "top_loser_early_momentum",
+                Status.active,
+            ),
+            (
+                "top_gainer_early_momentum",
+                "top_loser_early_momentum",
+                Status.pending,
+            ),
+            (
+                "top_loser_early_momentum",
+                "top_gainer_early_momentum",
+                Status.active,
+            ),
+            (
+                "top_loser_early_momentum",
+                "top_gainer_early_momentum",
+                Status.pending,
+            ),
+        ],
+    )
+    async def test_opposite_early_momentum_bot_blocks_real_autotrade(
+        self,
+        algorithm_name,
+        opposite_algorithm,
+        opposite_status,
+    ):
+        existing_bot = BotModel(
+            pair="ETHUSDT",
+            name=opposite_algorithm,
+            status=opposite_status,
+        )
+
+        def bots_by_status(*, status, **_kwargs):
+            return [existing_bot] if status == opposite_status else []
+
+        self.mock_binbot_api.get_bots_by_status.side_effect = bots_by_status
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name=algorithm_name,
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_same_early_momentum_strategy_does_not_conflict(self):
+        existing_bot = BotModel(
+            pair="ETHUSDT",
+            name="top_gainer_early_momentum",
+            status=Status.active,
+        )
+        self.mock_binbot_api.get_bots_by_status.side_effect = (
+            lambda *, status, **_kwargs: (
+                [existing_bot] if status == Status.active else []
+            )
+        )
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="top_gainer_early_momentum",
+                market_type=MarketType.SPOT,
+                position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+
+    @pytest.mark.asyncio
+    async def test_opposite_early_momentum_bot_blocks_paper_autotrade(self):
+        existing_bot = BotModel(
+            pair="ETHUSDT",
+            name="top_gainer_early_momentum",
+            status=Status.pending,
+        )
+        self.mock_binbot_api.get_bots_by_status.side_effect = (
+            lambda *, status, collection_name, **_kwargs: (
+                [existing_bot]
+                if status == Status.pending and collection_name == "paper_trading"
+                else []
+            )
+        )
+        signal = SignalsConsumer(
+            autotrade=False,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="top_loser_early_momentum",
+                market_type=MarketType.SPOT,
+                position=Position.short,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_grid_only_policy_blocks_momentum_when_grid_ladders_enabled(self):
