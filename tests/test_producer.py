@@ -382,10 +382,12 @@ def test_process_data_does_not_run_disabled_price_tracker():
         "ActivityBurstPump",
         "RelativeStrengthImpulseRider",
         "TopGainerEarlyMomentum",
+        "TopGainerMomentumRecovery",
         "FailedSpikeFade",
         "MarketRegimeNotifier",
         "LiquidationSweepPump",
         "LadderDeployer",
+        "TopLoserEarlyMomentum",
     ]
 
 
