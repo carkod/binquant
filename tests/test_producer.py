@@ -371,7 +371,7 @@ def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
     assert value.open_interest_sizing is None
 
 
-def test_process_data_prioritizes_price_tracker_before_ladder_deployer():
+def test_process_data_does_not_run_disabled_price_tracker():
     source = getsource(ContextEvaluator.process_data)
     safe_signal_names = findall(
         r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
@@ -380,7 +380,6 @@ def test_process_data_prioritizes_price_tracker_before_ladder_deployer():
 
     assert safe_signal_names == [
         "ActivityBurstPump",
-        "PriceTracker",
         "RelativeStrengthImpulseRider",
         "TopGainerEarlyMomentum",
         "FailedSpikeFade",
@@ -391,7 +390,9 @@ def test_process_data_prioritizes_price_tracker_before_ladder_deployer():
 
 
 @pytest.mark.asyncio
-async def test_process_data_runs_price_tracker_when_15m_history_is_empty(monkeypatch):
+async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_empty(
+    monkeypatch,
+):
     rows = 100
     df_5m = DataFrame(
         {
@@ -416,7 +417,6 @@ async def test_process_data_runs_price_tracker_when_15m_history_is_empty(monkeyp
             return DataFrame()
 
     activity_signal = AsyncMock()
-    price_tracker_signal = AsyncMock()
     evaluator: Any = object.__new__(ContextEvaluator)
     evaluator.exchange = Mock()
     evaluator.symbol = "TESTUSDT"
@@ -435,19 +435,13 @@ async def test_process_data_runs_price_tracker_when_15m_history_is_empty(monkeyp
 
     def load_5m_algorithms():
         evaluator.abp = SimpleNamespace(signal=activity_signal)
-        evaluator.pt = SimpleNamespace(signal=price_tracker_signal)
 
     evaluator.load_5m_algorithms = load_5m_algorithms
     monkeypatch.setattr("producers.context_evaluator.Candles", FakeCandles)
 
     await evaluator.process_data(candles="5m", candles_15m="15m")
 
-    price_tracker_signal.assert_awaited_once_with(
-        close_price=100.0,
-        bb_high=101.0,
-        bb_mid=100.0,
-        bb_low=99.0,
-    )
+    activity_signal.assert_awaited_once()
 
 
 def test_grid_only_policy_is_disabled_with_grid_ladder_switch() -> None:

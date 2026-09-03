@@ -28,9 +28,9 @@ from shared.config import Config
 class AutotradeConsumer:
     FUTURES_REVERSAL_BUFFER = 1.40
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
+    DISABLED_STRATEGIES = frozenset({"coinrule_price_tracker"})
     GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
         {
-            "coinrule_price_tracker",
             "failed_spike_fade",
         }
     )
@@ -39,9 +39,10 @@ class AutotradeConsumer:
     # amount or below. Expressed in absolute quote terms rather than a % of
     # account balance because "available balance" swings with how much is
     # currently locked in open positions and isn't a stable denominator.
-    # Default reflects roughly -1.5% of the current ~10 USDT futures pool —
-    # revisit if the deployable capital base changes materially.
-    DAILY_LOSS_LIMIT_QUOTE = -0.15
+    # The limit allows roughly two fully stopped 4 USDT-margin positions at
+    # 3x leverage while still capping a genuine same-day losing cascade.
+    # Revisit if the deployable capital base changes materially.
+    DAILY_LOSS_LIMIT_QUOTE = -0.50
 
     def __init__(
         self,
@@ -479,6 +480,10 @@ class AutotradeConsumer:
 
         symbol = bot_params.pair
         algorithm_name = bot_params.name
+        if algorithm_name in self.DISABLED_STRATEGIES:
+            logging.info("Skipping disabled strategy: %s", algorithm_name)
+            return
+
         fiat = self._signal_value(bot_params, "fiat", self.autotrade_settings.fiat)
         requested_fiat_order_size = self._signal_value(
             bot_params,

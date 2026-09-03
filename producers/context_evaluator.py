@@ -43,7 +43,6 @@ from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.utils import format_context_timestamp_line
 from strategies.activity_burst_pump import ActivityBurstPump
-from strategies.coinrule.price_tracker import PriceTracker
 from strategies.failed_spike_fade import FailedSpikeFade
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import (
@@ -228,7 +227,6 @@ class ContextEvaluator:
         Initialize algorithms that consume self.df_5m data.
         """
         self.abp = ActivityBurstPump(cls=self)
-        self.pt = PriceTracker(cls=self)
 
     def load_15m_algorithms(self):
         """
@@ -444,18 +442,6 @@ class ContextEvaluator:
                     "ActivityBurstPump",
                     self.abp.signal(
                         current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
-
-                # Give the selective tracker first claim before the broader
-                # 15m ladder strategy can create a grid for this symbol.
-                await self._safe_signal(
-                    "PriceTracker",
-                    self.pt.signal(
-                        close_price=close_price,
                         bb_high=spreads.bb_high,
                         bb_mid=spreads.bb_mid,
                         bb_low=spreads.bb_low,

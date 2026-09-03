@@ -76,11 +76,11 @@ class TopGainerEarlyMomentum:
 
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ATR_STOP_MULT = 2.2
-    MIN_STOP_LOSS_PCT = 1.5
+    MIN_STOP_LOSS_PCT = 2.0
     MAX_STOP_LOSS_PCT = 2.0
     ENTRY_COOLDOWN_MINUTES = 60
-    TRAILING_PROFIT_PCT = 3.0
-    TRAILING_DEVIATION_PCT = 1.5
+    TRAILING_PROFIT_PCT = 6.0
+    TRAILING_DEVIATION_PCT = 2.5
     RISK_REJECTION_ALGO = f"{ALGO}:risk_rejection"
 
     def __init__(self, cls: "ContextEvaluator") -> None:
