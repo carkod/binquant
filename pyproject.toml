@@ -9,6 +9,7 @@ description = "Analytics tool for Binbot"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "numpy>=2.2.0",
     "passlib",
     "pybinbot==1.12.2",
     "pydantic-settings>=2.14.1",
@@ -16,6 +17,7 @@ dependencies = [
     "python-telegram-bot>=22.1",
     "requests-cache>=1.2.0",
     "requests-html>=0.10.0",
+    "scikit-learn>=1.6.1,<2",
     "uvicorn>=0.37.0",
     "websockets>=15.0",
 ]

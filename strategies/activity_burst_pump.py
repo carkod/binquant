@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import logging
 from os import getenv
 from typing import TYPE_CHECKING
 
@@ -20,10 +23,11 @@ from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
+    from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyGate
 
 
 class ActivityBurstPump:
-    def __init__(self, cls: "ContextEvaluator"):
+    def __init__(self, cls: ContextEvaluator):
         self.ti = cls
         self.config = cls.config
         self.symbol = cls.symbol
@@ -50,6 +54,18 @@ class ActivityBurstPump:
         self.score_quantile = 0.92
         self.score_lookback = 80
         self.cooldown_bars = 3
+        self.anomaly_gate: ActivityBurstAnomalyGate | None = None
+        if getenv("ENV", "").upper() == "STAGING":
+            from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyGate
+
+            anomaly_gates = getattr(cls, "activity_burst_anomaly_gates", None)
+            if anomaly_gates is None:
+                self.anomaly_gate = ActivityBurstAnomalyGate()
+            else:
+                self.anomaly_gate = anomaly_gates.get(self.symbol)
+                if self.anomaly_gate is None:
+                    self.anomaly_gate = ActivityBurstAnomalyGate()
+                    anomaly_gates[self.symbol] = self.anomaly_gate
 
     def compute_indicators(
         self, df: TypedDataFrame[KlineSchema]
@@ -187,6 +203,26 @@ class ActivityBurstPump:
         if not bool(row["qualified_signal"]):
             return None
 
+        anomaly_indicators: dict[str, float | int | bool] = {}
+        if self.anomaly_gate is not None:
+            try:
+                anomaly_evaluation = self.anomaly_gate.evaluate(df)
+            except Exception:
+                logging.exception(
+                    "Activity-burst anomaly evaluation failed for %s.", self.symbol
+                )
+                anomaly_evaluation = None
+            if anomaly_evaluation is None:
+                autotrade = False
+                autotrade_route = "staging_anomaly_gate_unavailable"
+            else:
+                anomaly_indicators = anomaly_evaluation.as_indicators()
+                if anomaly_evaluation.gate_passed:
+                    autotrade_route = "staging_anomaly_gate_confirmed"
+                else:
+                    autotrade = False
+                    autotrade_route = "staging_anomaly_gate_rejected"
+
         positioning = symbol_features.derivatives if symbol_features else None
         derivatives_block_reason = activity_burst_derivatives_block_reason(positioning)
         if derivatives_block_reason is not None:
@@ -204,6 +240,7 @@ class ActivityBurstPump:
                 indicators={
                     "activity_burst_entry_block_reason": derivatives_block_reason,
                     "activity_burst_score": float(row["activity_burst_score"]),
+                    **anomaly_indicators,
                 },
             )
             return None
@@ -237,6 +274,8 @@ class ActivityBurstPump:
             - Candle body fraction: {round_numbers(float(row["body_frac"]) * 100, 2)}%
             - Score: {round_numbers(score, 4)}
             - Dynamic score threshold: {round_numbers(score_threshold, 4)}
+            - PCA anomaly percentile: {round_numbers(float(anomaly_indicators.get("activity_burst_anomaly_pca_percentile", 0.0)) * 100, 2) if anomaly_indicators else "UNAVAILABLE"}%
+            - Isolation Forest anomaly percentile: {round_numbers(float(anomaly_indicators.get("activity_burst_anomaly_isolation_forest_percentile", 0.0)) * 100, 2) if anomaly_indicators else "UNAVAILABLE"}%
             - Volume: {round_numbers(float(row["volume"]), decimals=self.price_precision)} {base_asset}
             - Autotrade route: {autotrade_route}
             - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
@@ -259,6 +298,14 @@ class ActivityBurstPump:
                 bb_low=bb_low,
             ),
         )
-        await self.ti.dispatch_signal_record(value=value)
+        await self.ti.dispatch_signal_record(
+            value=value,
+            indicators={
+                "activity_burst_score": score,
+                "activity_burst_score_threshold": score_threshold,
+                "activity_burst_autotrade_route": autotrade_route,
+                **anomaly_indicators,
+            },
+        )
         self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

@@ -234,8 +234,8 @@ def test_risk_profile_requires_negative_btc_relative_strength() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_dispatches_confirmed_short(monkeypatch) -> None:
-    monkeypatch.setenv("ENV", "production")
+async def test_signal_dispatches_staging_confirmed_short(monkeypatch) -> None:
+    monkeypatch.setenv("ENV", "staging")
     context = make_context(make_breakdown_candles())
 
     await TopLoserEarlyMomentum(cast(Any, context)).signal(
@@ -247,13 +247,67 @@ async def test_signal_dispatches_confirmed_short(monkeypatch) -> None:
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert value.autotrade is True
     assert value.direction == "SHORT"
     assert value.bot_params.position == "short"
     assert value.bot_params.stop_loss == 2.0
     assert value.bot_params.trailing_profit == 6.0
     assert value.bot_params.trailing_deviation == 2.5
-    assert indicators["route_reason"] == "confirmed_top_loser_short"
+    assert indicators["route_reason"] == "staging_confirmed_top_loser_short"
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
+
+
+@pytest.mark.asyncio
+async def test_signal_rejects_rebounded_live_candle_after_completed_confirmation(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENV", "staging")
+    df = make_breakdown_candles()
+    live_open_time = int(df.iloc[-1]["close_time"]) + 1
+    df.loc[len(df)] = {
+        "open_time": live_open_time,
+        "close_time": 9_999_999_999_999,
+        "open": 87.0,
+        "high": 90.5,
+        "low": 86.9,
+        "close": 90.0,
+        "volume": 120.0,
+        "quote_asset_volume": 120.0 * 90.0,
+        "ATR": 1.0,
+    }
+    context = make_context(df)
+
+    await TopLoserEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(df.iloc[-1]["close"]),
+        bb_high=102.0,
+        bb_mid=95.0,
+        bb_low=86.0,
+    )
+
+    context.dispatch_signal_record.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    context.telegram_consumer.dispatch_signal.assert_not_called()
+    assert context.strategy_cooldowns == {}
+
+
+@pytest.mark.asyncio
+async def test_signal_rejects_live_price_outside_candidate_entry_window(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENV", "staging")
+    context = make_context(make_breakdown_candles())
+
+    await TopLoserEarlyMomentum(cast(Any, context)).signal(
+        current_price=87.5,
+        bb_high=102.0,
+        bb_mid=95.0,
+        bb_low=86.0,
+    )
+
+    context.dispatch_signal_record.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    context.telegram_consumer.dispatch_signal.assert_not_called()
+    assert context.strategy_cooldowns == {}
 
 
 @pytest.mark.asyncio
@@ -274,7 +328,11 @@ async def test_sustained_top_loser_enters_on_breakdown_candle(monkeypatch) -> No
         bb_low=86.0,
     )
 
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    telegram_msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert value.autotrade is False
     assert indicators["entry_reason"] == "sustained_top_loser_breakdown"
     assert indicators["first_confirmation_close"] is None
-    assert indicators["route_reason"] == "sustained_top_loser_short"
+    assert indicators["route_reason"] == "staging_only_top_loser_short_shadow"
+    assert "Autotrade is disabled" in telegram_msg

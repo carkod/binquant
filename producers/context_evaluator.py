@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 from asyncio import timeout
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from numpy import isnan
 from numpy import log as logarithm
@@ -56,6 +58,9 @@ from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 
+if TYPE_CHECKING:
+    from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyGate
+
 
 class ContextEvaluator:
     SIGNAL_PERSISTENCE_TIMEOUT_SECONDS = 2.0
@@ -76,6 +81,7 @@ class ContextEvaluator:
         telegram_consumer: TelegramConsumer,
         strategy_cooldowns: dict[tuple[str, str], int] | None = None,
         strategy_states: dict[tuple[str, str], dict[str, float | int]] | None = None,
+        activity_burst_anomaly_gates: dict[str, ActivityBurstAnomalyGate] | None = None,
         liquidation_sweep_portfolio_selector: (
             LiquidationSweepPortfolioSelector | None
         ) = None,
@@ -124,6 +130,11 @@ class ContextEvaluator:
         self.telegram_consumer = telegram_consumer
         self.strategy_cooldowns = strategy_cooldowns
         self.strategy_states = strategy_states if strategy_states is not None else {}
+        self.activity_burst_anomaly_gates = (
+            activity_burst_anomaly_gates
+            if activity_burst_anomaly_gates is not None
+            else {}
+        )
         self.top_gainer_recovery_bots = top_gainer_recovery_bots or []
         self.top_gainer_recovery_attempted_source_ids = (
             top_gainer_recovery_attempted_source_ids

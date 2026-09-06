@@ -50,6 +50,8 @@ class TopLoserEarlyMomentum:
     MAX_RELATIVE_STRENGTH_VS_BTC = -0.03
     MAX_SYMBOL_ATR_PCT = 0.06
     MIN_SUSTAINED_TOP_LOSER_SNAPSHOTS = 3
+    MAX_ENTRY_REBOUND = 0.005
+    MAX_ENTRY_EXTENSION = 0.015
 
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ATR_STOP_MULT = 2.2
@@ -427,6 +429,16 @@ class TopLoserEarlyMomentum:
                 logging.info("%s skipped: %s", self.ALGO, confirmation_reason)
                 return
 
+        candidate_close = float(candidate["close"])
+        if current_price > values["close"]:
+            logging.info("%s skipped: live_price_reclaimed_breakdown", self.ALGO)
+            return
+
+        entry_distance = current_price / candidate_close - 1
+        if not -self.MAX_ENTRY_EXTENSION <= entry_distance <= self.MAX_ENTRY_REBOUND:
+            logging.info("%s skipped: live_price_moved_beyond_entry_window", self.ALGO)
+            return
+
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
         risk_allowed, risk_reason = self._risk_profile_allows(
@@ -451,14 +463,18 @@ class TopLoserEarlyMomentum:
             return
         self._mark_emitted(candidate_open_time)
 
-        route_reason = (
-            "sustained_top_loser_short"
-            if sustained_top_loser
-            else "confirmed_top_loser_short"
-        )
+        autotrade = getenv("ENV") == "staging"
+        if autotrade:
+            route_reason = (
+                "staging_sustained_top_loser_short"
+                if sustained_top_loser
+                else "staging_confirmed_top_loser_short"
+            )
+        else:
+            route_reason = "staging_only_top_loser_short_shadow"
         fiat_order_size = self._fiat_order_size()
         stop_loss = self._stop_loss_pct(
-            close=float(candidate["close"]),
+            close=candidate_close,
             atr=float(candidate["ATR"]) if "ATR" in df.columns else 0.0,
         )
         score = self._score(values)
@@ -477,7 +493,8 @@ class TopLoserEarlyMomentum:
             "entry_reason": confirmation_reason,
             "breakdown_open_time": int(breakdown_df.iloc[-1]["open_time"]),
             "first_confirmation_close": first_confirmation_close,
-            "second_confirmation_close": float(candidate["close"]),
+            "second_confirmation_close": candidate_close,
+            "entry_distance_pct": entry_distance * 100,
             "top_loser_snapshots_in_a_row": top_loser_streak.snapshots_in_a_row,
             "top_loser_price_change_percent": (
                 top_loser_streak.latest_price_change_percent
@@ -492,7 +509,7 @@ class TopLoserEarlyMomentum:
 
         value = SignalsConsumer(
             direction=Position.short.value.upper(),
-            autotrade=True,
+            autotrade=autotrade,
             current_price=float(current_price),
             volume=values["volume"],
             score=score,
@@ -527,7 +544,7 @@ class TopLoserEarlyMomentum:
             - Rule intent: {"SELL sustained top-loser breakdowns on the breakdown candle itself" if sustained_top_loser else "SELL confirmed top-loser breakdowns after price holds below the recent low"}
             - Breakdown setup: {entry_reason}
             - Entry setup: {confirmation_reason}
-            - Breakdown / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(first_confirmation_close, self.price_precision) if first_confirmation_close is not None else "skipped"} / {round_numbers(float(candidate["close"]), self.price_precision)}
+            - Breakdown / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(first_confirmation_close, self.price_precision) if first_confirmation_close is not None else "skipped"} / {round_numbers(candidate_close, self.price_precision)}
             - Top-loser tape: {top_loser_streak.snapshots_in_a_row} snapshots in a row (24h move {round_numbers(top_loser_streak.latest_price_change_percent, 2)}%)
             - 1h / 2h / 6h / extension return ({int(values["extension_window_bars"])} bars, floor {round_numbers(values["extension_floor"] * 100, 2)}%): {round_numbers(values["return_1h"] * 100, 2)}% / {round_numbers(values["return_2h"] * 100, 2)}% / {round_numbers(values["return_6h"] * 100, 2)}% / {round_numbers(values["extension_return"] * 100, 2)}%
             - Candle return: {round_numbers(values["candle_return"] * 100, 2)}%
@@ -545,7 +562,7 @@ class TopLoserEarlyMomentum:
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - Autotrade is enabled
+            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
