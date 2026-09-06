@@ -3,6 +3,7 @@ from datetime import datetime
 from pandas import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
+    BotModel,
     ExchangeId,
     KucoinKlineIntervals,
     BinbotApi,
@@ -14,6 +15,7 @@ from pybinbot import (
     SymbolModel,
     MarketBreadthSeries,
     GainersLosersSnapshot,
+    Status,
 )
 from calibrators.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer
@@ -28,6 +30,7 @@ from market_regime.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
+from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 from time import time
 
 
@@ -87,6 +90,9 @@ class KlinesProvider:
         )
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
         self.strategy_states: dict[tuple[str, str], dict[str, float | int]] = {}
+        self.top_gainer_recovery_bots: list[BotModel] = []
+        self.top_gainer_recovery_attempted_source_ids: set[str] = set()
+        self._last_top_gainer_recovery_bucket: int | None = None
         self.liquidation_sweep_portfolio_selector = LiquidationSweepPortfolioSelector()
 
         # Determine exchange
@@ -314,6 +320,29 @@ class KlinesProvider:
         )
         self._store_btc_history(MarketType.SPOT)
 
+    def _refresh_top_gainer_recovery_bots_for_bucket(
+        self,
+        *,
+        current_time: datetime,
+        bucket: int,
+    ) -> None:
+        if bucket == self._last_top_gainer_recovery_bucket:
+            return
+
+        self._last_top_gainer_recovery_bucket = bucket
+        now_ms = int(current_time.timestamp() * 1000)
+        try:
+            self.top_gainer_recovery_bots = self.binbot_api.get_bots_by_status(
+                start_date=now_ms - TopGainerMomentumRecovery.WATCH_WINDOW_MS,
+                end_date=now_ms,
+                status=Status.all,
+            )
+        except Exception:
+            logging.exception(
+                "Failed to refresh top-gainer recovery source bots; "
+                "continuing with the previous snapshot."
+            )
+
     async def aggregate_data(self, payload: dict):
         """
         Merge new asset candle and pass data to ContextEvaluator.
@@ -326,6 +355,10 @@ class KlinesProvider:
         # only once per bucket so multiple kline payloads in the same minute
         # don't trigger duplicate PUT cycles.
         bucket = int(current_time.timestamp() // (15 * 60))
+        self._refresh_top_gainer_recovery_bots_for_bucket(
+            current_time=current_time,
+            bucket=bucket,
+        )
         if (
             bucket != self._last_calibration_bucket
             and self.latest_market_context is not None
@@ -382,6 +415,10 @@ class KlinesProvider:
             strategy_states=self.strategy_states,
             liquidation_sweep_portfolio_selector=(
                 self.liquidation_sweep_portfolio_selector
+            ),
+            top_gainer_recovery_bots=self.top_gainer_recovery_bots,
+            top_gainer_recovery_attempted_source_ids=(
+                self.top_gainer_recovery_attempted_source_ids
             ),
         )
         await crypto_analytics.process_data(

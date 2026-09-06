@@ -13,8 +13,10 @@ from pybinbot import (
     GainersLosersSnapshot,
     MarketBreadthSeries,
     MarketType,
+    Status,
     TestAutotradeSettingsSchema,
 )
+from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 
 
 class TestKlinesProvider:
@@ -144,6 +146,51 @@ class TestKlinesProvider:
         assert len(history) == 1
         assert int(history.iloc[-1]["timestamp"]) == 2999
         assert float(history.iloc[-1]["close"]) == 1.1
+
+
+def test_recovery_bot_snapshot_refreshes_once_per_bucket() -> None:
+    provider = cast(Any, object.__new__(KlinesProvider))
+    source_bots = [SimpleNamespace(id="source-bot")]
+    provider.binbot_api = SimpleNamespace(
+        get_bots_by_status=Mock(return_value=source_bots)
+    )
+    provider.top_gainer_recovery_bots = []
+    provider._last_top_gainer_recovery_bucket = None
+    current_time = datetime(2026, 9, 3, 12, 0, 0)
+    now_ms = int(current_time.timestamp() * 1000)
+
+    provider._refresh_top_gainer_recovery_bots_for_bucket(
+        current_time=current_time,
+        bucket=100,
+    )
+    provider._refresh_top_gainer_recovery_bots_for_bucket(
+        current_time=current_time,
+        bucket=100,
+    )
+
+    assert provider.top_gainer_recovery_bots == source_bots
+    provider.binbot_api.get_bots_by_status.assert_called_once_with(
+        start_date=now_ms - TopGainerMomentumRecovery.WATCH_WINDOW_MS,
+        end_date=now_ms,
+        status=Status.all,
+    )
+
+
+def test_recovery_bot_snapshot_keeps_previous_data_when_refresh_fails() -> None:
+    provider = cast(Any, object.__new__(KlinesProvider))
+    previous_bots = [SimpleNamespace(id="previous-source")]
+    provider.binbot_api = SimpleNamespace(
+        get_bots_by_status=Mock(side_effect=RuntimeError("backend unavailable"))
+    )
+    provider.top_gainer_recovery_bots = previous_bots
+    provider._last_top_gainer_recovery_bucket = None
+
+    provider._refresh_top_gainer_recovery_bots_for_bucket(
+        current_time=datetime(2026, 9, 3, 12, 0, 0),
+        bucket=100,
+    )
+
+    assert provider.top_gainer_recovery_bots == previous_bots
 
 
 def make_market_context(timestamp: int = 1_000) -> LiveMarketContext:

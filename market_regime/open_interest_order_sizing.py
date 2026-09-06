@@ -27,6 +27,7 @@ OI_SIZED_STRATEGIES = frozenset(
         "liquidation_sweep_pump",
         "relative_strength_impulse_rider",
         "top_gainer_early_momentum",
+        "top_loser_early_momentum",
     }
 )
 

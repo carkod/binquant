@@ -303,12 +303,22 @@ class Autotrade:
 
         if bot.error > 0:
             message = bot.message
-            errors_func(bot_id, message)
+            activation_bot = bot.data if isinstance(bot.data, BotModel) else None
+            terminal_entry_rejection = (
+                activation_bot is not None
+                and message.startswith("Entry rejected:")
+                and activation_bot.status == Status.error
+                and not activation_bot.orders
+                and activation_bot.deal.opening_qty == 0
+                and activation_bot.deal.opening_timestamp == 0
+            )
+            if not terminal_entry_rejection:
+                errors_func(bot_id, message)
             if self.default_bot.position == Position.short:
                 self.binbot_api.clean_margin_short(self.default_bot.pair)
             if self.db_collection_name == "paper_trading":
                 self.binbot_api.delete_paper_bot(bot_id)
-            else:
+            elif not terminal_entry_rejection:
                 try:
                     self.binbot_api.deactivate_bot(
                         bot_id,
