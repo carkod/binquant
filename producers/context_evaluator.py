@@ -45,7 +45,7 @@ from market_regime.open_interest_order_sizing import (
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.utils import format_context_timestamp_line
-from strategies.activity_burst_pump import ActivityBurstPump
+from strategies.activity_burst.activity_burst_pump import ActivityBurstPump
 from strategies.failed_spike_fade import FailedSpikeFade
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import (
@@ -59,7 +59,9 @@ from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 
 if TYPE_CHECKING:
-    from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyGate
+    from strategies.activity_burst.activity_burst_anomaly_gate import (
+        ActivityBurstAnomalyGate,
+    )
 
 
 class ContextEvaluator:

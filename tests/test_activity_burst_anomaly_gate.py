@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 from pandas import DataFrame
 
-from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyGate
+from strategies.activity_burst.activity_burst_anomaly_gate import (
+    ActivityBurstAnomalyGate,
+)
 
 
 def make_feature_frame(rows: int = 121) -> DataFrame:

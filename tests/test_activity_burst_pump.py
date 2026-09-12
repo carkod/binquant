@@ -7,8 +7,10 @@ from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType, SymbolModel
 
 from market_regime.models import DerivativesPositioningFeatures
-from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyEvaluation
-from strategies.activity_burst_pump import ActivityBurstPump
+from strategies.activity_burst.activity_burst_anomaly_gate import (
+    ActivityBurstAnomalyEvaluation,
+)
+from strategies.activity_burst.activity_burst_pump import ActivityBurstPump
 
 
 def make_context(df: DataFrame) -> SimpleNamespace:
@@ -103,7 +105,7 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
     )
 
     monkeypatch.setattr(
-        "strategies.activity_burst_pump.build_links_msg",
+        "strategies.activity_burst.activity_burst_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
     )
 
@@ -170,7 +172,7 @@ async def test_signal_generator_records_but_does_not_trade_cascade_risk(
     )
     algo = ActivityBurstPump(cast(Any, context))
     monkeypatch.setattr(
-        "strategies.activity_burst_pump.allows_long_autotrade",
+        "strategies.activity_burst.activity_burst_pump.allows_long_autotrade",
         lambda context, symbol: True,
     )
 
@@ -195,17 +197,16 @@ async def test_signal_generator_records_but_does_not_trade_cascade_risk(
 @pytest.mark.parametrize(
     ("confirmed", "expected_autotrade", "expected_route"),
     (
-        (False, False, "staging_anomaly_gate_rejected"),
-        (True, True, "staging_anomaly_gate_confirmed"),
+        (False, False, "anomaly_gate_rejected"),
+        (True, True, "anomaly_gate_confirmed"),
     ),
 )
-async def test_staging_anomaly_gate_controls_autotrade(
+async def test_anomaly_gate_controls_autotrade(
     monkeypatch,
     confirmed: bool,
     expected_autotrade: bool,
     expected_route: str,
 ) -> None:
-    monkeypatch.setenv("ENV", "STAGING")
     df = make_low_liquidity_df()
     context = make_context(df)
     context.latest_market_context = SimpleNamespace(
@@ -230,11 +231,11 @@ async def test_staging_anomaly_gate_controls_autotrade(
     context.activity_burst_anomaly_gates["TESTUSDT"] = anomaly_gate
     algo = ActivityBurstPump(cast(Any, context))
     monkeypatch.setattr(
-        "strategies.activity_burst_pump.allows_long_autotrade",
+        "strategies.activity_burst.activity_burst_pump.allows_long_autotrade",
         lambda context, symbol: True,
     )
     monkeypatch.setattr(
-        "strategies.activity_burst_pump.build_links_msg",
+        "strategies.activity_burst.activity_burst_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
     )
 
@@ -257,15 +258,37 @@ async def test_staging_anomaly_gate_controls_autotrade(
 
 
 @pytest.mark.asyncio
-async def test_anomaly_gate_is_not_called_outside_staging(monkeypatch) -> None:
+async def test_anomaly_gate_is_called_in_production(monkeypatch) -> None:
     monkeypatch.setenv("ENV", "production")
     df = make_low_liquidity_df()
     context = make_context(df)
-    anomaly_gate = SimpleNamespace(evaluate=Mock())
+    context.latest_market_context = SimpleNamespace(
+        market_regime="TREND_UP",
+        market_regime_transition=None,
+        timestamp=1_700_000_000_000,
+        get_symbol_features=lambda symbol: None,
+    )
+    evaluation = ActivityBurstAnomalyEvaluation(
+        training_rows=120,
+        pca_score=0.1,
+        pca_percentile=0.6,
+        pca_confirmed=False,
+        isolation_forest_score=0.2,
+        isolation_forest_percentile=0.99,
+        isolation_forest_confirmed=True,
+        gate_passed=True,
+        fit_latency_ms=2.0,
+        inference_latency_ms=0.5,
+    )
+    anomaly_gate = SimpleNamespace(evaluate=Mock(return_value=evaluation))
     context.activity_burst_anomaly_gates["TESTUSDT"] = anomaly_gate
     algo = ActivityBurstPump(cast(Any, context))
     monkeypatch.setattr(
-        "strategies.activity_burst_pump.build_links_msg",
+        "strategies.activity_burst.activity_burst_pump.allows_long_autotrade",
+        lambda context, symbol: True,
+    )
+    monkeypatch.setattr(
+        "strategies.activity_burst.activity_burst_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
     )
 
@@ -276,6 +299,11 @@ async def test_anomaly_gate_is_not_called_outside_staging(monkeypatch) -> None:
         bb_low=1.01,
     )
 
-    anomaly_gate.evaluate.assert_not_called()
+    anomaly_gate.evaluate.assert_called_once()
     dispatched = context.dispatch_signal_record.call_args.kwargs
-    assert "activity_burst_anomaly_gate_passed" not in dispatched["indicators"]
+    assert dispatched["value"].autotrade is True
+    assert dispatched["indicators"]["activity_burst_anomaly_gate_passed"] is True
+    assert (
+        dispatched["indicators"]["activity_burst_anomaly_isolation_forest_confirmed"]
+        is True
+    )

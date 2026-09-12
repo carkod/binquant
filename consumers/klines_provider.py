@@ -37,7 +37,9 @@ from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 from time import time
 
 if TYPE_CHECKING:
-    from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyGate
+    from strategies.activity_burst.activity_burst_anomaly_gate import (
+        ActivityBurstAnomalyGate,
+    )
 
 
 class KlinesProvider:

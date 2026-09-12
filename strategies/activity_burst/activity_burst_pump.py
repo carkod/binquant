@@ -20,10 +20,12 @@ from market_regime.open_interest_order_sizing import (
 )
 from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
+from strategies.activity_burst.activity_burst_anomaly_gate import (
+    ActivityBurstAnomalyGate,
+)
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
-    from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyGate
 
 
 class ActivityBurstPump:
@@ -54,18 +56,12 @@ class ActivityBurstPump:
         self.score_quantile = 0.92
         self.score_lookback = 80
         self.cooldown_bars = 3
-        self.anomaly_gate: ActivityBurstAnomalyGate | None = None
-        if getenv("ENV", "").upper() == "STAGING":
-            from strategies.activity_burst_anomaly_gate import ActivityBurstAnomalyGate
-
-            anomaly_gates = getattr(cls, "activity_burst_anomaly_gates", None)
-            if anomaly_gates is None:
-                self.anomaly_gate = ActivityBurstAnomalyGate()
-            else:
-                self.anomaly_gate = anomaly_gates.get(self.symbol)
-                if self.anomaly_gate is None:
-                    self.anomaly_gate = ActivityBurstAnomalyGate()
-                    anomaly_gates[self.symbol] = self.anomaly_gate
+        anomaly_gates = cls.activity_burst_anomaly_gates
+        anomaly_gate = anomaly_gates.get(self.symbol)
+        if anomaly_gate is None:
+            anomaly_gate = ActivityBurstAnomalyGate()
+            anomaly_gates[self.symbol] = anomaly_gate
+        self.anomaly_gate = anomaly_gate
 
     def compute_indicators(
         self, df: TypedDataFrame[KlineSchema]
@@ -204,24 +200,23 @@ class ActivityBurstPump:
             return None
 
         anomaly_indicators: dict[str, float | int | bool] = {}
-        if self.anomaly_gate is not None:
-            try:
-                anomaly_evaluation = self.anomaly_gate.evaluate(df)
-            except Exception:
-                logging.exception(
-                    "Activity-burst anomaly evaluation failed for %s.", self.symbol
-                )
-                anomaly_evaluation = None
-            if anomaly_evaluation is None:
-                autotrade = False
-                autotrade_route = "staging_anomaly_gate_unavailable"
+        try:
+            anomaly_evaluation = self.anomaly_gate.evaluate(df)
+        except Exception:
+            logging.exception(
+                "Activity-burst anomaly evaluation failed for %s.", self.symbol
+            )
+            anomaly_evaluation = None
+        if anomaly_evaluation is None:
+            autotrade = False
+            autotrade_route = "anomaly_gate_unavailable"
+        else:
+            anomaly_indicators = anomaly_evaluation.as_indicators()
+            if anomaly_evaluation.gate_passed:
+                autotrade_route = "anomaly_gate_confirmed"
             else:
-                anomaly_indicators = anomaly_evaluation.as_indicators()
-                if anomaly_evaluation.gate_passed:
-                    autotrade_route = "staging_anomaly_gate_confirmed"
-                else:
-                    autotrade = False
-                    autotrade_route = "staging_anomaly_gate_rejected"
+                autotrade = False
+                autotrade_route = "anomaly_gate_rejected"
 
         positioning = symbol_features.derivatives if symbol_features else None
         derivatives_block_reason = activity_burst_derivatives_block_reason(positioning)
