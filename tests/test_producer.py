@@ -420,6 +420,7 @@ async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_emp
 
     activity_signal = AsyncMock()
     evaluator: Any = object.__new__(ContextEvaluator)
+    evaluator.config = SimpleNamespace(env="production")
     evaluator.exchange = Mock()
     evaluator.symbol = "TESTUSDT"
     evaluator.latest_market_context = None
@@ -444,6 +445,133 @@ async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_emp
     await evaluator.process_data(candles="5m", candles_15m="15m")
 
     activity_signal.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("environment", "expected_strategy_calls"),
+    [
+        pytest.param(
+            "staging",
+            {"FailedSpikeFade", "MarketRegimeNotifier"},
+            id="staging-isolates-failed-spike-fade",
+        ),
+        pytest.param(
+            "development",
+            {"FailedSpikeFade", "MarketRegimeNotifier"},
+            id="non-production-skips-production-strategies",
+        ),
+        pytest.param(
+            "production",
+            {
+                "ActivityBurstPump",
+                "RelativeStrengthImpulseRider",
+                "TopGainerEarlyMomentum",
+                "TopGainerMomentumRecovery",
+                "FailedSpikeFade",
+                "MarketRegimeNotifier",
+                "LiquidationSweepPump",
+                "LadderDeployer",
+                "TopLoserEarlyMomentum",
+            },
+            id="production-runs-full-strategy-set",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_process_data_runs_environment_strategy_allowlist(
+    monkeypatch,
+    environment,
+    expected_strategy_calls,
+):
+    rows = 100
+    dataframe = DataFrame(
+        {
+            "close": [100.0] * rows,
+            "ma_7": [100.0] * rows,
+            "ma_25": [100.0] * rows,
+            "ma_100": [100.0] * rows,
+        }
+    )
+
+    class FakeCandles:
+        def __init__(self, exchange, candles):  # noqa: ARG002
+            pass
+
+        def pre_process(self):
+            return dataframe.copy()
+
+        def post_process(self, df):
+            return df
+
+        def resample(self, df, interval):  # noqa: ARG002
+            return dataframe.copy()
+
+    strategy_signals = {
+        name: AsyncMock()
+        for name in (
+            "ActivityBurstPump",
+            "RelativeStrengthImpulseRider",
+            "TopGainerEarlyMomentum",
+            "TopGainerMomentumRecovery",
+            "FailedSpikeFade",
+            "MarketRegimeNotifier",
+            "LiquidationSweepPump",
+            "LadderDeployer",
+            "TopLoserEarlyMomentum",
+        )
+    }
+    evaluator: Any = object.__new__(ContextEvaluator)
+    evaluator.config = SimpleNamespace(env=environment)
+    evaluator.exchange = Mock()
+    evaluator.symbol = "TESTUSDTM"
+    evaluator.latest_market_context = None
+    evaluator.market_breadth_data = None
+    evaluator.last_market_regime = None
+    evaluator.symbol_dependent_data = Mock()
+    evaluator.refresh_grid_only_policy = Mock()
+    evaluator.indicators_enrichment = lambda df: df
+    evaluator.bb_spreads = lambda df: HABollinguerSpread(
+        bb_high=101.0,
+        bb_mid=100.0,
+        bb_low=99.0,
+    )
+
+    def load_5m_algorithms():
+        evaluator.abp = SimpleNamespace(signal=strategy_signals["ActivityBurstPump"])
+
+    def load_15m_algorithms():
+        evaluator.relative_strength_impulse_rider = SimpleNamespace(
+            signal=strategy_signals["RelativeStrengthImpulseRider"]
+        )
+        evaluator.top_gainer_early_momentum = SimpleNamespace(
+            signal=strategy_signals["TopGainerEarlyMomentum"]
+        )
+        evaluator.top_gainer_momentum_recovery = SimpleNamespace(
+            signal=strategy_signals["TopGainerMomentumRecovery"]
+        )
+        evaluator.failed_spike_fade = SimpleNamespace(
+            signal=strategy_signals["FailedSpikeFade"]
+        )
+        evaluator.market_regime_notifier = SimpleNamespace(
+            signal=strategy_signals["MarketRegimeNotifier"],
+            last_market_regime=None,
+        )
+        evaluator.lsp = SimpleNamespace(signal=strategy_signals["LiquidationSweepPump"])
+        evaluator.grid_ladder = SimpleNamespace(
+            signal=strategy_signals["LadderDeployer"]
+        )
+        evaluator.top_loser_early_momentum = SimpleNamespace(
+            signal=strategy_signals["TopLoserEarlyMomentum"]
+        )
+
+    evaluator.load_5m_algorithms = load_5m_algorithms
+    evaluator.load_15m_algorithms = load_15m_algorithms
+    monkeypatch.setattr("producers.context_evaluator.Candles", FakeCandles)
+
+    await evaluator.process_data(candles="5m", candles_15m="15m")
+
+    for name, signal in strategy_signals.items():
+        assert signal.await_count == (1 if name in expected_strategy_calls else 0)
 
 
 def test_grid_only_policy_is_disabled_with_grid_ladder_switch() -> None:

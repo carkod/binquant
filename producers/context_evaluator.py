@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 from asyncio import timeout
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from numpy import isnan
 from numpy import log as logarithm
@@ -43,7 +45,7 @@ from market_regime.open_interest_order_sizing import (
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.utils import format_context_timestamp_line
-from strategies.activity_burst_pump import ActivityBurstPump
+from strategies.activity_burst.activity_burst_pump import ActivityBurstPump
 from strategies.failed_spike_fade import FailedSpikeFade
 from strategies.grid.ladder_deployer import LadderDeployer
 from strategies.liquidation_sweep_pump import (
@@ -55,6 +57,11 @@ from strategies.relative_strength_impulse_rider import RelativeStrengthImpulseRi
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
+
+if TYPE_CHECKING:
+    from strategies.activity_burst.activity_burst_anomaly_gate import (
+        ActivityBurstAnomalyGate,
+    )
 
 
 class ContextEvaluator:
@@ -76,6 +83,7 @@ class ContextEvaluator:
         telegram_consumer: TelegramConsumer,
         strategy_cooldowns: dict[tuple[str, str], int] | None = None,
         strategy_states: dict[tuple[str, str], dict[str, float | int]] | None = None,
+        activity_burst_anomaly_gates: dict[str, ActivityBurstAnomalyGate] | None = None,
         liquidation_sweep_portfolio_selector: (
             LiquidationSweepPortfolioSelector | None
         ) = None,
@@ -124,6 +132,11 @@ class ContextEvaluator:
         self.telegram_consumer = telegram_consumer
         self.strategy_cooldowns = strategy_cooldowns
         self.strategy_states = strategy_states if strategy_states is not None else {}
+        self.activity_burst_anomaly_gates = (
+            activity_burst_anomaly_gates
+            if activity_burst_anomaly_gates is not None
+            else {}
+        )
         self.top_gainer_recovery_bots = top_gainer_recovery_bots or []
         self.top_gainer_recovery_attempted_source_ids = (
             top_gainer_recovery_attempted_source_ids
@@ -432,6 +445,9 @@ class ContextEvaluator:
 
         Algorithms should consume this data
         """
+        # Reserve staging for FailedSpikeFade validation. The remaining trading
+        # strategies run only in production.
+        run_production_strategies = self.config.env.casefold() == "production"
         self.symbol_dependent_data()
         self.refresh_grid_only_policy()
         raw_candles_5m = Candles(exchange=self.exchange, candles=candles)
@@ -444,7 +460,8 @@ class ContextEvaluator:
             self.df_5m = raw_candles_5m.post_process(self.df_5m)
 
             if (
-                self.df_5m.ma_7.size >= 7
+                run_production_strategies
+                and self.df_5m.ma_7.size >= 7
                 and self.df_5m.ma_25.size >= 25
                 and self.df_5m.ma_100.size >= 100
             ):
@@ -504,35 +521,36 @@ class ContextEvaluator:
             close_price = float(self.df_15m["close"].iloc[-1])
             spreads = self.bb_spreads(self.df_15m)
 
-            await self._safe_signal(
-                "RelativeStrengthImpulseRider",
-                self.relative_strength_impulse_rider.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+            if run_production_strategies:
+                await self._safe_signal(
+                    "RelativeStrengthImpulseRider",
+                    self.relative_strength_impulse_rider.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
-            await self._safe_signal(
-                "TopGainerEarlyMomentum",
-                self.top_gainer_early_momentum.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+                await self._safe_signal(
+                    "TopGainerEarlyMomentum",
+                    self.top_gainer_early_momentum.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
-            await self._safe_signal(
-                "TopGainerMomentumRecovery",
-                self.top_gainer_momentum_recovery.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+                await self._safe_signal(
+                    "TopGainerMomentumRecovery",
+                    self.top_gainer_momentum_recovery.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
             await self._safe_signal(
                 "FailedSpikeFade",
@@ -550,36 +568,37 @@ class ContextEvaluator:
             )
             self.last_market_regime = self.market_regime_notifier.last_market_regime
 
-            await self._safe_signal(
-                "LiquidationSweepPump",
-                self.lsp.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+            if run_production_strategies:
+                await self._safe_signal(
+                    "LiquidationSweepPump",
+                    self.lsp.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
-            await self._safe_signal(
-                "LadderDeployer",
-                self.grid_ladder.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+                await self._safe_signal(
+                    "LadderDeployer",
+                    self.grid_ladder.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
-            # Keep the short-side mirror last so TopGainerEarlyMomentum gets
-            # first refusal when both strategies qualify in this cycle.
-            await self._safe_signal(
-                "TopLoserEarlyMomentum",
-                self.top_loser_early_momentum.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+                # Keep the short-side mirror last so TopGainerEarlyMomentum gets
+                # first refusal when both strategies qualify in this cycle.
+                await self._safe_signal(
+                    "TopLoserEarlyMomentum",
+                    self.top_loser_early_momentum.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
         return

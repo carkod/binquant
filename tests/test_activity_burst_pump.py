@@ -7,7 +7,10 @@ from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType, SymbolModel
 
 from market_regime.models import DerivativesPositioningFeatures
-from strategies.activity_burst_pump import ActivityBurstPump
+from strategies.activity_burst.activity_burst_anomaly_gate import (
+    ActivityBurstAnomalyEvaluation,
+)
+from strategies.activity_burst.activity_burst_pump import ActivityBurstPump
 
 
 def make_context(df: DataFrame) -> SimpleNamespace:
@@ -37,6 +40,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         latest_market_context=None,
         _breadth_cross_tolerance=0.05,
         _autotrade_stress_threshold=0.35,
+        activity_burst_anomaly_gates={},
     )
 
 
@@ -101,7 +105,7 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
     )
 
     monkeypatch.setattr(
-        "strategies.activity_burst_pump.build_links_msg",
+        "strategies.activity_burst.activity_burst_pump.build_links_msg",
         lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
     )
 
@@ -168,7 +172,7 @@ async def test_signal_generator_records_but_does_not_trade_cascade_risk(
     )
     algo = ActivityBurstPump(cast(Any, context))
     monkeypatch.setattr(
-        "strategies.activity_burst_pump.allows_long_autotrade",
+        "strategies.activity_burst.activity_burst_pump.allows_long_autotrade",
         lambda context, symbol: True,
     )
 
@@ -187,3 +191,119 @@ async def test_signal_generator_records_but_does_not_trade_cascade_risk(
     )
     context.telegram_consumer.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("confirmed", "expected_autotrade", "expected_route"),
+    (
+        (False, False, "anomaly_gate_rejected"),
+        (True, True, "anomaly_gate_confirmed"),
+    ),
+)
+async def test_anomaly_gate_controls_autotrade(
+    monkeypatch,
+    confirmed: bool,
+    expected_autotrade: bool,
+    expected_route: str,
+) -> None:
+    df = make_low_liquidity_df()
+    context = make_context(df)
+    context.latest_market_context = SimpleNamespace(
+        market_regime="TREND_UP",
+        market_regime_transition=None,
+        timestamp=1_700_000_000_000,
+        get_symbol_features=lambda symbol: None,
+    )
+    evaluation = ActivityBurstAnomalyEvaluation(
+        training_rows=120,
+        pca_score=0.1,
+        pca_percentile=0.99 if confirmed else 0.5,
+        pca_confirmed=confirmed,
+        isolation_forest_score=0.2,
+        isolation_forest_percentile=0.6,
+        isolation_forest_confirmed=False,
+        gate_passed=confirmed,
+        fit_latency_ms=2.0,
+        inference_latency_ms=0.5,
+    )
+    anomaly_gate = SimpleNamespace(evaluate=Mock(return_value=evaluation))
+    context.activity_burst_anomaly_gates["TESTUSDT"] = anomaly_gate
+    algo = ActivityBurstPump(cast(Any, context))
+    monkeypatch.setattr(
+        "strategies.activity_burst.activity_burst_pump.allows_long_autotrade",
+        lambda context, symbol: True,
+    )
+    monkeypatch.setattr(
+        "strategies.activity_burst.activity_burst_pump.build_links_msg",
+        lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=1.05,
+        bb_mid=1.03,
+        bb_low=1.01,
+    )
+
+    anomaly_gate.evaluate.assert_called_once()
+    dispatched = context.dispatch_signal_record.call_args.kwargs
+    assert dispatched["value"].autotrade is expected_autotrade
+    assert dispatched["indicators"]["activity_burst_anomaly_gate_passed"] is confirmed
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
+    assert (
+        f"Autotrade route: {expected_route}"
+        in context.telegram_consumer.dispatch_signal.call_args.args[0]
+    )
+
+
+@pytest.mark.asyncio
+async def test_anomaly_gate_is_called_in_production(monkeypatch) -> None:
+    monkeypatch.setenv("ENV", "production")
+    df = make_low_liquidity_df()
+    context = make_context(df)
+    context.latest_market_context = SimpleNamespace(
+        market_regime="TREND_UP",
+        market_regime_transition=None,
+        timestamp=1_700_000_000_000,
+        get_symbol_features=lambda symbol: None,
+    )
+    evaluation = ActivityBurstAnomalyEvaluation(
+        training_rows=120,
+        pca_score=0.1,
+        pca_percentile=0.6,
+        pca_confirmed=False,
+        isolation_forest_score=0.2,
+        isolation_forest_percentile=0.99,
+        isolation_forest_confirmed=True,
+        gate_passed=True,
+        fit_latency_ms=2.0,
+        inference_latency_ms=0.5,
+    )
+    anomaly_gate = SimpleNamespace(evaluate=Mock(return_value=evaluation))
+    context.activity_burst_anomaly_gates["TESTUSDT"] = anomaly_gate
+    algo = ActivityBurstPump(cast(Any, context))
+    monkeypatch.setattr(
+        "strategies.activity_burst.activity_burst_pump.allows_long_autotrade",
+        lambda context, symbol: True,
+    )
+    monkeypatch.setattr(
+        "strategies.activity_burst.activity_burst_pump.build_links_msg",
+        lambda env, exchange, market_type, symbol: ("https://exchange", "https://bot"),
+    )
+
+    await algo.signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=1.05,
+        bb_mid=1.03,
+        bb_low=1.01,
+    )
+
+    anomaly_gate.evaluate.assert_called_once()
+    dispatched = context.dispatch_signal_record.call_args.kwargs
+    assert dispatched["value"].autotrade is True
+    assert dispatched["indicators"]["activity_burst_anomaly_gate_passed"] is True
+    assert (
+        dispatched["indicators"]["activity_burst_anomaly_isolation_forest_confirmed"]
+        is True
+    )
