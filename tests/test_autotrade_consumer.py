@@ -1,4 +1,5 @@
 # tests/test_autotrade_consumer.py
+import time as time_module
 from os import environ
 from types import SimpleNamespace
 from typing import Any, cast
@@ -166,6 +167,19 @@ class TestAutotradeConsumer:
 
     def teardown_method(self):
         pass
+
+    @staticmethod
+    def _reliable_futures_klines() -> list[list[float]]:
+        """A completed candle plus a current candle, spanning `now`, so the
+        futures entry candle-reliability gate in AutotradeConsumer passes."""
+        interval_ms = 900_000  # 15m, matching the default candlestick_interval
+        now_ms = int(time_module.time() * 1000)
+        current_open = now_ms - (now_ms % interval_ms)
+        completed_open = current_open - interval_ms
+        return [
+            [completed_open, 100, 101, 99, 100.5, 10, completed_open + interval_ms - 1],
+            [current_open, 100.5, 101, 100, 100.7, 5, current_open + interval_ms - 1],
+        ]
 
     def _grid_params(
         self, symbol: str, generated_at: datetime | None = None
@@ -758,6 +772,54 @@ class TestAutotradeConsumer:
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
 
     @pytest.mark.asyncio
+    async def test_process_autotrade_restrictions_skips_futures_when_candles_unreliable(
+        self,
+    ):
+        self.consumer.exchange = ExchangeId.KUCOIN
+        self.mock_binbot_api.get_available_fiat.return_value = 1000
+        self.mock_binbot_api.get_single_symbol.return_value = SymbolModel(
+            id="BTCUSDTM",
+            exchange_id=ExchangeId.KUCOIN,
+            base_asset="BTC",
+            quote_asset="USDT",
+            price_precision=2,
+            qty_precision=0,
+            is_margin_trading_allowed=True,
+            futures_leverage=1,
+        )
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=10,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="coinrule_buy_the_dip",
+                market_type=MarketType.FUTURES,
+                position=Position.short,
+                fiat="USDT",
+                fiat_order_size=200,
+                stop_loss=1,
+            ),
+        )
+
+        self.consumer.kucoin_futures_api.DEFAULT_MULTIPLIER = 1
+        cast(
+            Any, self.consumer.kucoin_futures_api.get_symbol_info
+        ).return_value = SimpleNamespace(
+            multiplier=10,
+            lot_size=1,
+            taker_fee_rate=0.0006,
+        )
+        # No completed/current candles in the response -> unreliable feed,
+        # mirroring binbot's "Reliable current and completed candles are
+        # unavailable for futures entry" rejection.
+        cast(Any, self.consumer.kucoin_futures_api.get_ui_klines).return_value = []
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_process_autotrade_restrictions_skips_futures_when_minimum_margin_exceeds_balance(
         self,
     ):
@@ -795,6 +857,9 @@ class TestAutotradeConsumer:
             lot_size=1,
             taker_fee_rate=0.0006,
         )
+        cast(
+            Any, self.consumer.kucoin_futures_api.get_ui_klines
+        ).return_value = self._reliable_futures_klines()
 
         with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
             await self.consumer.process_autotrade_restrictions(signal)
@@ -839,6 +904,9 @@ class TestAutotradeConsumer:
             lot_size=1,
             taker_fee_rate=0.0006,
         )
+        cast(
+            Any, self.consumer.kucoin_futures_api.get_ui_klines
+        ).return_value = self._reliable_futures_klines()
 
         with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
             autotrade_instance = autotrade_cls.return_value
@@ -895,6 +963,9 @@ class TestAutotradeConsumer:
             lot_size=1,
             taker_fee_rate=0.0006,
         )
+        cast(
+            Any, self.consumer.kucoin_futures_api.get_ui_klines
+        ).return_value = self._reliable_futures_klines()
 
         with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
             autotrade_instance = autotrade_cls.return_value
