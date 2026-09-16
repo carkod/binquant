@@ -192,6 +192,7 @@ def make_context(
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=AsyncMock(),
         ),
         latest_market_context=latest_market_context,
@@ -231,6 +232,7 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=process_mock,
         ),
     )
@@ -268,6 +270,44 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
     assert signal_value.bot_params.trailing is True
     assert signal_value.bot_params.trailing_profit == 6.0
     assert signal_value.bot_params.trailing_deviation == 2.5
+    assert await_args.kwargs == {"futures_entry_candles_validated": True}
+
+
+@pytest.mark.asyncio
+async def test_unreliable_entry_candles_retry_before_signal_is_marked_emitted(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "production")
+    df = make_breakout_candles()
+    context = make_context(
+        df_15m=df,
+        latest_market_context=make_market_context(),
+    )
+    reliability_check = Mock(side_effect=[False, True])
+    context.at_consumer.futures_reliable_candles_available = reliability_check
+    algo = TopGainerEarlyMomentum(cast(Any, context))
+
+    signal_args = {
+        "current_price": float(df.close.iloc[-1]),
+        "bb_high": 115.0,
+        "bb_mid": 106.0,
+        "bb_low": 98.0,
+    }
+    await algo.signal(**signal_args)
+
+    context.dispatch_signal_record.assert_not_awaited()
+    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+    await algo.signal(**signal_args)
+
+    assert reliability_check.call_count == 2
+    context.dispatch_signal_record.assert_awaited_once()
+    context.telegram_consumer.dispatch_signal.assert_called_once()
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
+    assert context.at_consumer.process_autotrade_restrictions.await_args.kwargs == {
+        "futures_entry_candles_validated": True
+    }
 
 
 @pytest.mark.asyncio
@@ -293,6 +333,7 @@ async def test_signal_autotrades_outside_staging(monkeypatch):
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=process_mock,
         ),
     )
@@ -342,6 +383,7 @@ async def test_signal_labels_short_history_extension_window(monkeypatch):
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=process_mock,
         ),
     )
@@ -387,6 +429,7 @@ async def test_signal_skips_short_history_when_scaled_extension_cap_is_exceeded(
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=process_mock,
         ),
     )
@@ -429,6 +472,7 @@ async def test_signal_skips_when_relative_strength_is_not_positive(monkeypatch):
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=process_mock,
         ),
     )
@@ -604,6 +648,7 @@ async def test_signal_skips_when_symbol_features_are_missing(monkeypatch):
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=process_mock,
         ),
     )
@@ -653,6 +698,7 @@ async def test_signal_skips_when_one_hour_move_is_too_extended(monkeypatch):
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=process_mock,
         ),
     )
@@ -790,6 +836,7 @@ async def run_signal_with_streak(
                 fiat="USDT",
                 base_order_size=6.0,
             ),
+            futures_reliable_candles_available=Mock(return_value=True),
             process_autotrade_restrictions=AsyncMock(),
         ),
     )

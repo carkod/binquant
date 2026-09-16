@@ -907,12 +907,21 @@ class TestAutotradeConsumer:
         cast(
             Any, self.consumer.kucoin_futures_api.get_ui_klines
         ).return_value = self._reliable_futures_klines()
-
-        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+        with (
+            patch.object(
+                self.consumer,
+                "futures_reliable_candles_available",
+                side_effect=AssertionError("prevalidated candles were checked again"),
+            ) as reliability_check,
+            patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls,
+        ):
             autotrade_instance = autotrade_cls.return_value
             autotrade_instance.activate_autotrade = AsyncMock()
 
-            await self.consumer.process_autotrade_restrictions(signal)
+            await self.consumer.process_autotrade_restrictions(
+                signal,
+                futures_entry_candles_validated=True,
+            )
 
         autotrade_cls.assert_called_once_with(
             pair="BTCUSDTM",
@@ -922,6 +931,7 @@ class TestAutotradeConsumer:
             binbot_api=self.mock_binbot_api,
         )
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+        reliability_check.assert_not_called()
         assert signal.bot_params is not None
         assert signal.bot_params.fiat_order_size == 200
 

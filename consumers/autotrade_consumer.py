@@ -199,15 +199,13 @@ class AutotradeConsumer:
 
         return round_numbers(effective_margin, 8)
 
-    def _futures_reliable_candles_available(
+    def futures_reliable_candles_available(
         self, symbol: str, interval: BinanceKlineIntervals
     ) -> bool:
         """
-        Mirrors binbot's KucoinPositionDeal.body_capped_entry_limit_price
-        reliability check, so an unreliable candle feed skips autotrade
-        here instead of creating a bot that immediately fails on entry
-        with "Reliable current and completed candles are unavailable for
-        futures entry."
+        Return whether KuCoin has the current and completed candles needed
+        for futures entry. This mirrors binbot's execution-time reliability
+        check so strategies can defer emission and retry on their next tick.
         """
         kucoin_interval = BinanceKlineIntervals(interval).to_kucoin_interval()
         try:
@@ -530,7 +528,12 @@ class AutotradeConsumer:
                 payload.get("symbol"),
             )
 
-    async def process_autotrade_restrictions(self, result: SignalsConsumer):
+    async def process_autotrade_restrictions(
+        self,
+        result: SignalsConsumer,
+        *,
+        futures_entry_candles_validated: bool = False,
+    ):
         """
         Refactored autotrade conditions.
         Previously part of process_kline_stream
@@ -641,8 +644,11 @@ class AutotradeConsumer:
                 "candlestick_interval",
                 self.autotrade_settings.candlestick_interval,
             )
-            if not self._futures_reliable_candles_available(
-                symbol, candlestick_interval
+            if (
+                not futures_entry_candles_validated
+                and not self.futures_reliable_candles_available(
+                    symbol, candlestick_interval
+                )
             ):
                 return
 
