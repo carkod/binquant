@@ -147,7 +147,7 @@ async def test_signal_waits_for_completed_bullish_retest_reclaim(monkeypatch):
     assert signal.bot_params.cooldown == 240
     assert signal.bot_params.stop_loss == 2.0
     assert signal.bot_params.take_profit == 12.0
-    assert signal.bot_params.dynamic_trailing is False
+    assert signal.bot_params.dynamic_trailing is True
     assert signal.bot_params.trailing is True
     assert signal.bot_params.trailing_profit == 5.0
     assert signal.bot_params.trailing_deviation == 2.0

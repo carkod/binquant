@@ -375,7 +375,7 @@ class RelativeStrengthImpulseRider:
                 position=Position.long,
                 market_type=MarketType.FUTURES,
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
-                dynamic_trailing=False,
+                dynamic_trailing=True,
                 fiat_order_size=fiat_order_size,
                 stop_loss=self.STOP_LOSS_PCT,
                 take_profit=self.TAKE_PROFIT_PCT,

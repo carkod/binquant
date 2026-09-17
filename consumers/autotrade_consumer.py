@@ -1,13 +1,16 @@
 import logging
 from datetime import UTC, datetime
+from time import time
 from typing import Any
 
 from pybinbot import (
     AutotradeSettingsSchema,
+    BinanceKlineIntervals,
     BinbotApi,
     BinbotErrors,
     BotBase,
     BotModel,
+    Candles,
     ExchangeId,
     GridDeploymentRequest,
     KucoinFutures,
@@ -47,6 +50,9 @@ class AutotradeConsumer:
     # 3x leverage while still capping a genuine same-day losing cascade.
     # Revisit if the deployable capital base changes materially.
     DAILY_LOSS_LIMIT_QUOTE = -0.50
+    # Mirrors binbot's KucoinPositionDeal.ENTRY_ATR_WINDOW + 3 klines window,
+    # used for the same current/completed candle reliability check.
+    FUTURES_ENTRY_RELIABILITY_KLINES_LIMIT = 17
 
     def __init__(
         self,
@@ -192,6 +198,42 @@ class AutotradeConsumer:
             )
 
         return round_numbers(effective_margin, 8)
+
+    def futures_reliable_candles_available(
+        self, symbol: str, interval: BinanceKlineIntervals
+    ) -> bool:
+        """
+        Return whether KuCoin has the current and completed candles needed
+        for futures entry. This mirrors binbot's execution-time reliability
+        check so strategies can defer emission and retry on their next tick.
+        """
+        kucoin_interval = BinanceKlineIntervals(interval).to_kucoin_interval()
+        try:
+            klines = self.kucoin_futures_api.get_ui_klines(
+                symbol=symbol,
+                interval=kucoin_interval,
+                limit=self.FUTURES_ENTRY_RELIABILITY_KLINES_LIMIT,
+            )
+        except Exception:
+            logging.exception(
+                "Skipping futures autotrade for %s: unable to load reliable candle data.",
+                symbol,
+            )
+            return False
+
+        completed_candles, current_candle = Candles.partition_closed_candles(
+            klines,
+            now_ms=int(time() * 1000),
+        )
+        if not completed_candles or current_candle is None:
+            logging.info(
+                "Skipping futures autotrade for %s: reliable current and "
+                "completed candles are unavailable for futures entry.",
+                symbol,
+            )
+            return False
+
+        return True
 
     def reached_max_active_autobots(self, db_collection_name: str) -> bool:
         """
@@ -486,7 +528,12 @@ class AutotradeConsumer:
                 payload.get("symbol"),
             )
 
-    async def process_autotrade_restrictions(self, result: SignalsConsumer):
+    async def process_autotrade_restrictions(
+        self,
+        result: SignalsConsumer,
+        *,
+        futures_entry_candles_validated: bool = False,
+    ):
         """
         Refactored autotrade conditions.
         Previously part of process_kline_stream
@@ -592,6 +639,19 @@ class AutotradeConsumer:
             ExchangeId(self.exchange) == ExchangeId.KUCOIN
             and market_type == MarketType.FUTURES
         ):
+            candlestick_interval = self._signal_value(
+                bot_params,
+                "candlestick_interval",
+                self.autotrade_settings.candlestick_interval,
+            )
+            if (
+                not futures_entry_candles_validated
+                and not self.futures_reliable_candles_available(
+                    symbol, candlestick_interval
+                )
+            ):
+                return
+
             effective_fiat_order_size = self._resolve_futures_order_size(
                 symbol=symbol,
                 price=float(result.current_price),

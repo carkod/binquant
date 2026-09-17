@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from pybinbot import (
     BotBase,
+    ExchangeId,
     HABollinguerSpread,
     MarketType,
     Position,
@@ -486,6 +487,19 @@ class TopGainerEarlyMomentum:
         if self._already_emitted(candidate_open_time):
             logging.info("%s skipped: candle_already_emitted", self.ALGO)
             return
+
+        futures_entry_candles_validated = False
+        if self.exchange == ExchangeId.KUCOIN:
+            candlestick_interval = (
+                self.at_consumer.autotrade_settings.candlestick_interval
+            )
+            if not self.at_consumer.futures_reliable_candles_available(
+                self.symbol,
+                candlestick_interval,
+            ):
+                return
+            futures_entry_candles_validated = True
+
         self._mark_emitted(candidate_open_time)
 
         autotrade = True
@@ -589,4 +603,7 @@ class TopGainerEarlyMomentum:
         """
         await self.ti.dispatch_signal_record(value=value, indicators=indicators)
         self.telegram_consumer.dispatch_signal(msg)
-        await self.at_consumer.process_autotrade_restrictions(value)
+        await self.at_consumer.process_autotrade_restrictions(
+            value,
+            futures_entry_candles_validated=futures_entry_candles_validated,
+        )
