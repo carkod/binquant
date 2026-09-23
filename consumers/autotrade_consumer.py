@@ -34,6 +34,7 @@ class AutotradeConsumer:
     DISABLED_STRATEGIES = frozenset({"coinrule_price_tracker"})
     MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES = {
         "top_gainer_early_momentum": "top_loser_early_momentum",
+        "top_gainer_breadth": "top_loser_early_momentum",
         "top_loser_early_momentum": "top_gainer_early_momentum",
     }
     GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
