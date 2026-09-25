@@ -30,7 +30,13 @@ def make_lower_high_df(*, second_peak_high: float = 136) -> pd.DataFrame:
     open_times = [BASE_OPEN_TIME_MS + i * BAR_MS for i in range(len(highs))]
 
     return pd.DataFrame(
-        {"high": highs, "low": lows, "close": closes, "open_time": open_times}
+        {
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "open_time": open_times,
+            "close_time": [open_time + BAR_MS - 1 for open_time in open_times],
+        }
     )
 
 
@@ -41,7 +47,13 @@ def make_flat_uptrend_df() -> pd.DataFrame:
     closes = [h - 1 for h in highs]
     open_times = [BASE_OPEN_TIME_MS + i * BAR_MS for i in range(40)]
     return pd.DataFrame(
-        {"high": highs, "low": lows, "close": closes, "open_time": open_times}
+        {
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "open_time": open_times,
+            "close_time": [open_time + BAR_MS - 1 for open_time in open_times],
+        }
     )
 
 
@@ -105,3 +117,25 @@ async def test_lower_high_pattern_deduplicates_same_swing_high_across_instances(
     second = make_algo(df, strategy_cooldowns=shared_cooldowns)
     await second.signal()
     second.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_lower_high_pattern_waits_for_confirmation_candle_to_close():
+    highs = [99.0] + [100.0 + index for index in range(30)]
+    highs.extend([140.0, 132.0, 124.0, 120.0, 125.0, 130.0, 133.0, 136.0, 130.0, 124.0])
+    open_times = [BASE_OPEN_TIME_MS + index * BAR_MS for index in range(len(highs))]
+    frame = pd.DataFrame(
+        {
+            "high": highs,
+            "low": [high - 2 for high in highs],
+            "close": [high - 1 for high in highs],
+            "open_time": open_times,
+            "close_time": [open_time + BAR_MS - 1 for open_time in open_times],
+        }
+    )
+    frame.loc[frame.index[-1], "close_time"] = 10**15
+    algo = make_algo(frame, strategy_cooldowns={})
+
+    await algo.signal()
+
+    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]

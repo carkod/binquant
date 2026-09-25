@@ -536,35 +536,36 @@ class ContextEvaluator:
                     ),
                 )
 
-            await self._safe_signal(
-                "RelativeStrengthImpulseRider",
-                self.relative_strength_impulse_rider.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+            if run_production_strategies:
+                await self._safe_signal(
+                    "RelativeStrengthImpulseRider",
+                    self.relative_strength_impulse_rider.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
-            await self._safe_signal(
-                "TopGainerEarlyMomentum",
-                self.top_gainer_early_momentum.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+                await self._safe_signal(
+                    "TopGainerEarlyMomentum",
+                    self.top_gainer_early_momentum.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
-            await self._safe_signal(
-                "TopGainerMomentumRecovery",
-                self.top_gainer_momentum_recovery.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
+                await self._safe_signal(
+                    "TopGainerMomentumRecovery",
+                    self.top_gainer_momentum_recovery.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
 
             await self._safe_signal(
                 "FailedSpikeFade",

@@ -430,26 +430,12 @@ async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_emp
     [
         pytest.param(
             "staging",
-            {
-                "RelativeStrengthImpulseRider",
-                "TopGainerEarlyMomentum",
-                "TopGainerMomentumRecovery",
-                "FailedSpikeFade",
-                "MarketRegimeNotifier",
-                "LowerHighPattern",
-            },
+            {"FailedSpikeFade", "MarketRegimeNotifier", "LowerHighPattern"},
             id="staging-skips-production-strategies",
         ),
         pytest.param(
             "development",
-            {
-                "RelativeStrengthImpulseRider",
-                "TopGainerEarlyMomentum",
-                "TopGainerMomentumRecovery",
-                "FailedSpikeFade",
-                "MarketRegimeNotifier",
-                "LowerHighPattern",
-            },
+            {"FailedSpikeFade", "MarketRegimeNotifier", "LowerHighPattern"},
             id="non-production-skips-production-strategies",
         ),
         pytest.param(

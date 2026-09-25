@@ -1,6 +1,7 @@
+from time import time
 from typing import TYPE_CHECKING
 
-from pandas import DataFrame
+from pandas import DataFrame, to_numeric
 from pybinbot import round_numbers
 
 if TYPE_CHECKING:
@@ -61,10 +62,15 @@ class LowerHighPattern:
 
     @classmethod
     def detect(cls, df: DataFrame | None) -> dict[str, float | int] | None:
-        if df is None or len(df) < cls.LOOKBACK_BARS:
+        if df is None or "close_time" not in df.columns:
             return None
 
-        window = df.iloc[-cls.LOOKBACK_BARS :].reset_index(drop=True)
+        close_times = to_numeric(df["close_time"], errors="coerce")
+        completed_candles = df.loc[close_times <= time() * 1000]
+        if len(completed_candles) < cls.LOOKBACK_BARS:
+            return None
+
+        window = completed_candles.iloc[-cls.LOOKBACK_BARS :].reset_index(drop=True)
         peak_positions = cls._fractal_highs(window)
         if len(peak_positions) < 2:
             return None
