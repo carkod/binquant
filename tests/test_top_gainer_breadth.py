@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -18,23 +19,7 @@ from pybinbot import (
 
 from strategies.top_gainer_breadth import TopGainerBreadth
 
-BREADTH_TIMESTAMPS = [
-    f"2026-09-23T{hour:02d}:{minute:02d}:00+00:00"
-    for hour, minute in [
-        (7, 30),
-        (7, 45),
-        (8, 0),
-        (8, 15),
-        (8, 30),
-        (8, 45),
-        (9, 0),
-        (9, 15),
-        (9, 30),
-        (9, 45),
-        (10, 0),
-        (10, 15),
-    ]
-]
+NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
 BEARISH_CROSS_BREADTH = [0.30] * 9 + [0.24, 0.20, 0.16]
 BEARISH_CROSS_BREADTH_MA = [0.24] * 9 + [0.235, 0.225, 0.21]
 BULLISH_CROSS_BREADTH = [-0.30] * 9 + [-0.24, -0.20, -0.16]
@@ -50,11 +35,16 @@ def make_market_breadth(
     *,
     breadth: list[float] | None = None,
     breadth_ma: list[float] | None = None,
+    latest_at: datetime | None = None,
 ) -> MarketBreadthSeries:
     breadth_values = breadth or BEARISH_CROSS_BREADTH
     breadth_ma_values = breadth_ma or BEARISH_CROSS_BREADTH_MA
+    latest_timestamp = latest_at or NOW - timedelta(minutes=5)
     return MarketBreadthSeries(
-        timestamp=BREADTH_TIMESTAMPS,
+        timestamp=[
+            (latest_timestamp - timedelta(minutes=15 * offset)).isoformat()
+            for offset in reversed(range(12))
+        ],
         advancers=[500] * 12,
         decliners=[500] * 12,
         market_breadth=breadth_values,
@@ -82,7 +72,13 @@ def make_lower_high_df(*, fresh: bool = True) -> pd.DataFrame:
     closes = [high - 1 for high in highs]
     open_times = [BASE_OPEN_TIME_MS + index * BAR_MS for index in range(len(highs))]
     frame = pd.DataFrame(
-        {"high": highs, "low": lows, "close": closes, "open_time": open_times}
+        {
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "open_time": open_times,
+            "close_time": [open_time + BAR_MS - 1 for open_time in open_times],
+        }
     )
     if fresh:
         return frame
@@ -96,6 +92,7 @@ def make_lower_high_df(*, fresh: bool = True) -> pd.DataFrame:
                     "low": [116.0],
                     "close": [117.0],
                     "open_time": [BASE_OPEN_TIME_MS + len(highs) * BAR_MS],
+                    "close_time": [BASE_OPEN_TIME_MS + (len(highs) + 1) * BAR_MS - 1],
                 }
             ),
         ],
@@ -111,11 +108,19 @@ def make_no_lower_high_df() -> pd.DataFrame:
             "low": [high - 2 for high in highs],
             "close": [high - 1 for high in highs],
             "open_time": [BASE_OPEN_TIME_MS + index * BAR_MS for index in range(40)],
+            "close_time": [
+                BASE_OPEN_TIME_MS + (index + 1) * BAR_MS - 1
+                for index in range(40)
+            ],
         }
     )
 
 
-def make_top_gainers(*, symbol_rank: int = 4) -> list[GainersLosersSnapshot]:
+def make_top_gainers(
+    *,
+    symbol_rank: int = 4,
+    recorded_at: datetime | None = None,
+) -> list[GainersLosersSnapshot]:
     entries = [
         GainerLoserEntry(
             symbol=f"COIN{rank}USDTM",
@@ -130,7 +135,7 @@ def make_top_gainers(*, symbol_rank: int = 4) -> list[GainersLosersSnapshot]:
     return [
         GainersLosersSnapshot(
             source="kucoin_futures",
-            recorded_at="2026-09-23T10:15:00+00:00",
+            recorded_at=(recorded_at or NOW - timedelta(minutes=5)).isoformat(),
             top_gainers=entries,
             top_losers=[],
         )
@@ -144,6 +149,7 @@ def make_context(
     symbol_df: pd.DataFrame | None = None,
     symbol_rank: int = 4,
     market_type: MarketType = MarketType.FUTURES,
+    gainers: list[GainersLosersSnapshot] | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="production"),
@@ -169,11 +175,23 @@ def make_context(
         market_breadth_data=breadth or make_market_breadth(),
         df_btc_15m=btc_df if btc_df is not None else make_btc_df(),
         df_15m=symbol_df if symbol_df is not None else make_lower_high_df(),
-        gainers_losers_series=make_top_gainers(symbol_rank=symbol_rank),
+        gainers_losers_series=(
+            gainers
+            if gainers is not None
+            else make_top_gainers(symbol_rank=symbol_rank)
+        ),
         strategy_cooldowns={},
         latest_market_context=None,
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
+    )
+
+
+@pytest.fixture(autouse=True)
+def fixed_strategy_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "strategies.top_gainer_breadth.time",
+        lambda: NOW.timestamp(),
     )
 
 
@@ -265,6 +283,63 @@ async def test_signal_requires_fresh_confirmed_lower_high() -> None:
         await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
         context.dispatch_signal_record.assert_not_awaited()
         context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_uses_latest_completed_candle_for_lower_high() -> None:
+    frame = make_lower_high_df()
+    live_open_time = int(frame["open_time"].iloc[-1]) + BAR_MS
+    frame = pd.concat(
+        [
+            frame,
+            pd.DataFrame(
+                {
+                    "high": [138.0],
+                    "low": [122.0],
+                    "close": [137.0],
+                    "open_time": [live_open_time],
+                    "close_time": [int(NOW.timestamp() * 1000) + BAR_MS],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    context = make_context(symbol_df=frame)
+
+    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["lower_high_confirmation_open_time"] == int(
+        frame["open_time"].iloc[-2]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("breadth", "gainers"),
+    [
+        pytest.param(
+            make_market_breadth(latest_at=NOW - timedelta(minutes=31)),
+            None,
+            id="stale-market-breadth",
+        ),
+        pytest.param(
+            None,
+            make_top_gainers(recorded_at=NOW - timedelta(minutes=76)),
+            id="stale-gainers-snapshot",
+        ),
+    ],
+)
+async def test_signal_rejects_stale_market_tape(
+    breadth: MarketBreadthSeries | None,
+    gainers: list[GainersLosersSnapshot] | None,
+) -> None:
+    context = make_context(breadth=breadth, gainers=gainers)
+
+    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+
+    context.dispatch_signal_record.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
 @pytest.mark.asyncio

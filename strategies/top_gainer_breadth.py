@@ -1,7 +1,9 @@
 import logging
 from math import isfinite
+from time import time
 from typing import TYPE_CHECKING
 
+from pandas import to_numeric
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
@@ -12,6 +14,7 @@ from pybinbot import (
     breadth_momentum_reversal,
     btc_trend_confirms,
     round_numbers,
+    timestamp_sort_key,
 )
 
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -51,6 +54,8 @@ class TopGainerBreadth:
     BREADTH_FAST_EMA_SPAN = 3
     BREADTH_EXTENSION_THRESHOLD = 0.15
     BREADTH_CEILING = 0.6
+    MAX_BREADTH_AGE_SECONDS = 30 * 60
+    MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     MIN_BTC_HISTORY = 20
     BTC_TREND_EMA_SPAN = 20
@@ -75,6 +80,11 @@ class TopGainerBreadth:
             return None
 
         latest_snapshot = self.gainers_losers_series[0]
+        if not self._timestamp_is_fresh(
+            latest_snapshot.recorded_at,
+            self.MAX_GAINERS_SNAPSHOT_AGE_SECONDS,
+        ):
+            return None
         return next(
             (
                 (rank, entry.price_change_percent)
@@ -88,6 +98,14 @@ class TopGainerBreadth:
             ),
             None,
         )
+
+    @staticmethod
+    def _timestamp_is_fresh(timestamp: object, max_age_seconds: int) -> bool:
+        timestamp_seconds = timestamp_sort_key(timestamp)
+        if timestamp_seconds is None:
+            return False
+        age_seconds = time() - timestamp_seconds
+        return 0 <= age_seconds <= max_age_seconds
 
     @classmethod
     def _stop_loss_pct(cls, current_price: float, bb_high: float) -> float | None:
@@ -103,11 +121,17 @@ class TopGainerBreadth:
         return round_numbers(min(stop_loss, cls.MAX_STOP_LOSS_PCT), 4)
 
     def _fresh_lower_high(self) -> dict[str, float | int] | None:
-        pattern = LowerHighPattern.detect(self.ti.df_15m)
+        df = self.ti.df_15m
+        if df is None or "close_time" not in df.columns:
+            return None
+
+        close_times = to_numeric(df["close_time"], errors="coerce")
+        completed_candles = df.loc[close_times < time() * 1000]
+        pattern = LowerHighPattern.detect(completed_candles)
         if pattern is None:
             return None
 
-        latest_open_time = int(self.ti.df_15m["open_time"].iloc[-1])
+        latest_open_time = int(completed_candles["open_time"].iloc[-1])
         if pattern["confirmation_open_time"] != latest_open_time:
             return None
         return pattern
@@ -149,6 +173,12 @@ class TopGainerBreadth:
         )
         if breadth_values is None:
             logging.info("%s skipped: %s", self.ALGO, breadth_reason)
+            return
+        if not self._timestamp_is_fresh(
+            breadth_values["breadth_timestamp"],
+            self.MAX_BREADTH_AGE_SECONDS,
+        ):
+            logging.info("%s skipped: stale_market_breadth", self.ALGO)
             return
 
         btc_trend = btc_trend_confirms(

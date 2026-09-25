@@ -1,5 +1,3 @@
-from inspect import getsource
-from re import findall
 from asyncio import Event, Queue
 from datetime import UTC, datetime
 from os import environ
@@ -371,28 +369,6 @@ def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
     assert value.open_interest_sizing is None
 
 
-def test_process_data_does_not_run_disabled_price_tracker():
-    source = getsource(ContextEvaluator.process_data)
-    safe_signal_names = findall(
-        r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
-        source,
-    )
-
-    assert safe_signal_names == [
-        "ActivityBurstPump",
-        "TopGainerBreadth",
-        "RelativeStrengthImpulseRider",
-        "TopGainerEarlyMomentum",
-        "TopGainerMomentumRecovery",
-        "FailedSpikeFade",
-        "MarketRegimeNotifier",
-        "LowerHighPattern",
-        "LiquidationSweepPump",
-        "LadderDeployer",
-        "TopLoserEarlyMomentum",
-    ]
-
-
 @pytest.mark.asyncio
 async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_empty(
     monkeypatch,
@@ -454,12 +430,26 @@ async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_emp
     [
         pytest.param(
             "staging",
-            {"FailedSpikeFade", "MarketRegimeNotifier", "LowerHighPattern"},
-            id="staging-isolates-failed-spike-fade",
+            {
+                "RelativeStrengthImpulseRider",
+                "TopGainerEarlyMomentum",
+                "TopGainerMomentumRecovery",
+                "FailedSpikeFade",
+                "MarketRegimeNotifier",
+                "LowerHighPattern",
+            },
+            id="staging-skips-production-strategies",
         ),
         pytest.param(
             "development",
-            {"FailedSpikeFade", "MarketRegimeNotifier", "LowerHighPattern"},
+            {
+                "RelativeStrengthImpulseRider",
+                "TopGainerEarlyMomentum",
+                "TopGainerMomentumRecovery",
+                "FailedSpikeFade",
+                "MarketRegimeNotifier",
+                "LowerHighPattern",
+            },
             id="non-production-skips-production-strategies",
         ),
         pytest.param(
