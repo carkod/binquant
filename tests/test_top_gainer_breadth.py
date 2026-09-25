@@ -109,8 +109,7 @@ def make_no_lower_high_df() -> pd.DataFrame:
             "close": [high - 1 for high in highs],
             "open_time": [BASE_OPEN_TIME_MS + index * BAR_MS for index in range(40)],
             "close_time": [
-                BASE_OPEN_TIME_MS + (index + 1) * BAR_MS - 1
-                for index in range(40)
+                BASE_OPEN_TIME_MS + (index + 1) * BAR_MS - 1 for index in range(40)
             ],
         }
     )
