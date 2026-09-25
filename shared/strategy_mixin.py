@@ -12,7 +12,7 @@ class StrategyMixin:
         bot_id: str,
         symbol: str,
         source_label: str,
-    ) -> str:
+    ) -> tuple[bool, str]:
 
         try:
             self.binbot_api.deactivate_bot(bot_id, algorithmic_close=True)
@@ -20,7 +20,7 @@ class StrategyMixin:
                 bot_id=bot_id,
                 message=[f"Deactivated active bot from {source_label} signal"],
             )
-            return f"Deactivated active bot {bot_id}."
+            return True, f"Deactivated active bot {bot_id}."
         except Exception as exc:
             logging.exception(
                 "%s exit failed to deactivate bot for %s", source_label, symbol
@@ -29,4 +29,4 @@ class StrategyMixin:
                 bot_id=bot_id,
                 message=[f"Bot deactivation failed: {exc}"],
             )
-            return f"Failed to deactivate active bot {bot_id}: {exc}"
+            return False, f"Failed to deactivate active bot {bot_id}: {exc}"

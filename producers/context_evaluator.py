@@ -52,11 +52,13 @@ from strategies.liquidation_sweep_pump import (
     LiquidationSweepPortfolioSelector,
     LiquidationSweepPump,
 )
+from strategies.lower_high_pattern import LowerHighPattern
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.relative_strength_impulse_rider import RelativeStrengthImpulseRider
+from strategies.top_gainer_breadth import TopGainerBreadth
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
-from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
+from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
 if TYPE_CHECKING:
     from strategies.activity_burst.activity_burst_anomaly_gate import (
@@ -263,7 +265,9 @@ class ContextEvaluator:
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.lsp = LiquidationSweepPump(cls=self)
         self.grid_ladder = LadderDeployer(cls=self)
+        self.top_gainer_breadth = TopGainerBreadth(cls=self)
         self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
+        self.lower_high_pattern = LowerHighPattern(cls=self)
 
     def indicators_enrichment(
         self, df: TypedDataFrame[KlineSchema]
@@ -523,6 +527,17 @@ class ContextEvaluator:
 
             if run_production_strategies:
                 await self._safe_signal(
+                    "TopGainerBreadth",
+                    self.top_gainer_breadth.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
+
+            if run_production_strategies:
+                await self._safe_signal(
                     "RelativeStrengthImpulseRider",
                     self.relative_strength_impulse_rider.signal(
                         current_price=close_price,
@@ -568,6 +583,11 @@ class ContextEvaluator:
             )
             self.last_market_regime = self.market_regime_notifier.last_market_regime
 
+            await self._safe_signal(
+                "LowerHighPattern",
+                self.lower_high_pattern.signal(),
+            )
+
             if run_production_strategies:
                 await self._safe_signal(
                     "LiquidationSweepPump",
@@ -589,8 +609,6 @@ class ContextEvaluator:
                     ),
                 )
 
-                # Keep the short-side mirror last so TopGainerEarlyMomentum gets
-                # first refusal when both strategies qualify in this cycle.
                 await self._safe_signal(
                     "TopLoserEarlyMomentum",
                     self.top_loser_early_momentum.signal(

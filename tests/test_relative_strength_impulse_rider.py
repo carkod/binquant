@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -43,12 +44,11 @@ def append_retest_candle(
     high: float = 110.0,
     low: float = 108.5,
     close: float = 109.2,
-    completed: bool = True,
 ) -> None:
     open_time = int(frame["open_time"].iloc[-1]) + 900_000
     frame.loc[len(frame)] = {
         "open_time": open_time,
-        "close_time": open_time + (899_999 if completed else 90_000_000_000),
+        "close_time": open_time + 899_999,
         "open": open_,
         "high": high,
         "low": low,
@@ -205,13 +205,31 @@ async def test_signal_ignores_forming_retest_until_candle_completes(monkeypatch)
     monkeypatch.setenv("ENV", "staging")
     context = make_context()
     algo = RelativeStrengthImpulseRider(cast(Any, context))
+    retest_open_time = int(context.df_15m["open_time"].iloc[-1]) + 900_000
+    clock = SimpleNamespace(
+        value=datetime.fromtimestamp(
+            (retest_open_time + 60_000) / 1000,
+            tz=UTC,
+        )
+    )
+    monkeypatch.setattr(
+        "strategies.relative_strength_impulse_rider.datetime",
+        SimpleNamespace(now=lambda tz: clock.value),
+    )
 
     await algo.signal(110.0, 112.0, 105.0, 98.0)
-    append_retest_candle(context.df_15m, completed=False)
+    append_retest_candle(context.df_15m)
     await algo.signal(109.2, 112.0, 105.0, 98.0)
 
     context.dispatch_signal_record.assert_not_called()
     assert context.strategy_states != {}
+
+    retest_close_time = int(context.df_15m["close_time"].iloc[-1])
+    clock.value = datetime.fromtimestamp((retest_close_time + 1) / 1000, tz=UTC)
+    await algo.signal(109.2, 112.0, 105.0, 98.0)
+
+    context.dispatch_signal_record.assert_called_once()
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
 
 
 @pytest.mark.asyncio
