@@ -10,7 +10,6 @@ from pybinbot import (
     MarketBreadthSeries,
     MarketType,
     Position,
-    RecoveryParams,
     SignalsConsumer,
     breadth_momentum_reversal,
     btc_trend_confirms,
@@ -34,10 +33,11 @@ class TopGainerBreadth:
     - BTC's 15m close is below its EMA(20);
     - the symbol's 15m candles have just confirmed a lower high.
 
-    The resulting futures short uses a stop at the upper Bollinger Band,
-    capped at 4%, and dynamic trailing protection. A confirmed adverse
-    breakout through that stop closes the short and opens a recovery long.
-    Once open, binbot streaming owns the position lifecycle.
+    The resulting futures short uses an exchange-native stop at the upper
+    Bollinger Band, capped at 4%, and dynamic trailing protection. Reversal
+    and recovery are explicitly disabled. Once open, binbot streaming owns
+    the position lifecycle and closes it only through stop-loss or trailing
+    protection.
     """
 
     ALGO = "top_gainer_breadth"
@@ -252,7 +252,7 @@ class TopGainerBreadth:
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
             "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
-            "protective_exit": "bot_managed_stop_with_recovery_long",
+            "protective_exit": "exchange_native_reduce_only_stop",
         }
 
         value = SignalsConsumer(
@@ -272,8 +272,8 @@ class TopGainerBreadth:
                 trailing=True,
                 trailing_deviation=self.TRAILING_DEVIATION_PCT,
                 trailing_profit=self.TRAILING_PROFIT_PCT,
-                margin_short_reversal=True,
-                recovery_params=RecoveryParams(),
+                margin_short_reversal=False,
+                recovery_params=None,
             ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
@@ -299,7 +299,7 @@ class TopGainerBreadth:
             {format_context_timestamp_line(context)}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss: {stop_loss_source} at {stop_loss_price} ({stop_loss}%)
-            - Stop behavior: confirmed adverse breakout closes the SHORT reduce-only and opens one recovery LONG
+            - Stop behavior: exchange-native reduce-only close; no reversal position
             - Trailing profit / deviation: {self.TRAILING_PROFIT_PCT}% / {self.TRAILING_DEVIATION_PCT}%
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Autotrade is enabled
