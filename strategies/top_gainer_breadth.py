@@ -185,20 +185,33 @@ class TopGainerBreadth(StrategyMixin):
         exit_timestamp = int(exit_values["breadth_timestamp"] * 1000)
         if self._already_exited(exit_timestamp):
             return
-        self._mark_exited(exit_timestamp)
 
         active_bots = self.binbot_api.get_bots_by_name(self.ALGO, self.symbol)
         if not active_bots:
+            self._mark_exited(exit_timestamp)
             logging.info("%s skipped: no_active_bot_for_symbol", self.EXIT_ALGO)
             return
 
+        closed_bots = 0
         for bot in active_bots:
-            result = self.deactivate_active_bot(
+            succeeded, result = self.deactivate_active_bot(
                 bot_id=str(bot.id),
                 symbol=self.symbol,
                 source_label=self.ALGO,
             )
             logging.info("%s (%s): %s", self.EXIT_ALGO, exit_reason, result)
+            closed_bots += int(succeeded)
+
+        if closed_bots != len(active_bots):
+            logging.warning(
+                "%s will retry: closed %s of %s active bots",
+                self.EXIT_ALGO,
+                closed_bots,
+                len(active_bots),
+            )
+            return
+
+        self._mark_exited(exit_timestamp)
 
         msg = f"""
             - [{self.config.env}] <strong>#{self.EXIT_ALGO} algorithm</strong> #{self.symbol}
@@ -207,7 +220,7 @@ class TopGainerBreadth(StrategyMixin):
             - Market breadth (extended bullish) at signal: {round_numbers(exit_values["market_breadth"], 4)}
             - Breadth momentum oscillator previous / current: {round_numbers(exit_values["previous_breadth_oscillator"], 4)} / {round_numbers(exit_values["breadth_oscillator"], 4)}
             - BTC 15m close / EMA{self.BTC_TREND_EMA_SPAN}: {round_numbers(btc_close, self.price_precision)} / {round_numbers(btc_trend_ema, self.price_precision)}
-            - Bots closed: {len(active_bots)}
+            - Bots closed: {closed_bots}
         """
         self.telegram_consumer.dispatch_signal(msg)
 

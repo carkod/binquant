@@ -464,3 +464,26 @@ async def test_signal_deactivates_active_bot_only_once_for_same_breadth_cross() 
 
     context.binbot_api.get_bots_by_name.assert_called_once()
     context.binbot_api.deactivate_bot.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_signal_retries_same_exit_cross_after_deactivation_failure() -> None:
+    context = make_context(
+        breadth=make_market_breadth(breadth=EXIT_BREADTH, breadth_ma=EXIT_BREADTH_MA),
+        btc_df=make_btc_df(uptrend=False),
+        binbot_api=make_binbot_api(active_bots=[SimpleNamespace(id="bot-123")]),
+    )
+    context.binbot_api.deactivate_bot.side_effect = [RuntimeError("temporary"), None]
+    strategy = TopGainerBreadth(cast(Any, context))
+
+    for _ in range(2):
+        await strategy.signal(
+            current_price=90.0,
+            bb_high=91.0,
+            bb_mid=88.0,
+            bb_low=85.0,
+        )
+
+    assert context.binbot_api.deactivate_bot.call_count == 2
+    assert context.binbot_api.get_bots_by_name.call_count == 2
+    assert context.telegram_consumer.dispatch_signal.call_count == 1
