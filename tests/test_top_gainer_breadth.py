@@ -239,8 +239,9 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.bot_params.trailing is True
     assert value.bot_params.trailing_profit == 3.5
     assert value.bot_params.trailing_deviation == 2.5
-    assert value.bot_params.margin_short_reversal is False
-    assert value.bot_params.recovery_params is None
+    assert value.bot_params.margin_short_reversal is True
+    assert value.bot_params.recovery_params is not None
+    assert value.bot_params.recovery_params.reversal_path == "source"
     assert "recovery_params" in value.bot_params.model_fields_set
     assert indicators["entry_reason"] == "breadth_momentum_bearish_reversal"
     assert indicators["market_breadth"] == 0.16
@@ -249,7 +250,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["lower_high_second_peak"] == 136.0
     assert indicators["stop_loss_source"] == "max_stop_loss_cap"
     assert indicators["stop_loss_price_at_signal"] == 93.6
-    assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
+    assert indicators["protective_exit"] == "bot_managed_stop_with_recovery_long"
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
 
