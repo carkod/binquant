@@ -200,7 +200,7 @@ def test_strategy_constants_classify_entry_and_exit_fixtures() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_emits_long_with_lower_bollinger_stop_and_trailing() -> None:
+async def test_signal_caps_stop_and_emits_native_protective_exit() -> None:
     context = make_context()
 
     await TopGainerBreadth(cast(Any, context)).signal(
@@ -216,22 +216,42 @@ async def test_signal_emits_long_with_lower_bollinger_stop_and_trailing() -> Non
     assert value.direction == "LONG"
     assert value.bot_params.name == "top_gainer_breadth"
     assert value.bot_params.position == "long"
-    assert value.bot_params.stop_loss == 5.5555
+    assert value.bot_params.stop_loss == 4.0
     assert value.bot_params.dynamic_trailing is True
     assert value.bot_params.trailing is True
-    assert value.bot_params.trailing_profit == 6.0
+    assert value.bot_params.trailing_profit == 3.5
     assert value.bot_params.trailing_deviation == 2.5
-    assert value.bot_params.margin_short_reversal is True
+    assert value.bot_params.margin_short_reversal is False
+    assert value.bot_params.recovery_params is None
+    assert "recovery_params" in value.bot_params.model_fields_set
     assert indicators["top_gainer_rank"] == 4
     assert indicators["entry_reason"] == "breadth_momentum_bullish_reversal"
     assert indicators["market_breadth"] == -0.16
     assert indicators["btc_close_15m"] == pytest.approx(119.0)
-    assert indicators["stop_loss_source"] == "lower_bollinger_band"
-    assert indicators["stop_loss_price_at_signal"] == 85.0
-    assert indicators["stop_loss_reversal_position"] == "short"
+    assert indicators["stop_loss_source"] == "max_stop_loss_cap"
+    assert indicators["stop_loss_price_at_signal"] == 86.4
+    assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
     assert indicators["breadth_floor"] == -0.6
     assert indicators["high_conviction_floor_reached"] is False
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
+
+
+@pytest.mark.asyncio
+async def test_signal_uses_lower_bollinger_stop_when_inside_cap() -> None:
+    context = make_context()
+
+    await TopGainerBreadth(cast(Any, context)).signal(
+        current_price=90.0,
+        bb_high=93.0,
+        bb_mid=90.0,
+        bb_low=88.0,
+    )
+
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert value.bot_params.stop_loss == 2.2222
+    assert indicators["stop_loss_source"] == "lower_bollinger_band"
+    assert indicators["stop_loss_price_at_signal"] == 88.0
 
 
 @pytest.mark.asyncio

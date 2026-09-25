@@ -46,6 +46,9 @@ class TopGainerBreadth(StrategyMixin):
     Exit mirrors it exactly (momentum turning bearish, breadth still
     extended bullish >= 0.15, BTC below its EMA(20)) and deactivates any
     active bot for this algo/symbol via StrategyMixin.deactivate_active_bot.
+    Every entry also has an exchange-native stop capped at 4%, plus dynamic
+    trailing profit protection. The stop closes the long rather than opening
+    a reversal position, so it remains effective if streaming is unavailable.
 
     The reversal math itself (pybinbot.breadth_momentum_reversal /
     pybinbot.btc_trend_confirms) is shared with binbot/streaming's
@@ -69,9 +72,9 @@ class TopGainerBreadth(StrategyMixin):
     TOP_GAINER_RANK_END = 11
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
-    TRAILING_PROFIT_PCT = 6.0
+    TRAILING_PROFIT_PCT = 3.5
     TRAILING_DEVIATION_PCT = 2.5
-    MAX_STOP_LOSS_PCT = 101.0
+    MAX_STOP_LOSS_PCT = 4.0
 
     MIN_BREADTH_HISTORY = 12
     BREADTH_FAST_EMA_SPAN = 3
@@ -130,9 +133,7 @@ class TopGainerBreadth(StrategyMixin):
             return None
 
         stop_loss = (1 - (bb_low / current_price)) * 100
-        if stop_loss > cls.MAX_STOP_LOSS_PCT:
-            return None
-        return round_numbers(stop_loss, 4)
+        return round_numbers(min(stop_loss, cls.MAX_STOP_LOSS_PCT), 4)
 
     def _already_emitted(self, breadth_timestamp: int) -> bool:
         if self.strategy_cooldowns is None:
@@ -254,6 +255,14 @@ class TopGainerBreadth(StrategyMixin):
         if stop_loss is None:
             logging.info("%s skipped: lower_bollinger_stop_invalid", self.ALGO)
             return
+        stop_loss_price = round_numbers(
+            current_price - (current_price * stop_loss / 100), self.price_precision
+        )
+        stop_loss_source = (
+            "max_stop_loss_cap"
+            if stop_loss == self.MAX_STOP_LOSS_PCT and bb_low < stop_loss_price
+            else "lower_bollinger_band"
+        )
 
         breadth_timestamp = int(breadth_values["breadth_timestamp"] * 1000)
         if self._already_emitted(breadth_timestamp):
@@ -288,13 +297,13 @@ class TopGainerBreadth(StrategyMixin):
             "top_gainer_price_change_24h_pct": price_change_24h,
             "btc_close_15m": btc_close,
             "btc_trend_ema": btc_trend_ema,
-            "stop_loss_source": "lower_bollinger_band",
-            "stop_loss_price_at_signal": bb_low,
+            "stop_loss_source": stop_loss_source,
+            "stop_loss_price_at_signal": stop_loss_price,
             "stop_loss_pct": stop_loss,
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
             "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
-            "stop_loss_reversal_position": Position.short.value,
+            "protective_exit": "exchange_native_reduce_only_stop",
         }
 
         value = SignalsConsumer(
@@ -314,7 +323,8 @@ class TopGainerBreadth(StrategyMixin):
                 trailing=True,
                 trailing_deviation=self.TRAILING_DEVIATION_PCT,
                 trailing_profit=self.TRAILING_PROFIT_PCT,
-                margin_short_reversal=True,
+                margin_short_reversal=False,
+                recovery_params=None,
             ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,
@@ -338,8 +348,8 @@ class TopGainerBreadth(StrategyMixin):
             - BTC 15m close / EMA{self.BTC_TREND_EMA_SPAN}: {round_numbers(btc_close, self.price_precision)} / {round_numbers(btc_trend_ema, self.price_precision)}
             {format_context_timestamp_line(context)}
             - Max margin: {fiat_order_size} {quote_asset}
-            - Stop loss: lower Bollinger Band {round_numbers(bb_low, self.price_precision)} ({stop_loss}%)
-            - Stop behavior: dynamically close the LONG and open a SHORT recovery bot
+            - Stop loss: {stop_loss_source} at {stop_loss_price} ({stop_loss}%)
+            - Stop behavior: exchange-native reduce-only close; no reversal position
             - Trailing profit / deviation: {self.TRAILING_PROFIT_PCT}% / {self.TRAILING_DEVIATION_PCT}%
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Autotrade is enabled
