@@ -526,11 +526,6 @@ class ContextEvaluator:
             spreads = self.bb_spreads(self.df_15m)
 
             if run_production_strategies:
-                # Dispatch TopGainerBreadth first, ahead of every other 15m
-                # production strategy, so it always gets first refusal on
-                # shared resources (autotrade slots, margin availability,
-                # mutually-exclusive-momentum locks) when multiple strategies
-                # qualify in the same cycle.
                 await self._safe_signal(
                     "TopGainerBreadth",
                     self.top_gainer_breadth.signal(
@@ -541,35 +536,35 @@ class ContextEvaluator:
                     ),
                 )
 
-                await self._safe_signal(
-                    "RelativeStrengthImpulseRider",
-                    self.relative_strength_impulse_rider.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
+            await self._safe_signal(
+                "RelativeStrengthImpulseRider",
+                self.relative_strength_impulse_rider.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
-                await self._safe_signal(
-                    "TopGainerEarlyMomentum",
-                    self.top_gainer_early_momentum.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
+            await self._safe_signal(
+                "TopGainerEarlyMomentum",
+                self.top_gainer_early_momentum.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
-                await self._safe_signal(
-                    "TopGainerMomentumRecovery",
-                    self.top_gainer_momentum_recovery.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
+            await self._safe_signal(
+                "TopGainerMomentumRecovery",
+                self.top_gainer_momentum_recovery.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
             await self._safe_signal(
                 "FailedSpikeFade",
