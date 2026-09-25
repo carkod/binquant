@@ -45,8 +45,9 @@ class LowerHighPattern:
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_open_time: int | None = None
 
-    def _fractal_highs(self, window: DataFrame) -> list[int]:
-        wing = self.FRACTAL_WING
+    @classmethod
+    def _fractal_highs(cls, window: DataFrame) -> list[int]:
+        wing = cls.FRACTAL_WING
         high = window["high"]
         positions = []
         for i in range(wing, len(high) - wing):
@@ -57,6 +58,36 @@ class LowerHighPattern:
             ):
                 positions.append(i)
         return positions
+
+    @classmethod
+    def detect(cls, df: DataFrame | None) -> dict[str, float | int] | None:
+        if df is None or len(df) < cls.LOOKBACK_BARS:
+            return None
+
+        window = df.iloc[-cls.LOOKBACK_BARS :].reset_index(drop=True)
+        peak_positions = cls._fractal_highs(window)
+        if len(peak_positions) < 2:
+            return None
+
+        earlier_pos, later_pos = peak_positions[-2], peak_positions[-1]
+        earlier_high = float(window["high"].iloc[earlier_pos])
+        later_high = float(window["high"].iloc[later_pos])
+        swing_low = float(window["low"].iloc[: earlier_pos + 1].min())
+        rise_pct = (earlier_high / swing_low - 1) * 100
+        drop_pct = (1 - later_high / earlier_high) * 100
+        if rise_pct < cls.MIN_RISE_PCT or drop_pct < cls.MIN_DROP_PCT:
+            return None
+
+        confirmation_pos = later_pos + cls.FRACTAL_WING
+        return {
+            "earlier_high": earlier_high,
+            "later_high": later_high,
+            "swing_low": swing_low,
+            "rise_pct": rise_pct,
+            "drop_pct": drop_pct,
+            "later_open_time": int(window["open_time"].iloc[later_pos]),
+            "confirmation_open_time": int(window["open_time"].iloc[confirmation_pos]),
+        }
 
     def _already_emitted(self, open_time: int) -> bool:
         if self.strategy_cooldowns is None:
@@ -70,26 +101,11 @@ class LowerHighPattern:
 
     async def signal(self) -> None:
         df = self.ti.df_15m
-        if df is None or len(df) < self.LOOKBACK_BARS:
+        pattern = self.detect(df)
+        if pattern is None:
             return
 
-        window = df.iloc[-self.LOOKBACK_BARS :].reset_index(drop=True)
-        peak_positions = self._fractal_highs(window)
-        if len(peak_positions) < 2:
-            return
-
-        earlier_pos, later_pos = peak_positions[-2], peak_positions[-1]
-        earlier_high = float(window["high"].iloc[earlier_pos])
-        later_high = float(window["high"].iloc[later_pos])
-
-        swing_low = float(window["low"].iloc[: earlier_pos + 1].min())
-        rise_pct = (earlier_high / swing_low - 1) * 100
-        drop_pct = (1 - later_high / earlier_high) * 100
-
-        if rise_pct < self.MIN_RISE_PCT or drop_pct < self.MIN_DROP_PCT:
-            return
-
-        later_open_time = int(window["open_time"].iloc[later_pos])
+        later_open_time = int(pattern["later_open_time"])
         if self._already_emitted(later_open_time):
             return
         self._mark_emitted(later_open_time)
@@ -99,9 +115,9 @@ class LowerHighPattern:
         msg = f"""
             - 📉 [{self.config.env}] <strong>#{self.ALGO} pattern</strong> #{self.symbol}
             - Event: lower high
-            - First peak: {round_numbers(earlier_high, precision)}
-            - Second peak: {round_numbers(later_high, precision)} ({round_numbers(drop_pct, 2)}% below first peak)
-            - Rise into first peak: {round_numbers(rise_pct, 2)}% from swing low {round_numbers(swing_low, precision)}
+            - First peak: {round_numbers(pattern["earlier_high"], precision)}
+            - Second peak: {round_numbers(pattern["later_high"], precision)} ({round_numbers(pattern["drop_pct"], 2)}% below first peak)
+            - Rise into first peak: {round_numbers(pattern["rise_pct"], 2)}% from swing low {round_numbers(pattern["swing_low"], precision)}
             - Current price: {round_numbers(current_price, precision)}
             - Interpretation: upward momentum is fading; watch for a reversal or a consolidation range
             - Autotrade: disabled, notification only

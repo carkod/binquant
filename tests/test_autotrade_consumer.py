@@ -482,12 +482,22 @@ class TestAutotradeConsumer:
             ),
             (
                 "top_gainer_breadth",
-                "top_loser_early_momentum",
+                "top_gainer_early_momentum",
                 Status.active,
             ),
             (
                 "top_gainer_breadth",
-                "top_loser_early_momentum",
+                "top_gainer_early_momentum",
+                Status.pending,
+            ),
+            (
+                "top_gainer_early_momentum",
+                "top_gainer_breadth",
+                Status.active,
+            ),
+            (
+                "top_gainer_early_momentum",
+                "top_gainer_breadth",
                 Status.pending,
             ),
             (

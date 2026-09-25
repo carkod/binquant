@@ -33,9 +33,11 @@ class AutotradeConsumer:
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
     DISABLED_STRATEGIES = frozenset({"coinrule_price_tracker"})
     MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES = {
-        "top_gainer_early_momentum": "top_loser_early_momentum",
-        "top_gainer_breadth": "top_loser_early_momentum",
-        "top_loser_early_momentum": "top_gainer_early_momentum",
+        "top_gainer_early_momentum": frozenset(
+            {"top_gainer_breadth", "top_loser_early_momentum"}
+        ),
+        "top_gainer_breadth": frozenset({"top_gainer_early_momentum"}),
+        "top_loser_early_momentum": frozenset({"top_gainer_early_momentum"}),
     }
     GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
         {
@@ -270,11 +272,11 @@ class AutotradeConsumer:
     def conflicting_momentum_bot(
         self, algorithm_name: str, collection_name: str
     ) -> BotModel | None:
-        """Return an active or pending opposite early-momentum bot, if any."""
-        opposite_algorithm = self.MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES.get(
+        """Return an active or pending conflicting momentum bot, if any."""
+        opposite_algorithms = self.MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES.get(
             algorithm_name
         )
-        if opposite_algorithm is None:
+        if opposite_algorithms is None:
             return None
 
         for status in (Status.active, Status.pending):
@@ -285,7 +287,7 @@ class AutotradeConsumer:
                 status=status,
             )
             conflict = next(
-                (bot for bot in bots if bot.name == opposite_algorithm), None
+                (bot for bot in bots if bot.name in opposite_algorithms), None
             )
             if conflict is not None:
                 return conflict
