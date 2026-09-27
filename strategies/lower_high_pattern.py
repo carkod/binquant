@@ -1,8 +1,8 @@
+from datetime import UTC, datetime
 from time import time
 from typing import TYPE_CHECKING
 
 from pandas import DataFrame, to_numeric
-from pybinbot import round_numbers
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
@@ -35,7 +35,8 @@ class LowerHighPattern:
     MIN_RISE_PCT = 2.0
     # Minimum drop (%) of the second peak below the first: filters out
     # peaks that are equal within noise (which would just be a double top).
-    MIN_DROP_PCT = 0.1
+    MIN_DROP_PCT = 0.5
+    ALERT_COOLDOWN_MINUTES = 240
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -45,6 +46,7 @@ class LowerHighPattern:
         self.price_precision = cls.price_precision
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_open_time: int | None = None
+        self._last_emitted_at: int | None = None
 
     @classmethod
     def _fractal_highs(cls, window: DataFrame) -> list[int]:
@@ -56,6 +58,20 @@ class LowerHighPattern:
             if (
                 high.iloc[i] == neighborhood.max()
                 and (neighborhood == neighborhood.max()).sum() == 1
+            ):
+                positions.append(i)
+        return positions
+
+    @classmethod
+    def _fractal_lows(cls, window: DataFrame) -> list[int]:
+        wing = cls.FRACTAL_WING
+        low = window["low"]
+        positions = []
+        for i in range(wing, len(low) - wing):
+            neighborhood = low.iloc[i - wing : i + wing + 1]
+            if (
+                low.iloc[i] == neighborhood.min()
+                and (neighborhood == neighborhood.min()).sum() == 1
             ):
                 positions.append(i)
         return positions
@@ -76,9 +92,16 @@ class LowerHighPattern:
             return None
 
         earlier_pos, later_pos = peak_positions[-2], peak_positions[-1]
+        preceding_lows = [
+            position for position in cls._fractal_lows(window) if position < earlier_pos
+        ]
+        if not preceding_lows:
+            return None
+
+        swing_low_pos = preceding_lows[-1]
         earlier_high = float(window["high"].iloc[earlier_pos])
         later_high = float(window["high"].iloc[later_pos])
-        swing_low = float(window["low"].iloc[: earlier_pos + 1].min())
+        swing_low = float(window["low"].iloc[swing_low_pos])
         rise_pct = (earlier_high / swing_low - 1) * 100
         drop_pct = (1 - later_high / earlier_high) * 100
         if rise_pct < cls.MIN_RISE_PCT or drop_pct < cls.MIN_DROP_PCT:
@@ -91,6 +114,7 @@ class LowerHighPattern:
             "swing_low": swing_low,
             "rise_pct": rise_pct,
             "drop_pct": drop_pct,
+            "swing_low_open_time": int(window["open_time"].iloc[swing_low_pos]),
             "later_open_time": int(window["open_time"].iloc[later_pos]),
             "confirmation_open_time": int(window["open_time"].iloc[confirmation_pos]),
         }
@@ -105,26 +129,51 @@ class LowerHighPattern:
         if self.strategy_cooldowns is not None:
             self.strategy_cooldowns[(self.ALGO, self.symbol)] = open_time
 
+    def _cooldown_active(self, evaluation_time_ms: int) -> bool:
+        if self.strategy_cooldowns is None:
+            last_emitted_at = self._last_emitted_at
+        else:
+            last_emitted_at = self.strategy_cooldowns.get(
+                (f"{self.ALGO}_alert_cooldown", self.symbol)
+            )
+        if last_emitted_at is None:
+            return False
+
+        cooldown_ms = self.ALERT_COOLDOWN_MINUTES * 60 * 1000
+        return evaluation_time_ms - last_emitted_at < cooldown_ms
+
+    def _mark_cooldown(self, evaluation_time_ms: int) -> None:
+        self._last_emitted_at = evaluation_time_ms
+        if self.strategy_cooldowns is not None:
+            self.strategy_cooldowns[(f"{self.ALGO}_alert_cooldown", self.symbol)] = (
+                evaluation_time_ms
+            )
+
     async def signal(self) -> None:
         df = self.ti.df_15m
+        evaluation_time = datetime.now(UTC)
+        evaluation_time_ms = int(evaluation_time.timestamp() * 1000)
         pattern = self.detect(df)
         if pattern is None:
             return
 
         later_open_time = int(pattern["later_open_time"])
-        if self._already_emitted(later_open_time):
+        if self._already_emitted(later_open_time) or self._cooldown_active(
+            evaluation_time_ms
+        ):
             return
         self._mark_emitted(later_open_time)
+        self._mark_cooldown(evaluation_time_ms)
 
         current_price = float(df["close"].iloc[-1])
-        precision = self.price_precision
         msg = f"""
             - 📉 [{self.config.env}] <strong>#{self.ALGO} pattern</strong> #{self.symbol}
             - Event: lower high
-            - First peak: {round_numbers(pattern["earlier_high"], precision)}
-            - Second peak: {round_numbers(pattern["later_high"], precision)} ({round_numbers(pattern["drop_pct"], 2)}% below first peak)
-            - Rise into first peak: {round_numbers(pattern["rise_pct"], 2)}% from swing low {round_numbers(pattern["swing_low"], precision)}
-            - Current price: {round_numbers(current_price, precision)}
+            - First peak: {round(pattern["earlier_high"], self.price_precision)}
+            - Second peak: {round(pattern["later_high"], self.price_precision)} ({round(pattern["drop_pct"], 2)}% below first peak)
+            - Rise into first peak: {round(pattern["rise_pct"], 2)}% from swing low {round(pattern["swing_low"], self.price_precision)}
+            - Current price: {round(current_price, self.price_precision)}
+            - Evaluation time: {evaluation_time.strftime("%Y-%m-%d %H:%M:%S UTC")}
             - Interpretation: upward momentum is fading; watch for a reversal or a consolidation range
             - Autotrade: disabled, notification only
             """

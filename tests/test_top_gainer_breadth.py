@@ -69,6 +69,7 @@ def make_lower_high_df(*, fresh: bool = True) -> pd.DataFrame:
     highs = [100.0 + index for index in range(30)]
     highs.extend([140.0, 132.0, 124.0, 120.0, 125.0, 130.0, 133.0, 136.0, 130.0, 124.0])
     lows = [high - 2 for high in highs]
+    lows[20] = 115.0
     closes = [high - 1 for high in highs]
     open_times = [BASE_OPEN_TIME_MS + index * BAR_MS for index in range(len(highs))]
     frame = pd.DataFrame(
