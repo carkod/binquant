@@ -370,7 +370,7 @@ def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
 
 
 @pytest.mark.asyncio
-async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_empty(
+async def test_process_data_keeps_removed_5m_strategies_disabled(
     monkeypatch,
 ):
     rows = 100
@@ -422,7 +422,7 @@ async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_emp
 
     await evaluator.process_data(candles="5m", candles_15m="15m")
 
-    activity_signal.assert_awaited_once()
+    activity_signal.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -430,30 +430,22 @@ async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_emp
     [
         pytest.param(
             "staging",
-            {"FailedSpikeFade", "MarketRegimeNotifier", "LowerHighPattern"},
+            {"MarketRegimeNotifier", "LowerHighPattern"},
             id="staging-skips-production-strategies",
         ),
         pytest.param(
             "development",
-            {"FailedSpikeFade", "MarketRegimeNotifier", "LowerHighPattern"},
+            {"MarketRegimeNotifier", "LowerHighPattern"},
             id="non-production-skips-production-strategies",
         ),
         pytest.param(
             "production",
             {
-                "ActivityBurstPump",
-                "RelativeStrengthImpulseRider",
-                "TopGainerEarlyMomentum",
-                "TopGainerMomentumRecovery",
-                "FailedSpikeFade",
                 "MarketRegimeNotifier",
                 "LowerHighPattern",
-                "LiquidationSweepPump",
-                "LadderDeployer",
                 "TopGainerBreadth",
-                "TopLoserEarlyMomentum",
             },
-            id="production-runs-full-strategy-set",
+            id="production-runs-temporary-strategy-allowlist",
         ),
     ],
 )
@@ -541,15 +533,8 @@ async def test_process_data_runs_environment_strategy_allowlist(
         evaluator.lower_high_pattern = SimpleNamespace(
             signal=strategy_signals["LowerHighPattern"]
         )
-        evaluator.lsp = SimpleNamespace(signal=strategy_signals["LiquidationSweepPump"])
-        evaluator.grid_ladder = SimpleNamespace(
-            signal=strategy_signals["LadderDeployer"]
-        )
         evaluator.top_gainer_breadth = SimpleNamespace(
             signal=strategy_signals["TopGainerBreadth"]
-        )
-        evaluator.top_loser_early_momentum = SimpleNamespace(
-            signal=strategy_signals["TopLoserEarlyMomentum"]
         )
 
     evaluator.load_5m_algorithms = load_5m_algorithms

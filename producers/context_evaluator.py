@@ -45,20 +45,10 @@ from market_regime.open_interest_order_sizing import (
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.utils import format_context_timestamp_line
-from strategies.activity_burst.activity_burst_pump import ActivityBurstPump
-from strategies.failed_spike_fade import FailedSpikeFade
-from strategies.grid.ladder_deployer import LadderDeployer
-from strategies.liquidation_sweep_pump import (
-    LiquidationSweepPortfolioSelector,
-    LiquidationSweepPump,
-)
+from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.lower_high_pattern import LowerHighPattern
 from strategies.market_regime_notifier import MarketRegimeNotifier
-from strategies.relative_strength_impulse_rider import RelativeStrengthImpulseRider
 from strategies.top_gainer_breadth import TopGainerBreadth
-from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
-from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
-from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
 if TYPE_CHECKING:
     from strategies.activity_burst.activity_burst_anomaly_gate import (
@@ -248,25 +238,12 @@ class ContextEvaluator:
         self.price_precision = self.current_symbol_data.price_precision
         self.qty_precision = self.current_symbol_data.qty_precision
 
-    def load_5m_algorithms(self):
-        """
-        Initialize algorithms that consume self.df_5m data.
-        """
-        self.abp = ActivityBurstPump(cls=self)
-
     def load_15m_algorithms(self):
         """
-        Initialize algorithms that consume self.df_15m and broader market context.
+        Initialize the temporarily enabled 15m algorithms.
         """
-        self.relative_strength_impulse_rider = RelativeStrengthImpulseRider(cls=self)
-        self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
-        self.top_gainer_momentum_recovery = TopGainerMomentumRecovery(cls=self)
-        self.failed_spike_fade = FailedSpikeFade(cls=self)
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
-        self.lsp = LiquidationSweepPump(cls=self)
-        self.grid_ladder = LadderDeployer(cls=self)
         self.top_gainer_breadth = TopGainerBreadth(cls=self)
-        self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
         self.lower_high_pattern = LowerHighPattern(cls=self)
 
     def indicators_enrichment(
@@ -459,28 +436,8 @@ class ContextEvaluator:
 
         self.df_5m = raw_candles_5m.pre_process()
         if not self.df_5m.empty and self.df_5m.close.size > 0:
-            self.load_5m_algorithms()
             self.df_5m = self.indicators_enrichment(self.df_5m)
             self.df_5m = raw_candles_5m.post_process(self.df_5m)
-
-            if (
-                run_production_strategies
-                and self.df_5m.ma_7.size >= 7
-                and self.df_5m.ma_25.size >= 25
-                and self.df_5m.ma_100.size >= 100
-            ):
-                close_price = float(self.df_5m["close"].iloc[-1])
-                spreads = self.bb_spreads(self.df_5m)
-
-                await self._safe_signal(
-                    "ActivityBurstPump",
-                    self.abp.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
 
         self.df_15m = raw_candles_15m.pre_process()
         self.df_1h = cast(
@@ -536,47 +493,6 @@ class ContextEvaluator:
                     ),
                 )
 
-            if run_production_strategies:
-                await self._safe_signal(
-                    "RelativeStrengthImpulseRider",
-                    self.relative_strength_impulse_rider.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
-
-                await self._safe_signal(
-                    "TopGainerEarlyMomentum",
-                    self.top_gainer_early_momentum.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
-
-                await self._safe_signal(
-                    "TopGainerMomentumRecovery",
-                    self.top_gainer_momentum_recovery.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
-
-            await self._safe_signal(
-                "FailedSpikeFade",
-                self.failed_spike_fade.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-
             await self._safe_signal(
                 "MarketRegimeNotifier",
                 self.market_regime_notifier.signal(),
@@ -587,36 +503,5 @@ class ContextEvaluator:
                 "LowerHighPattern",
                 self.lower_high_pattern.signal(),
             )
-
-            if run_production_strategies:
-                await self._safe_signal(
-                    "LiquidationSweepPump",
-                    self.lsp.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
-
-                await self._safe_signal(
-                    "LadderDeployer",
-                    self.grid_ladder.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
-
-                await self._safe_signal(
-                    "TopLoserEarlyMomentum",
-                    self.top_loser_early_momentum.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
 
         return
