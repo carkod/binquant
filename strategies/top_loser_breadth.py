@@ -13,6 +13,7 @@ from pybinbot import (
     SignalsConsumer,
     breadth_momentum_reversal,
     btc_trend_confirms,
+    latest_beta,
     round_numbers,
     timestamp_sort_key,
 )
@@ -63,10 +64,19 @@ class TopLoserBreadth:
     BREADTH_FAST_EMA_SPAN = 3
     BREADTH_EXTENSION_THRESHOLD = 0.15
     BREADTH_FLOOR = -0.6
+    MAX_BREADTH_AGE_SECONDS = 30 * 60
     MAX_LOSERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     MIN_BTC_HISTORY = 20
     BTC_TREND_EMA_SPAN = 20
+
+    # ~2.5 days of 15m bars: the largest window that comfortably fits within
+    # the ~300-bar history left in df_15m after indicator warm-up
+    # (klines_provider.py fetches 400 raw candles; the ma_100 warm-up alone
+    # consumes ~99 of them). Short of the 7-30 days a stable beta ideally
+    # wants, but the most the current candle-fetch depth can support without
+    # chronically reporting "insufficient history".
+    BTC_BETA_WINDOW_BARS = 240
 
     BASE_SCORE = 1.0
     BREADTH_CONFIRMED_SCORE_BONUS = 0.5
@@ -216,7 +226,9 @@ class TopLoserBreadth:
         high_conviction_floor_reached = False
         breadth_indicators: dict[str, object] = {}
         breadth_line = "No"
-        if breadth_values is not None:
+        if breadth_values is not None and self._timestamp_is_fresh(
+            breadth_values["breadth_timestamp"], self.MAX_BREADTH_AGE_SECONDS
+        ):
             breadth_confirmed = True
             breadth_score_bonus = self.BREADTH_CONFIRMED_SCORE_BONUS
             high_conviction_floor_reached = (
@@ -264,6 +276,16 @@ class TopLoserBreadth:
             4,
         )
 
+        # Informational only: how much this symbol has historically moved
+        # per 1% BTC move (Cov(r_token, r_btc) / Var(r_btc)), not a gate or
+        # score input.
+        btc_beta = latest_beta(
+            self.ti.df_15m["close"],
+            self.ti.df_btc_15m["close"],
+            window=self.BTC_BETA_WINDOW_BARS,
+            min_periods=self.BTC_BETA_WINDOW_BARS,
+        )
+
         fiat_order_size = round_numbers(
             self.at_consumer.autotrade_settings.base_order_size
             * self.FIAT_ORDER_SIZE_FRACTION,
@@ -290,6 +312,7 @@ class TopLoserBreadth:
             "btc_uptrend_confirmed": btc_uptrend_confirmed,
             "breadth_floor": self.BREADTH_FLOOR,
             "high_conviction_floor_reached": high_conviction_floor_reached,
+            "btc_beta": btc_beta,
             "stop_loss_source": stop_loss_source,
             "stop_loss_price_at_signal": stop_loss_price,
             "stop_loss_pct": stop_loss,
@@ -331,6 +354,11 @@ class TopLoserBreadth:
         assert value.bot_params is not None
         fiat_order_size = value.bot_params.fiat_order_size
 
+        btc_beta_line = (
+            f"{round_numbers(btc_beta, 4)}"
+            if btc_beta is not None
+            else "N/A (insufficient history)"
+        )
         msg = f"""
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
@@ -341,6 +369,7 @@ class TopLoserBreadth:
             - Breadth reversal confirmed: {breadth_line}
             - BTC uptrend confirmed: {btc_line}
             - High-conviction floor (<= {self.BREADTH_FLOOR}) reached: {"Yes" if high_conviction_floor_reached else "No"}
+            - Beta vs BTC (~{round_numbers(self.BTC_BETA_WINDOW_BARS / 96, 1)}d): {btc_beta_line}
             {format_context_timestamp_line(context)}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss: {stop_loss_source} at {stop_loss_price} ({stop_loss}%)
@@ -352,7 +381,13 @@ class TopLoserBreadth:
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
-        await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-        self.telegram_consumer.dispatch_signal(msg)
-        await self.at_consumer.process_autotrade_restrictions(value)
-        self._mark_emitted(confirmation_open_time)
+        try:
+            await self.ti.dispatch_signal_record(value=value, indicators=indicators)
+            self.telegram_consumer.dispatch_signal(msg)
+            await self.at_consumer.process_autotrade_restrictions(value)
+        finally:
+            # Mark emitted even if a later fallible step raises: the signal
+            # record may already be persisted by then, and leaving this
+            # unmarked would let the next tick see the same confirmation as
+            # new and reprocess/duplicate it.
+            self._mark_emitted(confirmation_open_time)

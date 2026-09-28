@@ -64,6 +64,7 @@ class TopGainerBreadth:
     BREADTH_FAST_EMA_SPAN = 3
     BREADTH_EXTENSION_THRESHOLD = 0.15
     BREADTH_CEILING = 0.6
+    MAX_BREADTH_AGE_SECONDS = 30 * 60
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     MIN_BTC_HISTORY = 20
@@ -217,7 +218,9 @@ class TopGainerBreadth:
         high_conviction_ceiling_reached = False
         breadth_indicators: dict[str, object] = {}
         breadth_line = "No"
-        if breadth_values is not None:
+        if breadth_values is not None and self._timestamp_is_fresh(
+            breadth_values["breadth_timestamp"], self.MAX_BREADTH_AGE_SECONDS
+        ):
             breadth_confirmed = True
             breadth_score_bonus = self.BREADTH_CONFIRMED_SCORE_BONUS
             high_conviction_ceiling_reached = (
@@ -353,7 +356,13 @@ class TopGainerBreadth:
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
-        await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-        self.telegram_consumer.dispatch_signal(msg)
-        await self.at_consumer.process_autotrade_restrictions(value)
-        self._mark_emitted(confirmation_open_time)
+        try:
+            await self.ti.dispatch_signal_record(value=value, indicators=indicators)
+            self.telegram_consumer.dispatch_signal(msg)
+            await self.at_consumer.process_autotrade_restrictions(value)
+        finally:
+            # Mark emitted even if a later fallible step raises: the signal
+            # record may already be persisted by then, and leaving this
+            # unmarked would let the next tick see the same confirmation as
+            # new and reprocess/duplicate it.
+            self._mark_emitted(confirmation_open_time)

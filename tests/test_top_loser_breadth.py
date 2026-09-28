@@ -101,6 +101,53 @@ def make_higher_low_df(*, fresh: bool = True) -> pd.DataFrame:
     )
 
 
+def make_beta_ready_dfs(
+    *, beta_ratio: float = 1.5, window_bars: int = TopLoserBreadth.BTC_BETA_WINDOW_BARS
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    A `df_15m`-shaped frame satisfying the higher-low pattern in its final
+    40 bars (HigherLowPattern.LOOKBACK_BARS), with `window_bars` of extra
+    synthetic history prepended where the symbol's return is exactly
+    `beta_ratio` times BTC's return per bar - enough aligned history for
+    latest_beta() to resolve to a known value - plus a matching-length BTC
+    frame.
+    """
+    btc_return_cycle = [0.01, -0.02, 0.02, -0.01]
+    token_return_cycle = [r * beta_ratio for r in btc_return_cycle]
+    repeats = window_bars // len(btc_return_cycle) + 1
+
+    btc_closes = [100.0]
+    token_closes = [50.0]
+    for _ in range(repeats):
+        for btc_r, token_r in zip(btc_return_cycle, token_return_cycle, strict=True):
+            btc_closes.append(btc_closes[-1] * (1 + btc_r))
+            token_closes.append(token_closes[-1] * (1 + token_r))
+    token_prefix = token_closes[:window_bars]
+
+    symbol_tail = make_higher_low_df()
+    prefix_open_times = [
+        int(symbol_tail["open_time"].iloc[0]) - (window_bars - index) * BAR_MS
+        for index in range(window_bars)
+    ]
+    symbol_prefix = pd.DataFrame(
+        {
+            "high": [close * 1.001 for close in token_prefix],
+            "low": [close * 0.999 for close in token_prefix],
+            "close": token_prefix,
+            "open_time": prefix_open_times,
+            "close_time": [open_time + BAR_MS - 1 for open_time in prefix_open_times],
+        }
+    )
+    symbol_df = pd.concat([symbol_prefix, symbol_tail], ignore_index=True)
+    btc_df = pd.DataFrame(
+        {
+            "close": btc_closes[:window_bars]
+            + [btc_closes[window_bars - 1]] * len(symbol_tail)
+        }
+    )
+    return symbol_df, btc_df
+
+
 def make_no_higher_low_df() -> pd.DataFrame:
     lows = [140.0 - index for index in range(40)]
     return pd.DataFrame(
@@ -253,7 +300,24 @@ async def test_signal_emits_protected_long_for_complete_bullish_setup() -> None:
     assert indicators["stop_loss_price_at_signal"] == 86.4
     assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
     assert value.score == 2.0
+    # Default fixtures are far shorter than BTC_BETA_WINDOW_BARS: beta is
+    # unavailable, not a bug, and must not block the signal.
+    assert indicators["btc_beta"] is None
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
+
+
+@pytest.mark.asyncio
+async def test_signal_reports_btc_beta_with_enough_history() -> None:
+    symbol_df, btc_df = make_beta_ready_dfs(beta_ratio=1.5)
+    context = make_context(symbol_df=symbol_df, btc_df=btc_df)
+
+    await TopLoserBreadth(cast(Any, context)).signal(90.0, 95.0, 90.0, 85.0)
+
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert indicators["btc_beta"] == pytest.approx(1.5, rel=1e-6)
+    assert "Beta vs BTC" in msg
+    assert "N/A" not in msg
 
 
 @pytest.mark.asyncio
@@ -367,6 +431,25 @@ async def test_signal_still_enters_without_breadth_reversal_confirmation() -> No
 
 
 @pytest.mark.asyncio
+async def test_signal_treats_stale_breadth_as_unconfirmed() -> None:
+    """A market-breadth refresh failure makes KlinesProvider retain the
+    previous snapshot; a historical cross buried in that stale data must
+    not be treated as a live confirmation (no score bonus, no indicators)."""
+    context = make_context(
+        breadth=make_market_breadth(latest_at=NOW - timedelta(minutes=31))
+    )
+
+    await TopLoserBreadth(cast(Any, context)).signal(90.0, 95.0, 90.0, 85.0)
+
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["breadth_reversal_confirmed"] is False
+    assert "market_breadth" not in indicators
+    assert indicators["btc_uptrend_confirmed"] is True
+    assert value.score == 1.5
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("symbol_rank", [1, 12])
 async def test_signal_requires_second_through_eleventh_loser(symbol_rank: int) -> None:
     context = make_context(symbol_rank=symbol_rank)
@@ -431,3 +514,22 @@ async def test_signal_ignores_non_futures_market() -> None:
     await TopLoserBreadth(cast(Any, context)).signal(90.0, 95.0, 90.0, 85.0)
 
     context.dispatch_signal_record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_marks_emitted_even_when_autotrade_processing_raises() -> None:
+    """The signal record may already be persisted by the time a later
+    fallible step raises; the confirmation must still be marked emitted so
+    the next tick doesn't see it as new and reprocess/duplicate it."""
+    context = make_context()
+    context.at_consumer.process_autotrade_restrictions = AsyncMock(
+        side_effect=RuntimeError("boom")
+    )
+    strategy = TopLoserBreadth(cast(Any, context))
+
+    with pytest.raises(RuntimeError):
+        await strategy.signal(90.0, 95.0, 90.0, 85.0)
+
+    await strategy.signal(90.0, 95.0, 90.0, 85.0)
+
+    context.dispatch_signal_record.assert_awaited_once()

@@ -369,6 +369,25 @@ async def test_signal_still_enters_without_breadth_reversal_confirmation() -> No
 
 
 @pytest.mark.asyncio
+async def test_signal_treats_stale_breadth_as_unconfirmed() -> None:
+    """A market-breadth refresh failure makes KlinesProvider retain the
+    previous snapshot; a historical cross buried in that stale data must
+    not be treated as a live confirmation (no score bonus, no indicators)."""
+    context = make_context(
+        breadth=make_market_breadth(latest_at=NOW - timedelta(minutes=31))
+    )
+
+    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["breadth_reversal_confirmed"] is False
+    assert "market_breadth" not in indicators
+    assert indicators["btc_downtrend_confirmed"] is True
+    assert value.score == 1.5
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("symbol_rank", [1, 12])
 async def test_signal_requires_second_through_eleventh_gainer(symbol_rank: int) -> None:
     context = make_context(symbol_rank=symbol_rank)
@@ -433,3 +452,22 @@ async def test_signal_ignores_non_futures_market() -> None:
     await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_marks_emitted_even_when_autotrade_processing_raises() -> None:
+    """The signal record may already be persisted by the time a later
+    fallible step raises; the confirmation must still be marked emitted so
+    the next tick doesn't see it as new and reprocess/duplicate it."""
+    context = make_context()
+    context.at_consumer.process_autotrade_restrictions = AsyncMock(
+        side_effect=RuntimeError("boom")
+    )
+    strategy = TopGainerBreadth(cast(Any, context))
+
+    with pytest.raises(RuntimeError):
+        await strategy.signal(90.0, 95.0, 92.0, 87.0)
+
+    await strategy.signal(90.0, 95.0, 92.0, 87.0)
+
+    context.dispatch_signal_record.assert_awaited_once()
