@@ -433,6 +433,7 @@ class TestAutotradeConsumer:
             "top_gainer_early_momentum",
             "top_gainer_breadth",
             "top_loser_early_momentum",
+            "top_loser_breadth",
             "activity_burst_pump",
         ],
     )
@@ -510,6 +511,26 @@ class TestAutotradeConsumer:
                 "top_gainer_early_momentum",
                 Status.pending,
             ),
+            (
+                "top_gainer_breadth",
+                "top_loser_breadth",
+                Status.active,
+            ),
+            (
+                "top_gainer_breadth",
+                "top_loser_breadth",
+                Status.pending,
+            ),
+            (
+                "top_loser_breadth",
+                "top_gainer_breadth",
+                Status.active,
+            ),
+            (
+                "top_loser_breadth",
+                "top_gainer_breadth",
+                Status.pending,
+            ),
         ],
     )
     async def test_opposite_early_momentum_bot_blocks_real_autotrade(
@@ -566,6 +587,42 @@ class TestAutotradeConsumer:
                 name="top_gainer_early_momentum",
                 market_type=MarketType.SPOT,
                 position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_instance = autotrade_cls.return_value
+            autotrade_instance.activate_autotrade = AsyncMock()
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
+
+    @pytest.mark.asyncio
+    async def test_top_loser_breadth_does_not_conflict_with_top_loser_early_momentum(
+        self,
+    ):
+        """top_loser_breadth's only mutually exclusive opposite is
+        top_gainer_breadth, not every gainer-side or same-side strategy."""
+        existing_bot = BotModel(
+            pair="ETHUSDT",
+            name="top_loser_early_momentum",
+            status=Status.active,
+        )
+        self.mock_binbot_api.get_bots_by_status.side_effect = (
+            lambda *, status, **_kwargs: (
+                [existing_bot] if status == Status.active else []
+            )
+        )
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="top_loser_breadth",
+                market_type=MarketType.SPOT,
+                position=Position.short,
                 fiat="USDT",
                 fiat_order_size=25,
             ),

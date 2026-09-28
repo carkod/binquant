@@ -491,6 +491,7 @@ async def test_process_data_runs_environment_strategy_allowlist(
             "LiquidationSweepPump",
             "LadderDeployer",
             "TopGainerBreadth",
+            "TopLoserBreadth",
             "TopLoserEarlyMomentum",
         )
     }
