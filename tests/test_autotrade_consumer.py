@@ -432,7 +432,6 @@ class TestAutotradeConsumer:
             "relative_strength_impulse_rider",
             "top_gainer_early_momentum",
             "top_gainer_breadth",
-            "top_loser_early_momentum",
             "top_loser_breadth",
             "activity_burst_pump",
         ],
@@ -531,6 +530,26 @@ class TestAutotradeConsumer:
                 "top_gainer_breadth",
                 Status.pending,
             ),
+            (
+                "top_loser_early_momentum",
+                "top_loser_breadth",
+                Status.active,
+            ),
+            (
+                "top_loser_early_momentum",
+                "top_loser_breadth",
+                Status.pending,
+            ),
+            (
+                "top_loser_breadth",
+                "top_loser_early_momentum",
+                Status.active,
+            ),
+            (
+                "top_loser_breadth",
+                "top_loser_early_momentum",
+                Status.pending,
+            ),
         ],
     )
     async def test_opposite_early_momentum_bot_blocks_real_autotrade(
@@ -600,14 +619,15 @@ class TestAutotradeConsumer:
         autotrade_instance.activate_autotrade.assert_awaited_once_with(signal)
 
     @pytest.mark.asyncio
-    async def test_top_loser_breadth_does_not_conflict_with_top_loser_early_momentum(
+    async def test_top_loser_breadth_does_not_conflict_with_top_gainer_early_momentum(
         self,
     ):
-        """top_loser_breadth's only mutually exclusive opposite is
-        top_gainer_breadth, not every gainer-side or same-side strategy."""
+        """top_loser_breadth (LONG) and top_gainer_early_momentum (LONG) are
+        the same directional bet on different symbol pools, not opposites,
+        so they must not be mutually exclusive."""
         existing_bot = BotModel(
             pair="ETHUSDT",
-            name="top_loser_early_momentum",
+            name="top_gainer_early_momentum",
             status=Status.active,
         )
         self.mock_binbot_api.get_bots_by_status.side_effect = (
@@ -622,7 +642,7 @@ class TestAutotradeConsumer:
                 pair="BTCUSDT",
                 name="top_loser_breadth",
                 market_type=MarketType.SPOT,
-                position=Position.short,
+                position=Position.long,
                 fiat="USDT",
                 fiat_order_size=25,
             ),
@@ -751,6 +771,30 @@ class TestAutotradeConsumer:
                 name="coinrule_price_tracker",
                 market_type=MarketType.SPOT,
                 position=Position.long,
+                fiat="USDT",
+                fiat_order_size=25,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            await self.consumer.process_autotrade_restrictions(signal)
+
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
+        autotrade_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disabled_top_loser_early_momentum_cannot_activate_from_queued_signal(
+        self,
+    ):
+        """Disabled 2026-09-28: net-losing in live trading."""
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDT",
+                name="top_loser_early_momentum",
+                market_type=MarketType.SPOT,
+                position=Position.short,
                 fiat="USDT",
                 fiat_order_size=25,
             ),

@@ -31,13 +31,24 @@ from shared.config import Config
 class AutotradeConsumer:
     FUTURES_REVERSAL_BUFFER = 1.40
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
-    DISABLED_STRATEGIES = frozenset({"coinrule_price_tracker"})
+    # top_loser_early_momentum: disabled 2026-09-28, net-losing in live trading
+    # (majority of filled trades lost, ~50% no-fill rate on top).
+    DISABLED_STRATEGIES = frozenset(
+        {"coinrule_price_tracker", "top_loser_early_momentum"}
+    )
     MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES = {
         "top_gainer_early_momentum": frozenset(
             {"top_gainer_breadth", "top_loser_early_momentum"}
         ),
-        "top_gainer_breadth": frozenset({"top_gainer_early_momentum"}),
-        "top_loser_early_momentum": frozenset({"top_gainer_early_momentum"}),
+        "top_gainer_breadth": frozenset(
+            {"top_gainer_early_momentum", "top_loser_breadth"}
+        ),
+        "top_loser_early_momentum": frozenset(
+            {"top_gainer_early_momentum", "top_loser_breadth"}
+        ),
+        "top_loser_breadth": frozenset(
+            {"top_gainer_breadth", "top_loser_early_momentum"}
+        ),
     }
     GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(
         {

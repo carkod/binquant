@@ -430,12 +430,12 @@ async def test_process_data_keeps_removed_5m_strategies_disabled(
     [
         pytest.param(
             "staging",
-            {"MarketRegimeNotifier", "LowerHighPattern"},
+            {"MarketRegimeNotifier", "LowerHighPattern", "HigherLowPattern"},
             id="staging-skips-production-strategies",
         ),
         pytest.param(
             "development",
-            {"MarketRegimeNotifier", "LowerHighPattern"},
+            {"MarketRegimeNotifier", "LowerHighPattern", "HigherLowPattern"},
             id="non-production-skips-production-strategies",
         ),
         pytest.param(
@@ -443,7 +443,9 @@ async def test_process_data_keeps_removed_5m_strategies_disabled(
             {
                 "MarketRegimeNotifier",
                 "LowerHighPattern",
+                "HigherLowPattern",
                 "TopGainerBreadth",
+                "TopLoserBreadth",
             },
             id="production-runs-temporary-strategy-allowlist",
         ),
@@ -488,6 +490,7 @@ async def test_process_data_runs_environment_strategy_allowlist(
             "FailedSpikeFade",
             "MarketRegimeNotifier",
             "LowerHighPattern",
+            "HigherLowPattern",
             "LiquidationSweepPump",
             "LadderDeployer",
             "TopGainerBreadth",
@@ -534,8 +537,14 @@ async def test_process_data_runs_environment_strategy_allowlist(
         evaluator.lower_high_pattern = SimpleNamespace(
             signal=strategy_signals["LowerHighPattern"]
         )
+        evaluator.higher_low_pattern = SimpleNamespace(
+            signal=strategy_signals["HigherLowPattern"]
+        )
         evaluator.top_gainer_breadth = SimpleNamespace(
             signal=strategy_signals["TopGainerBreadth"]
+        )
+        evaluator.top_loser_breadth = SimpleNamespace(
+            signal=strategy_signals["TopLoserBreadth"]
         )
 
     evaluator.load_5m_algorithms = load_5m_algorithms

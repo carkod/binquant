@@ -27,11 +27,21 @@ if TYPE_CHECKING:
 class TopGainerBreadth:
     """Short a current 2nd-to-11th ranked gainer as bullish momentum fails.
 
-    Entry requires one coherent bearish setup:
-    - market-breadth's fast EMA(3) crosses below its slower breadth average
-      while breadth remains extended bullish (>= 0.15);
-    - BTC's 15m close is below its EMA(20);
-    - the symbol's 15m candles have just confirmed a lower high.
+    Entry requires:
+    - the symbol is currently a ranked top gainer (2nd-11th, by 24h move) —
+      the starting filter for which symbols this strategy considers at all;
+    - the symbol's own 15m candles have just confirmed a lower high. This is
+      the trigger: without it nothing else here matters.
+
+    Market-breadth momentum (fast EMA(3) crossing below its slower average
+    while breadth is still extended bullish) and BTC's 15m trend are
+    confirming context, not entry gates: modeled against two real manual
+    trades (ARBUSDTM, MARSCOINUSDTM, both short, both profitable) that
+    shared the lower-high rollover but disagreed on breadth/BTC state at
+    entry, requiring both to line up would have blocked either trade. They
+    still matter — each one present adds to the signal's conviction score
+    (SignalsConsumer.score) and is recorded in indicators — but a lower high
+    on a ranked gainer is sufficient on its own to enter.
 
     The resulting futures short uses an exchange-native stop at the upper
     Bollinger Band, capped at 4%, and dynamic trailing protection. Reversal
@@ -54,11 +64,15 @@ class TopGainerBreadth:
     BREADTH_FAST_EMA_SPAN = 3
     BREADTH_EXTENSION_THRESHOLD = 0.15
     BREADTH_CEILING = 0.6
-    MAX_BREADTH_AGE_SECONDS = 30 * 60
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     MIN_BTC_HISTORY = 20
     BTC_TREND_EMA_SPAN = 20
+
+    BASE_SCORE = 1.0
+    BREADTH_CONFIRMED_SCORE_BONUS = 0.5
+    BTC_TREND_CONFIRMED_SCORE_BONUS = 0.5
+    HIGH_CONVICTION_SCORE_BONUS = 0.25
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -73,7 +87,7 @@ class TopGainerBreadth:
         self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
         self.gainers_losers_series = cls.gainers_losers_series
         self.strategy_cooldowns = cls.strategy_cooldowns
-        self._last_emitted_breadth_timestamp: int | None = None
+        self._last_emitted_confirmation_open_time: int | None = None
 
     def _top_gainer_entry(self) -> tuple[int, float] | None:
         if not self.gainers_losers_series:
@@ -136,17 +150,18 @@ class TopGainerBreadth:
             return None
         return pattern
 
-    def _already_emitted(self, breadth_timestamp: int) -> bool:
+    def _already_emitted(self, confirmation_open_time: int) -> bool:
         if self.strategy_cooldowns is None:
-            return self._last_emitted_breadth_timestamp == breadth_timestamp
+            return self._last_emitted_confirmation_open_time == confirmation_open_time
         return (
-            self.strategy_cooldowns.get((self.ALGO, self.symbol)) == breadth_timestamp
+            self.strategy_cooldowns.get((self.ALGO, self.symbol))
+            == confirmation_open_time
         )
 
-    def _mark_emitted(self, breadth_timestamp: int) -> None:
-        self._last_emitted_breadth_timestamp = breadth_timestamp
+    def _mark_emitted(self, confirmation_open_time: int) -> None:
+        self._last_emitted_confirmation_open_time = confirmation_open_time
         if self.strategy_cooldowns is not None:
-            self.strategy_cooldowns[(self.ALGO, self.symbol)] = breadth_timestamp
+            self.strategy_cooldowns[(self.ALGO, self.symbol)] = confirmation_open_time
 
     async def signal(
         self,
@@ -163,34 +178,6 @@ class TopGainerBreadth:
             logging.info("%s skipped: symbol_not_in_ranked_gainer_window", self.ALGO)
             return
         top_gainer_rank, price_change_24h = top_gainer_entry
-
-        breadth_values, breadth_reason = breadth_momentum_reversal(
-            self.market_breadth_data,
-            direction=-1,
-            min_history=self.MIN_BREADTH_HISTORY,
-            fast_ema_span=self.BREADTH_FAST_EMA_SPAN,
-            extension_threshold=self.BREADTH_EXTENSION_THRESHOLD,
-        )
-        if breadth_values is None:
-            logging.info("%s skipped: %s", self.ALGO, breadth_reason)
-            return
-        if not self._timestamp_is_fresh(
-            breadth_values["breadth_timestamp"],
-            self.MAX_BREADTH_AGE_SECONDS,
-        ):
-            logging.info("%s skipped: stale_market_breadth", self.ALGO)
-            return
-
-        btc_trend = btc_trend_confirms(
-            self.ti.df_btc_15m,
-            direction=-1,
-            min_history=self.MIN_BTC_HISTORY,
-            trend_ema_span=self.BTC_TREND_EMA_SPAN,
-        )
-        if btc_trend is None:
-            logging.info("%s skipped: btc_not_in_downtrend", self.ALGO)
-            return
-        btc_close, btc_trend_ema = btc_trend
 
         lower_high = self._fresh_lower_high()
         if lower_high is None:
@@ -210,15 +197,74 @@ class TopGainerBreadth:
             else "upper_bollinger_band"
         )
 
-        breadth_timestamp = int(breadth_values["breadth_timestamp"] * 1000)
-        if self._already_emitted(breadth_timestamp):
-            logging.info("%s skipped: breadth_cross_already_emitted", self.ALGO)
+        confirmation_open_time = int(lower_high["confirmation_open_time"])
+        if self._already_emitted(confirmation_open_time):
+            logging.info("%s skipped: lower_high_already_emitted", self.ALGO)
             return
-        self._mark_emitted(breadth_timestamp)
 
-        high_conviction_ceiling_reached = (
-            breadth_values["market_breadth"] >= self.BREADTH_CEILING
+        # Confirming context, not gates: each one is resolved once, right
+        # here, into its own score bonus / indicators / message line, so
+        # absence never blocks entry and never needs re-checking downstream.
+        breadth_values, breadth_reason = breadth_momentum_reversal(
+            self.market_breadth_data,
+            direction=-1,
+            min_history=self.MIN_BREADTH_HISTORY,
+            fast_ema_span=self.BREADTH_FAST_EMA_SPAN,
+            extension_threshold=self.BREADTH_EXTENSION_THRESHOLD,
         )
+        breadth_confirmed = False
+        breadth_score_bonus = 0.0
+        high_conviction_ceiling_reached = False
+        breadth_indicators: dict[str, object] = {}
+        breadth_line = "No"
+        if breadth_values is not None:
+            breadth_confirmed = True
+            breadth_score_bonus = self.BREADTH_CONFIRMED_SCORE_BONUS
+            high_conviction_ceiling_reached = (
+                breadth_values["market_breadth"] >= self.BREADTH_CEILING
+            )
+            breadth_indicators = {
+                "breadth_reversal_reason": breadth_reason,
+                **breadth_values,
+            }
+            breadth_line = f"Yes (market breadth {round_numbers(breadth_values['market_breadth'], 4)})"
+
+        btc_trend = btc_trend_confirms(
+            self.ti.df_btc_15m,
+            direction=-1,
+            min_history=self.MIN_BTC_HISTORY,
+            trend_ema_span=self.BTC_TREND_EMA_SPAN,
+        )
+        btc_downtrend_confirmed = False
+        btc_score_bonus = 0.0
+        btc_indicators: dict[str, object] = {}
+        btc_line = "No"
+        if btc_trend is not None:
+            btc_close, btc_trend_ema = btc_trend
+            btc_downtrend_confirmed = True
+            btc_score_bonus = self.BTC_TREND_CONFIRMED_SCORE_BONUS
+            btc_indicators = {
+                "btc_close_15m": btc_close,
+                "btc_trend_ema": btc_trend_ema,
+            }
+            btc_line = (
+                f"Yes ({round_numbers(btc_close, self.price_precision)} / "
+                f"EMA{self.BTC_TREND_EMA_SPAN} "
+                f"{round_numbers(btc_trend_ema, self.price_precision)})"
+            )
+
+        score = round_numbers(
+            self.BASE_SCORE
+            + breadth_score_bonus
+            + btc_score_bonus
+            + (
+                self.HIGH_CONVICTION_SCORE_BONUS
+                if high_conviction_ceiling_reached
+                else 0.0
+            ),
+            4,
+        )
+
         fiat_order_size = round_numbers(
             self.at_consumer.autotrade_settings.base_order_size
             * self.FIAT_ORDER_SIZE_FRACTION,
@@ -234,18 +280,17 @@ class TopGainerBreadth:
         )
 
         indicators = {
-            **breadth_values,
-            "entry_reason": breadth_reason,
-            "breadth_ceiling": self.BREADTH_CEILING,
-            "high_conviction_ceiling_reached": high_conviction_ceiling_reached,
+            "entry_reason": "lower_high_breakdown",
             "top_gainer_rank": top_gainer_rank,
             "top_gainer_price_change_24h_pct": price_change_24h,
-            "btc_close_15m": btc_close,
-            "btc_trend_ema": btc_trend_ema,
             "lower_high_first_peak": lower_high["earlier_high"],
             "lower_high_second_peak": lower_high["later_high"],
             "lower_high_drop_pct": lower_high["drop_pct"],
-            "lower_high_confirmation_open_time": lower_high["confirmation_open_time"],
+            "lower_high_confirmation_open_time": confirmation_open_time,
+            "breadth_reversal_confirmed": breadth_confirmed,
+            "btc_downtrend_confirmed": btc_downtrend_confirmed,
+            "breadth_ceiling": self.BREADTH_CEILING,
+            "high_conviction_ceiling_reached": high_conviction_ceiling_reached,
             "stop_loss_source": stop_loss_source,
             "stop_loss_price_at_signal": stop_loss_price,
             "stop_loss_pct": stop_loss,
@@ -253,13 +298,15 @@ class TopGainerBreadth:
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
             "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
             "protective_exit": "exchange_native_reduce_only_stop",
+            **breadth_indicators,
+            **btc_indicators,
         }
 
         value = SignalsConsumer(
             direction=Position.short.value.upper(),
-            autotrade=True,
+            autotrade=False,
             current_price=float(current_price),
-            score=1.0,
+            score=score,
             bot_params=BotBase(
                 pair=self.symbol,
                 name=self.ALGO,
@@ -289,23 +336,24 @@ class TopGainerBreadth:
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT a current 24h gainer ranked 2nd-11th when breadth momentum turns bearish, BTC trends down, and price confirms a lower high
+            - Rule intent: SHORT a current 24h gainer ranked 2nd-11th when price confirms a lower high; breadth reversal and BTC downtrend are confirming context, not required
             - Top-gainer rank / 24h move: {top_gainer_rank} / {round_numbers(price_change_24h, 2)}%
-            - Market breadth (extended bullish) at signal: {round_numbers(breadth_values["market_breadth"], 4)}
-            - High-conviction ceiling (>= {self.BREADTH_CEILING}) reached: {"Yes" if high_conviction_ceiling_reached else "No"}
-            - Breadth momentum oscillator previous / current: {round_numbers(breadth_values["previous_breadth_oscillator"], 4)} / {round_numbers(breadth_values["breadth_oscillator"], 4)}
-            - BTC 15m close / EMA{self.BTC_TREND_EMA_SPAN}: {round_numbers(btc_close, self.price_precision)} / {round_numbers(btc_trend_ema, self.price_precision)}
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
+            - Breadth reversal confirmed: {breadth_line}
+            - BTC downtrend confirmed: {btc_line}
+            - High-conviction ceiling (>= {self.BREADTH_CEILING}) reached: {"Yes" if high_conviction_ceiling_reached else "No"}
             {format_context_timestamp_line(context)}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss: {stop_loss_source} at {stop_loss_price} ({stop_loss}%)
             - Stop behavior: exchange-native reduce-only close; no reversal position
             - Trailing profit / deviation: {self.TRAILING_PROFIT_PCT}% / {self.TRAILING_DEVIATION_PCT}%
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
-            - Autotrade is enabled
+            - Confidence score: {score}
+            - Autotrade is disabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
         await self.ti.dispatch_signal_record(value=value, indicators=indicators)
         self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)
+        self._mark_emitted(confirmation_open_time)

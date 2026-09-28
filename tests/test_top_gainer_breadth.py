@@ -231,7 +231,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert value.autotrade is True
+    assert value.autotrade is False
     assert value.direction == "SHORT"
     assert value.bot_params.name == "top_gainer_breadth"
     assert value.bot_params.position == "short"
@@ -243,14 +243,18 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.bot_params.margin_short_reversal is False
     assert value.bot_params.recovery_params is None
     assert "recovery_params" in value.bot_params.model_fields_set
-    assert indicators["entry_reason"] == "breadth_momentum_bearish_reversal"
+    assert indicators["entry_reason"] == "lower_high_breakdown"
+    assert indicators["breadth_reversal_confirmed"] is True
+    assert indicators["breadth_reversal_reason"] == "breadth_momentum_bearish_reversal"
     assert indicators["market_breadth"] == 0.16
+    assert indicators["btc_downtrend_confirmed"] is True
     assert indicators["btc_close_15m"] == pytest.approx(101.0)
     assert indicators["lower_high_first_peak"] == 140.0
     assert indicators["lower_high_second_peak"] == 136.0
     assert indicators["stop_loss_source"] == "max_stop_loss_cap"
     assert indicators["stop_loss_price_at_signal"] == 93.6
     assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
+    assert value.score == 2.0
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
 
@@ -315,26 +319,10 @@ async def test_signal_uses_latest_completed_candle_for_lower_high() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("breadth", "gainers"),
-    [
-        pytest.param(
-            make_market_breadth(latest_at=NOW - timedelta(minutes=31)),
-            None,
-            id="stale-market-breadth",
-        ),
-        pytest.param(
-            None,
-            make_top_gainers(recorded_at=NOW - timedelta(minutes=76)),
-            id="stale-gainers-snapshot",
-        ),
-    ],
-)
-async def test_signal_rejects_stale_market_tape(
-    breadth: MarketBreadthSeries | None,
-    gainers: list[GainersLosersSnapshot] | None,
-) -> None:
-    context = make_context(breadth=breadth, gainers=gainers)
+async def test_signal_rejects_stale_gainers_snapshot() -> None:
+    context = make_context(
+        gainers=make_top_gainers(recorded_at=NOW - timedelta(minutes=76))
+    )
 
     await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
@@ -343,16 +331,26 @@ async def test_signal_rejects_stale_market_tape(
 
 
 @pytest.mark.asyncio
-async def test_signal_requires_btc_downtrend() -> None:
+async def test_signal_still_enters_without_btc_downtrend_confirmation() -> None:
+    """Breadth and BTC trend are confirming context, not entry gates: the
+    lower-high price break is the trigger, so a missing BTC confirmation
+    lowers the score but does not block entry."""
     context = make_context(btc_df=make_btc_df(downtrend=False))
 
     await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
-    context.dispatch_signal_record.assert_not_awaited()
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["btc_downtrend_confirmed"] is False
+    assert "btc_close_15m" not in indicators
+    assert indicators["breadth_reversal_confirmed"] is True
+    assert value.score == 1.5
 
 
 @pytest.mark.asyncio
-async def test_signal_requires_bearish_breadth_cross() -> None:
+async def test_signal_still_enters_without_breadth_reversal_confirmation() -> None:
+    """Same as above for the breadth side: a stale or absent breadth
+    reversal lowers the score but does not block a confirmed lower high."""
     context = make_context(
         breadth=make_market_breadth(
             breadth=BULLISH_CROSS_BREADTH,
@@ -362,7 +360,12 @@ async def test_signal_requires_bearish_breadth_cross() -> None:
 
     await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
-    context.dispatch_signal_record.assert_not_awaited()
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["breadth_reversal_confirmed"] is False
+    assert "market_breadth" not in indicators
+    assert indicators["btc_downtrend_confirmed"] is True
+    assert value.score == 1.5
 
 
 @pytest.mark.asyncio
