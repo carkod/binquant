@@ -1,5 +1,3 @@
-from inspect import getsource
-from re import findall
 from asyncio import Event, Queue
 from datetime import UTC, datetime
 from os import environ
@@ -371,28 +369,8 @@ def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
     assert value.open_interest_sizing is None
 
 
-def test_process_data_does_not_run_disabled_price_tracker():
-    source = getsource(ContextEvaluator.process_data)
-    safe_signal_names = findall(
-        r"_safe_signal\(\s*\n?\s*[\"']([^\"']+)[\"']",
-        source,
-    )
-
-    assert safe_signal_names == [
-        "ActivityBurstPump",
-        "RelativeStrengthImpulseRider",
-        "TopGainerEarlyMomentum",
-        "TopGainerMomentumRecovery",
-        "FailedSpikeFade",
-        "MarketRegimeNotifier",
-        "LiquidationSweepPump",
-        "LadderDeployer",
-        "TopLoserEarlyMomentum",
-    ]
-
-
 @pytest.mark.asyncio
-async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_empty(
+async def test_process_data_keeps_removed_5m_strategies_disabled(
     monkeypatch,
 ):
     rows = 100
@@ -444,7 +422,7 @@ async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_emp
 
     await evaluator.process_data(candles="5m", candles_15m="15m")
 
-    activity_signal.assert_awaited_once()
+    activity_signal.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -452,28 +430,22 @@ async def test_process_data_keeps_price_tracker_disabled_when_15m_history_is_emp
     [
         pytest.param(
             "staging",
-            {"FailedSpikeFade", "MarketRegimeNotifier"},
-            id="staging-isolates-failed-spike-fade",
+            {"MarketRegimeNotifier", "LowerHighPattern"},
+            id="staging-skips-production-strategies",
         ),
         pytest.param(
             "development",
-            {"FailedSpikeFade", "MarketRegimeNotifier"},
+            {"MarketRegimeNotifier", "LowerHighPattern"},
             id="non-production-skips-production-strategies",
         ),
         pytest.param(
             "production",
             {
-                "ActivityBurstPump",
-                "RelativeStrengthImpulseRider",
-                "TopGainerEarlyMomentum",
-                "TopGainerMomentumRecovery",
-                "FailedSpikeFade",
                 "MarketRegimeNotifier",
-                "LiquidationSweepPump",
-                "LadderDeployer",
-                "TopLoserEarlyMomentum",
+                "LowerHighPattern",
+                "TopGainerBreadth",
             },
-            id="production-runs-full-strategy-set",
+            id="production-runs-temporary-strategy-allowlist",
         ),
     ],
 )
@@ -515,8 +487,10 @@ async def test_process_data_runs_environment_strategy_allowlist(
             "TopGainerMomentumRecovery",
             "FailedSpikeFade",
             "MarketRegimeNotifier",
+            "LowerHighPattern",
             "LiquidationSweepPump",
             "LadderDeployer",
+            "TopGainerBreadth",
             "TopLoserEarlyMomentum",
         )
     }
@@ -556,12 +530,11 @@ async def test_process_data_runs_environment_strategy_allowlist(
             signal=strategy_signals["MarketRegimeNotifier"],
             last_market_regime=None,
         )
-        evaluator.lsp = SimpleNamespace(signal=strategy_signals["LiquidationSweepPump"])
-        evaluator.grid_ladder = SimpleNamespace(
-            signal=strategy_signals["LadderDeployer"]
+        evaluator.lower_high_pattern = SimpleNamespace(
+            signal=strategy_signals["LowerHighPattern"]
         )
-        evaluator.top_loser_early_momentum = SimpleNamespace(
-            signal=strategy_signals["TopLoserEarlyMomentum"]
+        evaluator.top_gainer_breadth = SimpleNamespace(
+            signal=strategy_signals["TopGainerBreadth"]
         )
 
     evaluator.load_5m_algorithms = load_5m_algorithms

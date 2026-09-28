@@ -431,6 +431,7 @@ class TestAutotradeConsumer:
             "liquidation_sweep_pump",
             "relative_strength_impulse_rider",
             "top_gainer_early_momentum",
+            "top_gainer_breadth",
             "top_loser_early_momentum",
             "activity_burst_pump",
         ],
@@ -477,6 +478,26 @@ class TestAutotradeConsumer:
             (
                 "top_gainer_early_momentum",
                 "top_loser_early_momentum",
+                Status.pending,
+            ),
+            (
+                "top_gainer_breadth",
+                "top_gainer_early_momentum",
+                Status.active,
+            ),
+            (
+                "top_gainer_breadth",
+                "top_gainer_early_momentum",
+                Status.pending,
+            ),
+            (
+                "top_gainer_early_momentum",
+                "top_gainer_breadth",
+                Status.active,
+            ),
+            (
+                "top_gainer_early_momentum",
+                "top_gainer_breadth",
                 Status.pending,
             ),
             (
@@ -1140,6 +1161,52 @@ class TestAutotradeConsumer:
         await autotrade.activate_autotrade(signal)
 
         create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
+        assert create_payload["margin_short_reversal"] is True
+        assert create_payload["recovery_params"] == {
+            "reversal_path": "source",
+            "source_contracts": 0,
+            "source_loss_fiat": 0,
+            "stop_loss_pct": 0,
+        }
+
+    @pytest.mark.asyncio
+    async def test_signal_override_enables_bounded_recovery_when_autoswitch_is_off(
+        self,
+    ):
+        settings = make_autotrade_settings(
+            exchange_id=ExchangeId.KUCOIN,
+            autoswitch=False,
+        )
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="top_loser_early_momentum",
+                market_type=MarketType.FUTURES,
+                position=Position.short,
+                stop_loss=10,
+                margin_short_reversal=True,
+            ),
+        )
+
+        futures_api = MagicMock()
+        futures_api.get_mark_price.return_value = 100
+        with (
+            patch("shared.autotrade.KucoinApi", return_value=MagicMock()),
+            patch("shared.autotrade.KucoinFutures", return_value=futures_api),
+        ):
+            autotrade = Autotrade(
+                pair="BTCUSDTM",
+                settings=settings,
+                algorithm_name="top_loser_early_momentum",
+                db_collection_name="bots",
+                binbot_api=self.mock_binbot_api,
+            )
+            await autotrade.activate_autotrade(signal)
+
+        create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
+        assert create_payload["position"] == "short"
         assert create_payload["margin_short_reversal"] is True
         assert create_payload["recovery_params"] == {
             "reversal_path": "source",
