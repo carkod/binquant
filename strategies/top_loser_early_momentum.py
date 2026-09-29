@@ -13,7 +13,6 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.gainers_losers_streaks import resolve_top_loser_streak
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -25,7 +24,13 @@ if TYPE_CHECKING:
 
 
 class TopLoserEarlyMomentum:
-    """Short-only mirror of top-gainer early momentum."""
+    """Short-only setup predicting entry into the top-loser tape.
+
+    Symbols already present on the latest top-loser list belong to the
+    established-mover/rebound strategy and are excluded here. An eligible
+    candidate must confirm its breakdown with two further lower closes before
+    this strategy opens a short.
+    """
 
     ALGO = "top_loser_early_momentum"
 
@@ -49,7 +54,6 @@ class TopLoserEarlyMomentum:
     MAX_MARKET_STRESS_SCORE = 0.25
     MAX_RELATIVE_STRENGTH_VS_BTC = -0.03
     MAX_SYMBOL_ATR_PCT = 0.06
-    MIN_SUSTAINED_TOP_LOSER_SNAPSHOTS = 3
     MAX_ENTRY_REBOUND = 0.005
     MAX_ENTRY_EXTENSION = 0.015
 
@@ -81,6 +85,14 @@ class TopLoserEarlyMomentum:
         settings = getattr(self.at_consumer, "autotrade_settings", None)
         base_order_size = float(getattr(settings, "base_order_size", 0.0) or 0.0)
         return round_numbers(base_order_size * self.FIAT_ORDER_SIZE_FRACTION, 8)
+
+    def _is_current_top_loser(self) -> bool:
+        if not self.gainers_losers_series:
+            return False
+        return any(
+            entry.symbol == self.symbol
+            for entry in self.gainers_losers_series[0].top_losers
+        )
 
     @classmethod
     def _features(cls, df: "DataFrame") -> tuple[dict[str, float] | None, str]:
@@ -381,6 +393,9 @@ class TopLoserEarlyMomentum:
     ) -> None:
         if self.market_type != MarketType.FUTURES:
             return
+        if self._is_current_top_loser():
+            logging.info("%s skipped: symbol_already_top_loser", self.ALGO)
+            return
 
         df = self._completed_candles(
             self.ti.df_15m,
@@ -390,16 +405,7 @@ class TopLoserEarlyMomentum:
             logging.info("%s skipped: history_too_short", self.ALGO)
             return
 
-        top_loser_streak = resolve_top_loser_streak(
-            snapshots=self.gainers_losers_series,
-            symbol=self.symbol,
-        )
-        sustained_top_loser = (
-            top_loser_streak.snapshots_in_a_row
-            >= self.MIN_SUSTAINED_TOP_LOSER_SNAPSHOTS
-        )
-
-        breakdown_df = df if sustained_top_loser else df.iloc[:-2]
+        breakdown_df = df.iloc[:-2]
         values, feature_reason = self._features(breakdown_df)
         if values is None:
             logging.info("%s skipped: %s", self.ALGO, feature_reason)
@@ -411,23 +417,19 @@ class TopLoserEarlyMomentum:
             return
 
         candidate = df.iloc[-1]
-        first_confirmation_close: float | None = None
-        if sustained_top_loser:
-            confirmation_reason = "sustained_top_loser_breakdown"
-        else:
-            first_confirmation_close = float(df.iloc[-2]["close"])
-            confirmation_allowed, confirmation_reason = self._confirmation_allows(
-                breakdown_close=values["close"],
-                previous_low=values["previous_low"],
-                first_confirmation_close=first_confirmation_close,
-                second_confirmation_open=float(candidate["open"]),
-                second_confirmation_high=float(candidate["high"]),
-                second_confirmation_low=float(candidate["low"]),
-                second_confirmation_close=float(candidate["close"]),
-            )
-            if not confirmation_allowed:
-                logging.info("%s skipped: %s", self.ALGO, confirmation_reason)
-                return
+        first_confirmation_close = float(df.iloc[-2]["close"])
+        confirmation_allowed, confirmation_reason = self._confirmation_allows(
+            breakdown_close=values["close"],
+            previous_low=values["previous_low"],
+            first_confirmation_close=first_confirmation_close,
+            second_confirmation_open=float(candidate["open"]),
+            second_confirmation_high=float(candidate["high"]),
+            second_confirmation_low=float(candidate["low"]),
+            second_confirmation_close=float(candidate["close"]),
+        )
+        if not confirmation_allowed:
+            logging.info("%s skipped: %s", self.ALGO, confirmation_reason)
+            return
 
         candidate_close = float(candidate["close"])
         if current_price > values["close"]:
@@ -463,15 +465,8 @@ class TopLoserEarlyMomentum:
             return
         self._mark_emitted(candidate_open_time)
 
-        autotrade = getenv("ENV") == "staging"
-        if autotrade:
-            route_reason = (
-                "staging_sustained_top_loser_short"
-                if sustained_top_loser
-                else "staging_confirmed_top_loser_short"
-            )
-        else:
-            route_reason = "staging_only_top_loser_short_shadow"
+        autotrade = True
+        route_reason = "confirmed_top_loser_short"
         fiat_order_size = self._fiat_order_size()
         stop_loss = self._stop_loss_pct(
             close=candidate_close,
@@ -495,10 +490,7 @@ class TopLoserEarlyMomentum:
             "first_confirmation_close": first_confirmation_close,
             "second_confirmation_close": candidate_close,
             "entry_distance_pct": entry_distance * 100,
-            "top_loser_snapshots_in_a_row": top_loser_streak.snapshots_in_a_row,
-            "top_loser_price_change_percent": (
-                top_loser_streak.latest_price_change_percent
-            ),
+            "current_top_loser": False,
             "risk_reason": risk_reason,
             "route_reason": route_reason,
             "stop_loss_pct": stop_loss,
@@ -541,11 +533,11 @@ class TopLoserEarlyMomentum:
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(float(current_price), decimals=self.price_precision)}
-            - Rule intent: {"SELL sustained top-loser breakdowns on the breakdown candle itself" if sustained_top_loser else "SELL confirmed top-loser breakdowns after price holds below the recent low"}
+            - Rule intent: SELL momentum before the symbol reaches the top-loser list, after price holds below the recent low
             - Breakdown setup: {entry_reason}
             - Entry setup: {confirmation_reason}
-            - Breakdown / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(first_confirmation_close, self.price_precision) if first_confirmation_close is not None else "skipped"} / {round_numbers(candidate_close, self.price_precision)}
-            - Top-loser tape: {top_loser_streak.snapshots_in_a_row} snapshots in a row (24h move {round_numbers(top_loser_streak.latest_price_change_percent, 2)}%)
+            - Breakdown / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(first_confirmation_close, self.price_precision)} / {round_numbers(candidate_close, self.price_precision)}
+            - Current top-loser list: No
             - 1h / 2h / 6h / extension return ({int(values["extension_window_bars"])} bars, floor {round_numbers(values["extension_floor"] * 100, 2)}%): {round_numbers(values["return_1h"] * 100, 2)}% / {round_numbers(values["return_2h"] * 100, 2)}% / {round_numbers(values["return_6h"] * 100, 2)}% / {round_numbers(values["extension_return"] * 100, 2)}%
             - Candle return: {round_numbers(values["candle_return"] * 100, 2)}%
             - Volume: {round_numbers(values["volume"], decimals=self.price_precision)} {base_asset} (ratio {round_numbers(values["volume_ratio"], 2)})
@@ -562,7 +554,7 @@ class TopLoserEarlyMomentum:
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is enabled
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

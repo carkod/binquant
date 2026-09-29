@@ -14,7 +14,6 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.gainers_losers_streaks import resolve_top_gainer_streak
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -27,25 +26,16 @@ if TYPE_CHECKING:
 
 class TopGainerEarlyMomentum:
     """
-    Long-only continuation setup for assets entering the top-gainer tape.
+    Long-only continuation setup predicting entry into the top-gainer tape.
 
     The production top-gainer sample showed the first tradable impulse usually
     shared four traits: close above the recent 15m high, accelerating 1h/2h
     return, volume expansion, and a candle closing near its high.
 
-    There are two entry paths, both of which reject already-vertical blow-offs
-    via `_entry_allows`:
-
-    - Conservative (default): waits for two further closes to confirm the
-      ignition before entering.
-    - Sustained top gainer: when the symbol has held a top-gainer slot for
-      MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS consecutive snapshots, the tape has
-      already evidenced the continuation the confirmation exists to prove, so
-      entry happens on the breakout candle itself -- two bars earlier.
-
-    Both paths are deliberately strict on extension. Do not loosen the
-    `_entry_allows` blow-off guards unless we are sure the strategy will
-    perform better; the fast path only skips confirmation, never those.
+    A symbol already present on the latest top-gainer list belongs to the
+    established-mover/fade strategy and is excluded here. Eligible candidates
+    must still pass the two-close breakout confirmation and the `_entry_allows`
+    extension guards before this strategy opens a long.
     """
 
     ALGO = "top_gainer_early_momentum"
@@ -71,10 +61,6 @@ class TopGainerEarlyMomentum:
     # Measured over RELATIVE_STRENGTH_HORIZON_BARS (6h), not a single 15m bar.
     MIN_RELATIVE_STRENGTH_VS_BTC = 0.03
     MAX_SYMBOL_ATR_PCT = 0.06
-    # Snapshots are ingested hourly, so this is roughly three hours of holding
-    # a top-gainer slot before the breakout candle alone is enough to enter.
-    MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS = 3
-
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ATR_STOP_MULT = 2.2
     MIN_STOP_LOSS_PCT = 2.0
@@ -103,6 +89,14 @@ class TopGainerEarlyMomentum:
         settings = getattr(self.at_consumer, "autotrade_settings", None)
         base_order_size = float(getattr(settings, "base_order_size", 0.0) or 0.0)
         return round_numbers(base_order_size * self.FIAT_ORDER_SIZE_FRACTION, 8)
+
+    def _is_current_top_gainer(self) -> bool:
+        if not self.gainers_losers_series:
+            return False
+        return any(
+            entry.symbol == self.symbol
+            for entry in self.gainers_losers_series[0].top_gainers
+        )
 
     @classmethod
     def _features(cls, df: "DataFrame") -> tuple[dict[str, float] | None, str]:
@@ -409,6 +403,9 @@ class TopGainerEarlyMomentum:
     ) -> None:
         if self.market_type != MarketType.FUTURES:
             return
+        if self._is_current_top_gainer():
+            logging.info("%s skipped: symbol_already_top_gainer", self.ALGO)
+            return
 
         df = self._completed_candles(
             self.ti.df_15m,
@@ -418,24 +415,7 @@ class TopGainerEarlyMomentum:
             logging.info("%s skipped: history_too_short", self.ALGO)
             return
 
-        top_gainer_streak = resolve_top_gainer_streak(
-            snapshots=self.gainers_losers_series,
-            symbol=self.symbol,
-        )
-        # A coin that has held a top-gainer slot for hours has already proven
-        # the continuation the two-close confirmation exists to establish.
-        # Waiting for it there costs the whole early leg of the move: on
-        # 2026-08-26 BTRUSDTM ran +14% -> +182% across eleven snapshots
-        # without ever emitting a signal.
-        sustained_top_gainer = (
-            top_gainer_streak.snapshots_in_a_row
-            >= self.MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS
-        )
-
-        # The fast path reads the breakout off the latest completed candle; the
-        # conservative path reads it two bars back and demands both of those
-        # bars confirm it.
-        breakout_df = df if sustained_top_gainer else df.iloc[:-2]
+        breakout_df = df.iloc[:-2]
         values, feature_reason = self._features(breakout_df)
         if values is None:
             logging.info("%s skipped: %s", self.ALGO, feature_reason)
@@ -447,23 +427,19 @@ class TopGainerEarlyMomentum:
             return
 
         candidate = df.iloc[-1]
-        first_confirmation_close: float | None = None
-        if sustained_top_gainer:
-            confirmation_reason = "sustained_top_gainer_breakout"
-        else:
-            first_confirmation_close = float(df.iloc[-2]["close"])
-            confirmation_allowed, confirmation_reason = self._confirmation_allows(
-                breakout_close=values["close"],
-                previous_high=values["previous_high"],
-                first_confirmation_close=first_confirmation_close,
-                second_confirmation_open=float(candidate["open"]),
-                second_confirmation_high=float(candidate["high"]),
-                second_confirmation_low=float(candidate["low"]),
-                second_confirmation_close=float(candidate["close"]),
-            )
-            if not confirmation_allowed:
-                logging.info("%s skipped: %s", self.ALGO, confirmation_reason)
-                return
+        first_confirmation_close = float(df.iloc[-2]["close"])
+        confirmation_allowed, confirmation_reason = self._confirmation_allows(
+            breakout_close=values["close"],
+            previous_high=values["previous_high"],
+            first_confirmation_close=first_confirmation_close,
+            second_confirmation_open=float(candidate["open"]),
+            second_confirmation_high=float(candidate["high"]),
+            second_confirmation_low=float(candidate["low"]),
+            second_confirmation_close=float(candidate["close"]),
+        )
+        if not confirmation_allowed:
+            logging.info("%s skipped: %s", self.ALGO, confirmation_reason)
+            return
 
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
@@ -503,11 +479,7 @@ class TopGainerEarlyMomentum:
         self._mark_emitted(candidate_open_time)
 
         autotrade = True
-        route_reason = (
-            "sustained_top_gainer_long"
-            if sustained_top_gainer
-            else "confirmed_top_gainer_long"
-        )
+        route_reason = "confirmed_top_gainer_long"
         fiat_order_size = self._fiat_order_size()
         stop_loss = self._stop_loss_pct(
             close=float(candidate["close"]),
@@ -530,10 +502,7 @@ class TopGainerEarlyMomentum:
             "breakout_open_time": int(breakout_df.iloc[-1]["open_time"]),
             "first_confirmation_close": first_confirmation_close,
             "second_confirmation_close": float(candidate["close"]),
-            "top_gainer_snapshots_in_a_row": top_gainer_streak.snapshots_in_a_row,
-            "top_gainer_price_change_percent": (
-                top_gainer_streak.latest_price_change_percent
-            ),
+            "current_top_gainer": False,
             "risk_reason": risk_reason,
             "route_reason": route_reason,
             "stop_loss_pct": stop_loss,
@@ -576,11 +545,11 @@ class TopGainerEarlyMomentum:
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
             - Current price: {round_numbers(float(current_price), decimals=self.price_precision)}
-            - Rule intent: {"BUY sustained top-gainer breakouts on the breakout candle itself, once the tape has held the symbol on the gainers list" if sustained_top_gainer else "BUY confirmed top-gainer breakouts after price holds the recent high and then clears the breakout close"}
+            - Rule intent: BUY momentum before the symbol reaches the top-gainer list, after price holds the recent high and then clears the breakout close
             - Breakout setup: {entry_reason}
             - Entry setup: {confirmation_reason}
-            - Breakout / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(first_confirmation_close, self.price_precision) if first_confirmation_close is not None else "skipped"} / {round_numbers(float(candidate["close"]), self.price_precision)}
-            - Top-gainer tape: {top_gainer_streak.snapshots_in_a_row} snapshots in a row (24h move {round_numbers(top_gainer_streak.latest_price_change_percent, 2)}%)
+            - Breakout / first confirmation / entry close: {round_numbers(values["close"], self.price_precision)} / {round_numbers(first_confirmation_close, self.price_precision)} / {round_numbers(float(candidate["close"]), self.price_precision)}
+            - Current top-gainer list: No
             - 1h / 2h / 6h / extension return ({int(values["extension_window_bars"])} bars, cap {round_numbers(values["extension_cap"] * 100, 2)}%): {round_numbers(values["return_1h"] * 100, 2)}% / {round_numbers(values["return_2h"] * 100, 2)}% / {round_numbers(values["return_6h"] * 100, 2)}% / {round_numbers(values["extension_return"] * 100, 2)}%
             - Candle return: {round_numbers(values["candle_return"] * 100, 2)}%
             - Volume: {round_numbers(values["volume"], decimals=self.price_precision)} {base_asset} (ratio {round_numbers(values["volume_ratio"], 2)})
