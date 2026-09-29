@@ -45,10 +45,12 @@ from market_regime.open_interest_order_sizing import (
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.utils import format_context_timestamp_line
+from strategies.higher_low_pattern import HigherLowPattern
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.lower_high_pattern import LowerHighPattern
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.top_gainer_breadth import TopGainerBreadth
+from strategies.top_loser_breadth import TopLoserBreadth
 
 if TYPE_CHECKING:
     from strategies.activity_burst.activity_burst_anomaly_gate import (
@@ -244,7 +246,9 @@ class ContextEvaluator:
         """
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.top_gainer_breadth = TopGainerBreadth(cls=self)
+        self.top_loser_breadth = TopLoserBreadth(cls=self)
         self.lower_high_pattern = LowerHighPattern(cls=self)
+        self.higher_low_pattern = HigherLowPattern(cls=self)
 
     def indicators_enrichment(
         self, df: TypedDataFrame[KlineSchema]
@@ -493,6 +497,16 @@ class ContextEvaluator:
                     ),
                 )
 
+                await self._safe_signal(
+                    "TopLoserBreadth",
+                    self.top_loser_breadth.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
+
             await self._safe_signal(
                 "MarketRegimeNotifier",
                 self.market_regime_notifier.signal(),
@@ -502,6 +516,11 @@ class ContextEvaluator:
             await self._safe_signal(
                 "LowerHighPattern",
                 self.lower_high_pattern.signal(),
+            )
+
+            await self._safe_signal(
+                "HigherLowPattern",
+                self.higher_low_pattern.signal(),
             )
 
         return

@@ -13,47 +13,47 @@ from pybinbot import (
     SignalsConsumer,
     breadth_momentum_reversal,
     btc_trend_confirms,
+    latest_beta,
     round_numbers,
     timestamp_sort_key,
 )
 
 from shared.utils import build_links_msg, format_context_timestamp_line
-from strategies.lower_high_pattern import LowerHighPattern
+from strategies.higher_low_pattern import HigherLowPattern
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class TopGainerBreadth:
-    """Short a current 2nd-to-11th ranked gainer as bullish momentum fails.
+class TopLoserBreadth:
+    """Long a current 2nd-to-11th ranked loser as bearish momentum fails.
 
+    Exact sign-mirror of TopGainerBreadth (strategies/top_gainer_breadth.py).
     Entry requires:
-    - the symbol is currently a ranked top gainer (2nd-11th, by 24h move) —
+    - the symbol is currently a ranked top loser (2nd-11th, by 24h move) —
       the starting filter for which symbols this strategy considers at all;
-    - the symbol's own 15m candles have just confirmed a lower high. This is
+    - the symbol's own 15m candles have just confirmed a higher low. This is
       the trigger: without it nothing else here matters.
 
-    Market-breadth momentum (fast EMA(3) crossing below its slower average
-    while breadth is still extended bullish) and BTC's 15m trend are
-    confirming context, not entry gates: modeled against two real manual
-    trades (ARBUSDTM, MARSCOINUSDTM, both short, both profitable) that
-    shared the lower-high rollover but disagreed on breadth/BTC state at
-    entry, requiring both to line up would have blocked either trade. They
-    still matter — each one present adds to the signal's conviction score
-    (SignalsConsumer.score) and is recorded in indicators — but a lower high
-    on a ranked gainer is sufficient on its own to enter.
+    Market-breadth momentum (fast EMA(3) crossing above its slower average
+    while breadth is still extended bearish) and BTC's 15m trend are
+    confirming context, not entry gates, for the same reason as the gainer
+    side: requiring both to line up with the price pattern would have
+    blocked real manual trades that only agreed on the price-structure
+    rollover. Each one present still adds to the signal's conviction score
+    (SignalsConsumer.score) and is recorded in indicators.
 
-    The resulting futures short uses an exchange-native stop at the upper
+    The resulting futures long uses an exchange-native stop at the lower
     Bollinger Band, capped at 4%, and dynamic trailing protection. Reversal
     and recovery are explicitly disabled. Once open, binbot streaming owns
     the position lifecycle and closes it only through stop-loss or trailing
     protection.
     """
 
-    ALGO = "top_gainer_breadth"
+    ALGO = "top_loser_breadth"
 
-    TOP_GAINER_RANK_START = 2
-    TOP_GAINER_RANK_END = 11
+    TOP_LOSER_RANK_START = 2
+    TOP_LOSER_RANK_END = 11
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
     TRAILING_PROFIT_PCT = 3.5
@@ -63,12 +63,20 @@ class TopGainerBreadth:
     MIN_BREADTH_HISTORY = 12
     BREADTH_FAST_EMA_SPAN = 3
     BREADTH_EXTENSION_THRESHOLD = 0.15
-    BREADTH_CEILING = 0.6
+    BREADTH_FLOOR = -0.6
     MAX_BREADTH_AGE_SECONDS = 30 * 60
-    MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
+    MAX_LOSERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     MIN_BTC_HISTORY = 20
     BTC_TREND_EMA_SPAN = 20
+
+    # ~2.5 days of 15m bars: the largest window that comfortably fits within
+    # the ~300-bar history left in df_15m after indicator warm-up
+    # (klines_provider.py fetches 400 raw candles; the ma_100 warm-up alone
+    # consumes ~99 of them). Short of the 7-30 days a stable beta ideally
+    # wants, but the most the current candle-fetch depth can support without
+    # chronically reporting "insufficient history".
+    BTC_BETA_WINDOW_BARS = 240
 
     BASE_SCORE = 1.0
     BREADTH_CONFIRMED_SCORE_BONUS = 0.5
@@ -90,24 +98,24 @@ class TopGainerBreadth:
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_confirmation_open_time: int | None = None
 
-    def _top_gainer_entry(self) -> tuple[int, float] | None:
+    def _top_loser_entry(self) -> tuple[int, float] | None:
         if not self.gainers_losers_series:
             return None
 
         latest_snapshot = self.gainers_losers_series[0]
         if not self._timestamp_is_fresh(
             latest_snapshot.recorded_at,
-            self.MAX_GAINERS_SNAPSHOT_AGE_SECONDS,
+            self.MAX_LOSERS_SNAPSHOT_AGE_SECONDS,
         ):
             return None
         return next(
             (
                 (rank, entry.price_change_percent)
                 for rank, entry in enumerate(
-                    latest_snapshot.top_gainers[
-                        self.TOP_GAINER_RANK_START - 1 : self.TOP_GAINER_RANK_END
+                    latest_snapshot.top_losers[
+                        self.TOP_LOSER_RANK_START - 1 : self.TOP_LOSER_RANK_END
                     ],
-                    start=self.TOP_GAINER_RANK_START,
+                    start=self.TOP_LOSER_RANK_START,
                 )
                 if entry.symbol == self.symbol
             ),
@@ -123,26 +131,26 @@ class TopGainerBreadth:
         return 0 <= age_seconds <= max_age_seconds
 
     @classmethod
-    def _stop_loss_pct(cls, current_price: float, bb_high: float) -> float | None:
+    def _stop_loss_pct(cls, current_price: float, bb_low: float) -> float | None:
         if (
             not isfinite(current_price)
-            or not isfinite(bb_high)
+            or not isfinite(bb_low)
             or current_price <= 0
-            or bb_high <= current_price
+            or bb_low >= current_price
         ):
             return None
 
-        stop_loss = ((bb_high / current_price) - 1) * 100
+        stop_loss = (1 - (bb_low / current_price)) * 100
         return round_numbers(min(stop_loss, cls.MAX_STOP_LOSS_PCT), 4)
 
-    def _fresh_lower_high(self) -> dict[str, float | int] | None:
+    def _fresh_higher_low(self) -> dict[str, float | int] | None:
         df = self.ti.df_15m
         if df is None or "close_time" not in df.columns:
             return None
 
         close_times = to_numeric(df["close_time"], errors="coerce")
         completed_candles = df.loc[close_times < time() * 1000]
-        pattern = LowerHighPattern.detect(completed_candles)
+        pattern = HigherLowPattern.detect(completed_candles)
         if pattern is None:
             return None
 
@@ -174,33 +182,33 @@ class TopGainerBreadth:
         if self.market_type != MarketType.FUTURES:
             return
 
-        top_gainer_entry = self._top_gainer_entry()
-        if top_gainer_entry is None:
-            logging.info("%s skipped: symbol_not_in_ranked_gainer_window", self.ALGO)
+        top_loser_entry = self._top_loser_entry()
+        if top_loser_entry is None:
+            logging.info("%s skipped: symbol_not_in_ranked_loser_window", self.ALGO)
             return
-        top_gainer_rank, price_change_24h = top_gainer_entry
+        top_loser_rank, price_change_24h = top_loser_entry
 
-        lower_high = self._fresh_lower_high()
-        if lower_high is None:
-            logging.info("%s skipped: no_fresh_confirmed_lower_high", self.ALGO)
+        higher_low = self._fresh_higher_low()
+        if higher_low is None:
+            logging.info("%s skipped: no_fresh_confirmed_higher_low", self.ALGO)
             return
 
-        stop_loss = self._stop_loss_pct(current_price, bb_high)
+        stop_loss = self._stop_loss_pct(current_price, bb_low)
         if stop_loss is None:
-            logging.info("%s skipped: upper_bollinger_stop_invalid", self.ALGO)
+            logging.info("%s skipped: lower_bollinger_stop_invalid", self.ALGO)
             return
         stop_loss_price = round_numbers(
-            current_price + (current_price * stop_loss / 100), self.price_precision
+            current_price - (current_price * stop_loss / 100), self.price_precision
         )
         stop_loss_source = (
             "max_stop_loss_cap"
-            if stop_loss == self.MAX_STOP_LOSS_PCT and bb_high > stop_loss_price
-            else "upper_bollinger_band"
+            if stop_loss == self.MAX_STOP_LOSS_PCT and bb_low < stop_loss_price
+            else "lower_bollinger_band"
         )
 
-        confirmation_open_time = int(lower_high["confirmation_open_time"])
+        confirmation_open_time = int(higher_low["confirmation_open_time"])
         if self._already_emitted(confirmation_open_time):
-            logging.info("%s skipped: lower_high_already_emitted", self.ALGO)
+            logging.info("%s skipped: higher_low_already_emitted", self.ALGO)
             return
 
         # Confirming context, not gates: each one is resolved once, right
@@ -208,14 +216,14 @@ class TopGainerBreadth:
         # absence never blocks entry and never needs re-checking downstream.
         breadth_values, breadth_reason = breadth_momentum_reversal(
             self.market_breadth_data,
-            direction=-1,
+            direction=1,
             min_history=self.MIN_BREADTH_HISTORY,
             fast_ema_span=self.BREADTH_FAST_EMA_SPAN,
             extension_threshold=self.BREADTH_EXTENSION_THRESHOLD,
         )
         breadth_confirmed = False
         breadth_score_bonus = 0.0
-        high_conviction_ceiling_reached = False
+        high_conviction_floor_reached = False
         breadth_indicators: dict[str, object] = {}
         breadth_line = "No"
         if breadth_values is not None and self._timestamp_is_fresh(
@@ -223,8 +231,8 @@ class TopGainerBreadth:
         ):
             breadth_confirmed = True
             breadth_score_bonus = self.BREADTH_CONFIRMED_SCORE_BONUS
-            high_conviction_ceiling_reached = (
-                breadth_values["market_breadth"] >= self.BREADTH_CEILING
+            high_conviction_floor_reached = (
+                breadth_values["market_breadth"] <= self.BREADTH_FLOOR
             )
             breadth_indicators = {
                 "breadth_reversal_reason": breadth_reason,
@@ -234,17 +242,17 @@ class TopGainerBreadth:
 
         btc_trend = btc_trend_confirms(
             self.ti.df_btc_15m,
-            direction=-1,
+            direction=1,
             min_history=self.MIN_BTC_HISTORY,
             trend_ema_span=self.BTC_TREND_EMA_SPAN,
         )
-        btc_downtrend_confirmed = False
+        btc_uptrend_confirmed = False
         btc_score_bonus = 0.0
         btc_indicators: dict[str, object] = {}
         btc_line = "No"
         if btc_trend is not None:
             btc_close, btc_trend_ema = btc_trend
-            btc_downtrend_confirmed = True
+            btc_uptrend_confirmed = True
             btc_score_bonus = self.BTC_TREND_CONFIRMED_SCORE_BONUS
             btc_indicators = {
                 "btc_close_15m": btc_close,
@@ -262,10 +270,20 @@ class TopGainerBreadth:
             + btc_score_bonus
             + (
                 self.HIGH_CONVICTION_SCORE_BONUS
-                if high_conviction_ceiling_reached
+                if high_conviction_floor_reached
                 else 0.0
             ),
             4,
+        )
+
+        # Informational only: how much this symbol has historically moved
+        # per 1% BTC move (Cov(r_token, r_btc) / Var(r_btc)), not a gate or
+        # score input.
+        btc_beta = latest_beta(
+            self.ti.df_15m["close"],
+            self.ti.df_btc_15m["close"],
+            window=self.BTC_BETA_WINDOW_BARS,
+            min_periods=self.BTC_BETA_WINDOW_BARS,
         )
 
         fiat_order_size = round_numbers(
@@ -283,17 +301,18 @@ class TopGainerBreadth:
         )
 
         indicators = {
-            "entry_reason": "lower_high_breakdown",
-            "top_gainer_rank": top_gainer_rank,
-            "top_gainer_price_change_24h_pct": price_change_24h,
-            "lower_high_first_peak": lower_high["earlier_high"],
-            "lower_high_second_peak": lower_high["later_high"],
-            "lower_high_drop_pct": lower_high["drop_pct"],
-            "lower_high_confirmation_open_time": confirmation_open_time,
+            "entry_reason": "higher_low_breakout",
+            "top_loser_rank": top_loser_rank,
+            "top_loser_price_change_24h_pct": price_change_24h,
+            "higher_low_first_trough": higher_low["earlier_low"],
+            "higher_low_second_trough": higher_low["later_low"],
+            "higher_low_rise_pct": higher_low["rise_pct"],
+            "higher_low_confirmation_open_time": confirmation_open_time,
             "breadth_reversal_confirmed": breadth_confirmed,
-            "btc_downtrend_confirmed": btc_downtrend_confirmed,
-            "breadth_ceiling": self.BREADTH_CEILING,
-            "high_conviction_ceiling_reached": high_conviction_ceiling_reached,
+            "btc_uptrend_confirmed": btc_uptrend_confirmed,
+            "breadth_floor": self.BREADTH_FLOOR,
+            "high_conviction_floor_reached": high_conviction_floor_reached,
+            "btc_beta": btc_beta,
             "stop_loss_source": stop_loss_source,
             "stop_loss_price_at_signal": stop_loss_price,
             "stop_loss_pct": stop_loss,
@@ -306,14 +325,14 @@ class TopGainerBreadth:
         }
 
         value = SignalsConsumer(
-            direction=Position.short.value.upper(),
+            direction=Position.long.value.upper(),
             autotrade=False,
             current_price=float(current_price),
             score=score,
             bot_params=BotBase(
                 pair=self.symbol,
                 name=self.ALGO,
-                position=Position.short,
+                position=Position.long,
                 market_type=MarketType.FUTURES,
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=True,
@@ -335,16 +354,22 @@ class TopGainerBreadth:
         assert value.bot_params is not None
         fiat_order_size = value.bot_params.fiat_order_size
 
+        btc_beta_line = (
+            f"{round_numbers(btc_beta, 4)}"
+            if btc_beta is not None
+            else "N/A (insufficient history)"
+        )
         msg = f"""
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
-            - Action: SHORT ENTRY
+            - Action: LONG ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT a current 24h gainer ranked 2nd-11th when price confirms a lower high; breadth reversal and BTC downtrend are confirming context, not required
-            - Top-gainer rank / 24h move: {top_gainer_rank} / {round_numbers(price_change_24h, 2)}%
-            - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
+            - Rule intent: LONG a current 24h loser ranked 2nd-11th when price confirms a higher low; breadth reversal and BTC uptrend are confirming context, not required
+            - Top-loser rank / 24h move: {top_loser_rank} / {round_numbers(price_change_24h, 2)}%
+            - Higher low first / second trough: {round_numbers(higher_low["earlier_low"], self.price_precision)} / {round_numbers(higher_low["later_low"], self.price_precision)}
             - Breadth reversal confirmed: {breadth_line}
-            - BTC downtrend confirmed: {btc_line}
-            - High-conviction ceiling (>= {self.BREADTH_CEILING}) reached: {"Yes" if high_conviction_ceiling_reached else "No"}
+            - BTC uptrend confirmed: {btc_line}
+            - High-conviction floor (<= {self.BREADTH_FLOOR}) reached: {"Yes" if high_conviction_floor_reached else "No"}
+            - Beta vs BTC (~{round_numbers(self.BTC_BETA_WINDOW_BARS / 96, 1)}d): {btc_beta_line}
             {format_context_timestamp_line(context)}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss: {stop_loss_source} at {stop_loss_price} ({stop_loss}%)
