@@ -250,13 +250,16 @@ async def test_signal_dispatches_confirmed_short_in_every_environment(
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert value.autotrade is True
+    assert value.autotrade is False
     assert value.direction == "SHORT"
     assert value.bot_params.position == "short"
     assert value.bot_params.stop_loss == 2.0
     assert value.bot_params.trailing_profit == 6.0
     assert value.bot_params.trailing_deviation == 2.5
     assert indicators["route_reason"] == "confirmed_top_loser_short"
+    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Signal route: confirmed_top_loser_short" in msg
+    assert "Autotrade is disabled; notification only" in msg
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
 

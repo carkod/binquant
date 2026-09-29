@@ -50,7 +50,9 @@ from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.lower_high_pattern import LowerHighPattern
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.top_gainer_breadth import TopGainerBreadth
+from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 from strategies.top_loser_breadth import TopLoserBreadth
+from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
 if TYPE_CHECKING:
     from strategies.activity_burst.activity_burst_anomaly_gate import (
@@ -247,6 +249,8 @@ class ContextEvaluator:
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.top_gainer_breadth = TopGainerBreadth(cls=self)
         self.top_loser_breadth = TopLoserBreadth(cls=self)
+        self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
+        self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
         self.lower_high_pattern = LowerHighPattern(cls=self)
         self.higher_low_pattern = HigherLowPattern(cls=self)
 
@@ -514,6 +518,26 @@ class ContextEvaluator:
                 await self._safe_signal(
                     "TopLoserBreadth",
                     self.top_loser_breadth.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
+
+                await self._safe_signal(
+                    "TopGainerEarlyMomentum",
+                    self.top_gainer_early_momentum.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
+
+                await self._safe_signal(
+                    "TopLoserEarlyMomentum",
+                    self.top_loser_early_momentum.signal(
                         current_price=close_price,
                         bb_high=spreads.bb_high,
                         bb_mid=spreads.bb_mid,

@@ -29,7 +29,7 @@ class TopLoserEarlyMomentum:
     Symbols already present on the latest top-loser list belong to the
     established-mover/rebound strategy and are excluded here. An eligible
     candidate must confirm its breakdown with two further lower closes before
-    this strategy opens a short.
+    this strategy emits a notification-only short.
     """
 
     ALGO = "top_loser_early_momentum"
@@ -465,7 +465,6 @@ class TopLoserEarlyMomentum:
             return
         self._mark_emitted(candidate_open_time)
 
-        autotrade = True
         route_reason = "confirmed_top_loser_short"
         fiat_order_size = self._fiat_order_size()
         stop_loss = self._stop_loss_pct(
@@ -501,7 +500,7 @@ class TopLoserEarlyMomentum:
 
         value = SignalsConsumer(
             direction=Position.short.value.upper(),
-            autotrade=autotrade,
+            autotrade=False,
             current_price=float(current_price),
             volume=values["volume"],
             score=score,
@@ -547,14 +546,14 @@ class TopLoserEarlyMomentum:
             {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
-            - Autotrade route: {route_reason}
+            - Signal route: {route_reason}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss: {stop_loss}%
             - Trailing profit / deviation: {self.TRAILING_PROFIT_PCT}% / {self.TRAILING_DEVIATION_PCT}%
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - Autotrade is enabled
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

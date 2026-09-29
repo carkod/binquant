@@ -35,7 +35,7 @@ class TopGainerEarlyMomentum:
     A symbol already present on the latest top-gainer list belongs to the
     established-mover/fade strategy and is excluded here. Eligible candidates
     must still pass the two-close breakout confirmation and the `_entry_allows`
-    extension guards before this strategy opens a long.
+    extension guards before this strategy emits a notification-only long.
     """
 
     ALGO = "top_gainer_early_momentum"
@@ -478,7 +478,6 @@ class TopGainerEarlyMomentum:
 
         self._mark_emitted(candidate_open_time)
 
-        autotrade = True
         route_reason = "confirmed_top_gainer_long"
         fiat_order_size = self._fiat_order_size()
         stop_loss = self._stop_loss_pct(
@@ -513,7 +512,7 @@ class TopGainerEarlyMomentum:
 
         value = SignalsConsumer(
             direction=Position.long.value.upper(),
-            autotrade=autotrade,
+            autotrade=False,
             current_price=float(current_price),
             volume=values["volume"],
             score=score,
@@ -559,14 +558,14 @@ class TopGainerEarlyMomentum:
             {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
-            - Autotrade route: {route_reason}
+            - Signal route: {route_reason}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss: {stop_loss}%
             - Trailing profit / deviation: {self.TRAILING_PROFIT_PCT}% / {self.TRAILING_DEVIATION_PCT}%
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - Autotrade is enabled
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

@@ -260,9 +260,9 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
 
     assert "Breakout setup: top_gainer_breakout_ignition" in telegram_msg
     assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
-    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
+    assert "Signal route: confirmed_top_gainer_long" in telegram_msg
     assert "Max margin: 8.0 USDT" in telegram_msg
-    assert signal_value.autotrade is True
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.position == "long"
     assert signal_value.bot_params.fiat_order_size == 8.0
     assert signal_value.bot_params.stop_loss > 0
@@ -311,7 +311,7 @@ async def test_unreliable_entry_candles_retry_before_signal_is_marked_emitted(
 
 
 @pytest.mark.asyncio
-async def test_signal_autotrades_outside_staging(monkeypatch):
+async def test_signal_remains_notification_only_outside_staging(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     df = make_breakout_candles()
     algo = TopGainerEarlyMomentum(
@@ -354,9 +354,9 @@ async def test_signal_autotrades_outside_staging(monkeypatch):
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
-    assert "Autotrade is enabled" in telegram_msg
-    assert signal_value.autotrade is True
+    assert "Signal route: confirmed_top_gainer_long" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.fiat_order_size == 2.0
 
 
