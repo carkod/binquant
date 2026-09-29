@@ -51,6 +51,7 @@ class KlinesProvider:
     """
 
     LIMIT = 400
+    WEEKLY_STRUCTURE_HISTORY_LIMIT = (7 * 24) + 2
 
     def __init__(
         self,
@@ -67,11 +68,13 @@ class KlinesProvider:
         self.exchange: ExchangeId
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.interval_15m: BinanceKlineIntervals | KucoinKlineIntervals
+        self.interval_1h: BinanceKlineIntervals | KucoinKlineIntervals
         # Apex Flow starting point for scoring signals
         self.first_seen_at = int(time() * 1000)
         # Candles/btc candles storage
         self.candles: list[list] = []
         self.candles_15m: list[list] = []
+        self.candles_1h: list[list] = []
         self.btc_candles_15m: list[list] = []
         self.market_state_store = MarketStateStore(max_bars_per_symbol=self.LIMIT)
         self.market_breadth_data: MarketBreadthSeries | None = None
@@ -114,6 +117,7 @@ class KlinesProvider:
             )
             self.interval = KucoinKlineIntervals.FIVE_MINUTES
             self.interval_15m = KucoinKlineIntervals.FIFTEEN_MINUTES
+            self.interval_1h = KucoinKlineIntervals.ONE_HOUR
             self.benchmark_symbol = "BTC-USDT"
             self.futures_benchmark_symbol = "XBTUSDTM"
         else:
@@ -121,6 +125,7 @@ class KlinesProvider:
             self.api = self.binance_api
             self.interval = BinanceKlineIntervals.five_minutes
             self.interval_15m = BinanceKlineIntervals.fifteen_minutes
+            self.interval_1h = BinanceKlineIntervals.one_hour
             self.benchmark_symbol = "BTCUSDC"
             self.futures_benchmark_symbol = "BTCUSDTM"
 
@@ -236,6 +241,11 @@ class KlinesProvider:
             symbol=api_symbol,
             interval=self.interval_15m.value,
             limit=self.LIMIT,
+        )
+        self.candles_1h = self.api.get_ui_klines(
+            symbol=api_symbol,
+            interval=self.interval_1h.value,
+            limit=self.WEEKLY_STRUCTURE_HISTORY_LIMIT,
         )
         self._refresh_btc_candles_15m(market_type)
         closed_symbol_candles = self._sync_market_state_from_ui_klines(
@@ -434,6 +444,7 @@ class KlinesProvider:
         await crypto_analytics.process_data(
             candles=self.candles,
             candles_15m=self.candles_15m,
+            candles_1h=self.candles_1h,
             btc_candles_15m=self.btc_candles_15m,
         )
         self.last_market_regime = crypto_analytics.last_market_regime

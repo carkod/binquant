@@ -1,5 +1,4 @@
 import logging
-from math import isfinite
 from time import time
 from typing import TYPE_CHECKING
 
@@ -13,12 +12,16 @@ from pybinbot import (
     SignalsConsumer,
     breadth_momentum_reversal,
     btc_trend_confirms,
-    latest_beta,
     round_numbers,
     timestamp_sort_key,
 )
 
-from shared.utils import build_links_msg, format_context_timestamp_line
+from shared.utils import build_links_msg, format_context_timestamp_line, latest_beta
+from shared.weekly_structure_protection import (
+    BOUNDARY_BUFFER_PCT,
+    WeeklyStructureProtection,
+    weekly_structure_protection,
+)
 from strategies.higher_low_pattern import HigherLowPattern
 
 if TYPE_CHECKING:
@@ -43,11 +46,10 @@ class TopLoserBreadth:
     rollover. Each one present still adds to the signal's conviction score
     (SignalsConsumer.score) and is recorded in indicators.
 
-    The resulting futures long uses an exchange-native stop at the lower
-    Bollinger Band, capped at 4%, and dynamic trailing protection. Reversal
-    and recovery are explicitly disabled. Once open, binbot streaming owns
-    the position lifecycle and closes it only through stop-loss or trailing
-    protection.
+    The resulting futures long uses a stop just beyond the preceding week's
+    support and a weekly-range-scaled static trailing stop. Reversal and
+    recovery are explicitly disabled. This is a notification-only strategy;
+    its parameters describe the proposed trade but do not open a bot.
     """
 
     ALGO = "top_loser_breadth"
@@ -56,9 +58,6 @@ class TopLoserBreadth:
     TOP_LOSER_RANK_END = 11
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
-    TRAILING_PROFIT_PCT = 3.5
-    TRAILING_DEVIATION_PCT = 2.5
-    MAX_STOP_LOSS_PCT = 4.0
 
     MIN_BREADTH_HISTORY = 12
     BREADTH_FAST_EMA_SPAN = 3
@@ -130,19 +129,6 @@ class TopLoserBreadth:
         age_seconds = time() - timestamp_seconds
         return 0 <= age_seconds <= max_age_seconds
 
-    @classmethod
-    def _stop_loss_pct(cls, current_price: float, bb_low: float) -> float | None:
-        if (
-            not isfinite(current_price)
-            or not isfinite(bb_low)
-            or current_price <= 0
-            or bb_low >= current_price
-        ):
-            return None
-
-        stop_loss = (1 - (bb_low / current_price)) * 100
-        return round_numbers(min(stop_loss, cls.MAX_STOP_LOSS_PCT), 4)
-
     def _fresh_higher_low(self) -> dict[str, float | int] | None:
         df = self.ti.df_15m
         if df is None or "close_time" not in df.columns:
@@ -158,6 +144,22 @@ class TopLoserBreadth:
         if pattern["confirmation_open_time"] != latest_open_time:
             return None
         return pattern
+
+    def _weekly_protection(
+        self, current_price: float
+    ) -> WeeklyStructureProtection | None:
+        df = self.ti.df_1h
+        if df is None or "close_time" not in df.columns:
+            return None
+
+        close_times = to_numeric(df["close_time"], errors="coerce")
+        completed_candles = df.loc[close_times < time() * 1000]
+        return weekly_structure_protection(
+            completed_candles,
+            current_price=current_price,
+            position=Position.long,
+            price_precision=self.price_precision,
+        )
 
     def _already_emitted(self, confirmation_open_time: int) -> bool:
         if self.strategy_cooldowns is None:
@@ -193,18 +195,10 @@ class TopLoserBreadth:
             logging.info("%s skipped: no_fresh_confirmed_higher_low", self.ALGO)
             return
 
-        stop_loss = self._stop_loss_pct(current_price, bb_low)
-        if stop_loss is None:
-            logging.info("%s skipped: lower_bollinger_stop_invalid", self.ALGO)
+        protection = self._weekly_protection(current_price)
+        if protection is None:
+            logging.info("%s skipped: weekly_structure_protection_invalid", self.ALGO)
             return
-        stop_loss_price = round_numbers(
-            current_price - (current_price * stop_loss / 100), self.price_precision
-        )
-        stop_loss_source = (
-            "max_stop_loss_cap"
-            if stop_loss == self.MAX_STOP_LOSS_PCT and bb_low < stop_loss_price
-            else "lower_bollinger_band"
-        )
 
         confirmation_open_time = int(higher_low["confirmation_open_time"])
         if self._already_emitted(confirmation_open_time):
@@ -313,12 +307,16 @@ class TopLoserBreadth:
             "breadth_floor": self.BREADTH_FLOOR,
             "high_conviction_floor_reached": high_conviction_floor_reached,
             "btc_beta": btc_beta,
-            "stop_loss_source": stop_loss_source,
-            "stop_loss_price_at_signal": stop_loss_price,
-            "stop_loss_pct": stop_loss,
+            "weekly_resistance": protection.resistance,
+            "weekly_support": protection.support,
+            "weekly_structure_candles": protection.candle_count,
+            "weekly_boundary_buffer_pct": BOUNDARY_BUFFER_PCT,
+            "stop_loss_source": "weekly_support",
+            "stop_loss_price_at_signal": protection.stop_loss_price,
+            "stop_loss_pct": protection.stop_loss_pct,
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
-            "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
-            "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
+            "trailing_profit_pct": protection.trailing_profit_pct,
+            "trailing_deviation_pct": protection.trailing_deviation_pct,
             "protective_exit": "exchange_native_reduce_only_stop",
             **breadth_indicators,
             **btc_indicators,
@@ -335,12 +333,12 @@ class TopLoserBreadth:
                 position=Position.long,
                 market_type=MarketType.FUTURES,
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
-                dynamic_trailing=True,
+                dynamic_trailing=False,
                 fiat_order_size=fiat_order_size,
-                stop_loss=stop_loss,
+                stop_loss=protection.stop_loss_pct,
                 trailing=True,
-                trailing_deviation=self.TRAILING_DEVIATION_PCT,
-                trailing_profit=self.TRAILING_PROFIT_PCT,
+                trailing_deviation=protection.trailing_deviation_pct,
+                trailing_profit=protection.trailing_profit_pct,
                 margin_short_reversal=False,
                 recovery_params=None,
             ),
@@ -372,12 +370,13 @@ class TopLoserBreadth:
             - Beta vs BTC (~{round_numbers(self.BTC_BETA_WINDOW_BARS / 96, 1)}d): {btc_beta_line}
             {format_context_timestamp_line(context)}
             - Max margin: {fiat_order_size} {quote_asset}
-            - Stop loss: {stop_loss_source} at {stop_loss_price} ({stop_loss}%)
+            - Weekly resistance / support ({protection.candle_count} completed 1h candles): {protection.resistance} / {protection.support}
+            - Stop loss: {BOUNDARY_BUFFER_PCT}% below weekly support at {protection.stop_loss_price} ({protection.stop_loss_pct}%)
             - Stop behavior: exchange-native reduce-only close; no reversal position
-            - Trailing profit / deviation: {self.TRAILING_PROFIT_PCT}% / {self.TRAILING_DEVIATION_PCT}%
+            - Trailing stop: arms after {protection.trailing_profit_pct}% profit with {protection.trailing_deviation_pct}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
-            - Autotrade is disabled
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

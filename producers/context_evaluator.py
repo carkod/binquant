@@ -419,13 +419,14 @@ class ContextEvaluator:
         self,
         candles,
         candles_15m,
+        candles_1h=None,
         btc_candles_15m=None,
     ):
         """
         Create all the dataframes needed for the strategies
         - Raw candles 5m
         - Raw candles 15m
-        - Raw candles 1h resampled from 15m
+        - Raw candles 1h, falling back to 15m resampling for older callers
         - Raw BTC candles 15m
 
         Algorithms should consume this data
@@ -437,6 +438,11 @@ class ContextEvaluator:
         self.refresh_grid_only_policy()
         raw_candles_5m = Candles(exchange=self.exchange, candles=candles)
         raw_candles_15m = Candles(exchange=self.exchange, candles=candles_15m)
+        raw_candles_1h = (
+            Candles(exchange=self.exchange, candles=candles_1h)
+            if candles_1h is not None
+            else None
+        )
 
         self.df_5m = raw_candles_5m.pre_process()
         if not self.df_5m.empty and self.df_5m.close.size > 0:
@@ -446,7 +452,11 @@ class ContextEvaluator:
         self.df_15m = raw_candles_15m.pre_process()
         self.df_1h = cast(
             TypedDataFrame[KlineSchema],
-            raw_candles_15m.resample(self.df_15m, interval="1h"),
+            (
+                raw_candles_1h.pre_process()
+                if raw_candles_1h is not None
+                else raw_candles_15m.resample(self.df_15m, interval="1h")
+            ),
         )
 
         if not self.df_15m.empty and self.df_15m.close.size > 0:
@@ -473,7 +483,11 @@ class ContextEvaluator:
                 )
 
             self.df_15m = raw_candles_15m.post_process(self.df_15m)
-            self.df_1h = raw_candles_15m.post_process(self.df_1h)
+            self.df_1h = (
+                raw_candles_1h.post_process(self.df_1h)
+                if raw_candles_1h is not None
+                else raw_candles_15m.post_process(self.df_1h)
+            )
 
             # Dropped NaN values may end up with empty dataframe
             if (
