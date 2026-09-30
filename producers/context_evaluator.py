@@ -4,12 +4,13 @@ import logging
 from asyncio import timeout
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from time import time
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from numpy import isnan
 from numpy import log as logarithm
 from numpy import nan
-from pandas import DataFrame
+from pandas import DataFrame, Series, to_numeric
 from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
     BinanceApi,
@@ -44,11 +45,11 @@ from market_regime.open_interest_order_sizing import (
 )
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
+from shared.macroregime_directional_notifier import MacroregimeDirectionalNotifier
 from shared.utils import format_context_timestamp_line
 from strategies.higher_low_pattern import HigherLowPattern
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.lower_high_pattern import LowerHighPattern
-from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.top_gainer_breadth import TopGainerBreadth
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 from strategies.top_loser_breadth import TopLoserBreadth
@@ -62,6 +63,10 @@ if TYPE_CHECKING:
 
 class ContextEvaluator:
     SIGNAL_PERSISTENCE_TIMEOUT_SECONDS = 2.0
+    REGIME_WINDOW_BARS = 96
+    REGIME_MINIMUM_BARS = 96
+    DIRECTIONAL_EFFICIENCY_THRESHOLD = 0.35
+    OSCILLATION_FULL_INTENSITY_TRAVEL = 0.08
 
     def __init__(
         self,
@@ -86,7 +91,7 @@ class ContextEvaluator:
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         latest_market_context: LiveMarketContext | None = None,
-        last_market_regime: str | None = None,
+        last_macroregime_directional: str | None = None,
         top_gainer_recovery_bots: list[BotModel] | None = None,
         top_gainer_recovery_attempted_source_ids: set[str] | None = None,
     ) -> None:
@@ -144,7 +149,11 @@ class ContextEvaluator:
         # Countdown for Apex Flow score system
         self.first_seen_at = first_seen_at
         self.latest_market_context = latest_market_context
-        self.last_market_regime = last_market_regime
+        self.macroregime_directional: Literal["UP", "DOWN", "NONE"] | None = None
+        self.macroregime_oscillation_intensity: float | None = None
+        self.microregime_directional: Literal["UP", "DOWN", "NONE"] | None = None
+        self.microregime_oscillation_intensity: float | None = None
+        self.last_macroregime_directional = last_macroregime_directional
         self.grid_only_policy = GridOnlyPolicy.disabled("not_evaluated")
         self.at_consumer.grid_only_policy = self.grid_only_policy
         self.signal_context_scorer = SignalContextScorer(
@@ -171,6 +180,118 @@ class ContextEvaluator:
             context if context is not None else self.latest_market_context
         )
         return format_context_timestamp_line(resolved_context)
+
+    @classmethod
+    def assess_directional_and_oscillation(
+        cls,
+        candles: DataFrame,
+    ) -> tuple[Literal["UP", "DOWN", "NONE"] | None, float | None]:
+        """Measure trend direction and non-trending movement over 24 hours.
+
+        Direction is based only on path efficiency: the absolute start-to-end
+        move divided by all close-to-close movement. Oscillation intensity is
+        the inefficient portion of that path, scaled by total movement so a
+        quiet flat market is not mistaken for an active oscillating market.
+        """
+        if "close" not in candles:
+            return None, None
+
+        closes = (
+            candles["close"]
+            .astype(float)
+            .replace([float("inf"), float("-inf")], nan)
+            .dropna()
+            .tail(cls.REGIME_WINDOW_BARS)
+        )
+        if len(closes) < cls.REGIME_MINIMUM_BARS or (closes <= 0).any():
+            return None, None
+
+        log_closes = Series(logarithm(closes.to_numpy()), index=closes.index)
+        log_moves = log_closes.diff().dropna()
+        gross_travel = float(log_moves.abs().sum())
+        if gross_travel == 0:
+            return "NONE", 0.0
+
+        net_move = float(log_closes.iloc[-1] - log_closes.iloc[0])
+        path_efficiency = min(abs(net_move) / gross_travel, 1.0)
+        directional: Literal["UP", "DOWN", "NONE"] = "NONE"
+        if path_efficiency >= cls.DIRECTIONAL_EFFICIENCY_THRESHOLD:
+            directional = "UP" if net_move > 0 else "DOWN"
+
+        movement_intensity = min(
+            gross_travel / cls.OSCILLATION_FULL_INTENSITY_TRAVEL,
+            1.0,
+        )
+        oscillation_intensity = round(
+            movement_intensity * (1.0 - path_efficiency),
+            3,
+        )
+        return directional, oscillation_intensity
+
+    def refresh_regime_measures(self) -> None:
+        """Apply the regime calculation to completed BTC and asset candles."""
+        evaluation_time_ms = time() * 1000
+        completed_btc_candles = self._completed_regime_candles(
+            self.df_btc_15m,
+            evaluation_time_ms,
+        )
+        completed_symbol_candles = self._completed_regime_candles(
+            self.df_15m,
+            evaluation_time_ms,
+        )
+        (
+            self.macroregime_directional,
+            self.macroregime_oscillation_intensity,
+        ) = self.assess_directional_and_oscillation(completed_btc_candles)
+        (
+            self.microregime_directional,
+            self.microregime_oscillation_intensity,
+        ) = self.assess_directional_and_oscillation(completed_symbol_candles)
+
+    @staticmethod
+    def _completed_regime_candles(
+        candles: DataFrame,
+        evaluation_time_ms: float,
+    ) -> DataFrame:
+        if "close_time" not in candles:
+            return candles.iloc[0:0]
+        close_times = to_numeric(candles["close_time"], errors="coerce")
+        return candles.loc[close_times < evaluation_time_ms]
+
+    def regime_measures(self) -> dict[str, str | float | None]:
+        """Return the shared macro/micro regime payload used by strategies."""
+        return {
+            "macroregime_directional": self.macroregime_directional,
+            "macroregime_oscillation_intensity": (
+                self.macroregime_oscillation_intensity
+            ),
+            "microregime_directional": self.microregime_directional,
+            "microregime_oscillation_intensity": (
+                self.microregime_oscillation_intensity
+            ),
+        }
+
+    def regime_telegram_lines(self) -> str:
+        """Render the four shared regime measures for strategy notifications."""
+
+        def display(value: str | float | None) -> str:
+            if value is None:
+                return "UNAVAILABLE"
+            if isinstance(value, float):
+                return str(round_numbers(value, 3))
+            return value
+
+        return "\n".join(
+            (
+                f"- Macro directional (BTC): {display(self.macroregime_directional)}",
+                "- Macro oscillation intensity (BTC): "
+                f"{display(self.macroregime_oscillation_intensity)}",
+                f"- Micro directional ({self.symbol}): "
+                f"{display(self.microregime_directional)}",
+                f"- Micro oscillation intensity ({self.symbol}): "
+                f"{display(self.microregime_oscillation_intensity)}",
+            )
+        )
 
     def days(self, secs):
         return secs * 86400
@@ -246,7 +367,7 @@ class ContextEvaluator:
         """
         Initialize the temporarily enabled 15m algorithms.
         """
-        self.market_regime_notifier = MarketRegimeNotifier(cls=self)
+        self.macroregime_directional_notifier = MacroregimeDirectionalNotifier(cls=self)
         self.top_gainer_breadth = TopGainerBreadth(cls=self)
         self.top_loser_breadth = TopLoserBreadth(cls=self)
         self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
@@ -351,9 +472,8 @@ class ContextEvaluator:
                 )
             else:
                 direction = value.direction or "grid"
-            regime = (
-                context.market_regime if context and context.market_regime else None
-            )
+            regime_value = self.regime_measures()["macroregime_directional"]
+            regime = regime_value if isinstance(regime_value, str) else None
 
             merged_indicators: dict[str, Any] = dict(indicators or {})
             if bot_params is not None and bot_params.market_type == MarketType.FUTURES:
@@ -379,6 +499,8 @@ class ContextEvaluator:
                 merged_indicators.setdefault("current_price", value.current_price)
             if value.score:
                 merged_indicators.setdefault("score", value.score)
+            for key, regime_value in self.regime_measures().items():
+                merged_indicators.setdefault(key, regime_value)
 
             async with timeout(self.SIGNAL_PERSISTENCE_TIMEOUT_SECONDS):
                 signal = await self.binbot_api.create_signal(
@@ -486,6 +608,8 @@ class ContextEvaluator:
                     df_pct_change[-1:].iloc[0] if not df_pct_change.empty else 0.0
                 )
 
+            self.refresh_regime_measures()
+
             self.df_15m = raw_candles_15m.post_process(self.df_15m)
             self.df_1h = (
                 raw_candles_1h.post_process(self.df_1h)
@@ -546,10 +670,12 @@ class ContextEvaluator:
                 )
 
             await self._safe_signal(
-                "MarketRegimeNotifier",
-                self.market_regime_notifier.signal(),
+                "MacroregimeDirectionalNotifier",
+                self.macroregime_directional_notifier.signal(),
             )
-            self.last_market_regime = self.market_regime_notifier.last_market_regime
+            self.last_macroregime_directional = (
+                self.macroregime_directional_notifier.last_macroregime_directional
+            )
 
             await self._safe_signal(
                 "LowerHighPattern",

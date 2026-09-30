@@ -35,7 +35,7 @@ class LowerHighPattern:
     MIN_RISE_PCT = 2.0
     # Minimum drop (%) of the second peak below the first: filters out
     # peaks that are equal within noise (which would just be a double top).
-    MIN_DROP_PCT = 0.5
+    MIN_DROP_PCT = 2.5
     ALERT_COOLDOWN_MINUTES = 240
 
     def __init__(self, cls: "ContextEvaluator") -> None:
@@ -174,6 +174,7 @@ class LowerHighPattern:
             - Rise into first peak: {round(pattern["rise_pct"], 2)}% from swing low {round(pattern["swing_low"], self.price_precision)}
             - Current price: {round(current_price, self.price_precision)}
             - Evaluation time: {evaluation_time.strftime("%Y-%m-%d %H:%M:%S UTC")}
+            {self.ti.regime_telegram_lines()}
             - Interpretation: upward momentum is fading; watch for a reversal or a consolidation range
             - Autotrade: disabled, notification only
             """

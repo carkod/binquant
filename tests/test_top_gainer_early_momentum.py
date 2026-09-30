@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -174,6 +174,7 @@ def make_context(
     df_15m: DataFrame,
     latest_market_context: LiveMarketContext,
     gainers_losers_series: list[GainersLosersSnapshot] | None = None,
+    microregime_directional: str = "UP",
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="test"),
@@ -183,6 +184,19 @@ def make_context(
         symbol="TESTUSDTM",
         market_type=MarketType.FUTURES,
         df_15m=df_15m,
+        macroregime_directional="UP",
+        macroregime_oscillation_intensity=0.2,
+        microregime_directional=microregime_directional,
+        microregime_oscillation_intensity=0.3,
+        regime_measures=Mock(
+            return_value={
+                "macroregime_directional": "UP",
+                "macroregime_oscillation_intensity": 0.2,
+                "microregime_directional": microregime_directional,
+                "microregime_oscillation_intensity": 0.3,
+            }
+        ),
+        regime_telegram_lines=Mock(return_value="- Regime measures: test"),
         binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
@@ -262,6 +276,7 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
     assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
     assert "Signal route: confirmed_top_gainer_long" in telegram_msg
     assert "Max margin: 8.0 USDT" in telegram_msg
+    assert "Regime measures: test" in telegram_msg
     assert signal_value.autotrade is False
     assert signal_value.bot_params.position == "long"
     assert signal_value.bot_params.fiat_order_size == 8.0
@@ -527,13 +542,13 @@ async def test_signal_persists_symbol_specific_risk_rejection_once_per_candle(
     assert indicators["risk_reason"] == "relative_strength_vs_btc_not_positive"
     assert indicators["relative_strength_vs_btc_horizon"] == 0.0
     assert indicators["symbol_atr_pct"] == 0.025
-    assert indicators["symbol_micro_regime_transition"] == "BREAKOUT_UP"
+    assert indicators["microregime_directional"] == "UP"
     context.dispatch_signal_record.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_signal_rejects_confirmed_volatility_expansion(monkeypatch):
+async def test_signal_rejects_microregime_directional_down(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     df = make_breakout_candles()
     market_context = make_market_context(
@@ -546,6 +561,7 @@ async def test_signal_rejects_confirmed_volatility_expansion(monkeypatch):
     context = make_context(
         df_15m=df,
         latest_market_context=market_context,
+        microregime_directional="DOWN",
     )
 
     await TopGainerEarlyMomentum(cast(Any, context)).signal(
@@ -559,11 +575,13 @@ async def test_signal_rejects_confirmed_volatility_expansion(monkeypatch):
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
     payload = context.binbot_api.dispatch_create_signal.call_args.kwargs
     assert payload["signal_kind"] == "risk_rejection"
-    assert payload["indicators"]["risk_reason"] == "symbol_transition_not_long"
+    assert payload["indicators"]["risk_reason"] == "microregime_directional_down"
 
 
 @pytest.mark.asyncio
-async def test_symbol_downtrend_remains_blocked(monkeypatch):
+async def test_legacy_symbol_regime_does_not_override_new_directional_measure(
+    monkeypatch,
+):
     monkeypatch.setenv("ENV", "staging")
     df = make_breakout_candles()
     market_context = make_market_context(
@@ -587,10 +605,9 @@ async def test_symbol_downtrend_remains_blocked(monkeypatch):
         bb_low=98.0,
     )
 
-    context.dispatch_signal_record.assert_not_called()
-    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
-    payload = context.binbot_api.dispatch_create_signal.call_args.kwargs
-    assert payload["indicators"]["risk_reason"] == "symbol_trend_down"
+    context.dispatch_signal_record.assert_awaited_once()
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
+    context.binbot_api.dispatch_create_signal.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -609,14 +626,9 @@ async def test_symbol_downtrend_remains_blocked(monkeypatch):
             ),
             "symbol_atr_too_high",
         ),
-        (
-            make_market_context(),
-            make_symbol_features(micro_regime_transition="BREAKDOWN"),
-            "symbol_transition_not_long",
-        ),
     ],
 )
-def test_risk_profile_preserves_stress_atr_and_bearish_transition_guards(
+def test_risk_profile_preserves_stress_and_atr_guards(
     context: LiveMarketContext,
     features: SymbolMarketFeatures,
     expected_reason: str,
@@ -625,6 +637,14 @@ def test_risk_profile_preserves_stress_atr_and_bearish_transition_guards(
         context=context,
         features=features,
     ) == (False, expected_reason)
+
+
+def test_risk_profile_blocks_new_micro_directional_down_measure() -> None:
+    assert TopGainerEarlyMomentum._risk_profile_allows(
+        context=make_market_context(),
+        features=make_symbol_features(),
+        microregime_directional="DOWN",
+    ) == (False, "microregime_directional_down")
 
 
 @pytest.mark.asyncio
@@ -801,11 +821,14 @@ def test_confirmation_requires_second_close_to_retain_momentum() -> None:
     ) == (False, "second_confirmation_did_not_retain_momentum")
 
 
-def make_top_gainer_snapshots() -> list[GainersLosersSnapshot]:
+def make_top_gainer_snapshots(
+    *,
+    recorded_at: datetime | None = None,
+) -> list[GainersLosersSnapshot]:
     return [
         GainersLosersSnapshot(
             source="kucoin_futures",
-            recorded_at="2026-08-26T11:11:34.771019+01:00",
+            recorded_at=(recorded_at or datetime.now(UTC)).isoformat(),
             top_gainers=[
                 GainerLoserEntry(symbol="TESTUSDTM", price_change_percent=181.88)
             ],
@@ -833,3 +856,26 @@ async def test_signal_rejects_symbol_already_on_top_gainer_list(monkeypatch):
     context.dispatch_signal_record.assert_not_awaited()
     context.telegram_consumer.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_top_gainer_snapshot_does_not_suppress_signal(monkeypatch):
+    monkeypatch.setenv("ENV", "production")
+    context = make_context(
+        df_15m=make_breakout_candles(),
+        latest_market_context=make_market_context(),
+        gainers_losers_series=make_top_gainer_snapshots(
+            recorded_at=datetime.now(UTC) - timedelta(minutes=76)
+        ),
+    )
+
+    await TopGainerEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(context.df_15m.close.iloc[-1]),
+        bb_high=115.0,
+        bb_mid=106.0,
+        bb_low=98.0,
+    )
+
+    context.dispatch_signal_record.assert_awaited_once()
+    context.telegram_consumer.dispatch_signal.assert_called_once()
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()

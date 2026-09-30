@@ -72,6 +72,7 @@ def make_algo(
         price_precision=price_precision,
         strategy_cooldowns=strategy_cooldowns,
         df_15m=df,
+        regime_telegram_lines=Mock(return_value="- Regime measures: test"),
     )
     return LowerHighPattern(cast(Any, cls))
 
@@ -87,6 +88,7 @@ async def test_lower_high_pattern_emits_on_confirmed_lower_high():
     assert "lower high" in msg
     assert "140" in msg
     assert "136" in msg
+    assert "Regime measures: test" in msg
     assert "Autotrade: disabled" in msg
 
 
@@ -100,12 +102,19 @@ async def test_lower_high_pattern_skips_when_second_peak_is_higher():
 
 
 @pytest.mark.asyncio
-async def test_lower_high_pattern_skips_sub_half_percent_drop():
-    algo = make_algo(make_lower_high_df(second_peak_high=139.4), strategy_cooldowns={})
+async def test_lower_high_pattern_skips_sub_two_and_half_percent_drop():
+    algo = make_algo(make_lower_high_df(second_peak_high=136.6), strategy_cooldowns={})
 
     await algo.signal()
 
     algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+
+
+def test_lower_high_pattern_accepts_two_and_half_percent_drop_boundary():
+    pattern = LowerHighPattern.detect(make_lower_high_df(second_peak_high=136.5))
+
+    assert pattern is not None
+    assert pattern["drop_pct"] == pytest.approx(2.5)
 
 
 @pytest.mark.asyncio

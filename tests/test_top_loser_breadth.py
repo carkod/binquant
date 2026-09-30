@@ -250,6 +250,7 @@ def make_context(
         ),
         strategy_cooldowns={},
         latest_market_context=None,
+        regime_telegram_lines=Mock(return_value="- Regime measures: test"),
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
     )
@@ -326,6 +327,7 @@ async def test_signal_emits_protected_long_for_complete_bullish_setup() -> None:
     assert indicators["stop_loss_price_at_signal"] == 83.79
     assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
     assert value.score == 2.0
+    context.regime_telegram_lines.assert_called_once()
     # Default fixtures are far shorter than BTC_BETA_WINDOW_BARS: beta is
     # unavailable, not a bug, and must not block the signal.
     assert indicators["btc_beta"] is None

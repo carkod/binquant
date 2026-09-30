@@ -72,6 +72,7 @@ def make_algo(
         price_precision=price_precision,
         strategy_cooldowns=strategy_cooldowns,
         df_15m=df,
+        regime_telegram_lines=Mock(return_value="- Regime measures: test"),
     )
     return HigherLowPattern(cast(Any, cls))
 
@@ -87,6 +88,7 @@ async def test_higher_low_pattern_emits_on_confirmed_higher_low():
     assert "higher low" in msg
     assert "100" in msg
     assert "104" in msg
+    assert "Regime measures: test" in msg
     assert "Autotrade: disabled" in msg
 
 
