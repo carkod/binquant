@@ -65,6 +65,27 @@ def make_btc_df(*, downtrend: bool = True) -> pd.DataFrame:
     return pd.DataFrame({"close": closes})
 
 
+def make_weekly_structure_df() -> pd.DataFrame:
+    candle_count = 7 * 24
+    first_open_time = int((NOW - timedelta(hours=candle_count + 1)).timestamp() * 1000)
+    highs = [95.0] * candle_count
+    lows = [85.0] * candle_count
+    highs[0] = 96.0
+    lows[1] = 84.0
+    open_times = [
+        first_open_time + index * 60 * 60 * 1000 for index in range(candle_count)
+    ]
+    return pd.DataFrame(
+        {
+            "high": highs,
+            "low": lows,
+            "close": [90.0] * candle_count,
+            "open_time": open_times,
+            "close_time": [open_time + 60 * 60 * 1000 - 1 for open_time in open_times],
+        }
+    )
+
+
 def make_lower_high_df(*, fresh: bool = True) -> pd.DataFrame:
     highs = [100.0 + index for index in range(30)]
     highs.extend([140.0, 132.0, 124.0, 120.0, 125.0, 130.0, 133.0, 136.0, 130.0, 124.0])
@@ -150,6 +171,7 @@ def make_context(
     symbol_rank: int = 4,
     market_type: MarketType = MarketType.FUTURES,
     gainers: list[GainersLosersSnapshot] | None = None,
+    weekly_df: pd.DataFrame | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="production"),
@@ -175,6 +197,7 @@ def make_context(
         market_breadth_data=breadth or make_market_breadth(),
         df_btc_15m=btc_df if btc_df is not None else make_btc_df(),
         df_15m=symbol_df if symbol_df is not None else make_lower_high_df(),
+        df_1h=weekly_df if weekly_df is not None else make_weekly_structure_df(),
         gainers_losers_series=(
             gainers
             if gainers is not None
@@ -235,11 +258,11 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.direction == "SHORT"
     assert value.bot_params.name == "top_gainer_breadth"
     assert value.bot_params.position == "short"
-    assert value.bot_params.stop_loss == 4.0
-    assert value.bot_params.dynamic_trailing is True
+    assert value.bot_params.stop_loss == 6.9333
+    assert value.bot_params.dynamic_trailing is False
     assert value.bot_params.trailing is True
-    assert value.bot_params.trailing_profit == 3.5
-    assert value.bot_params.trailing_deviation == 2.5
+    assert value.bot_params.trailing_profit == 4.5
+    assert value.bot_params.trailing_deviation == 3.0
     assert value.bot_params.margin_short_reversal is False
     assert value.bot_params.recovery_params is None
     assert "recovery_params" in value.bot_params.model_fields_set
@@ -251,15 +274,18 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["btc_close_15m"] == pytest.approx(101.0)
     assert indicators["lower_high_first_peak"] == 140.0
     assert indicators["lower_high_second_peak"] == 136.0
-    assert indicators["stop_loss_source"] == "max_stop_loss_cap"
-    assert indicators["stop_loss_price_at_signal"] == 93.6
+    assert indicators["weekly_resistance"] == 96.0
+    assert indicators["weekly_support"] == 84.0
+    assert indicators["weekly_structure_candles"] == 168
+    assert indicators["stop_loss_source"] == "weekly_resistance"
+    assert indicators["stop_loss_price_at_signal"] == 96.24
     assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
     assert value.score == 2.0
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
 
 @pytest.mark.asyncio
-async def test_signal_uses_upper_bollinger_stop_when_inside_cap() -> None:
+async def test_signal_uses_weekly_resistance_independent_of_bollinger_band() -> None:
     context = make_context()
 
     await TopGainerBreadth(cast(Any, context)).signal(
@@ -271,9 +297,14 @@ async def test_signal_uses_upper_bollinger_stop_when_inside_cap() -> None:
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert value.bot_params.stop_loss == 2.2222
-    assert indicators["stop_loss_source"] == "upper_bollinger_band"
-    assert indicators["stop_loss_price_at_signal"] == 91.9999
+    assert value.bot_params.stop_loss == 6.9333
+    assert indicators["stop_loss_source"] == "weekly_resistance"
+    assert indicators["stop_loss_price_at_signal"] == 96.24
+
+    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Stop loss: 0.25% above weekly resistance at 96.24 (6.9333%)" in msg
+    assert "Trailing stop: arms after 4.5% profit with 3.0% deviation" in msg
+    assert "Autotrade is disabled; notification only" in msg
 
 
 @pytest.mark.asyncio
@@ -408,8 +439,8 @@ async def test_signal_accepts_eleventh_ranked_gainer() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_requires_upper_band_above_short_entry() -> None:
-    context = make_context()
+async def test_signal_requires_seven_days_of_completed_hourly_candles() -> None:
+    context = make_context(weekly_df=make_weekly_structure_df().iloc[:-1])
 
     await TopGainerBreadth(cast(Any, context)).signal(90.0, 89.0, 88.0, 85.0)
 

@@ -50,7 +50,9 @@ from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.lower_high_pattern import LowerHighPattern
 from strategies.market_regime_notifier import MarketRegimeNotifier
 from strategies.top_gainer_breadth import TopGainerBreadth
+from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 from strategies.top_loser_breadth import TopLoserBreadth
+from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
 if TYPE_CHECKING:
     from strategies.activity_burst.activity_burst_anomaly_gate import (
@@ -247,6 +249,8 @@ class ContextEvaluator:
         self.market_regime_notifier = MarketRegimeNotifier(cls=self)
         self.top_gainer_breadth = TopGainerBreadth(cls=self)
         self.top_loser_breadth = TopLoserBreadth(cls=self)
+        self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
+        self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
         self.lower_high_pattern = LowerHighPattern(cls=self)
         self.higher_low_pattern = HigherLowPattern(cls=self)
 
@@ -419,13 +423,14 @@ class ContextEvaluator:
         self,
         candles,
         candles_15m,
+        candles_1h=None,
         btc_candles_15m=None,
     ):
         """
         Create all the dataframes needed for the strategies
         - Raw candles 5m
         - Raw candles 15m
-        - Raw candles 1h resampled from 15m
+        - Raw candles 1h, falling back to 15m resampling for older callers
         - Raw BTC candles 15m
 
         Algorithms should consume this data
@@ -437,6 +442,11 @@ class ContextEvaluator:
         self.refresh_grid_only_policy()
         raw_candles_5m = Candles(exchange=self.exchange, candles=candles)
         raw_candles_15m = Candles(exchange=self.exchange, candles=candles_15m)
+        raw_candles_1h = (
+            Candles(exchange=self.exchange, candles=candles_1h)
+            if candles_1h is not None
+            else None
+        )
 
         self.df_5m = raw_candles_5m.pre_process()
         if not self.df_5m.empty and self.df_5m.close.size > 0:
@@ -446,7 +456,11 @@ class ContextEvaluator:
         self.df_15m = raw_candles_15m.pre_process()
         self.df_1h = cast(
             TypedDataFrame[KlineSchema],
-            raw_candles_15m.resample(self.df_15m, interval="1h"),
+            (
+                raw_candles_1h.pre_process()
+                if raw_candles_1h is not None
+                else raw_candles_15m.resample(self.df_15m, interval="1h")
+            ),
         )
 
         if not self.df_15m.empty and self.df_15m.close.size > 0:
@@ -473,7 +487,11 @@ class ContextEvaluator:
                 )
 
             self.df_15m = raw_candles_15m.post_process(self.df_15m)
-            self.df_1h = raw_candles_15m.post_process(self.df_1h)
+            self.df_1h = (
+                raw_candles_1h.post_process(self.df_1h)
+                if raw_candles_1h is not None
+                else raw_candles_15m.post_process(self.df_1h)
+            )
 
             # Dropped NaN values may end up with empty dataframe
             if (
@@ -500,6 +518,26 @@ class ContextEvaluator:
                 await self._safe_signal(
                     "TopLoserBreadth",
                     self.top_loser_breadth.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
+
+                await self._safe_signal(
+                    "TopGainerEarlyMomentum",
+                    self.top_gainer_early_momentum.signal(
+                        current_price=close_price,
+                        bb_high=spreads.bb_high,
+                        bb_mid=spreads.bb_mid,
+                        bb_low=spreads.bb_low,
+                    ),
+                )
+
+                await self._safe_signal(
+                    "TopLoserEarlyMomentum",
+                    self.top_loser_early_momentum.signal(
                         current_price=close_price,
                         bb_high=spreads.bb_high,
                         bb_mid=spreads.bb_mid,

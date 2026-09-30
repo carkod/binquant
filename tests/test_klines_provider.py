@@ -1,13 +1,14 @@
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import pytest
 from consumers.klines_provider import KlinesProvider
 from market_regime.models import LiveMarketContext
 from pybinbot import (
     AutotradeSettingsSchema,
+    BinanceKlineIntervals,
     KucoinKlineIntervals,
     GainerLoserEntry,
     GainersLosersSnapshot,
@@ -146,6 +147,37 @@ class TestKlinesProvider:
         assert len(history) == 1
         assert int(history.iloc[-1]["timestamp"]) == 2999
         assert float(history.iloc[-1]["close"]) == 1.1
+
+
+def test_refresh_symbol_histories_fetches_a_full_week_of_hourly_candles() -> None:
+    provider = cast(Any, object.__new__(KlinesProvider))
+    provider.api = SimpleNamespace(get_ui_klines=Mock(return_value=[]))
+    provider.interval = BinanceKlineIntervals.five_minutes
+    provider.interval_15m = BinanceKlineIntervals.fifteen_minutes
+    provider.interval_1h = BinanceKlineIntervals.one_hour
+    provider._refresh_btc_candles_15m = Mock()
+    provider._sync_market_state_from_ui_klines = Mock(return_value=[])
+    provider._store_btc_history = Mock()
+
+    provider._refresh_symbol_histories("TESTUSDT", MarketType.SPOT)
+
+    assert provider.api.get_ui_klines.call_args_list == [
+        call(
+            symbol="TESTUSDT",
+            interval=BinanceKlineIntervals.five_minutes.value,
+            limit=KlinesProvider.LIMIT,
+        ),
+        call(
+            symbol="TESTUSDT",
+            interval=BinanceKlineIntervals.fifteen_minutes.value,
+            limit=KlinesProvider.LIMIT,
+        ),
+        call(
+            symbol="TESTUSDT",
+            interval=BinanceKlineIntervals.one_hour.value,
+            limit=KlinesProvider.WEEKLY_STRUCTURE_HISTORY_LIMIT,
+        ),
+    ]
 
 
 def test_recovery_bot_snapshot_refreshes_once_per_bucket() -> None:

@@ -446,6 +446,8 @@ async def test_process_data_keeps_removed_5m_strategies_disabled(
                 "HigherLowPattern",
                 "TopGainerBreadth",
                 "TopLoserBreadth",
+                "TopGainerEarlyMomentum",
+                "TopLoserEarlyMomentum",
             },
             id="production-runs-temporary-strategy-allowlist",
         ),
@@ -545,6 +547,9 @@ async def test_process_data_runs_environment_strategy_allowlist(
         )
         evaluator.top_loser_breadth = SimpleNamespace(
             signal=strategy_signals["TopLoserBreadth"]
+        )
+        evaluator.top_loser_early_momentum = SimpleNamespace(
+            signal=strategy_signals["TopLoserEarlyMomentum"]
         )
 
     evaluator.load_5m_algorithms = load_5m_algorithms

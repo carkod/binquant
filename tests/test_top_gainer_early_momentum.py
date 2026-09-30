@@ -260,9 +260,9 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
 
     assert "Breakout setup: top_gainer_breakout_ignition" in telegram_msg
     assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
-    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
+    assert "Signal route: confirmed_top_gainer_long" in telegram_msg
     assert "Max margin: 8.0 USDT" in telegram_msg
-    assert signal_value.autotrade is True
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.position == "long"
     assert signal_value.bot_params.fiat_order_size == 8.0
     assert signal_value.bot_params.stop_loss > 0
@@ -311,7 +311,7 @@ async def test_unreliable_entry_candles_retry_before_signal_is_marked_emitted(
 
 
 @pytest.mark.asyncio
-async def test_signal_autotrades_outside_staging(monkeypatch):
+async def test_signal_remains_notification_only_outside_staging(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     df = make_breakout_candles()
     algo = TopGainerEarlyMomentum(
@@ -354,9 +354,9 @@ async def test_signal_autotrades_outside_staging(monkeypatch):
     assert await_args is not None
     signal_value = await_args.args[0]
 
-    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
-    assert "Autotrade is enabled" in telegram_msg
-    assert signal_value.autotrade is True
+    assert "Signal route: confirmed_top_gainer_long" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.fiat_order_size == 2.0
 
 
@@ -801,105 +801,35 @@ def test_confirmation_requires_second_close_to_retain_momentum() -> None:
     ) == (False, "second_confirmation_did_not_retain_momentum")
 
 
-def make_top_gainer_snapshots(count: int) -> list[GainersLosersSnapshot]:
+def make_top_gainer_snapshots() -> list[GainersLosersSnapshot]:
     return [
         GainersLosersSnapshot(
             source="kucoin_futures",
-            recorded_at=f"2026-08-26T{11 - index:02d}:11:34.771019+01:00",
+            recorded_at="2026-08-26T11:11:34.771019+01:00",
             top_gainers=[
                 GainerLoserEntry(symbol="TESTUSDTM", price_change_percent=181.88)
             ],
             top_losers=[],
         )
-        for index in range(count)
     ]
 
 
-async def run_signal_with_streak(
-    monkeypatch, snapshot_count: int, df: DataFrame
-) -> tuple[str, dict]:
+@pytest.mark.asyncio
+async def test_signal_rejects_symbol_already_on_top_gainer_list(monkeypatch):
+    monkeypatch.setenv("ENV", "production")
     context = make_context(
-        df_15m=df,
+        df_15m=make_breakout_candles(),
         latest_market_context=make_market_context(),
-        gainers_losers_series=make_top_gainer_snapshots(snapshot_count),
+        gainers_losers_series=make_top_gainer_snapshots(),
     )
-    algo = TopGainerEarlyMomentum(cast(Any, context))
-    send_signal_mock = Mock()
-    record_mock = AsyncMock()
-    algo.telegram_consumer = cast(
-        Any, SimpleNamespace(dispatch_signal=send_signal_mock)
-    )
-    algo.at_consumer = cast(
-        Any,
-        SimpleNamespace(
-            autotrade_settings=AutotradeSettingsSchema(
-                fiat="USDT",
-                base_order_size=6.0,
-            ),
-            futures_reliable_candles_available=Mock(return_value=True),
-            process_autotrade_restrictions=AsyncMock(),
-        ),
-    )
-    monkeypatch.setattr(algo.ti, "dispatch_signal_record", record_mock)
 
-    await algo.signal(
-        current_price=float(df.close.iloc[-1]),
+    await TopGainerEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(context.df_15m.close.iloc[-1]),
         bb_high=115.0,
         bb_mid=106.0,
         bb_low=98.0,
     )
 
-    send_signal_mock.assert_called_once()
-    record_mock.assert_called_once()
-    return (
-        send_signal_mock.call_args.args[0],
-        record_mock.call_args.kwargs["indicators"],
-    )
-
-
-@pytest.mark.asyncio
-async def test_sustained_top_gainer_enters_on_the_breakout_candle(monkeypatch):
-    """
-    A coin holding a top-gainer slot for hours has already evidenced the
-    continuation the two-close confirmation exists to establish, so the
-    breakout candle itself is the entry.
-    """
-    monkeypatch.setenv("ENV", "production")
-    # Truncating the two confirmation bars leaves the breakout as the latest
-    # completed candle -- the fast path fires two bars earlier than the
-    # two-close path, which is the whole point of it.
-    df = make_breakout_candles().iloc[:-2]
-
-    telegram_msg, indicators = await run_signal_with_streak(
-        monkeypatch,
-        TopGainerEarlyMomentum.MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS,
-        df,
-    )
-
-    assert "Entry setup: sustained_top_gainer_breakout" in telegram_msg
-    assert "Autotrade route: sustained_top_gainer_long" in telegram_msg
-    assert "Top-gainer tape: 3 snapshots in a row" in telegram_msg
-    # No confirmation bars were consumed: the breakout IS the latest candle.
-    assert indicators["breakout_open_time"] == int(df["open_time"].iloc[-1])
-    assert indicators["first_confirmation_close"] is None
-    assert indicators["top_gainer_snapshots_in_a_row"] == 3
-
-
-@pytest.mark.asyncio
-async def test_streak_below_threshold_still_requires_two_close_confirmation(
-    monkeypatch,
-):
-    monkeypatch.setenv("ENV", "production")
-    df = make_breakout_candles()
-
-    telegram_msg, indicators = await run_signal_with_streak(
-        monkeypatch,
-        TopGainerEarlyMomentum.MIN_SUSTAINED_TOP_GAINER_SNAPSHOTS - 1,
-        df,
-    )
-
-    assert "Entry setup: top_gainer_breakout_two_close_confirmation" in telegram_msg
-    assert "Autotrade route: confirmed_top_gainer_long" in telegram_msg
-    # The breakout sits three bars back, with two confirmation bars after it.
-    assert indicators["breakout_open_time"] == int(df["open_time"].iloc[-3])
-    assert indicators["first_confirmation_close"] == float(df["close"].iloc[-2])
+    context.dispatch_signal_record.assert_not_awaited()
+    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()

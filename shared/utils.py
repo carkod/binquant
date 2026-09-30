@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from time import sleep
 from typing import Any
 
+from pandas import Series, concat, to_numeric
 from pybinbot import ExchangeId, MarketType
 from requests import Response
 
@@ -21,6 +22,36 @@ def safe_pct(current: float, previous: float) -> float:
     if previous == 0:
         return 0.0
     return (float(current) - float(previous)) / abs(float(previous))
+
+
+def latest_beta(
+    asset_closes: Series,
+    benchmark_closes: Series,
+    *,
+    window: int,
+    min_periods: int,
+) -> float | None:
+    """Return the latest rolling asset beta against a benchmark."""
+    returns = concat(
+        [
+            to_numeric(asset_closes, errors="coerce").pct_change(),
+            to_numeric(benchmark_closes, errors="coerce").pct_change(),
+        ],
+        axis=1,
+        join="inner",
+    )
+    returns.columns = ["asset", "benchmark"]
+    returns = returns.dropna()
+    if len(returns) < min_periods:
+        return None
+
+    latest_returns = returns.tail(window)
+    benchmark_variance = latest_returns["benchmark"].var()
+    if benchmark_variance == 0:
+        return None
+    return float(
+        latest_returns["asset"].cov(latest_returns["benchmark"]) / benchmark_variance
+    )
 
 
 def normalize_timestamp(value: Any) -> datetime:
