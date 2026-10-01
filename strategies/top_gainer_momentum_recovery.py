@@ -506,7 +506,7 @@ class TopGainerMomentumRecovery:
         }
         value = SignalsConsumer(
             direction=Position.long.value.upper(),
-            autotrade=True,
+            autotrade=False,
             current_price=float(current_price),
             volume=float(setup["volume"]),
             score=round_numbers(1 + float(setup["relative_strength_1h"]), 4),
@@ -549,7 +549,7 @@ class TopGainerMomentumRecovery:
             - Max margin: {value.bot_params.fiat_order_size} {quote_asset}
             - Stop loss: {self.STOP_LOSS_PCT}%
             - Trailing activation / deviation: {self.TRAILING_PROFIT_PCT}% / {self.TRAILING_DEVIATION_PCT}%
-            - Autotrade is enabled
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

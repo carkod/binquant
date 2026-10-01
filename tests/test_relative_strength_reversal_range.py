@@ -140,7 +140,7 @@ def make_evaluator(
 
 
 @pytest.mark.asyncio
-async def test_emits_long_when_range_market_sells_off_and_symbol_leads():
+async def test_relative_strength_reversal_range_never_requests_autotrade():
     df = make_df(latest_volume=500.0)
     context = make_market_context()
     evaluator = make_evaluator(df, context)
@@ -158,8 +158,8 @@ async def test_emits_long_when_range_market_sells_off_and_symbol_leads():
     evaluator.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
     telegram_msg = evaluator.telegram_consumer.dispatch_signal.call_args.args[0]
-    assert "Autotrade route: range_rs_reversal" in telegram_msg
-    assert "Autotrade is disabled" in telegram_msg
+    assert "Regime route: range_rs_reversal" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
     assert "LONG ENTRY" in telegram_msg
 
     signal_value = evaluator.dispatch_signal_record.call_args.kwargs["value"]

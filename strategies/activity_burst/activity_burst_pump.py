@@ -180,18 +180,15 @@ class ActivityBurstPump:
             return None
 
         algo = "activity_burst_pump"
-        autotrade = False
         bot_strategy = Position.long
         base_asset = self.current_symbol_data.base_asset
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        autotrade_route = "market_context_unavailable"
 
-        if context is not None:
-            if not allows_long_autotrade(context=context, symbol=self.symbol):
-                return
-            autotrade = bot_strategy == Position.long
-            autotrade_route = "long_autotrade_allowed"
+        if context is not None and not allows_long_autotrade(
+            context=context, symbol=self.symbol
+        ):
+            return
 
         df = self.compute_indicators(df)
         row = df.iloc[-1]
@@ -207,16 +204,8 @@ class ActivityBurstPump:
                 "Activity-burst anomaly evaluation failed for %s.", self.symbol
             )
             anomaly_evaluation = None
-        if anomaly_evaluation is None:
-            autotrade = False
-            autotrade_route = "anomaly_gate_unavailable"
-        else:
+        if anomaly_evaluation is not None:
             anomaly_indicators = anomaly_evaluation.as_indicators()
-            if anomaly_evaluation.gate_passed:
-                autotrade_route = "anomaly_gate_confirmed"
-            else:
-                autotrade = False
-                autotrade_route = "anomaly_gate_rejected"
 
         positioning = symbol_features.derivatives if symbol_features else None
         derivatives_block_reason = activity_burst_derivatives_block_reason(positioning)
@@ -272,14 +261,13 @@ class ActivityBurstPump:
             - PCA anomaly percentile: {round_numbers(float(anomaly_indicators.get("activity_burst_anomaly_pca_percentile", 0.0)) * 100, 2) if anomaly_indicators else "UNAVAILABLE"}%
             - Isolation Forest anomaly percentile: {round_numbers(float(anomaly_indicators.get("activity_burst_anomaly_isolation_forest_percentile", 0.0)) * 100, 2) if anomaly_indicators else "UNAVAILABLE"}%
             - Volume: {round_numbers(float(row["volume"]), decimals=self.price_precision)} {base_asset}
-            - Autotrade route: {autotrade_route}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
         value = SignalsConsumer(
-            autotrade=autotrade,
+            autotrade=False,
             current_price=current_price,
             bot_params=BotBase(
                 pair=self.symbol,
@@ -298,7 +286,6 @@ class ActivityBurstPump:
             indicators={
                 "activity_burst_score": score,
                 "activity_burst_score_threshold": score_threshold,
-                "activity_burst_autotrade_route": autotrade_route,
                 **anomaly_indicators,
             },
         )

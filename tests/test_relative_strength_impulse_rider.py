@@ -140,7 +140,7 @@ async def test_signal_waits_for_completed_bullish_retest_reclaim(monkeypatch):
     signal = context.at_consumer.process_autotrade_restrictions.await_args.args[0]
     indicators = context.dispatch_signal_record.call_args.kwargs["indicators"]
 
-    assert signal.autotrade is True
+    assert signal.autotrade is False
     assert signal.bot_params.name == "relative_strength_impulse_rider"
     assert signal.bot_params.position == "long"
     assert signal.bot_params.fiat_order_size == 8.0
@@ -286,11 +286,8 @@ def test_features_reject_invalid_trigger_or_confirmation(mutate, reason):
 
 
 @pytest.mark.asyncio
-async def test_signal_autotrades_in_production(monkeypatch):
-    """
-    Staging holds too little balance to ever open a position, so this
-    strategy autotrades in production rather than shadowing there.
-    """
+async def test_relative_strength_impulse_rider_never_requests_autotrade(monkeypatch):
+    """The strategy is notification only, even in production."""
     monkeypatch.setenv("ENV", "production")
     context = make_context()
     algo = RelativeStrengthImpulseRider(cast(Any, context))
@@ -300,4 +297,7 @@ async def test_signal_autotrades_in_production(monkeypatch):
     await algo.signal(109.2, 112.0, 105.0, 98.0)
 
     signal = context.at_consumer.process_autotrade_restrictions.await_args.args[0]
-    assert signal.autotrade is True
+    assert signal.autotrade is False
+    message = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Autotrade is disabled; notification only" in message
+    assert "Autotrade is enabled" not in message

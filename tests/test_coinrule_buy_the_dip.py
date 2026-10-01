@@ -312,7 +312,7 @@ async def test_buy_the_dip_requires_reclaim_above_prior_close_and_ema20() -> Non
 
 
 @pytest.mark.asyncio
-async def test_buy_the_dip_autotrade_requires_range_or_transitional_context() -> None:
+async def test_buy_the_dip_never_requests_autotrade() -> None:
     closes = [100.0] + [96.0] * 23 + [97.0]
     market_context = make_market_context(
         market_regime="TRANSITIONAL",
@@ -337,7 +337,7 @@ async def test_buy_the_dip_autotrade_requires_range_or_transitional_context() ->
     process_args = context.at_consumer.process_autotrade_restrictions.await_args
     assert process_args is not None
     value = process_args.args[0]
-    assert value.autotrade is True
+    assert value.autotrade is False
     assert value.bot_params.margin_short_reversal is True
 
 

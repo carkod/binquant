@@ -462,7 +462,7 @@ class LiquidationSweepPump:
 
         value = SignalsConsumer(
             direction="LONG",
-            autotrade=True,
+            autotrade=False,
             bot_params=bot_params,
             score=rank_score,
             current_price=current_price,
@@ -500,12 +500,12 @@ class LiquidationSweepPump:
             {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
-            - Autotrade route: {route_reason}
+            - Signal route: {route_reason}
             - Market stress: {round_numbers(context.market_stress_score, 3) if context else 0}
             - Trigger candle: {candle_open_time}
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Exit profile: {self.LONG_STOP_LOSS_PCT}% stop / trailing after {self.LONG_TRAILING_PROFIT_PCT}% with {self.LONG_TRAILING_DEVIATION_PCT}% deviation / 8-candle maximum hold
-            - Autotrade is enabled
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

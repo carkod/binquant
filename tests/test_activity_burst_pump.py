@@ -194,18 +194,10 @@ async def test_signal_generator_records_but_does_not_trade_cascade_risk(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("confirmed", "expected_autotrade", "expected_route"),
-    (
-        (False, False, "anomaly_gate_rejected"),
-        (True, True, "anomaly_gate_confirmed"),
-    ),
-)
-async def test_anomaly_gate_controls_autotrade(
+@pytest.mark.parametrize("confirmed", (False, True))
+async def test_activity_burst_never_requests_autotrade(
     monkeypatch,
     confirmed: bool,
-    expected_autotrade: bool,
-    expected_route: str,
 ) -> None:
     df = make_low_liquidity_df()
     context = make_context(df)
@@ -248,13 +240,12 @@ async def test_anomaly_gate_controls_autotrade(
 
     anomaly_gate.evaluate.assert_called_once()
     dispatched = context.dispatch_signal_record.call_args.kwargs
-    assert dispatched["value"].autotrade is expected_autotrade
+    assert dispatched["value"].autotrade is False
     assert dispatched["indicators"]["activity_burst_anomaly_gate_passed"] is confirmed
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
-    assert (
-        f"Autotrade route: {expected_route}"
-        in context.telegram_consumer.dispatch_signal.call_args.args[0]
-    )
+    message = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Autotrade is disabled; notification only" in message
+    assert "Autotrade is enabled" not in message
 
 
 @pytest.mark.asyncio
@@ -301,7 +292,7 @@ async def test_anomaly_gate_is_called_in_production(monkeypatch) -> None:
 
     anomaly_gate.evaluate.assert_called_once()
     dispatched = context.dispatch_signal_record.call_args.kwargs
-    assert dispatched["value"].autotrade is True
+    assert dispatched["value"].autotrade is False
     assert dispatched["indicators"]["activity_burst_anomaly_gate_passed"] is True
     assert (
         dispatched["indicators"]["activity_burst_anomaly_isolation_forest_confirmed"]

@@ -29,8 +29,8 @@ class RangeBbRsiMeanReversion:
         - price rejects the lower/upper Bollinger Band
         - RSI and Z-score confirm an oversold/overbought extreme
 
-    Autotrade is disabled initially so the strategy can collect live telemetry
-    before it is allowed to place range-fade orders.
+    Autotrade is always disabled. The strategy only sends notifications and
+    collects live telemetry.
     """
 
     ALGO = "range_bb_rsi_mean_reversion"
@@ -244,7 +244,6 @@ class RangeBbRsiMeanReversion:
             return
 
         direction = self._direction_for_position(bot_strategy)
-        autotrade = True
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
             self.exchange,
@@ -275,7 +274,7 @@ class RangeBbRsiMeanReversion:
 
         value = SignalsConsumer(
             direction=direction,
-            autotrade=autotrade,
+            autotrade=False,
             current_price=current_price,
             score=local_score,
             bot_params=BotBase(
@@ -313,8 +312,8 @@ class RangeBbRsiMeanReversion:
             - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin ATR pct: {round_numbers(symbol_features.atr_pct * 100, 2) if symbol_features else "UNAVAILABLE"}%
             - Coin BB width: {round_numbers(symbol_features.bb_width * 100, 2) if symbol_features else "UNAVAILABLE"}%
-            - Autotrade route: {route_reason}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Regime route: {route_reason}
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
@@ -325,14 +324,13 @@ class RangeBbRsiMeanReversion:
                 "range_bb_rsi_adx": adx_value,
                 "range_bb_rsi_zscore": zscore,
                 "range_bb_rsi_entry_reason": entry_reason,
-                "range_bb_rsi_autotrade_route": route_reason,
+                "range_bb_rsi_regime_route": route_reason,
             },
         )
         self.telegram_consumer.dispatch_signal(msg)
-        if autotrade:
-            await self.at_consumer.process_autotrade_restrictions(value)
+        await self.at_consumer.process_autotrade_restrictions(value)
         logging.info(
-            "[%s] %s signal emitted for %s (autotrade enabled, route=%s)",
+            "[%s] %s signal emitted for %s (notification only, route=%s)",
             self.ALGO,
             direction.lower(),
             self.symbol,

@@ -436,47 +436,22 @@ async def test_process_data_keeps_removed_5m_strategies_disabled(
     activity_signal.assert_not_awaited()
 
 
-@pytest.mark.parametrize(
-    ("environment", "expected_strategy_calls"),
-    [
-        pytest.param(
-            "staging",
-            {
-                "MacroregimeDirectionalNotifier",
-                "LowerHighPattern",
-                "HigherLowPattern",
-            },
-            id="staging-skips-production-strategies",
-        ),
-        pytest.param(
-            "development",
-            {
-                "MacroregimeDirectionalNotifier",
-                "LowerHighPattern",
-                "HigherLowPattern",
-            },
-            id="non-production-skips-production-strategies",
-        ),
-        pytest.param(
-            "production",
-            {
-                "MacroregimeDirectionalNotifier",
-                "LowerHighPattern",
-                "HigherLowPattern",
-                "TopGainerBreadth",
-                "TopLoserBreadth",
-                "TopGainerEarlyMomentum",
-                "TopLoserEarlyMomentum",
-            },
-            id="production-runs-temporary-strategy-allowlist",
-        ),
-    ],
-)
+ALL_NOTIFICATION_STRATEGIES = {
+    "MacroregimeDirectionalNotifier",
+    "LowerHighPattern",
+    "HigherLowPattern",
+    "TopGainerBreadth",
+    "TopLoserBreadth",
+    "TopGainerEarlyMomentum",
+    "TopLoserEarlyMomentum",
+}
+
+
+@pytest.mark.parametrize("environment", ["staging", "development", "production"])
 @pytest.mark.asyncio
-async def test_process_data_runs_environment_strategy_allowlist(
+async def test_process_data_runs_every_strategy_in_every_environment(
     monkeypatch,
     environment,
-    expected_strategy_calls,
 ):
     rows = 100
     dataframe = DataFrame(
@@ -578,7 +553,7 @@ async def test_process_data_runs_environment_strategy_allowlist(
     await evaluator.process_data(candles="5m", candles_15m="15m")
 
     for name, signal in strategy_signals.items():
-        assert signal.await_count == (1 if name in expected_strategy_calls else 0)
+        assert signal.await_count == (1 if name in ALL_NOTIFICATION_STRATEGIES else 0)
 
 
 def test_grid_only_policy_is_disabled_with_grid_ladder_switch() -> None:

@@ -100,9 +100,6 @@ class RelativeStrengthReversalRange:
         if current_volume <= volume_floor:
             return
 
-        # Per request pattern: keep autotrade off while telemetry on this
-        # contrarian variant is collected before going live.
-        autotrade = False
         bot_strategy = Position.long
 
         base_asset = self.current_symbol_data.base_asset
@@ -122,7 +119,7 @@ class RelativeStrengthReversalRange:
 
         value = SignalsConsumer(
             direction="LONG",
-            autotrade=autotrade,
+            autotrade=False,
             current_price=current_price,
             bot_params=BotBase(
                 pair=self.symbol,
@@ -151,20 +148,17 @@ class RelativeStrengthReversalRange:
             - Relative strength vs BTC: {round_numbers(symbol_features.relative_strength_vs_btc, 4) if symbol_features else "UNAVAILABLE"}
             {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
-            - Autotrade route: {route_reason}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Regime route: {route_reason}
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
         await self.ti.dispatch_signal_record(value=value)
         self.telegram_consumer.dispatch_signal(msg)
-        if autotrade:
-            await self.at_consumer.process_autotrade_restrictions(value)
-        else:
-            logging.info(
-                "[%s] long signal emitted for %s (autotrade disabled, route=%s)",
-                algo,
-                self.symbol,
-                route_reason,
-            )
+        logging.info(
+            "[%s] long signal emitted for %s (notification only, route=%s)",
+            algo,
+            self.symbol,
+            route_reason,
+        )

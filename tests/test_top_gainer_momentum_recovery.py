@@ -261,6 +261,7 @@ async def test_recovery_emits_for_each_eligible_source_outcome(status: Status) -
     context.dispatch_signal_record.assert_awaited_once()
     emitted = context.dispatch_signal_record.call_args.kwargs["value"]
     assert emitted.bot_params.name == TopGainerMomentumRecovery.ALGO
+    assert emitted.autotrade is False  # test_recovery_never_requests_autotrade
     assert emitted.bot_params.fiat_order_size == 2.0
     assert emitted.bot_params.stop_loss == 2.0
     assert emitted.bot_params.trailing_profit == 2.0

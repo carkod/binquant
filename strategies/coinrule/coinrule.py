@@ -14,7 +14,7 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features
+from market_regime.regime_routing import resolve_symbol_features
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.utils import build_links_msg, format_context_timestamp_line
 
@@ -37,7 +37,6 @@ class Coinrule:
         self.current_market_dominance = cls.current_market_dominance
         self.market_domination_reversal = cls.market_domination_reversal
         self._breadth_cross_tolerance = cls._breadth_cross_tolerance
-        self._autotrade_stress_threshold = cls._autotrade_stress_threshold
         self.signal_context_scorer = SignalContextScorer(
             context_weight=0.35,
             risk_weight=0.35,
@@ -71,7 +70,6 @@ class Coinrule:
 
         if last_twap > close_price and price_decrease > -0.05:
             algo = "coinrule_twap_momentum_sniper"
-            autotrade = False
             context = self.ti.latest_market_context
             symbol_features = resolve_symbol_features(
                 context=context, symbol=self.symbol
@@ -97,14 +95,13 @@ class Coinrule:
             - Coin regime: {symbol_features.micro_regime if symbol_features is not None and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - TWAP (> current price): {round_numbers(last_twap)}
-            - Autotrade route: manual_only
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is disabled; notification only
             - <a href='{exchange_link}'>Exchange</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
-                autotrade=autotrade,
+                autotrade=False,
                 current_price=close_price,
                 bot_params=BotBase(
                     pair=self.symbol,
@@ -166,13 +163,7 @@ class Coinrule:
         ):
             algo = "coinrule_supertrend_swing_reversal"
             bot_strategy = Position.long
-            autotrade = True
             context = self.ti.latest_market_context
-            if context is not None:
-                autotrade = allows_long_autotrade(
-                    context=context,
-                    symbol=self.symbol,
-                )
             symbol_features = resolve_symbol_features(
                 context=context, symbol=self.symbol
             )
@@ -199,14 +190,13 @@ class Coinrule:
             - Candle time: {last_timestamp}
             - Number of trades: {df["number_of_trades"].iloc[-1]}
             - RSI smaller than 30: {df["rsi"].iloc[-1]}
-            - Autotrade route: {"long_autotrade_allowed" if autotrade else "manual_only"}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is disabled; notification only
             - <a href='{exchange_link}'>Exchange</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
-                autotrade=autotrade,
+                autotrade=False,
                 current_price=close_price,
                 bot_params=BotBase(
                     pair=self.symbol,
@@ -246,7 +236,6 @@ class Coinrule:
             algo = "coinrule_buy_low_sell_high"
 
             bot_strategy = Position.long
-            autotrade = False
             context = self.ti.latest_market_context
             symbol_features = resolve_symbol_features(
                 context=context, symbol=self.symbol
@@ -267,14 +256,13 @@ class Coinrule:
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features is not None and symbol_features.micro_regime_transition is not None else "None"}
             - Bollinger bands spread: {(bb_high - bb_low) / bb_high}
             - Reversal state: {"Positive" if self.market_domination_reversal else "Negative"}
-            - Autotrade route: manual_only
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is disabled; notification only
             - <a href='{exchange_link}'>Exchange</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
             value = SignalsConsumer(
-                autotrade=autotrade,
+                autotrade=False,
                 current_price=close_price,
                 bot_params=BotBase(
                     pair=self.symbol,

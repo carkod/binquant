@@ -699,10 +699,6 @@ class FailedSpikeFade:
             return
 
         self._clear_pending_spike()
-        autotrade = getenv("ENV") == "staging"
-        route_reason = (
-            "staging_short_fade" if autotrade else "staging_only_short_shadow"
-        )
         fiat_order_size = self._fiat_order_size()
 
         base_asset = self.current_symbol_data.base_asset
@@ -716,7 +712,7 @@ class FailedSpikeFade:
 
         value = SignalsConsumer(
             direction=Position.short.value.upper(),
-            autotrade=autotrade,
+            autotrade=False,
             current_price=current_price,
             bot_params=BotBase(
                 pair=self.symbol,
@@ -758,11 +754,10 @@ class FailedSpikeFade:
             {format_context_timestamp_line(context)}
             - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
             - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
-            - Autotrade route: {route_reason}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss / take profit: {self.STOP_LOSS_PCT}% / {self.TAKE_PROFIT_PCT}%
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """

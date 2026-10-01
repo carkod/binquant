@@ -296,7 +296,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
 
     assert signal_value.bot_params.position == Position.long
     assert signal_value.direction == "LONG"
-    assert signal_value.autotrade is True
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.dynamic_trailing is False
     assert signal_value.bot_params.stop_loss == 2.5
     assert signal_value.bot_params.take_profit == 0
@@ -306,7 +306,9 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     assert signal_value.bot_params.cooldown == 60
     assert signal_value.bot_params.margin_short_reversal is False
     assert "Action: LONG ENTRY" in telegram_msg
-    assert "Autotrade route: market_breadth_recovering_btc_up_symbol_up" in telegram_msg
+    assert "Signal route: market_breadth_recovering_btc_up_symbol_up" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
+    assert "Autotrade is enabled" not in telegram_msg
     indicators = cast(Mock, algo.ti.dispatch_signal_record).call_args.kwargs[
         "indicators"
     ]

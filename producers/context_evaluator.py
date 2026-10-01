@@ -557,9 +557,6 @@ class ContextEvaluator:
 
         Algorithms should consume this data
         """
-        # Reserve staging for FailedSpikeFade validation. The remaining trading
-        # strategies run only in production.
-        run_production_strategies = self.config.env.casefold() == "production"
         self.symbol_dependent_data()
         self.refresh_grid_only_policy()
         raw_candles_5m = Candles(exchange=self.exchange, candles=candles)
@@ -628,46 +625,45 @@ class ContextEvaluator:
             close_price = float(self.df_15m["close"].iloc[-1])
             spreads = self.bb_spreads(self.df_15m)
 
-            if run_production_strategies:
-                await self._safe_signal(
-                    "TopGainerBreadth",
-                    self.top_gainer_breadth.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
+            await self._safe_signal(
+                "TopGainerBreadth",
+                self.top_gainer_breadth.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
-                await self._safe_signal(
-                    "TopLoserBreadth",
-                    self.top_loser_breadth.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
+            await self._safe_signal(
+                "TopLoserBreadth",
+                self.top_loser_breadth.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
-                await self._safe_signal(
-                    "TopGainerEarlyMomentum",
-                    self.top_gainer_early_momentum.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
+            await self._safe_signal(
+                "TopGainerEarlyMomentum",
+                self.top_gainer_early_momentum.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
-                await self._safe_signal(
-                    "TopLoserEarlyMomentum",
-                    self.top_loser_early_momentum.signal(
-                        current_price=close_price,
-                        bb_high=spreads.bb_high,
-                        bb_mid=spreads.bb_mid,
-                        bb_low=spreads.bb_low,
-                    ),
-                )
+            await self._safe_signal(
+                "TopLoserEarlyMomentum",
+                self.top_loser_early_momentum.signal(
+                    current_price=close_price,
+                    bb_high=spreads.bb_high,
+                    bb_mid=spreads.bb_mid,
+                    bb_low=spreads.bb_low,
+                ),
+            )
 
             await self._safe_signal(
                 "MacroregimeDirectionalNotifier",

@@ -148,7 +148,7 @@ def make_evaluator(
 
 
 @pytest.mark.asyncio
-async def test_emits_long_on_lower_band_rsi_zscore_rejection() -> None:
+async def test_range_bb_rsi_never_requests_autotrade_on_lower_band_rejection() -> None:
     df = make_long_df()
     evaluator = make_evaluator(df, make_market_context())
     algo = RangeBbRsiMeanReversion(cast(Any, evaluator))
@@ -168,11 +168,12 @@ async def test_emits_long_on_lower_band_rsi_zscore_rejection() -> None:
     assert "range_bb_rsi_mean_reversion" in telegram_msg
     assert "Action: LONG ENTRY" in telegram_msg
     assert "lower_band_rsi_zscore_rejection" in telegram_msg
-    assert "Autotrade is enabled" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
+    assert "Autotrade is enabled" not in telegram_msg
 
     signal_value = evaluator.dispatch_signal_record.call_args.kwargs["value"]
     assert signal_value.direction == "LONG"
-    assert signal_value.autotrade is True
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.position == "long"
 
     indicators = evaluator.dispatch_signal_record.call_args.kwargs["indicators"]

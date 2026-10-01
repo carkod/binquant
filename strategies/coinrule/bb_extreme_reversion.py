@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pandas as pd
 from pybinbot import (
@@ -11,8 +11,7 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.models import LiveMarketContext
-from market_regime.regime_routing import is_regime_stable, resolve_symbol_features
+from market_regime.regime_routing import resolve_symbol_features
 from models.strategies import BBExtremeReversionDecision
 from shared.strategy_mixin import StrategyMixin
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -54,16 +53,6 @@ class BBExtremeReversion(StrategyMixin):
     DEFAULT_MAX_LOWER_BAND_POSITION = 0.0
     DEFAULT_MIN_UPPER_BAND_POSITION = 1.0
 
-    AUTOTRADE_STRESS_THRESHOLD = 0.35
-    AUTOTRADE_MARKET_REGIMES = {"RANGE"}
-    SHORT_AUTOTRADE_MICRO_REGIMES = {"RANGE", "TRANSITIONAL", "TREND_DOWN"}
-    MICRO_REGIME_BLOCKING_TRANSITIONS = {
-        "VOLATILITY_EXPANSION",
-        "BREAKDOWN",
-        "ENTERED_TRANSITIONAL",
-    }
-    MICRO_REGIME_MIN_STRENGTH = 0.5
-
     LOOKBACK_CANDLES = 30  # plenty for RSI(2); BB spreads arrive from the caller
 
     def __init__(self, cls: "ContextEvaluator") -> None:
@@ -82,54 +71,6 @@ class BBExtremeReversion(StrategyMixin):
         self.overbought_rsi = self.DEFAULT_OVERBOUGHT_RSI
         self.max_lower_band_position = self.DEFAULT_MAX_LOWER_BAND_POSITION
         self.min_upper_band_position = self.DEFAULT_MIN_UPPER_BAND_POSITION
-
-    @classmethod
-    def supports_autotrade(
-        cls,
-        context: LiveMarketContext | None,
-    ) -> tuple[bool, str]:
-        if context is None:
-            return False, "market_context_unavailable"
-        if context.regime_is_transitioning:
-            return False, "market_transitioning"
-        if context.market_stress_score >= cls.AUTOTRADE_STRESS_THRESHOLD:
-            return False, "market_stress_too_high"
-        if context.market_regime not in cls.AUTOTRADE_MARKET_REGIMES:
-            return False, f"market_regime_{str(context.market_regime).lower()}"
-        regime_slug = str(context.market_regime).lower()
-        if not is_regime_stable(context):
-            return True, f"market_{regime_slug}_unstable_allowed"
-        return True, f"market_{regime_slug}_stable"
-
-    @staticmethod
-    def _resolve_directional_autotrade(
-        *,
-        action: str,
-        base_autotrade_eligible: bool,
-        base_autotrade_route: str,
-        symbol_features: Any,
-    ) -> tuple[bool, str]:
-        if not base_autotrade_eligible:
-            return False, base_autotrade_route
-        if symbol_features is None:
-            return False, "symbol_features_unavailable"
-        transition = symbol_features.micro_regime_transition
-        if transition in BBExtremeReversion.MICRO_REGIME_BLOCKING_TRANSITIONS:
-            return False, f"symbol_transition_{str(transition).lower()}"
-        if (
-            symbol_features.micro_regime_strength
-            < BBExtremeReversion.MICRO_REGIME_MIN_STRENGTH
-        ):
-            return False, "symbol_micro_regime_unstable"
-        if (
-            action == "sell"
-            and symbol_features.micro_regime
-            not in BBExtremeReversion.SHORT_AUTOTRADE_MICRO_REGIMES
-        ):
-            return False, "symbol_regime_not_shortable"
-        if action == "buy" and symbol_features.micro_regime == "TREND_DOWN":
-            return False, "symbol_regime_trend_down_for_long"
-        return True, base_autotrade_route
 
     @staticmethod
     def _compute_rsi(closes: pd.Series, window: int) -> float | None:
@@ -249,7 +190,6 @@ class BBExtremeReversion(StrategyMixin):
             return
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context, self.symbol)
-        autotrade_eligible, autotrade_route = self.supports_autotrade(context=context)
 
         self.df_15m = self.ti.df_15m.copy()
         if len(self.df_15m) < self.LOOKBACK_CANDLES:
@@ -276,13 +216,6 @@ class BBExtremeReversion(StrategyMixin):
         if not decision.should_trigger or decision.action is None:
             logging.info("bb_extreme_reversion skipped: %s", decision.reason)
             return
-
-        autotrade, autotrade_route = self._resolve_directional_autotrade(
-            action=decision.action,
-            base_autotrade_eligible=autotrade_eligible,
-            base_autotrade_route=autotrade_route,
-            symbol_features=symbol_features,
-        )
 
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
@@ -327,15 +260,13 @@ class BBExtremeReversion(StrategyMixin):
             - Band position: {round_numbers(decision.band_position, 3)}
             - RSI({decision.rsi_window}): {round_numbers(decision.rsi_value, 2)}
             - Reason: {decision.reason}
-            - Autotrade candidate: {"Yes" if autotrade else "No"}
-            - Autotrade route: {autotrade_route}
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
         value = SignalsConsumer(
-            autotrade=autotrade,
+            autotrade=False,
             current_price=current_price,
             bot_params=BotBase(
                 pair=self.symbol,
@@ -358,10 +289,7 @@ class BBExtremeReversion(StrategyMixin):
                 "bb_extreme_bb_width": decision.bb_width,
                 "bb_extreme_bb_mid": decision.bb_mid,
                 "bb_extreme_distance_from_mid_pct": decision.distance_from_mid_pct,
-                "bb_extreme_autotrade_candidate": autotrade,
-                "bb_extreme_autotrade_route": autotrade_route,
             },
         )
         self.telegram_consumer.dispatch_signal(msg)
-        if autotrade:
-            await self.at_consumer.process_autotrade_restrictions(value)
+        await self.at_consumer.process_autotrade_restrictions(value)

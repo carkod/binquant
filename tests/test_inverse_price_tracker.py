@@ -289,8 +289,8 @@ async def test_inverse_price_tracker_emits_range_leader_for_telemetry(monkeypatc
     algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
     algo.at_consumer.process_autotrade_restrictions.assert_awaited_once()  # type: ignore[attr-defined]
     msg = algo.telegram_consumer.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
-    assert "Autotrade route: market_range_symbol_leading_telemetry" in msg
-    assert "Autotrade has been disabled for testing" in msg
+    assert "Routing reason: market_range_symbol_leading_telemetry" in msg
+    assert "Autotrade is disabled; notification only" in msg
 
 
 @pytest.mark.asyncio
@@ -400,7 +400,7 @@ async def test_inverse_price_tracker_telegram_message_contains_expected_text(
     assert "inverse_price_tracker" in msg
     assert "Action: LONG ENTRY" in msg
     assert "bullish routing is active" in msg
-    assert "Autotrade has been disabled for testing" in msg
+    assert "Autotrade is disabled; notification only" in msg
 
 
 @pytest.mark.asyncio
@@ -426,3 +426,32 @@ async def test_inverse_price_tracker_respects_context_score_thresholds(monkeypat
 
     await algo.signal(100.0, 101.0, 99.0, 100.0)
     algo.at_consumer.process_autotrade_restrictions.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_inverse_price_tracker_never_requests_autotrade(monkeypatch):
+    context = make_market_context(
+        market_regime="TREND_UP",
+        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")},
+    )
+    algo = make_algo(make_ohlcv_df(oversold=True), context)
+    monkeypatch.setattr(
+        "strategies.inverse_price_tracker.Indicators.mfi",
+        staticmethod(lambda df, window=14: 15.0),
+    )
+    monkeypatch.setattr(
+        "strategies.inverse_price_tracker.score_signal_candidate_with_context",
+        lambda **kwargs: SimpleNamespace(
+            adjusted_score=1.25,
+            context_score=SimpleNamespace(
+                confidence=0.7,
+                followthrough_score=0.2,
+                adverse_excursion_risk=0.2,
+            ),
+        ),
+    )
+
+    await algo.signal(close_price=100.0, bb_high=101.0, bb_low=99.0, bb_mid=100.0)
+
+    value = algo.ti.dispatch_signal_record.call_args.kwargs["value"]  # type: ignore[attr-defined]
+    assert value.autotrade is False

@@ -14,10 +14,6 @@ from pybinbot import (
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.strategy_mixin import StrategyMixin
-from shared.time_of_day_filter import (
-    build_quiet_hours_signal_msg,
-    is_autotrade_suppressed,
-)
 from shared.utils import (
     build_links_msg,
     format_context_timestamp_line,
@@ -84,46 +80,6 @@ class BuyTheDip(StrategyMixin):
             return False
         return True
 
-    @staticmethod
-    def _allows_buy_the_dip_autotrade(
-        context: LiveMarketContext | None,
-        symbol_features: SymbolMarketFeatures | None,
-    ) -> bool:
-        if context is None:
-            return False
-        if context.regime_is_transitioning:
-            return False
-        if context.market_stress_score >= 0.35:
-            return False
-        if context.market_regime not in {"RANGE", "TRANSITIONAL"}:
-            return False
-        if symbol_features is None:
-            return True
-        if symbol_features.micro_regime in {"TREND_DOWN", "TREND_UP", "VOLATILE"}:
-            return False
-        return symbol_features.micro_regime in {"RANGE", "TRANSITIONAL"}
-
-    @staticmethod
-    def _resolve_autotrade_route(
-        context: LiveMarketContext | None,
-        symbol_features: SymbolMarketFeatures | None,
-    ) -> str:
-        if context is None:
-            return "market_context_unavailable"
-        if context.regime_is_transitioning:
-            return "market_transitioning"
-        if context.market_stress_score >= 0.35:
-            return "market_stress_too_high"
-        if context.market_regime not in {"RANGE", "TRANSITIONAL"}:
-            return f"market_regime_{str(context.market_regime).lower()}"
-        if symbol_features is None:
-            return "symbol_regime_unavailable"
-        if symbol_features.micro_regime in {"TREND_DOWN", "TREND_UP", "VOLATILE"}:
-            return f"symbol_regime_{str(symbol_features.micro_regime).lower()}"
-        if symbol_features.micro_regime in {"RANGE", "TRANSITIONAL"}:
-            return f"symbol_regime_{str(symbol_features.micro_regime).lower()}"
-        return "symbol_regime_unavailable"
-
     async def signal(
         self,
         current_price: float,
@@ -180,27 +136,6 @@ class BuyTheDip(StrategyMixin):
             )
             return
 
-        autotrade = self._allows_buy_the_dip_autotrade(
-            context=context,
-            symbol_features=symbol_features,
-        )
-        autotrade_route = self._resolve_autotrade_route(
-            context=context,
-            symbol_features=symbol_features,
-        )
-
-        if autotrade and is_autotrade_suppressed(context=context):
-            autotrade = False
-            autotrade_route = "time_of_day_quiet_hours"
-            self.telegram_consumer.dispatch_signal(
-                build_quiet_hours_signal_msg(
-                    symbol=self.symbol,
-                    algo=self.ALGO,
-                    side=Position.long.value,
-                    context=context,
-                )
-            )
-
         msg = f"""
         - [{os.getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
         - Action: LONG ENTRY
@@ -215,14 +150,13 @@ class BuyTheDip(StrategyMixin):
         - 6h reference price: {round_numbers(reference_price, 6)}
         - 6h price change: {round_numbers(change_6h, 2)}%
         - Candle time: {now.isoformat()}
-        - Autotrade route: {autotrade_route}
-        - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+        - Autotrade is disabled; notification only
         - <a href='{kucoin_link}'>KuCoin</a>
         - <a href='{terminal_link}'>Dashboard trade</a>
         """
 
         value = SignalsConsumer(
-            autotrade=autotrade,
+            autotrade=False,
             current_price=current_price,
             bot_params=BotBase(
                 pair=self.symbol,

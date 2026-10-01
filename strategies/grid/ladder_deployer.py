@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
 class LadderDeployer:
     ALGO = "grid_ladder"
-    AUTOTRADE = True
     MIN_RANGE_WIDTH_PCT = 1.5
     MAX_RANGE_WIDTH_PCT = 8.0
     MIN_BREAKOUT_BUFFER_PCT = 0.5
@@ -177,7 +176,7 @@ class LadderDeployer:
             signal_kind="grid_deploy",
             direction="grid",
             current_price=current_price,
-            autotrade=self.AUTOTRADE,
+            autotrade=False,
             grid_params=grid_params,
         )
         # Persist first so the ladder create payload can link back to this signal.

@@ -199,7 +199,7 @@ async def emit_short(strategy: MeanReversionFade) -> None:
 
 
 @pytest.mark.asyncio
-async def test_strategy_emits_fixed_target_short(
+async def test_mean_reversion_fade_never_requests_autotrade(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     patch_rsi(monkeypatch, 80.0, previous_value=81.0)
@@ -212,7 +212,10 @@ async def test_strategy_emits_fixed_target_short(
     value = call.kwargs["value"]
     indicators = call.kwargs["indicators"]
     assert value.direction == "SHORT"
-    assert value.autotrade is True
+    assert value.autotrade is False
+    message = evaluator.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Autotrade is disabled; notification only" in message
+    assert "Autotrade is enabled" not in message
     assert value.bot_params.position == Position.short
     assert value.bot_params.dynamic_trailing is False
     assert value.bot_params.trailing is False
