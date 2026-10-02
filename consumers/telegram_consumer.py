@@ -196,16 +196,20 @@ class TelegramConsumer:
         (autotrade path) can run in parallel. Errors are swallowed inside
         send_signal, so the task never propagates exceptions.
         """
+        logging.info(f"Signal dispatching: {message}")
         if not self.is_enabled:
             return None
         cleaned_message = self._clean_signal_message(message)
         if not cleaned_message:
             return None
+        logging.info("Signal cleaned")
         signal_key = self._signal_dedupe_key(cleaned_message)
         if self._drop_duplicate_signal(signal_key):
             return None
+        logging.info(f"Creating task for signal")
         task = asyncio.create_task(self.send_signal(cleaned_message))
         self._background_tasks.add(task)
+        logging.info(f"Task created for signal, finishing signal task callback")
         task.add_done_callback(
             lambda completed_task: self._finish_signal_task(completed_task, signal_key)
         )
