@@ -355,7 +355,7 @@ class TopGainerBreadth:
         """
         try:
             await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-            self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
         finally:
             # Mark emitted even if a later fallible step raises: the signal

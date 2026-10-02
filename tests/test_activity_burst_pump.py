@@ -21,7 +21,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         exchange=ExchangeId.KUCOIN,
         dispatch_signal_record=AsyncMock(),
         binbot_api=MagicMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data=SymbolModel(
@@ -95,7 +95,7 @@ def test_compute_indicators_uses_median_baseline():
 async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch):
     df = make_low_liquidity_df()
     algo = make_algo(df)
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
@@ -136,7 +136,7 @@ async def test_signal_generator_skips_when_price_jump_is_too_small():
     df.loc[df.index[-1], "close"] = 1.005
     df.loc[df.index[-1], "high"] = 1.006
     algo = make_algo(df)
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)

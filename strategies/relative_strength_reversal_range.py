@@ -155,7 +155,7 @@ class RelativeStrengthReversalRange:
             """
 
         await self.ti.dispatch_signal_record(value=value)
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)
         logging.info(
             "[%s] long signal emitted for %s (notification only, route=%s)",
             algo,

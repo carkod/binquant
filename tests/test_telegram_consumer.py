@@ -64,34 +64,72 @@ class TestTelegramConsumer:
         telegram_consumer.bot = mock_bot_instance
 
         first_message = """
-            - [production] <strong>#failed_spike_fade algorithm</strong> #TAUSDTM
+            - [production] <strong>#top_loser_breadth algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             - Current price: 0.071
-            - Strategy: failed_spike_fade
+            - Strategy: top_loser_breadth
             - Autotrade route: market_trend_up_symbol_trend_up
             - Autotrade is enabled
         """
         duplicate_message = """
-            - [production] <strong>#failed_spike_fade algorithm</strong> #TAUSDTM
+            - [production] <strong>#top_loser_breadth algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             - Current price: 0.074
-            - Strategy: failed_spike_fade
+            - Strategy: top_loser_breadth
             - Autotrade route: market_trend_up_symbol_trend_up
             - Autotrade is enabled
         """
 
-        task = telegram_consumer.dispatch_signal(first_message)
-        pending_duplicate = telegram_consumer.dispatch_signal(duplicate_message)
+        sent = await telegram_consumer.dispatch_signal(first_message)
+        recent_duplicate = await telegram_consumer.dispatch_signal(duplicate_message)
 
-        assert task is not None
-        assert pending_duplicate is None
-
-        await task
-
-        recent_duplicate = telegram_consumer.dispatch_signal(duplicate_message)
-
-        assert recent_duplicate is None
+        assert sent is True
+        assert recent_duplicate is False
         assert mock_bot_instance.send_message.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_dispatch_signal_rejects_disabled_strategy(self, MockBot):
+        mock_bot_instance = MockBot.return_value
+        mock_bot_instance.send_message = AsyncMock()
+        telegram_consumer = TelegramConsumer(token="fake_token", chat_id="fake_chat_id")
+        telegram_consumer.bot = mock_bot_instance
+
+        sent = await telegram_consumer.dispatch_signal(
+            """
+            - [production] <strong>#higher_low_pattern algorithm</strong> #TAUSDTM
+            - Action: LONG ENTRY
+            """
+        )
+
+        assert sent is False
+        mock_bot_instance.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "algorithm",
+        [
+            "top_gainer_breadth",
+            "top_loser_breadth",
+            "top_gainer_early_momentum",
+            "top_loser_early_momentum",
+        ],
+    )
+    async def test_dispatch_signal_allows_selected_strategies(self, MockBot, algorithm):
+        mock_bot_instance = MockBot.return_value
+        mock_bot_instance.send_message = AsyncMock()
+        telegram_consumer = TelegramConsumer(token="fake_token", chat_id="fake_chat_id")
+        telegram_consumer._min_send_interval_seconds = 0
+        telegram_consumer.bot = mock_bot_instance
+
+        sent = await telegram_consumer.dispatch_signal(
+            f"""
+            - [production] <strong>#{algorithm} algorithm</strong> #TAUSDTM
+            - Action: LONG ENTRY
+            """
+        )
+
+        assert sent is True
+        mock_bot_instance.send_message.assert_awaited_once()
 
     def test_sanitize_html_preserves_supported_tags(self, MockBot):
 

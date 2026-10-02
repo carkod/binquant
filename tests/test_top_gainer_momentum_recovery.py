@@ -226,7 +226,7 @@ def make_strategy(
             quote_asset="USDT",
         ),
         price_precision=4,
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=at_consumer,
         binbot_api=SimpleNamespace(get_active_pairs=Mock(return_value=[])),
         top_gainer_recovery_bots=[source, *(extra_bots or [])],

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 from pandas import DataFrame
@@ -113,7 +113,7 @@ def make_context(df: DataFrame, context: LiveMarketContext | None) -> SimpleName
         exchange=ExchangeId.KUCOIN,
         dispatch_signal_record=AsyncMock(),
         binbot_api=SimpleNamespace(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data={"base_asset": "TEST"},

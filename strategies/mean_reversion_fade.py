@@ -391,5 +391,5 @@ class MeanReversionFade:
                 "candidate_open_time": candidate_open_time,
             },
         )
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

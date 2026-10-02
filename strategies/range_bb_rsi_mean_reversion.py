@@ -327,7 +327,7 @@ class RangeBbRsiMeanReversion:
                 "range_bb_rsi_regime_route": route_reason,
             },
         )
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)
         logging.info(
             "[%s] %s signal emitted for %s (notification only, route=%s)",

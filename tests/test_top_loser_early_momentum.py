@@ -171,7 +171,7 @@ def make_context(
         binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT",

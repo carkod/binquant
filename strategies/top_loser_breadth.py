@@ -383,9 +383,7 @@ class TopLoserBreadth:
         """
         try:
             await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-            logging.info("Dispatching signal to Telegram consumer")
-            self.telegram_consumer.dispatch_signal(msg)
-            logging.info("Signal dispatched: %s", msg)
+            await self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
         finally:
             # Mark emitted even if a later fallible step raises: the signal

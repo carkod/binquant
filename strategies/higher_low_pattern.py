@@ -188,4 +188,4 @@ class HigherLowPattern:
             - Autotrade: disabled, notification only
             """
 
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)

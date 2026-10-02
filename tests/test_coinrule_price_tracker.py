@@ -105,7 +105,7 @@ def make_context(
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
         binbot_api=binbot_api,
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data={"base_asset": "TEST"},
@@ -304,7 +304,7 @@ async def test_price_tracker_no_signal_on_uptrend():
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=Mock())
+        TelegramConsumer, SimpleNamespace(dispatch_signal=AsyncMock())
     )
 
     await algo.signal(
@@ -327,7 +327,7 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     algo = make_algo(df)
     algo.gainers_losers_series = [make_mover_snapshot(gainers=[("TESTUSDT", 12.5)])]
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -526,7 +526,7 @@ async def test_price_tracker_keeps_eligible_staging_signal_shadow_only(monkeypat
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -607,7 +607,7 @@ async def test_price_tracker_disables_autotrade_without_relative_strength(
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -667,7 +667,7 @@ async def test_price_tracker_cools_down_repeated_symbol_entries(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     context = make_context(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     context.at_consumer = SimpleNamespace(process_autotrade_restrictions=at_mock)
     context.telegram_consumer = SimpleNamespace(dispatch_signal=tg_mock)
     context.latest_market_context = make_market_context()
@@ -720,7 +720,7 @@ async def test_price_tracker_allows_entry_after_cooldown_window(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     context = make_context(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     context.at_consumer = SimpleNamespace(process_autotrade_restrictions=at_mock)
     context.telegram_consumer = SimpleNamespace(dispatch_signal=tg_mock)
     context.latest_market_context = make_market_context()
@@ -774,7 +774,7 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
     algo = make_algo(df)
     algo.market_type = MarketType.SPOT
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -824,7 +824,7 @@ async def test_price_tracker_disables_autotrade_in_transitioning_market(monkeypa
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -879,7 +879,7 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -940,7 +940,7 @@ async def test_price_tracker_reads_latest_context_from_evaluator(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1002,7 +1002,7 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1061,7 +1061,7 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1122,7 +1122,7 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1216,7 +1216,7 @@ async def test_bb_extreme_skips_signal_generation_when_disabled():
     algo = make_bbex_algo(df, enabled=False)
     algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1243,7 +1243,7 @@ async def test_bb_extreme_emits_buy_signal_at_oversold_and_below_band():
     algo = make_bbex_algo(df)
     algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1280,7 +1280,7 @@ async def test_bb_extreme_never_requests_autotrade():
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=Mock())
+        TelegramConsumer, SimpleNamespace(dispatch_signal=AsyncMock())
     )
 
     await algo.signal(current_price=90.0, bb_high=105.0, bb_low=95.0, bb_mid=100.0)
@@ -1299,7 +1299,7 @@ async def test_bb_extreme_emits_sell_signal_at_overbought_and_above_band():
         symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
     )
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1333,7 +1333,7 @@ async def test_bb_extreme_skips_when_rsi_not_oversold():
     algo = make_bbex_algo(df)
     algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1359,7 +1359,7 @@ async def test_bb_extreme_skips_when_price_inside_band():
     algo = make_bbex_algo(df)
     algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )

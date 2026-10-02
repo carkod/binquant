@@ -291,5 +291,5 @@ class BBExtremeReversion(StrategyMixin):
                 "bb_extreme_distance_from_mid_pct": decision.distance_from_mid_pct,
             },
         )
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

@@ -200,7 +200,7 @@ def make_context(
         binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT",
@@ -233,7 +233,7 @@ async def test_signal_dispatches_long_with_reduced_margin(monkeypatch):
             make_context(df_15m=df, latest_market_context=make_market_context()),
         )
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     record_mock = AsyncMock()
     algo.telegram_consumer = cast(
@@ -335,7 +335,7 @@ async def test_signal_remains_notification_only_outside_staging(monkeypatch):
             make_context(df_15m=df, latest_market_context=make_market_context()),
         )
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     record_mock = AsyncMock()
     algo.telegram_consumer = cast(
@@ -385,7 +385,7 @@ async def test_signal_labels_short_history_extension_window(monkeypatch):
             make_context(df_15m=df, latest_market_context=make_market_context()),
         )
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     record_mock = AsyncMock()
     algo.telegram_consumer = cast(
@@ -431,7 +431,7 @@ async def test_signal_skips_short_history_when_scaled_extension_cap_is_exceeded(
             make_context(df_15m=df, latest_market_context=make_market_context()),
         )
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     record_mock = AsyncMock()
     algo.telegram_consumer = cast(
@@ -474,7 +474,7 @@ async def test_signal_skips_when_relative_strength_is_not_positive(monkeypatch):
     algo = TopGainerEarlyMomentum(
         cast(Any, make_context(df_15m=df, latest_market_context=context))
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     record_mock = AsyncMock()
     algo.telegram_consumer = cast(
@@ -655,7 +655,7 @@ async def test_signal_skips_when_symbol_features_are_missing(monkeypatch):
     algo = TopGainerEarlyMomentum(
         cast(Any, make_context(df_15m=df, latest_market_context=context))
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     record_mock = AsyncMock()
     algo.telegram_consumer = cast(
@@ -705,7 +705,7 @@ async def test_signal_skips_when_one_hour_move_is_too_extended(monkeypatch):
             make_context(df_15m=df, latest_market_context=make_market_context()),
         )
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     record_mock = AsyncMock()
     algo.telegram_consumer = cast(

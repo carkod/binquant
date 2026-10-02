@@ -5,7 +5,7 @@ from typing import Any, cast
 import pytest
 from pandas import DataFrame
 from pybinbot import ExchangeId, MarketType
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from strategies.coinrule.buy_the_dip import BuyTheDip
@@ -115,7 +115,7 @@ def make_algo(
         symbol="TESTUSDT",
         exchange=ExchangeId.KUCOIN,
         market_type=MarketType.SPOT,
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
         df_15m=df_15m,

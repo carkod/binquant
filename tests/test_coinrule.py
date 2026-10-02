@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 from pandas import DataFrame
@@ -15,7 +15,7 @@ def make_coinrule() -> Coinrule:
         market_type=MarketType.SPOT,
         market_breadth_data=None,
         symbol="TESTUSDT",
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         bot_strategy=Position.long,
         current_market_dominance=None,

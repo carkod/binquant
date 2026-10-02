@@ -532,7 +532,7 @@ class LiquidationSweepPump:
                     "max_positioning_rank_bonus": self.MAX_POSITIONING_RANK_BONUS,
                 },
             )
-            self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         candidate = LiquidationSweepCandidate(

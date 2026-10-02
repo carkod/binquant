@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 from pandas import DataFrame, Series
@@ -131,7 +131,7 @@ def make_evaluator(
             price_precision=6,
         ),
         price_precision=6,
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         strategy_cooldowns={},
         df_15m=df if df is not None else make_df(),

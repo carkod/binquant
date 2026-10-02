@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -17,7 +17,7 @@ def make_algo(
     evaluator = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         macroregime_directional=current,
         macroregime_oscillation_intensity=0.73,
         microregime_directional="NONE",

@@ -92,7 +92,7 @@ def make_context(
             price_precision=4,
         ),
         price_precision=4,
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT",

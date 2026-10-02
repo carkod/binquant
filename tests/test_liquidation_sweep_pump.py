@@ -167,7 +167,7 @@ def make_context(
         exchange=ExchangeId.KUCOIN,
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.FUTURES,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data=SymbolModel(
@@ -227,7 +227,7 @@ async def test_signal_does_not_emit_short_when_hot_breadth_fades(
         market_breadth_data=make_market_breadth_series([0.18, 0.36, 0.32]),
         btc_last_change=0.001,
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
@@ -261,7 +261,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
         market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
         btc_last_change=0.003,
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
@@ -341,7 +341,7 @@ async def test_signal_skips_long_when_symbol_trend_is_not_up(monkeypatch):
         market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
         btc_last_change=0.003,
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
@@ -373,7 +373,7 @@ async def test_signal_skips_long_when_btc_is_not_increasing(monkeypatch):
         market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
         btc_last_change=0.0,
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
