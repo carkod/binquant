@@ -183,8 +183,9 @@ class HigherLowPattern:
             - Drop into first trough: {round(pattern["drop_pct"], 2)}% from swing high {round(pattern["swing_high"], self.price_precision)}
             - Current price: {round(current_price, self.price_precision)}
             - Evaluation time: {evaluation_time.strftime("%Y-%m-%d %H:%M:%S UTC")}
+            {self.ti.regime_telegram_lines()}
             - Interpretation: downward momentum is fading; watch for a reversal or a consolidation range
             - Autotrade: disabled, notification only
             """
 
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)

@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, datetime
 from math import isfinite
 from os import getenv
+from time import time
 from typing import TYPE_CHECKING
 
 from pybinbot import (
@@ -12,6 +13,7 @@ from pybinbot import (
     Position,
     SignalsConsumer,
     round_numbers,
+    timestamp_sort_key,
 )
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
@@ -69,6 +71,7 @@ class TopGainerEarlyMomentum:
     TRAILING_PROFIT_PCT = 6.0
     TRAILING_DEVIATION_PCT = 2.5
     RISK_REJECTION_ALGO = f"{ALGO}:risk_rejection"
+    MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -93,10 +96,14 @@ class TopGainerEarlyMomentum:
     def _is_current_top_gainer(self) -> bool:
         if not self.gainers_losers_series:
             return False
-        return any(
-            entry.symbol == self.symbol
-            for entry in self.gainers_losers_series[0].top_gainers
-        )
+        latest_snapshot = self.gainers_losers_series[0]
+        recorded_at = timestamp_sort_key(latest_snapshot.recorded_at)
+        if recorded_at is None:
+            return False
+        snapshot_age_seconds = time() - recorded_at
+        if not 0 <= snapshot_age_seconds <= self.MAX_GAINERS_SNAPSHOT_AGE_SECONDS:
+            return False
+        return any(entry.symbol == self.symbol for entry in latest_snapshot.top_gainers)
 
     @classmethod
     def _features(cls, df: "DataFrame") -> tuple[dict[str, float] | None, str]:
@@ -244,6 +251,7 @@ class TopGainerEarlyMomentum:
         *,
         context: LiveMarketContext | None,
         features: SymbolMarketFeatures | None,
+        microregime_directional: str | None = None,
     ) -> tuple[bool, str]:
         if context is None:
             return False, "market_context_unavailable"
@@ -264,14 +272,8 @@ class TopGainerEarlyMomentum:
             return False, "relative_strength_vs_btc_not_positive"
         if features.atr_pct > cls.MAX_SYMBOL_ATR_PCT:
             return False, "symbol_atr_too_high"
-        if features.micro_regime_transition in {
-            "BREAKDOWN",
-            "ENTERED_TREND_DOWN",
-            "VOLATILITY_EXPANSION",
-        }:
-            return False, "symbol_transition_not_long"
-        if features.micro_regime == "TREND_DOWN" and features.trend_score < 0:
-            return False, "symbol_trend_down"
+        if microregime_directional == "DOWN":
+            return False, "microregime_directional_down"
         return True, "risk_profile_allows_long"
 
     def _stop_loss_pct(self, close: float, atr: float) -> float:
@@ -335,17 +337,10 @@ class TopGainerEarlyMomentum:
             "risk_reason": risk_reason,
             "candidate_open_time": candle_open_time,
             "current_price": current_price,
-            "market_regime": context.market_regime if context else None,
-            "market_regime_transition": (
-                context.market_regime_transition if context else None
-            ),
+            **self.ti.regime_measures(),
             "market_stress_score": context.market_stress_score if context else None,
             "btc_return": context.btc_return if context else None,
             "btc_regime_score": context.btc_regime_score if context else None,
-            "symbol_micro_regime": features.micro_regime if features else None,
-            "symbol_micro_regime_transition": (
-                features.micro_regime_transition if features else None
-            ),
             "symbol_trend_score": features.trend_score if features else None,
             "symbol_atr_pct": features.atr_pct if features else None,
             "relative_strength_vs_btc": (
@@ -360,16 +355,14 @@ class TopGainerEarlyMomentum:
             "volume_ratio": values["volume_ratio"],
         }
         logging.info(
-            "%s risk rejected: symbol=%s reason=%s market_regime=%s "
-            "market_transition=%s symbol_regime=%s symbol_transition=%s "
+            "%s risk rejected: symbol=%s reason=%s macro_directional=%s "
+            "micro_directional=%s "
             "atr_pct=%s relative_strength_vs_btc_horizon=%s",
             self.ALGO,
             self.symbol,
             risk_reason,
-            indicators["market_regime"],
-            indicators["market_regime_transition"],
-            indicators["symbol_micro_regime"],
-            indicators["symbol_micro_regime_transition"],
+            indicators["macroregime_directional"],
+            indicators["microregime_directional"],
             indicators["symbol_atr_pct"],
             indicators["relative_strength_vs_btc_horizon"],
         )
@@ -380,7 +373,7 @@ class TopGainerEarlyMomentum:
                 generated_at=datetime.now(UTC),
                 direction=Position.long.value,
                 autotrade=False,
-                current_regime=context.market_regime if context else None,
+                current_regime=self.ti.macroregime_directional,
                 context=context.model_dump(mode="json") if context else {},
                 signal_kind="risk_rejection",
                 bot_params={},
@@ -446,6 +439,7 @@ class TopGainerEarlyMomentum:
         risk_allowed, risk_reason = self._risk_profile_allows(
             context=context,
             features=symbol_features,
+            microregime_directional=self.ti.microregime_directional,
         )
         if not risk_allowed:
             self._record_risk_rejection(
@@ -553,11 +547,8 @@ class TopGainerEarlyMomentum:
             - Candle return: {round_numbers(values["candle_return"] * 100, 2)}%
             - Volume: {round_numbers(values["volume"], decimals=self.price_precision)} {base_asset} (ratio {round_numbers(values["volume_ratio"], 2)})
             - Quote volume: {round_numbers(values["quote_volume"], decimals=self.price_precision)} {quote_asset} (ratio {round_numbers(values["quote_volume_ratio"], 2)})
-            - Market regime: {context.market_regime if context.market_regime is not None else "UNAVAILABLE"}
-            - Market transition: {context.market_regime_transition if context.market_regime_transition is not None else "None"}
             {format_context_timestamp_line(context)}
-            - Coin regime: {symbol_features.micro_regime if symbol_features and symbol_features.micro_regime is not None else "UNAVAILABLE"}
-            - Coin transition: {symbol_features.micro_regime_transition if symbol_features and symbol_features.micro_regime_transition is not None else "None"}
+            {self.ti.regime_telegram_lines()}
             - Signal route: {route_reason}
             - Max margin: {fiat_order_size} {quote_asset}
             - Stop loss: {stop_loss}%
@@ -570,7 +561,7 @@ class TopGainerEarlyMomentum:
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
         await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(
             value,
             futures_entry_candles_validated=futures_entry_candles_validated,

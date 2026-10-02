@@ -52,6 +52,7 @@ class KlinesProvider:
 
     LIMIT = 400
     WEEKLY_STRUCTURE_HISTORY_LIMIT = (7 * 24) + 2
+    HOUR_MILLISECONDS = 60 * 60 * 1000
 
     def __init__(
         self,
@@ -134,7 +135,7 @@ class KlinesProvider:
             btc_symbol=self.futures_benchmark_symbol,
         )
         self.latest_market_context: LiveMarketContext | None = None
-        self.last_market_regime: str | None = None
+        self.last_macroregime_directional: str | None = None
 
         self.all_symbols: list[SymbolModel] = self.binbot_api.get_symbols()
 
@@ -155,6 +156,9 @@ class KlinesProvider:
         )
         self._last_calibration_bucket: int | None = None
         self._last_market_tape_bucket: int | None = None
+        self._completed_hourly_history_cache: dict[
+            tuple[MarketType, str], tuple[int, list[list]]
+        ] = {}
 
     def _get_benchmark_symbol(self, market_type: MarketType = MarketType.SPOT) -> str:
         if market_type == MarketType.FUTURES:
@@ -242,10 +246,9 @@ class KlinesProvider:
             interval=self.interval_15m.value,
             limit=self.LIMIT,
         )
-        self.candles_1h = self.api.get_ui_klines(
-            symbol=api_symbol,
-            interval=self.interval_1h.value,
-            limit=self.WEEKLY_STRUCTURE_HISTORY_LIMIT,
+        self.candles_1h = self._completed_hourly_history(
+            api_symbol=api_symbol,
+            market_type=market_type,
         )
         self._refresh_btc_candles_15m(market_type)
         closed_symbol_candles = self._sync_market_state_from_ui_klines(
@@ -268,6 +271,35 @@ class KlinesProvider:
                 timestamp=int(latest_candle["timestamp"]),
                 market_type=market_type,
             )
+
+    def _completed_hourly_history(
+        self,
+        *,
+        api_symbol: str,
+        market_type: MarketType,
+    ) -> list[list]:
+        now_ms = int(time() * 1000)
+        hourly_bucket = now_ms // self.HOUR_MILLISECONDS
+        cache_key = (market_type, api_symbol)
+        cache = getattr(self, "_completed_hourly_history_cache", None)
+        if cache is None:
+            cache = {}
+            self._completed_hourly_history_cache = cache
+
+        cached = cache.get(cache_key)
+        if cached is not None and cached[0] == hourly_bucket:
+            return cached[1]
+
+        hourly_history = self.api.get_ui_klines(
+            symbol=api_symbol,
+            interval=self.interval_1h.value,
+            limit=self.WEEKLY_STRUCTURE_HISTORY_LIMIT,
+        )
+        completed_history = [
+            row for row in hourly_history if len(row) > 6 and int(row[6]) < now_ms
+        ]
+        cache[cache_key] = (hourly_bucket, completed_history)
+        return completed_history
 
     def _refresh_btc_candles_15m(self, market_type: MarketType) -> None:
         """
@@ -428,7 +460,7 @@ class KlinesProvider:
             market_type=market_type,
             latest_market_context=self.latest_market_context,
             binbot_api=self.binbot_api,
-            last_market_regime=self.last_market_regime,
+            last_macroregime_directional=self.last_macroregime_directional,
             telegram_consumer=self.telegram_consumer,
             strategy_cooldowns=self.strategy_cooldowns,
             strategy_states=self.strategy_states,
@@ -447,4 +479,6 @@ class KlinesProvider:
             candles_1h=self.candles_1h,
             btc_candles_15m=self.btc_candles_15m,
         )
-        self.last_market_regime = crypto_analytics.last_market_regime
+        self.last_macroregime_directional = (
+            crypto_analytics.last_macroregime_directional
+        )

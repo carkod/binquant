@@ -140,7 +140,7 @@ class InversePriceTracker:
 
         context = self.ti.latest_market_context
         symbol_features = resolve_symbol_features(context=context, symbol=self.symbol)
-        route_allowed, autotrade_route = self.regime_routing(
+        route_allowed, route_reason = self.regime_routing(
             context=context,
             symbol_features=symbol_features,
         )
@@ -187,11 +187,9 @@ class InversePriceTracker:
         )
         bot_strategy = Position.long
 
-        autotrade = False
-
         value = SignalsConsumer(
             direction="LONG",
-            autotrade=autotrade,
+            autotrade=False,
             bot_params=BotBase(
                 pair=self.symbol,
                 name=algo,
@@ -225,12 +223,12 @@ class InversePriceTracker:
             - Follow-through: {round_numbers(context_score.followthrough_score, 3)}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3)}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3)}
-            - Autotrade route: {autotrade_route}
-            - Autotrade has been disabled for testing while inverse routing telemetry is validated 🧪
+            - Routing reason: {route_reason}
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
         await self.ti.dispatch_signal_record(value=value)
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

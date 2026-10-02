@@ -23,10 +23,6 @@ from market_regime.score_signal_candidate_with_context import (
     score_signal_candidate_with_context,
 )
 from market_regime.signal_context_scorer import SignalContextScorer
-from shared.time_of_day_filter import (
-    build_quiet_hours_signal_msg,
-    is_autotrade_suppressed,
-)
 from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
@@ -199,7 +195,6 @@ class PriceTracker:
 
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:
             bot_strategy = Position.long
-            autotrade = True
             context = self.ti.latest_market_context
             local_score = (
                 1.0
@@ -235,7 +230,7 @@ class PriceTracker:
                 return
 
             breadth_is_stable = self._has_stable_breadth(context)
-            autotrade, autotrade_route = self.regime_routing(
+            route_allowed, route_reason = self.regime_routing(
                 context=context,
                 symbol_features=symbol_features,
             )
@@ -277,30 +272,14 @@ class PriceTracker:
                 and top_loser_streak.price_change_percent_change > 0
             )
 
-            if autotrade and top_loser_recovery_confirmed:
-                autotrade_route = "top_loser_recovery"
-            elif autotrade and persistent_top_loser:
-                autotrade = False
-                autotrade_route = "persistent_top_loser"
-
-            if autotrade and os.getenv("ENV") == "staging":
-                autotrade = False
-                autotrade_route = "staging_autotrade_disabled"
-            elif autotrade and is_autotrade_suppressed(context=context):
-                autotrade = False
-                autotrade_route = "time_of_day_quiet_hours"
-                self.telegram_consumer.dispatch_signal(
-                    build_quiet_hours_signal_msg(
-                        symbol=self.symbol,
-                        algo=algo,
-                        side=bot_strategy.value,
-                        context=context,
-                    )
-                )
+            if route_allowed and top_loser_recovery_confirmed:
+                route_reason = "top_loser_recovery"
+            elif route_allowed and persistent_top_loser:
+                route_reason = "persistent_top_loser"
 
             value = SignalsConsumer(
                 direction="LONG",
-                autotrade=autotrade,
+                autotrade=False,
                 bot_params=BotBase(
                     pair=self.symbol,
                     name=algo,
@@ -328,7 +307,7 @@ class PriceTracker:
                 "rsi": rsi_value,
                 "macd": macd_value,
                 "mfi": mfi_value,
-                "route_reason": autotrade_route,
+                "route_reason": route_reason,
                 "top_gainer_snapshots_in_a_row": (top_gainer_streak.snapshots_in_a_row),
                 "top_gainer_price_change_percent": (
                     top_gainer_streak.latest_price_change_percent
@@ -373,15 +352,15 @@ class PriceTracker:
             - Follow-through: {round_numbers(context_score.followthrough_score, 3) if context_score is not None else "UNAVAILABLE"}
             - Risk: {round_numbers(context_score.adverse_excursion_risk, 3) if context_score is not None else "UNAVAILABLE"}
             - Adjusted score: {round_numbers(evaluation.adjusted_score, 3) if evaluation is not None else "UNAVAILABLE"}
-            - Autotrade route: {autotrade_route}
+            - Routing reason: {route_reason}
             - Exit intent: {self.STOP_LOSS_PCT}% stop, trail after {self.TRAILING_PROFIT_PCT}% with {self.TRAILING_DEVIATION_PCT}% deviation, maximum {self.MAX_HOLDING_BARS} completed 15m candles
-            - {"Autotrade is enabled" if autotrade else "Autotrade is disabled"}
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
 
             await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-            self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         pass

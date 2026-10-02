@@ -29,11 +29,11 @@ if TYPE_CHECKING:
 
 
 class TopGainerBreadth:
-    """Short a current 2nd-to-11th ranked gainer as bullish momentum fails.
+    """Short a current top gainer as bullish momentum fails.
 
     Entry requires:
-    - the symbol is currently a ranked top gainer (2nd-11th, by 24h move) —
-      the starting filter for which symbols this strategy considers at all;
+    - the symbol is in the current top-gainers snapshot — the starting filter
+      for which symbols this strategy considers at all;
     - the symbol's own 15m candles have just confirmed a lower high. This is
       the trigger: without it nothing else here matters.
 
@@ -55,8 +55,6 @@ class TopGainerBreadth:
 
     ALGO = "top_gainer_breadth"
 
-    TOP_GAINER_RANK_START = 2
-    TOP_GAINER_RANK_END = 11
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
 
@@ -104,10 +102,8 @@ class TopGainerBreadth:
             (
                 (rank, entry.price_change_percent)
                 for rank, entry in enumerate(
-                    latest_snapshot.top_gainers[
-                        self.TOP_GAINER_RANK_START - 1 : self.TOP_GAINER_RANK_END
-                    ],
-                    start=self.TOP_GAINER_RANK_START,
+                    latest_snapshot.top_gainers,
+                    start=1,
                 )
                 if entry.symbol == self.symbol
             ),
@@ -338,13 +334,14 @@ class TopGainerBreadth:
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT a current 24h gainer ranked 2nd-11th when price confirms a lower high; breadth reversal and BTC downtrend are confirming context, not required
+            - Rule intent: SHORT a current 24h top gainer when price confirms a lower high; breadth reversal and BTC downtrend are confirming context, not required
             - Top-gainer rank / 24h move: {top_gainer_rank} / {round_numbers(price_change_24h, 2)}%
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
             - Breadth reversal confirmed: {breadth_line}
             - BTC downtrend confirmed: {btc_line}
             - High-conviction ceiling (>= {self.BREADTH_CEILING}) reached: {"Yes" if high_conviction_ceiling_reached else "No"}
             {format_context_timestamp_line(context)}
+            {self.ti.regime_telegram_lines()}
             - Max margin: {fiat_order_size} {quote_asset}
             - Weekly resistance / support ({protection.candle_count} completed 1h candles): {protection.resistance} / {protection.support}
             - Stop loss: {BOUNDARY_BUFFER_PCT}% above weekly resistance at {protection.stop_loss_price} ({protection.stop_loss_pct}%)
@@ -358,7 +355,7 @@ class TopGainerBreadth:
         """
         try:
             await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-            self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
         finally:
             # Mark emitted even if a later fallible step raises: the signal

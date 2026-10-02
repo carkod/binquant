@@ -167,7 +167,7 @@ def make_context(
         exchange=ExchangeId.KUCOIN,
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.FUTURES,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data=SymbolModel(
@@ -227,7 +227,7 @@ async def test_signal_does_not_emit_short_when_hot_breadth_fades(
         market_breadth_data=make_market_breadth_series([0.18, 0.36, 0.32]),
         btc_last_change=0.001,
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
@@ -261,7 +261,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
         market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
         btc_last_change=0.003,
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
@@ -296,7 +296,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
 
     assert signal_value.bot_params.position == Position.long
     assert signal_value.direction == "LONG"
-    assert signal_value.autotrade is True
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.dynamic_trailing is False
     assert signal_value.bot_params.stop_loss == 2.5
     assert signal_value.bot_params.take_profit == 0
@@ -306,7 +306,9 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     assert signal_value.bot_params.cooldown == 60
     assert signal_value.bot_params.margin_short_reversal is False
     assert "Action: LONG ENTRY" in telegram_msg
-    assert "Autotrade route: market_breadth_recovering_btc_up_symbol_up" in telegram_msg
+    assert "Signal route: market_breadth_recovering_btc_up_symbol_up" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
+    assert "Autotrade is enabled" not in telegram_msg
     indicators = cast(Mock, algo.ti.dispatch_signal_record).call_args.kwargs[
         "indicators"
     ]
@@ -339,7 +341,7 @@ async def test_signal_skips_long_when_symbol_trend_is_not_up(monkeypatch):
         market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
         btc_last_change=0.003,
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
@@ -371,7 +373,7 @@ async def test_signal_skips_long_when_btc_is_not_increasing(monkeypatch):
         market_breadth_data=make_market_breadth_series([-0.52, -0.46, -0.42]),
         btc_last_change=0.0,
     )
-    send_signal_mock = Mock()
+    send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
     algo.telegram_consumer = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)

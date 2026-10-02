@@ -139,7 +139,7 @@ def make_no_lower_high_df() -> pd.DataFrame:
 
 def make_top_gainers(
     *,
-    symbol_rank: int = 4,
+    symbol_rank: int | None = 4,
     recorded_at: datetime | None = None,
 ) -> list[GainersLosersSnapshot]:
     entries = [
@@ -149,10 +149,11 @@ def make_top_gainers(
         )
         for rank in range(1, 13)
     ]
-    entries[symbol_rank - 1] = GainerLoserEntry(
-        symbol="TESTUSDTM",
-        price_change_percent=18.5,
-    )
+    if symbol_rank is not None:
+        entries[symbol_rank - 1] = GainerLoserEntry(
+            symbol="TESTUSDTM",
+            price_change_percent=18.5,
+        )
     return [
         GainersLosersSnapshot(
             source="kucoin_futures",
@@ -186,7 +187,7 @@ def make_context(
             price_precision=4,
         ),
         price_precision=4,
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT",
@@ -205,6 +206,7 @@ def make_context(
         ),
         strategy_cooldowns={},
         latest_market_context=None,
+        regime_telegram_lines=Mock(return_value="- Regime measures: test"),
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
     )
@@ -281,6 +283,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["stop_loss_price_at_signal"] == 96.24
     assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
     assert value.score == 2.0
+    context.regime_telegram_lines.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
 
@@ -420,22 +423,24 @@ async def test_signal_treats_stale_breadth_as_unconfirmed() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("symbol_rank", [1, 12])
-async def test_signal_requires_second_through_eleventh_gainer(symbol_rank: int) -> None:
+async def test_signal_accepts_any_rank_in_top_gainers_snapshot(
+    symbol_rank: int,
+) -> None:
     context = make_context(symbol_rank=symbol_rank)
 
     await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
-    context.dispatch_signal_record.assert_not_awaited()
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["top_gainer_rank"] == symbol_rank
 
 
 @pytest.mark.asyncio
-async def test_signal_accepts_eleventh_ranked_gainer() -> None:
-    context = make_context(symbol_rank=11)
+async def test_signal_requires_current_top_gainer_membership() -> None:
+    context = make_context(gainers=make_top_gainers(symbol_rank=None))
 
     await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
-    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["top_gainer_rank"] == 11
+    context.dispatch_signal_record.assert_not_awaited()
 
 
 @pytest.mark.asyncio

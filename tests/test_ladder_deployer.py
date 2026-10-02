@@ -344,3 +344,24 @@ async def test_ladder_deployer_skips_when_relative_strength_vs_btc_is_not_positi
     assert evaluator.at_consumer.values == []
     assert evaluator.dispatched_values == []
     assert "grid_ladder skipped: relative_strength_vs_btc_not_positive" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_grid_ladder_never_requests_autotrade(monkeypatch) -> None:
+    evaluator = FakeContextEvaluator()
+    deployer = LadderDeployer(cast(ContextEvaluator, evaluator))
+    monkeypatch.setattr(deployer, "_bb_stable", lambda n, max_change_pct: True)
+    monkeypatch.setattr(
+        "strategies.grid.ladder_deployer.resolve_symbol_features",
+        lambda context, symbol: make_symbol_features(),
+    )
+
+    await deployer.signal(
+        current_price=100.0,
+        bb_high=102.0,
+        bb_mid=100.0,
+        bb_low=98.0,
+    )
+
+    assert len(evaluator.dispatched_values) == 1
+    assert evaluator.dispatched_values[0].autotrade is False

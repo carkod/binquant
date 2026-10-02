@@ -7,6 +7,13 @@
 - A module belongs in `strategies/` only when it represents an algorithm that can emit or evaluate a named trading signal.
 - Before adding a file to `strategies/`, consider whether frontend discovery should expose it as an algorithm. If not, place it elsewhere.
 
+## Legacy market context
+
+- Treat `LiveMarketContext` as legacy compatibility infrastructure. Do not introduce new strategy, routing, notification, or signal-persistence dependencies on it.
+- New strategy context must come from `ContextEvaluator` and its shared accessors.
+- For regime information, use `macroregime_directional`, `macroregime_oscillation_intensity`, `microregime_directional`, and `microregime_oscillation_intensity` through `ContextEvaluator`.
+- Existing `LiveMarketContext` consumers may remain until they are migrated, but do not expand the model or use its legacy `market_regime`, transition, or micro-regime fields in new work.
+
 ## Validation
 
 - Update focused regression tests whenever trading calculations, signal routing, or Telegram output changes.

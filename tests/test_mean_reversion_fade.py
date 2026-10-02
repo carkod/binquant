@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 from pandas import DataFrame, Series
@@ -131,7 +131,7 @@ def make_evaluator(
             price_precision=6,
         ),
         price_precision=6,
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         strategy_cooldowns={},
         df_15m=df if df is not None else make_df(),
@@ -199,7 +199,7 @@ async def emit_short(strategy: MeanReversionFade) -> None:
 
 
 @pytest.mark.asyncio
-async def test_strategy_emits_fixed_target_short(
+async def test_mean_reversion_fade_never_requests_autotrade(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     patch_rsi(monkeypatch, 80.0, previous_value=81.0)
@@ -212,7 +212,10 @@ async def test_strategy_emits_fixed_target_short(
     value = call.kwargs["value"]
     indicators = call.kwargs["indicators"]
     assert value.direction == "SHORT"
-    assert value.autotrade is True
+    assert value.autotrade is False
+    message = evaluator.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Autotrade is disabled; notification only" in message
+    assert "Autotrade is enabled" not in message
     assert value.bot_params.position == Position.short
     assert value.bot_params.dynamic_trailing is False
     assert value.bot_params.trailing is False

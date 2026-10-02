@@ -369,6 +369,7 @@ class TopLoserBreadth:
             - High-conviction floor (<= {self.BREADTH_FLOOR}) reached: {"Yes" if high_conviction_floor_reached else "No"}
             - Beta vs BTC (~{round_numbers(self.BTC_BETA_WINDOW_BARS / 96, 1)}d): {btc_beta_line}
             {format_context_timestamp_line(context)}
+            {self.ti.regime_telegram_lines()}
             - Max margin: {fiat_order_size} {quote_asset}
             - Weekly resistance / support ({protection.candle_count} completed 1h candles): {protection.resistance} / {protection.support}
             - Stop loss: {BOUNDARY_BUFFER_PCT}% below weekly support at {protection.stop_loss_price} ({protection.stop_loss_pct}%)
@@ -382,7 +383,7 @@ class TopLoserBreadth:
         """
         try:
             await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-            self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
         finally:
             # Mark emitted even if a later fallible step raises: the signal

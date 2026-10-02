@@ -180,6 +180,73 @@ def test_refresh_symbol_histories_fetches_a_full_week_of_hourly_candles() -> Non
     ]
 
 
+def test_completed_hourly_history_is_cached_until_next_hour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current_time_seconds = 10 * 60 * 60 + 5 * 60
+    monkeypatch.setattr(
+        "consumers.klines_provider.time",
+        lambda: current_time_seconds,
+    )
+    now_ms = current_time_seconds * 1000
+    completed_row = [
+        now_ms - 2 * KlinesProvider.HOUR_MILLISECONDS,
+        "1.0",
+        "1.2",
+        "0.9",
+        "1.1",
+        "100",
+        now_ms - 1,
+    ]
+    forming_row = [
+        now_ms - 5 * 60 * 1000,
+        "1.1",
+        "1.3",
+        "1.0",
+        "1.2",
+        "120",
+        now_ms + 55 * 60 * 1000,
+    ]
+
+    def get_ui_klines(*, symbol: str, interval: str, limit: int) -> list[list]:
+        assert symbol == "TESTUSDT"
+        assert limit > 0
+        if interval == BinanceKlineIntervals.one_hour.value:
+            return [completed_row, forming_row]
+        return []
+
+    provider = cast(Any, object.__new__(KlinesProvider))
+    provider.api = SimpleNamespace(get_ui_klines=Mock(side_effect=get_ui_klines))
+    provider.interval = BinanceKlineIntervals.five_minutes
+    provider.interval_15m = BinanceKlineIntervals.fifteen_minutes
+    provider.interval_1h = BinanceKlineIntervals.one_hour
+    provider._completed_hourly_history_cache = {}
+    provider._refresh_btc_candles_15m = Mock()
+    provider._sync_market_state_from_ui_klines = Mock(return_value=[])
+    provider._store_btc_history = Mock()
+
+    provider._refresh_symbol_histories("TESTUSDT", MarketType.SPOT)
+    provider._refresh_symbol_histories("TESTUSDT", MarketType.SPOT)
+
+    hourly_calls = [
+        request
+        for request in provider.api.get_ui_klines.call_args_list
+        if request.kwargs["interval"] == BinanceKlineIntervals.one_hour.value
+    ]
+    assert len(hourly_calls) == 1
+    assert provider.candles_1h == [completed_row]
+
+    current_time_seconds += 60 * 60
+    provider._refresh_symbol_histories("TESTUSDT", MarketType.SPOT)
+
+    hourly_calls = [
+        request
+        for request in provider.api.get_ui_klines.call_args_list
+        if request.kwargs["interval"] == BinanceKlineIntervals.one_hour.value
+    ]
+    assert len(hourly_calls) == 2
+
+
 def test_recovery_bot_snapshot_refreshes_once_per_bucket() -> None:
     provider = cast(Any, object.__new__(KlinesProvider))
     source_bots = [SimpleNamespace(id="source-bot")]

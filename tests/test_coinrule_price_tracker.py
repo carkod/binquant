@@ -105,7 +105,7 @@ def make_context(
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
         binbot_api=binbot_api,
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data={"base_asset": "TEST"},
@@ -304,7 +304,7 @@ async def test_price_tracker_no_signal_on_uptrend():
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
     algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=Mock())
+        TelegramConsumer, SimpleNamespace(dispatch_signal=AsyncMock())
     )
 
     await algo.signal(
@@ -327,7 +327,7 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     algo = make_algo(df)
     algo.gainers_losers_series = [make_mover_snapshot(gainers=[("TESTUSDT", 12.5)])]
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -353,10 +353,6 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
             ),
         ),
     )
-    monkeypatch.setattr(
-        "strategies.coinrule.price_tracker.is_autotrade_suppressed",
-        lambda **kwargs: False,
-    )
 
     await algo.signal(
         close_price=float(df["close"].iloc[-1]),
@@ -378,7 +374,7 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
 
     dispatch_mock = cast(Mock, algo.ti.dispatch_signal_record)
     signal_value = dispatch_mock.call_args.kwargs["value"]
-    assert signal_value.autotrade is True
+    assert signal_value.autotrade is False
     assert signal_value.bot_params.dynamic_trailing is False
     assert signal_value.bot_params.stop_loss == PriceTracker.STOP_LOSS_PCT
     assert signal_value.bot_params.take_profit == 0
@@ -394,17 +390,48 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     assert signal_indicators["top_loser_snapshots_in_a_row"] == 0
 
 
+@pytest.mark.asyncio
+async def test_price_tracker_never_requests_autotrade(monkeypatch):
+    df = make_ohlcv_df(n=50, oversold=True)
+    algo = make_algo(df)
+    algo.ti.latest_market_context = make_market_context()
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.Indicators.mfi",
+        staticmethod(lambda df, window=14: 15.0),
+    )
+    monkeypatch.setattr(
+        "strategies.coinrule.price_tracker.score_signal_candidate_with_context",
+        lambda **kwargs: SimpleNamespace(
+            adjusted_score=1.2,
+            emit=True,
+            context_score=SimpleNamespace(
+                confidence=0.7,
+                followthrough_score=0.2,
+                adverse_excursion_risk=0.2,
+            ),
+        ),
+    )
+
+    await algo.signal(
+        close_price=float(df["close"].iloc[-1]),
+        bb_high=115.0,
+        bb_low=85.0,
+        bb_mid=100.0,
+    )
+
+    value = cast(Mock, algo.ti.dispatch_signal_record).call_args.kwargs["value"]
+    assert value.autotrade is False
+
+
 @pytest.mark.parametrize(
     (
         "losers_by_snapshot",
-        "expected_autotrade",
         "expected_route",
         "expected_recovery",
     ),
     [
         (
             [[("TESTUSDT", -12.0)]],
-            True,
             "symbol_range",
             False,
         ),
@@ -413,7 +440,6 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
                 [("TESTUSDT", -14.0)],
                 [("TESTUSDT", -12.0)],
             ],
-            False,
             "persistent_top_loser",
             False,
         ),
@@ -422,7 +448,6 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
                 [("TESTUSDT", -10.0)],
                 [("TESTUSDT", -14.0)],
             ],
-            False,
             "persistent_top_loser",
             False,
         ),
@@ -431,7 +456,6 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
                 [("OTHERUSDT", -16.0), ("TESTUSDT", -14.0)],
                 [("TESTUSDT", -12.0)],
             ],
-            False,
             "persistent_top_loser",
             False,
         ),
@@ -440,7 +464,6 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
                 [("OTHERUSDT", -12.0), ("TESTUSDT", -10.0)],
                 [("TESTUSDT", -14.0)],
             ],
-            True,
             "top_loser_recovery",
             True,
         ),
@@ -450,7 +473,6 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
 async def test_price_tracker_times_top_loser_entries_from_tape_recovery(
     monkeypatch,
     losers_by_snapshot: list[list[tuple[str, float]]],
-    expected_autotrade: bool,
     expected_route: str,
     expected_recovery: bool,
 ) -> None:
@@ -476,10 +498,6 @@ async def test_price_tracker_times_top_loser_entries_from_tape_recovery(
             ),
         ),
     )
-    monkeypatch.setattr(
-        "strategies.coinrule.price_tracker.is_autotrade_suppressed",
-        lambda **kwargs: False,
-    )
 
     await algo.signal(
         close_price=float(df["close"].iloc[-1]),
@@ -491,12 +509,12 @@ async def test_price_tracker_times_top_loser_entries_from_tape_recovery(
     dispatch_mock = cast(Mock, algo.ti.dispatch_signal_record)
     signal_value = dispatch_mock.call_args.kwargs["value"]
     indicators = dispatch_mock.call_args.kwargs["indicators"]
-    assert signal_value.autotrade is expected_autotrade
+    assert signal_value.autotrade is False
     assert indicators["route_reason"] == expected_route
     assert indicators["top_loser_snapshots_in_a_row"] == len(losers_by_snapshot)
     assert indicators["top_loser_recovery_confirmed"] is expected_recovery
     telegram_mock = cast(Mock, algo.telegram_consumer.dispatch_signal)
-    assert f"Autotrade route: {expected_route}" in telegram_mock.call_args.args[0]
+    assert f"Routing reason: {expected_route}" in telegram_mock.call_args.args[0]
     assert (
         f"Top-loser recovery confirmed: {'Yes' if expected_recovery else 'No'}"
         in telegram_mock.call_args.args[0]
@@ -508,7 +526,7 @@ async def test_price_tracker_keeps_eligible_staging_signal_shadow_only(monkeypat
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -546,8 +564,8 @@ async def test_price_tracker_keeps_eligible_staging_signal_shadow_only(monkeypat
     assert signal_value.autotrade is False
     at_mock.assert_awaited_once_with(signal_value)
     telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade route: staging_autotrade_disabled" in telegram_msg
-    assert "Autotrade is disabled" in telegram_msg
+    assert "Routing reason: symbol_range" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
 
 
 @pytest.mark.parametrize("trend_score", [-0.0051, 0.0051])
@@ -589,7 +607,7 @@ async def test_price_tracker_disables_autotrade_without_relative_strength(
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -640,7 +658,7 @@ async def test_price_tracker_disables_autotrade_without_relative_strength(
     tg_mock.assert_called_once()
     telegram_msg = tg_mock.call_args.args[0]
     assert (
-        "Autotrade route: symbol_relative_strength_vs_btc_insufficient" in telegram_msg
+        "Routing reason: symbol_relative_strength_vs_btc_insufficient" in telegram_msg
     )
 
 
@@ -649,7 +667,7 @@ async def test_price_tracker_cools_down_repeated_symbol_entries(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     context = make_context(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     context.at_consumer = SimpleNamespace(process_autotrade_restrictions=at_mock)
     context.telegram_consumer = SimpleNamespace(dispatch_signal=tg_mock)
     context.latest_market_context = make_market_context()
@@ -702,7 +720,7 @@ async def test_price_tracker_allows_entry_after_cooldown_window(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     context = make_context(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     context.at_consumer = SimpleNamespace(process_autotrade_restrictions=at_mock)
     context.telegram_consumer = SimpleNamespace(dispatch_signal=tg_mock)
     context.latest_market_context = make_market_context()
@@ -756,7 +774,7 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
     algo = make_algo(df)
     algo.market_type = MarketType.SPOT
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -806,7 +824,7 @@ async def test_price_tracker_disables_autotrade_in_transitioning_market(monkeypa
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -861,7 +879,7 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -922,7 +940,7 @@ async def test_price_tracker_reads_latest_context_from_evaluator(monkeypatch):
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -984,7 +1002,7 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1033,7 +1051,7 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
     tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
-    assert "Autotrade route: market_regime_trend_up" in telegram_msg
+    assert "Routing reason: market_regime_trend_up" in telegram_msg
 
 
 @pytest.mark.asyncio
@@ -1043,7 +1061,7 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1096,7 +1114,7 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
     tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
-    assert "Autotrade route: symbol_regime_transitional" in telegram_msg
+    assert "Routing reason: symbol_regime_transitional" in telegram_msg
 
 
 @pytest.mark.asyncio
@@ -1104,7 +1122,7 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
     df = make_ohlcv_df(n=50, oversold=True)
     algo = make_algo(df)
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1154,7 +1172,7 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
     tg_await_args = tg_mock.call_args
     assert tg_await_args is not None
     telegram_msg = tg_await_args.args[0]
-    assert "Autotrade route: breadth_not_stable_for_mean_reversion" in telegram_msg
+    assert "Routing reason: breadth_not_stable_for_mean_reversion" in telegram_msg
 
 
 # ---------------------------------------------------------------------------
@@ -1198,7 +1216,7 @@ async def test_bb_extreme_skips_signal_generation_when_disabled():
     algo = make_bbex_algo(df, enabled=False)
     algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1225,7 +1243,7 @@ async def test_bb_extreme_emits_buy_signal_at_oversold_and_below_band():
     algo = make_bbex_algo(df)
     algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1246,9 +1264,30 @@ async def test_bb_extreme_emits_buy_signal_at_oversold_and_below_band():
     assert "bb_extreme_reversion" in telegram_msg
     assert "Action: LONG ENTRY" in telegram_msg
     assert "Strategy: long" in telegram_msg
-    assert "Autotrade candidate: Yes" in telegram_msg
-    assert "Autotrade route: market_range_stable" in telegram_msg
-    cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
+    assert "Autotrade is disabled; notification only" in telegram_msg
+    dispatch_mock = cast(Mock, algo.ti.dispatch_signal_record)
+    dispatch_mock.assert_called_once()
+    assert dispatch_mock.call_args.kwargs["value"].autotrade is False
+
+
+@pytest.mark.asyncio
+async def test_bb_extreme_never_requests_autotrade():
+    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
+    algo = make_bbex_algo(df)
+    algo.ti.latest_market_context = make_market_context()
+    at_mock = AsyncMock()
+    algo.at_consumer = cast(
+        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
+    )
+    algo.telegram_consumer = cast(
+        TelegramConsumer, SimpleNamespace(dispatch_signal=AsyncMock())
+    )
+
+    await algo.signal(current_price=90.0, bb_high=105.0, bb_low=95.0, bb_mid=100.0)
+
+    value = cast(Mock, algo.ti.dispatch_signal_record).call_args.kwargs["value"]
+    assert value.autotrade is False
+    at_mock.assert_awaited_once_with(value)
 
 
 @pytest.mark.asyncio
@@ -1260,7 +1299,7 @@ async def test_bb_extreme_emits_sell_signal_at_overbought_and_above_band():
         symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
     )
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1283,7 +1322,7 @@ async def test_bb_extreme_emits_sell_signal_at_overbought_and_above_band():
     tg_mock.assert_called_once()
     telegram_msg = tg_mock.call_args.args[0]
     assert "Action: SHORT ENTRY" in telegram_msg
-    assert "Autotrade route: market_range_stable" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
     cast(Mock, algo.ti.dispatch_signal_record).assert_called_once()
 
 
@@ -1294,7 +1333,7 @@ async def test_bb_extreme_skips_when_rsi_not_oversold():
     algo = make_bbex_algo(df)
     algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1320,7 +1359,7 @@ async def test_bb_extreme_skips_when_price_inside_band():
     algo = make_bbex_algo(df)
     algo.ti.latest_market_context = make_market_context()
     at_mock = AsyncMock()
-    tg_mock = Mock()
+    tg_mock = AsyncMock()
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
@@ -1337,183 +1376,6 @@ async def test_bb_extreme_skips_when_price_inside_band():
 
     at_mock.assert_not_awaited()
     tg_mock.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_bb_extreme_blocked_in_non_range_market_regime() -> None:
-    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
-    algo = make_bbex_algo(df)
-    algo.ti.latest_market_context = make_market_context(market_regime="TREND_UP")
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=90.0,
-        bb_high=105.0,
-        bb_low=95.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_not_awaited()
-    tg_mock.assert_called_once()
-    telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade candidate: No" in telegram_msg
-    assert "Autotrade route: market_regime_trend_up" in telegram_msg
-
-
-@pytest.mark.asyncio
-async def test_bb_extreme_blocked_when_market_stress_too_high() -> None:
-    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
-    algo = make_bbex_algo(df)
-    algo.ti.latest_market_context = make_market_context(market_stress_score=0.5)
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=90.0,
-        bb_high=105.0,
-        bb_low=95.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_not_awaited()
-    tg_mock.assert_called_once()
-    telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade route: market_stress_too_high" in telegram_msg
-
-
-@pytest.mark.asyncio
-async def test_bb_extreme_blocks_buy_when_micro_regime_trend_down() -> None:
-    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
-    algo = make_bbex_algo(df)
-    algo.ti.latest_market_context = make_market_context(
-        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_DOWN")}
-    )
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=90.0,
-        bb_high=105.0,
-        bb_low=95.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_not_awaited()
-    tg_mock.assert_called_once()
-    telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade candidate: No" in telegram_msg
-    assert "Autotrade route: symbol_regime_trend_down_for_long" in telegram_msg
-
-
-@pytest.mark.asyncio
-async def test_bb_extreme_blocks_short_when_micro_regime_not_shortable() -> None:
-    df = make_bbex_df(n=35, last_closes=[100.0, 105.0, 110.0])
-    algo = make_bbex_algo(df)
-    algo.ti.latest_market_context = make_market_context(
-        symbol_features={"TESTUSDT": make_symbol_features(micro_regime="TREND_UP")}
-    )
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=110.0,
-        bb_high=105.0,
-        bb_low=95.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_not_awaited()
-    tg_mock.assert_called_once()
-    telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade route: symbol_regime_not_shortable" in telegram_msg
-
-
-@pytest.mark.asyncio
-async def test_bb_extreme_blocks_when_micro_regime_strength_too_low() -> None:
-    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
-    algo = make_bbex_algo(df)
-    algo.ti.latest_market_context = make_market_context(
-        symbol_features={"TESTUSDT": make_symbol_features(micro_regime_strength=0.2)}
-    )
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=90.0,
-        bb_high=105.0,
-        bb_low=95.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_not_awaited()
-    tg_mock.assert_called_once()
-    telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade route: symbol_micro_regime_unstable" in telegram_msg
-
-
-@pytest.mark.asyncio
-async def test_bb_extreme_blocks_during_breakdown_transition() -> None:
-    df = make_bbex_df(n=35, last_closes=[100.0, 95.0, 90.0])
-    algo = make_bbex_algo(df)
-    algo.ti.latest_market_context = make_market_context(
-        symbol_features={
-            "TESTUSDT": make_symbol_features(
-                micro_regime_transition="BREAKDOWN",
-                micro_regime_transition_strength=0.6,
-            )
-        }
-    )
-    at_mock = AsyncMock()
-    tg_mock = Mock()
-    algo.at_consumer = cast(
-        AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
-    )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
-    )
-
-    await algo.signal(
-        current_price=90.0,
-        bb_high=105.0,
-        bb_low=95.0,
-        bb_mid=100.0,
-    )
-
-    at_mock.assert_not_awaited()
-    tg_mock.assert_called_once()
-    telegram_msg = tg_mock.call_args.args[0]
-    assert "Autotrade route: symbol_transition_breakdown" in telegram_msg
 
 
 def test_bb_extreme_evaluate_returns_no_trigger_when_band_span_invalid() -> None:
