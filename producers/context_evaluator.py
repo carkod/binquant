@@ -50,7 +50,7 @@ from shared.utils import format_context_timestamp_line
 from strategies.higher_low_pattern import HigherLowPattern
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.lower_high_pattern import LowerHighPattern
-from strategies.top_gainer_breadth import TopGainerBreadth
+from strategies.top_gainer_short import TopGainerShort
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 from strategies.top_loser_breadth import TopLoserBreadth
 from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
@@ -368,7 +368,7 @@ class ContextEvaluator:
         Initialize the temporarily enabled 15m algorithms.
         """
         self.macroregime_directional_notifier = MacroregimeDirectionalNotifier(cls=self)
-        self.top_gainer_breadth = TopGainerBreadth(cls=self)
+        self.top_gainer_short = TopGainerShort(cls=self)
         self.top_loser_breadth = TopLoserBreadth(cls=self)
         self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
         self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
@@ -626,8 +626,8 @@ class ContextEvaluator:
             spreads = self.bb_spreads(self.df_15m)
 
             await self._safe_signal(
-                "TopGainerBreadth",
-                self.top_gainer_breadth.signal(
+                "TopGainerShort",
+                self.top_gainer_short.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,

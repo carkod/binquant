@@ -17,7 +17,7 @@ from pybinbot import (
     btc_trend_confirms,
 )
 
-from strategies.top_gainer_breadth import TopGainerBreadth
+from strategies.top_gainer_short import TopGainerShort
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
 BEARISH_CROSS_BREADTH = [0.30] * 9 + [0.24, 0.20, 0.16]
@@ -215,7 +215,7 @@ def make_context(
 @pytest.fixture(autouse=True)
 def fixed_strategy_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "strategies.top_gainer_breadth.time",
+        "strategies.top_gainer_short.time",
         lambda: NOW.timestamp(),
     )
 
@@ -224,9 +224,9 @@ def test_strategy_constants_classify_bearish_entry_fixture() -> None:
     breadth_values, breadth_reason = breadth_momentum_reversal(
         make_market_breadth(),
         direction=-1,
-        min_history=TopGainerBreadth.MIN_BREADTH_HISTORY,
-        fast_ema_span=TopGainerBreadth.BREADTH_FAST_EMA_SPAN,
-        extension_threshold=TopGainerBreadth.BREADTH_EXTENSION_THRESHOLD,
+        min_history=TopGainerShort.MIN_BREADTH_HISTORY,
+        fast_ema_span=TopGainerShort.BREADTH_FAST_EMA_SPAN,
+        extension_threshold=TopGainerShort.BREADTH_EXTENSION_THRESHOLD,
     )
     assert breadth_reason == "breadth_momentum_bearish_reversal"
     assert breadth_values is not None
@@ -237,8 +237,8 @@ def test_strategy_constants_classify_bearish_entry_fixture() -> None:
     btc_trend = btc_trend_confirms(
         make_btc_df(),
         direction=-1,
-        min_history=TopGainerBreadth.MIN_BTC_HISTORY,
-        trend_ema_span=TopGainerBreadth.BTC_TREND_EMA_SPAN,
+        min_history=TopGainerShort.MIN_BTC_HISTORY,
+        trend_ema_span=TopGainerShort.BTC_TREND_EMA_SPAN,
     )
     assert btc_trend is not None
 
@@ -247,7 +247,7 @@ def test_strategy_constants_classify_bearish_entry_fixture() -> None:
 async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None:
     context = make_context()
 
-    await TopGainerBreadth(cast(Any, context)).signal(
+    await TopGainerShort(cast(Any, context)).signal(
         current_price=90.0,
         bb_high=95.0,
         bb_mid=92.0,
@@ -258,7 +258,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert value.autotrade is False
     assert value.direction == "SHORT"
-    assert value.bot_params.name == "top_gainer_breadth"
+    assert value.bot_params.name == "top_gainer_short"
     assert value.bot_params.position == "short"
     assert value.bot_params.stop_loss == 6.9333
     assert value.bot_params.dynamic_trailing is False
@@ -291,7 +291,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
 async def test_signal_uses_weekly_resistance_independent_of_bollinger_band() -> None:
     context = make_context()
 
-    await TopGainerBreadth(cast(Any, context)).signal(
+    await TopGainerShort(cast(Any, context)).signal(
         current_price=90.0,
         bb_high=92.0,
         bb_mid=90.0,
@@ -318,7 +318,7 @@ async def test_signal_requires_fresh_confirmed_lower_high() -> None:
     ]
 
     for context in contexts:
-        await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+        await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
         context.dispatch_signal_record.assert_not_awaited()
         context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
@@ -344,7 +344,7 @@ async def test_signal_uses_latest_completed_candle_for_lower_high() -> None:
     )
     context = make_context(symbol_df=frame)
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["lower_high_confirmation_open_time"] == int(
@@ -358,7 +358,7 @@ async def test_signal_rejects_stale_gainers_snapshot() -> None:
         gainers=make_top_gainers(recorded_at=NOW - timedelta(minutes=76))
     )
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
@@ -371,7 +371,7 @@ async def test_signal_still_enters_without_btc_downtrend_confirmation() -> None:
     lowers the score but does not block entry."""
     context = make_context(btc_df=make_btc_df(downtrend=False))
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
@@ -392,7 +392,7 @@ async def test_signal_still_enters_without_breadth_reversal_confirmation() -> No
         )
     )
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
@@ -411,7 +411,7 @@ async def test_signal_treats_stale_breadth_as_unconfirmed() -> None:
         breadth=make_market_breadth(latest_at=NOW - timedelta(minutes=31))
     )
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
@@ -428,7 +428,7 @@ async def test_signal_accepts_any_rank_in_top_gainers_snapshot(
 ) -> None:
     context = make_context(symbol_rank=symbol_rank)
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["top_gainer_rank"] == symbol_rank
@@ -438,7 +438,7 @@ async def test_signal_accepts_any_rank_in_top_gainers_snapshot(
 async def test_signal_requires_current_top_gainer_membership() -> None:
     context = make_context(gainers=make_top_gainers(symbol_rank=None))
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
 
@@ -447,7 +447,7 @@ async def test_signal_requires_current_top_gainer_membership() -> None:
 async def test_signal_requires_seven_days_of_completed_hourly_candles() -> None:
     context = make_context(weekly_df=make_weekly_structure_df().iloc[:-1])
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 89.0, 88.0, 85.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 89.0, 88.0, 85.0)
 
     context.dispatch_signal_record.assert_not_awaited()
 
@@ -455,7 +455,7 @@ async def test_signal_requires_seven_days_of_completed_hourly_candles() -> None:
 @pytest.mark.asyncio
 async def test_signal_emits_only_once_for_same_breadth_cross() -> None:
     context = make_context()
-    strategy = TopGainerBreadth(cast(Any, context))
+    strategy = TopGainerShort(cast(Any, context))
 
     for _ in range(2):
         await strategy.signal(90.0, 95.0, 92.0, 87.0)
@@ -473,7 +473,7 @@ async def test_signal_tags_high_conviction_breadth_ceiling() -> None:
         )
     )
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["market_breadth"] == pytest.approx(0.61)
@@ -485,7 +485,7 @@ async def test_signal_tags_high_conviction_breadth_ceiling() -> None:
 async def test_signal_ignores_non_futures_market() -> None:
     context = make_context(market_type=MarketType.SPOT)
 
-    await TopGainerBreadth(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
 
@@ -499,7 +499,7 @@ async def test_signal_marks_emitted_even_when_autotrade_processing_raises() -> N
     context.at_consumer.process_autotrade_restrictions = AsyncMock(
         side_effect=RuntimeError("boom")
     )
-    strategy = TopGainerBreadth(cast(Any, context))
+    strategy = TopGainerShort(cast(Any, context))
 
     with pytest.raises(RuntimeError):
         await strategy.signal(90.0, 95.0, 92.0, 87.0)

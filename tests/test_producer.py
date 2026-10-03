@@ -440,7 +440,7 @@ ALL_NOTIFICATION_STRATEGIES = {
     "MacroregimeDirectionalNotifier",
     "LowerHighPattern",
     "HigherLowPattern",
-    "TopGainerBreadth",
+    "TopGainerShort",
     "TopLoserBreadth",
     "TopGainerEarlyMomentum",
     "TopLoserEarlyMomentum",
@@ -489,7 +489,7 @@ async def test_process_data_runs_every_strategy_in_every_environment(
             "HigherLowPattern",
             "LiquidationSweepPump",
             "LadderDeployer",
-            "TopGainerBreadth",
+            "TopGainerShort",
             "TopLoserBreadth",
             "TopLoserEarlyMomentum",
         )
@@ -536,8 +536,8 @@ async def test_process_data_runs_every_strategy_in_every_environment(
         evaluator.higher_low_pattern = SimpleNamespace(
             signal=strategy_signals["HigherLowPattern"]
         )
-        evaluator.top_gainer_breadth = SimpleNamespace(
-            signal=strategy_signals["TopGainerBreadth"]
+        evaluator.top_gainer_short = SimpleNamespace(
+            signal=strategy_signals["TopGainerShort"]
         )
         evaluator.top_loser_breadth = SimpleNamespace(
             signal=strategy_signals["TopLoserBreadth"]

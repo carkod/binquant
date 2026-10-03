@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class TopGainerBreadth:
+class TopGainerShort:
     """Short a current top gainer as bullish momentum fails.
 
     Entry requires:
@@ -53,7 +53,7 @@ class TopGainerBreadth:
     its parameters describe the proposed trade but do not open a bot.
     """
 
-    ALGO = "top_gainer_breadth"
+    ALGO = "top_gainer_short"
 
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60

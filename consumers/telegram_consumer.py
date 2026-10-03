@@ -16,7 +16,7 @@ class TelegramConsumer:
     _ALLOWED_HTML_TAGS = ("b", "strong", "i", "em", "u", "s", "code", "pre", "a")
     _ALLOWED_SIGNAL_ALGORITHMS = frozenset(
         {
-            "top_gainer_breadth",
+            "top_gainer_short",
             "top_loser_breadth",
             "top_gainer_early_momentum",
             "top_loser_early_momentum",

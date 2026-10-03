@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 class TopLoserBreadth:
     """Long a current 2nd-to-11th ranked loser as bearish momentum fails.
 
-    Exact sign-mirror of TopGainerBreadth (strategies/top_gainer_breadth.py).
+    Exact sign-mirror of TopGainerShort (strategies/top_gainer_short.py).
     Entry requires:
     - the symbol is currently a ranked top loser (2nd-11th, by 24h move) —
       the starting filter for which symbols this strategy considers at all;

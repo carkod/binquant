@@ -38,16 +38,16 @@ class AutotradeConsumer:
     )
     MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES = {
         "top_gainer_early_momentum": frozenset(
-            {"top_gainer_breadth", "top_loser_early_momentum"}
+            {"top_gainer_short", "top_loser_early_momentum"}
         ),
-        "top_gainer_breadth": frozenset(
+        "top_gainer_short": frozenset(
             {"top_gainer_early_momentum", "top_loser_breadth"}
         ),
         "top_loser_early_momentum": frozenset(
             {"top_gainer_early_momentum", "top_loser_breadth"}
         ),
         "top_loser_breadth": frozenset(
-            {"top_gainer_breadth", "top_loser_early_momentum"}
+            {"top_gainer_short", "top_loser_early_momentum"}
         ),
     }
     GRID_ONLY_STANDARD_BOT_ALLOWLIST = frozenset(

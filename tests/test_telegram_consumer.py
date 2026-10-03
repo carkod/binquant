@@ -108,7 +108,7 @@ class TestTelegramConsumer:
     @pytest.mark.parametrize(
         "algorithm",
         [
-            "top_gainer_breadth",
+            "top_gainer_short",
             "top_loser_breadth",
             "top_gainer_early_momentum",
             "top_loser_early_momentum",
