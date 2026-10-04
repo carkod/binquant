@@ -335,9 +335,6 @@ class RelativeStrengthImpulseRider:
             return
         self._mark_emitted(retest_open_time)
 
-        # Live in every environment. Staging carries too little balance to ever
-        # open a position, so a staging-only gate meant this never traded at all.
-        autotrade = True
         route_reason = "relative_strength_retest"
         fiat_order_size = self._fiat_order_size()
         score = round_numbers(1 + float(features["relative_strength_1h"]), 4)
@@ -366,7 +363,7 @@ class RelativeStrengthImpulseRider:
 
         value = SignalsConsumer(
             direction=Position.long.value.upper(),
-            autotrade=autotrade,
+            autotrade=False,
             current_price=float(current_price),
             score=score,
             bot_params=BotBase(
@@ -407,13 +404,13 @@ class RelativeStrengthImpulseRider:
             - Maximum holding: {self.MAX_HOLDING_BARS} candles after fill
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Max margin: {fiat_order_size} {quote_asset}
-            - Autotrade route: {route_reason}
+            - Entry route: {route_reason}
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - Autotrade is enabled
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
         await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

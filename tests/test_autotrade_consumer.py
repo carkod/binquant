@@ -431,7 +431,7 @@ class TestAutotradeConsumer:
             "liquidation_sweep_pump",
             "relative_strength_impulse_rider",
             "top_gainer_early_momentum",
-            "top_gainer_breadth",
+            "top_gainer_short",
             "top_loser_breadth",
             "activity_burst_pump",
         ],
@@ -481,23 +481,23 @@ class TestAutotradeConsumer:
                 Status.pending,
             ),
             (
-                "top_gainer_breadth",
+                "top_gainer_short",
                 "top_gainer_early_momentum",
                 Status.active,
             ),
             (
-                "top_gainer_breadth",
+                "top_gainer_short",
                 "top_gainer_early_momentum",
                 Status.pending,
             ),
             (
                 "top_gainer_early_momentum",
-                "top_gainer_breadth",
+                "top_gainer_short",
                 Status.active,
             ),
             (
                 "top_gainer_early_momentum",
-                "top_gainer_breadth",
+                "top_gainer_short",
                 Status.pending,
             ),
             (
@@ -511,23 +511,23 @@ class TestAutotradeConsumer:
                 Status.pending,
             ),
             (
-                "top_gainer_breadth",
+                "top_gainer_short",
                 "top_loser_breadth",
                 Status.active,
             ),
             (
-                "top_gainer_breadth",
+                "top_gainer_short",
                 "top_loser_breadth",
                 Status.pending,
             ),
             (
                 "top_loser_breadth",
-                "top_gainer_breadth",
+                "top_gainer_short",
                 Status.active,
             ),
             (
                 "top_loser_breadth",
-                "top_gainer_breadth",
+                "top_gainer_short",
                 Status.pending,
             ),
             (

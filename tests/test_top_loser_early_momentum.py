@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -154,10 +155,23 @@ def make_context(
         symbol="TESTUSDTM",
         market_type=MarketType.FUTURES,
         df_15m=df,
+        macroregime_directional="DOWN",
+        macroregime_oscillation_intensity=0.2,
+        microregime_directional="DOWN",
+        microregime_oscillation_intensity=0.3,
+        regime_measures=Mock(
+            return_value={
+                "macroregime_directional": "DOWN",
+                "macroregime_oscillation_intensity": 0.2,
+                "microregime_directional": "DOWN",
+                "microregime_oscillation_intensity": 0.3,
+            }
+        ),
+        regime_telegram_lines=Mock(return_value="- Regime measures: test"),
         binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT",
@@ -179,11 +193,14 @@ def make_context(
     )
 
 
-def make_top_loser_snapshots() -> list[GainersLosersSnapshot]:
+def make_top_loser_snapshots(
+    *,
+    recorded_at: datetime | None = None,
+) -> list[GainersLosersSnapshot]:
     return [
         GainersLosersSnapshot(
             source="kucoin_futures",
-            recorded_at="2026-08-26T11:11:34+01:00",
+            recorded_at=(recorded_at or datetime.now(UTC)).isoformat(),
             top_gainers=[],
             top_losers=[
                 GainerLoserEntry(
@@ -230,6 +247,11 @@ def test_risk_profile_requires_negative_btc_relative_strength() -> None:
         context=context,
         features=make_symbol_features(relative_strength_vs_btc_horizon=-0.029),
     ) == (False, "relative_strength_vs_btc_not_negative")
+    assert TopLoserEarlyMomentum._risk_profile_allows(
+        context=context,
+        features=make_symbol_features(),
+        microregime_directional="UP",
+    ) == (False, "microregime_directional_up")
 
 
 @pytest.mark.asyncio
@@ -258,6 +280,7 @@ async def test_signal_dispatches_confirmed_short_in_every_environment(
     assert value.bot_params.trailing_deviation == 2.5
     assert indicators["route_reason"] == "confirmed_top_loser_short"
     msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Regime measures: test" in msg
     assert "Signal route: confirmed_top_loser_short" in msg
     assert "Autotrade is disabled; notification only" in msg
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
@@ -332,3 +355,24 @@ async def test_signal_rejects_symbol_already_on_top_loser_list(monkeypatch) -> N
     context.dispatch_signal_record.assert_not_awaited()
     context.telegram_consumer.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_top_loser_snapshot_does_not_suppress_signal(monkeypatch) -> None:
+    monkeypatch.setenv("ENV", "production")
+    df = make_breakdown_candles()
+    context = make_context(
+        df,
+        make_top_loser_snapshots(recorded_at=datetime.now(UTC) - timedelta(minutes=76)),
+    )
+
+    await TopLoserEarlyMomentum(cast(Any, context)).signal(
+        current_price=float(df.close.iloc[-1]),
+        bb_high=102.0,
+        bb_mid=95.0,
+        bb_low=86.0,
+    )
+
+    context.dispatch_signal_record.assert_awaited_once()
+    context.telegram_consumer.dispatch_signal.assert_called_once()
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()

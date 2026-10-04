@@ -10,8 +10,6 @@ from pybinbot import (
     MarketType,
     Position,
     SignalsConsumer,
-    breadth_momentum_reversal,
-    btc_trend_confirms,
     round_numbers,
     timestamp_sort_key,
 )
@@ -28,24 +26,19 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class TopGainerBreadth:
-    """Short a current 2nd-to-11th ranked gainer as bullish momentum fails.
+class TopGainerShort:
+    """Short a current top gainer as bullish momentum fails.
 
     Entry requires:
-    - the symbol is currently a ranked top gainer (2nd-11th, by 24h move) —
-      the starting filter for which symbols this strategy considers at all;
+    - the symbol has remained in the current top-ten gainers for at least six
+      hours — the ranking is a watchlist, rather than the entry trigger;
     - the symbol's own 15m candles have just confirmed a lower high. This is
       the trigger: without it nothing else here matters.
 
-    Market-breadth momentum (fast EMA(3) crossing below its slower average
-    while breadth is still extended bullish) and BTC's 15m trend are
-    confirming context, not entry gates: modeled against two real manual
-    trades (ARBUSDTM, MARSCOINUSDTM, both short, both profitable) that
-    shared the lower-high rollover but disagreed on breadth/BTC state at
-    entry, requiring both to line up would have blocked either trade. They
-    still matter — each one present adds to the signal's conviction score
-    (SignalsConsumer.score) and is recorded in indicators — but a lower high
-    on a ranked gainer is sufficient on its own to enter.
+    A 24h gain of at least 20%, breadth falling over three hours, and BTC
+    falling over three hours raise the notification's conviction score. They
+    are context, not entry gates: the coin's lower high remains the required
+    failure signal.
 
     The resulting futures short uses a stop just beyond the preceding week's
     resistance and a weekly-range-scaled static trailing stop. Reversal and
@@ -53,27 +46,23 @@ class TopGainerBreadth:
     its parameters describe the proposed trade but do not open a bot.
     """
 
-    ALGO = "top_gainer_breadth"
+    ALGO = "top_gainer_short"
 
-    TOP_GAINER_RANK_START = 2
-    TOP_GAINER_RANK_END = 11
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
 
-    MIN_BREADTH_HISTORY = 12
-    BREADTH_FAST_EMA_SPAN = 3
-    BREADTH_EXTENSION_THRESHOLD = 0.15
-    BREADTH_CEILING = 0.6
+    TOP_GAINER_RANK_LIMIT = 10
+    MIN_WATCH_HOURS = 6
+    MAX_WATCH_SNAPSHOT_GAP_SECONDS = 90 * 60
+    STRONG_GAIN_THRESHOLD_PCT = 20.0
+    MACRO_LOOKBACK_HOURS = 3
     MAX_BREADTH_AGE_SECONDS = 30 * 60
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
-    MIN_BTC_HISTORY = 20
-    BTC_TREND_EMA_SPAN = 20
-
     BASE_SCORE = 1.0
-    BREADTH_CONFIRMED_SCORE_BONUS = 0.5
-    BTC_TREND_CONFIRMED_SCORE_BONUS = 0.5
-    HIGH_CONVICTION_SCORE_BONUS = 0.25
+    STRONG_GAIN_SCORE_BONUS = 0.5
+    BREADTH_FALLING_SCORE_BONUS = 0.5
+    BTC_FALLING_SCORE_BONUS = 0.5
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -90,29 +79,69 @@ class TopGainerBreadth:
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_confirmation_open_time: int | None = None
 
-    def _top_gainer_entry(self) -> tuple[int, float] | None:
+    def _top_gainer_watch(self) -> dict[str, float | int] | None:
         if not self.gainers_losers_series:
             return None
 
-        latest_snapshot = self.gainers_losers_series[0]
+        snapshots = sorted(
+            self.gainers_losers_series,
+            key=lambda snapshot: timestamp_sort_key(snapshot.recorded_at) or 0,
+            reverse=True,
+        )
+        latest_snapshot = snapshots[0]
         if not self._timestamp_is_fresh(
             latest_snapshot.recorded_at,
             self.MAX_GAINERS_SNAPSHOT_AGE_SECONDS,
         ):
             return None
-        return next(
+
+        current_entry = next(
             (
                 (rank, entry.price_change_percent)
-                for rank, entry in enumerate(
-                    latest_snapshot.top_gainers[
-                        self.TOP_GAINER_RANK_START - 1 : self.TOP_GAINER_RANK_END
-                    ],
-                    start=self.TOP_GAINER_RANK_START,
-                )
-                if entry.symbol == self.symbol
+                for rank, entry in enumerate(latest_snapshot.top_gainers, start=1)
+                if entry.symbol == self.symbol and rank <= self.TOP_GAINER_RANK_LIMIT
             ),
             None,
         )
+        if current_entry is None:
+            return None
+
+        latest_timestamp = timestamp_sort_key(latest_snapshot.recorded_at)
+        if latest_timestamp is None:
+            return None
+
+        first_seen_timestamp = latest_timestamp
+        previous_timestamp = latest_timestamp
+        highest_gain_pct = current_entry[1]
+        for snapshot in snapshots[1:]:
+            snapshot_timestamp = timestamp_sort_key(snapshot.recorded_at)
+            if (
+                snapshot_timestamp is None
+                or previous_timestamp - snapshot_timestamp
+                > self.MAX_WATCH_SNAPSHOT_GAP_SECONDS
+            ):
+                break
+            entry = next(
+                (
+                    item
+                    for rank, item in enumerate(snapshot.top_gainers, start=1)
+                    if item.symbol == self.symbol and rank <= self.TOP_GAINER_RANK_LIMIT
+                ),
+                None,
+            )
+            if entry is None:
+                break
+            first_seen_timestamp = snapshot_timestamp
+            previous_timestamp = snapshot_timestamp
+            highest_gain_pct = max(highest_gain_pct, entry.price_change_percent)
+
+        return {
+            "top_gainer_rank": current_entry[0],
+            "top_gainer_price_change_24h_pct": current_entry[1],
+            "top_gainer_watch_started_at": int(first_seen_timestamp),
+            "top_gainer_watch_hours": (latest_timestamp - first_seen_timestamp) / 3600,
+            "top_gainer_watch_max_gain_24h_pct": highest_gain_pct,
+        }
 
     @staticmethod
     def _timestamp_is_fresh(timestamp: object, max_age_seconds: int) -> bool:
@@ -137,6 +166,68 @@ class TopGainerBreadth:
         if pattern["confirmation_open_time"] != latest_open_time:
             return None
         return pattern
+
+    def _breadth_falling_three_hours(self) -> dict[str, float] | None:
+        market_breadth_data = self.market_breadth_data
+        if market_breadth_data is None:
+            return None
+
+        samples: list[tuple[float, float]] = []
+        for timestamp, value in zip(
+            market_breadth_data.timestamp,
+            market_breadth_data.market_breadth,
+            strict=False,
+        ):
+            timestamp_seconds = timestamp_sort_key(timestamp)
+            if timestamp_seconds is not None:
+                samples.append((timestamp_seconds, float(value)))
+        samples.sort(key=lambda sample: sample[0])
+        if not samples:
+            return None
+        latest_timestamp, latest_breadth = samples[-1]
+        if not self._timestamp_is_fresh(latest_timestamp, self.MAX_BREADTH_AGE_SECONDS):
+            return None
+
+        target_timestamp = latest_timestamp - self.MACRO_LOOKBACK_HOURS * 3600
+        prior_sample = next(
+            (
+                sample
+                for sample in reversed(samples[:-1])
+                if sample[0] <= target_timestamp
+            ),
+            None,
+        )
+        if prior_sample is None:
+            return None
+        prior_timestamp, prior_breadth = prior_sample
+        return {
+            "breadth_latest": latest_breadth,
+            "breadth_three_hours_ago": prior_breadth,
+            "breadth_change_three_hours": latest_breadth - prior_breadth,
+            "breadth_three_hours_ago_timestamp": prior_timestamp,
+        }
+
+    def _btc_falling_three_hours(self) -> dict[str, float] | None:
+        df = self.ti.df_btc_15m
+        if df is None or "close" not in df.columns:
+            return None
+        completed_candles = df
+        if "close_time" in df.columns:
+            close_times = to_numeric(df["close_time"], errors="coerce")
+            completed_candles = df.loc[close_times < time() * 1000]
+        required_candles = self.MACRO_LOOKBACK_HOURS * 4 + 1
+        if len(completed_candles) < required_candles:
+            return None
+
+        btc_close = float(completed_candles["close"].iloc[-1])
+        btc_three_hours_ago = float(completed_candles["close"].iloc[-required_candles])
+        if btc_close <= 0 or btc_three_hours_ago <= 0:
+            return None
+        return {
+            "btc_close_15m": btc_close,
+            "btc_close_three_hours_ago": btc_three_hours_ago,
+            "btc_change_three_hours_pct": (btc_close / btc_three_hours_ago - 1) * 100,
+        }
 
     def _weekly_protection(
         self, current_price: float
@@ -177,11 +268,14 @@ class TopGainerBreadth:
         if self.market_type != MarketType.FUTURES:
             return
 
-        top_gainer_entry = self._top_gainer_entry()
-        if top_gainer_entry is None:
+        top_gainer_watch = self._top_gainer_watch()
+        if top_gainer_watch is None:
             logging.info("%s skipped: symbol_not_in_ranked_gainer_window", self.ALGO)
             return
-        top_gainer_rank, price_change_24h = top_gainer_entry
+        watch_hours = top_gainer_watch["top_gainer_watch_hours"]
+        if watch_hours < self.MIN_WATCH_HOURS:
+            logging.info("%s skipped: top_gainer_watch_under_six_hours", self.ALGO)
+            return
 
         lower_high = self._fresh_lower_high()
         if lower_high is None:
@@ -198,68 +292,25 @@ class TopGainerBreadth:
             logging.info("%s skipped: lower_high_already_emitted", self.ALGO)
             return
 
-        # Confirming context, not gates: each one is resolved once, right
-        # here, into its own score bonus / indicators / message line, so
-        # absence never blocks entry and never needs re-checking downstream.
-        breadth_values, breadth_reason = breadth_momentum_reversal(
-            self.market_breadth_data,
-            direction=-1,
-            min_history=self.MIN_BREADTH_HISTORY,
-            fast_ema_span=self.BREADTH_FAST_EMA_SPAN,
-            extension_threshold=self.BREADTH_EXTENSION_THRESHOLD,
+        strong_gainer = (
+            top_gainer_watch["top_gainer_watch_max_gain_24h_pct"]
+            >= self.STRONG_GAIN_THRESHOLD_PCT
         )
-        breadth_confirmed = False
-        breadth_score_bonus = 0.0
-        high_conviction_ceiling_reached = False
-        breadth_indicators: dict[str, object] = {}
-        breadth_line = "No"
-        if breadth_values is not None and self._timestamp_is_fresh(
-            breadth_values["breadth_timestamp"], self.MAX_BREADTH_AGE_SECONDS
-        ):
-            breadth_confirmed = True
-            breadth_score_bonus = self.BREADTH_CONFIRMED_SCORE_BONUS
-            high_conviction_ceiling_reached = (
-                breadth_values["market_breadth"] >= self.BREADTH_CEILING
-            )
-            breadth_indicators = {
-                "breadth_reversal_reason": breadth_reason,
-                **breadth_values,
-            }
-            breadth_line = f"Yes (market breadth {round_numbers(breadth_values['market_breadth'], 4)})"
-
-        btc_trend = btc_trend_confirms(
-            self.ti.df_btc_15m,
-            direction=-1,
-            min_history=self.MIN_BTC_HISTORY,
-            trend_ema_span=self.BTC_TREND_EMA_SPAN,
+        breadth_context = self._breadth_falling_three_hours()
+        breadth_falling = (
+            breadth_context is not None
+            and breadth_context["breadth_change_three_hours"] < 0
         )
-        btc_downtrend_confirmed = False
-        btc_score_bonus = 0.0
-        btc_indicators: dict[str, object] = {}
-        btc_line = "No"
-        if btc_trend is not None:
-            btc_close, btc_trend_ema = btc_trend
-            btc_downtrend_confirmed = True
-            btc_score_bonus = self.BTC_TREND_CONFIRMED_SCORE_BONUS
-            btc_indicators = {
-                "btc_close_15m": btc_close,
-                "btc_trend_ema": btc_trend_ema,
-            }
-            btc_line = (
-                f"Yes ({round_numbers(btc_close, self.price_precision)} / "
-                f"EMA{self.BTC_TREND_EMA_SPAN} "
-                f"{round_numbers(btc_trend_ema, self.price_precision)})"
-            )
+        btc_context = self._btc_falling_three_hours()
+        btc_falling = (
+            btc_context is not None and btc_context["btc_change_three_hours_pct"] < 0
+        )
 
         score = round_numbers(
             self.BASE_SCORE
-            + breadth_score_bonus
-            + btc_score_bonus
-            + (
-                self.HIGH_CONVICTION_SCORE_BONUS
-                if high_conviction_ceiling_reached
-                else 0.0
-            ),
+            + (self.STRONG_GAIN_SCORE_BONUS if strong_gainer else 0.0)
+            + (self.BREADTH_FALLING_SCORE_BONUS if breadth_falling else 0.0)
+            + (self.BTC_FALLING_SCORE_BONUS if btc_falling else 0.0),
             4,
         )
 
@@ -279,16 +330,15 @@ class TopGainerBreadth:
 
         indicators = {
             "entry_reason": "lower_high_breakdown",
-            "top_gainer_rank": top_gainer_rank,
-            "top_gainer_price_change_24h_pct": price_change_24h,
+            **top_gainer_watch,
+            "strong_gainer": strong_gainer,
+            "strong_gainer_threshold_pct": self.STRONG_GAIN_THRESHOLD_PCT,
             "lower_high_first_peak": lower_high["earlier_high"],
             "lower_high_second_peak": lower_high["later_high"],
             "lower_high_drop_pct": lower_high["drop_pct"],
             "lower_high_confirmation_open_time": confirmation_open_time,
-            "breadth_reversal_confirmed": breadth_confirmed,
-            "btc_downtrend_confirmed": btc_downtrend_confirmed,
-            "breadth_ceiling": self.BREADTH_CEILING,
-            "high_conviction_ceiling_reached": high_conviction_ceiling_reached,
+            "breadth_falling_three_hours": breadth_falling,
+            "btc_falling_three_hours": btc_falling,
             "weekly_resistance": protection.resistance,
             "weekly_support": protection.support,
             "weekly_structure_candles": protection.candle_count,
@@ -300,8 +350,8 @@ class TopGainerBreadth:
             "trailing_profit_pct": protection.trailing_profit_pct,
             "trailing_deviation_pct": protection.trailing_deviation_pct,
             "protective_exit": "exchange_native_reduce_only_stop",
-            **breadth_indicators,
-            **btc_indicators,
+            **(breadth_context or {}),
+            **(btc_context or {}),
         }
 
         value = SignalsConsumer(
@@ -338,13 +388,15 @@ class TopGainerBreadth:
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT a current 24h gainer ranked 2nd-11th when price confirms a lower high; breadth reversal and BTC downtrend are confirming context, not required
-            - Top-gainer rank / 24h move: {top_gainer_rank} / {round_numbers(price_change_24h, 2)}%
+            - Rule intent: SHORT a watched 24h top gainer when price confirms a lower high; BTC and breadth deterioration increase priority
+            - Top-gainer rank / 24h move: {top_gainer_watch["top_gainer_rank"]} / {round_numbers(top_gainer_watch["top_gainer_price_change_24h_pct"], 2)}%
+            - Continuous top-10 watch: {round_numbers(watch_hours, 2)}h; maximum 24h gain: {round_numbers(top_gainer_watch["top_gainer_watch_max_gain_24h_pct"], 2)}%
+            - Strong-gainer threshold (>= {self.STRONG_GAIN_THRESHOLD_PCT}%): {"Yes" if strong_gainer else "No"}
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
-            - Breadth reversal confirmed: {breadth_line}
-            - BTC downtrend confirmed: {btc_line}
-            - High-conviction ceiling (>= {self.BREADTH_CEILING}) reached: {"Yes" if high_conviction_ceiling_reached else "No"}
+            - Breadth falling over 3h: {"Yes" if breadth_falling else "No"}
+            - BTC falling over 3h: {"Yes" if btc_falling else "No"}
             {format_context_timestamp_line(context)}
+            {self.ti.regime_telegram_lines()}
             - Max margin: {fiat_order_size} {quote_asset}
             - Weekly resistance / support ({protection.candle_count} completed 1h candles): {protection.resistance} / {protection.support}
             - Stop loss: {BOUNDARY_BUFFER_PCT}% above weekly resistance at {protection.stop_loss_price} ({protection.stop_loss_pct}%)
@@ -358,7 +410,7 @@ class TopGainerBreadth:
         """
         try:
             await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-            self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
         finally:
             # Mark emitted even if a later fallible step raises: the signal

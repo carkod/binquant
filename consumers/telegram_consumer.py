@@ -14,6 +14,14 @@ from telegram.helpers import escape
 
 class TelegramConsumer:
     _ALLOWED_HTML_TAGS = ("b", "strong", "i", "em", "u", "s", "code", "pre", "a")
+    _ALLOWED_SIGNAL_ALGORITHMS = frozenset(
+        {
+            "top_gainer_short",
+            "top_loser_breadth",
+            "top_gainer_early_momentum",
+            "top_loser_early_momentum",
+        }
+    )
     _MIN_SEND_INTERVAL_SECONDS = 1.0
     _RETRY_AFTER_PAD_SECONDS = 2.0
     _SIGNAL_DEDUPE_SECONDS = 900.0
@@ -30,9 +38,6 @@ class TelegramConsumer:
         self._last_send_at = 0.0
         self._recent_signal_keys: dict[str, float] = {}
         self._pending_signal_keys: set[str] = set()
-        # Tasks held here so create_task results aren't garbage-collected
-        # before the Telegram round-trip completes.
-        self._background_tasks: set[asyncio.Task] = set()
 
     def parse_signal(self, result):
         payload = json.loads(result)
@@ -102,6 +107,10 @@ class TelegramConsumer:
             return "|".join(key_parts)
         return hashlib.sha1(cleaned_message.encode("utf-8")).hexdigest()
 
+    def _signal_algorithm(self, cleaned_message: str) -> str | None:
+        match = re.search(r"<strong>#([^<\s]+)\s+algorithm</strong>", cleaned_message)
+        return match.group(1) if match else None
+
     def _message_field(self, cleaned_message: str, label: str) -> str:
         match = re.search(rf"^- {re.escape(label)}:\s*(.+)$", cleaned_message, re.M)
         return match.group(1).strip() if match else ""
@@ -132,7 +141,6 @@ class TelegramConsumer:
             logging.info("Telegram duplicate signal inside cooldown; skipping")
             return True
 
-        self._recent_signal_keys[signal_key] = now
         self._pending_signal_keys.add(signal_key)
         return False
 
@@ -171,42 +179,44 @@ class TelegramConsumer:
                     )
                     await asyncio.sleep(sleep_seconds)
 
-    async def send_signal(self, message: str):
+    async def send_signal(self, message: str) -> bool:
         try:
             cleaned_message = self._clean_signal_message(message)
             if not cleaned_message:
-                return
+                return False
             await self.send_msg(cleaned_message)
+            return True
         except TimedOut as e:
             logging.warning("Telegram signal timed out, skipping: %s", e)
         except Exception as e:
             logging.error(f"Error sending telegram signal: {e}")
             logging.error(f"Original message: {message}")
+        return False
 
-    def _finish_signal_task(
-        self, task: asyncio.Task, signal_key: str | None = None
-    ) -> None:
-        self._background_tasks.discard(task)
-        if signal_key is not None:
-            self._pending_signal_keys.discard(signal_key)
-
-    def dispatch_signal(self, message: str) -> asyncio.Task | None:
-        """
-        Fire-and-forget Telegram send. Returns immediately so the caller
-        (autotrade path) can run in parallel. Errors are swallowed inside
-        send_signal, so the task never propagates exceptions.
-        """
+    async def dispatch_signal(self, message: str) -> bool:
+        """Send an allowed strategy notification before returning to its caller."""
         if not self.is_enabled:
-            return None
+            return False
         cleaned_message = self._clean_signal_message(message)
         if not cleaned_message:
-            return None
+            return False
+        algorithm = self._signal_algorithm(cleaned_message)
+        if algorithm not in self._ALLOWED_SIGNAL_ALGORITHMS:
+            logging.debug(
+                "Telegram notifications disabled for strategy %s",
+                algorithm or "unknown",
+            )
+            return False
         signal_key = self._signal_dedupe_key(cleaned_message)
         if self._drop_duplicate_signal(signal_key):
-            return None
-        task = asyncio.create_task(self.send_signal(cleaned_message))
-        self._background_tasks.add(task)
-        task.add_done_callback(
-            lambda completed_task: self._finish_signal_task(completed_task, signal_key)
-        )
-        return task
+            return False
+        try:
+            sent = await self.send_signal(cleaned_message)
+            if sent:
+                self._recent_signal_keys[signal_key] = time.monotonic()
+                logging.info(
+                    "Telegram signal sent successfully: strategy=%s", algorithm
+                )
+            return sent
+        finally:
+            self._pending_signal_keys.discard(signal_key)

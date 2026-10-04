@@ -310,7 +310,7 @@ class MeanReversionFade:
 
         value = SignalsConsumer(
             direction=direction_label,
-            autotrade=True,
+            autotrade=False,
             current_price=entry_price,
             volume=volume,
             score=score,
@@ -352,7 +352,7 @@ class MeanReversionFade:
             - Take profit intent: fixed {self.TAKE_PROFIT_PCT}% target; maximum holding intent {self.MAX_HOLDING_BARS} candles
             - Confidence score: {score}
             - Signal timestamp: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            - Autotrade is enabled
+            - Autotrade is disabled; notification only
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
@@ -391,5 +391,5 @@ class MeanReversionFade:
                 "candidate_open_time": candidate_open_time,
             },
         )
-        self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_consumer.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

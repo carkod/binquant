@@ -146,7 +146,7 @@ def make_algo() -> FailedSpikeFade:
         df_15m=df,
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT", base_order_size=6.0
@@ -273,7 +273,7 @@ async def record_source(algo: FailedSpikeFade, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_dispatches_staging_short_after_failed_new_high(monkeypatch):
+async def test_failed_spike_fade_never_requests_autotrade_in_staging(monkeypatch):
     monkeypatch.setenv("ENV", "staging")
     algo = make_algo()
 
@@ -294,7 +294,7 @@ async def test_signal_dispatches_staging_short_after_failed_new_high(monkeypatch
     await_args = process_mock(algo).await_args
     assert await_args is not None
     signal = await_args.args[0]
-    assert signal.autotrade is True
+    assert signal.autotrade is False
     assert signal.direction == "SHORT"
     assert signal.bot_params.name == "failed_spike_fade"
     assert signal.bot_params.position == "short"
@@ -306,6 +306,8 @@ async def test_signal_dispatches_staging_short_after_failed_new_high(monkeypatch
     assert signal.bot_params.trailing is False
     telegram_msg = cast(Mock, algo.telegram_consumer.dispatch_signal).call_args.args[0]
     assert "Max margin: 8.0 USDT" in telegram_msg
+    assert "Autotrade is disabled; notification only" in telegram_msg
+    assert "Autotrade is enabled" not in telegram_msg
     assert (algo.ALGO, algo.symbol) not in state_store(algo)
 
 
@@ -348,7 +350,7 @@ async def test_signal_invalidates_excessive_post_spike_extension(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_signal_dispatches_shadow_short_outside_staging(monkeypatch):
+async def test_signal_dispatches_notification_only_short_outside_staging(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     algo = make_algo()
     await record_source(algo, monkeypatch)

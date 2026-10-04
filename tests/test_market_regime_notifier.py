@@ -1,96 +1,73 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from strategies.market_regime_notifier import MarketRegimeNotifier
-from market_regime.models import LiveMarketContext
-from market_regime.regime_transitions import RegimeTransitionDetector
-
-
-def make_live_context(
-    *,
-    timestamp: int,
-    advancers_ratio: float,
-    confidence: float,
-    long_tailwind: float,
-    short_tailwind: float,
-    btc_regime_score: float,
-    market_stress_score: float,
-) -> LiveMarketContext:
-    return LiveMarketContext(
-        timestamp=timestamp,
-        fresh_count=45,
-        total_tracked_symbols=45,
-        coverage_ratio=1.0,
-        btc_symbol="BTCUSDT",
-        btc_present=True,
-        confidence=confidence,
-        is_provisional=False,
-        advancers=round(45 * advancers_ratio),
-        decliners=45 - round(45 * advancers_ratio),
-        advancers_ratio=advancers_ratio,
-        decliners_ratio=1.0 - advancers_ratio,
-        advancers_decliners_ratio=(advancers_ratio / max(1.0 - advancers_ratio, 1e-9)),
-        average_return=0.012,
-        average_relative_strength_vs_btc=0.01,
-        pct_above_ema20=advancers_ratio,
-        pct_above_ema50=advancers_ratio,
-        average_trend_score=0.15,
-        average_atr_pct=0.02,
-        average_bb_width=0.05,
-        btc_return=0.01,
-        btc_trend_score=0.2,
-        btc_regime_score=btc_regime_score,
-        market_stress_score=market_stress_score,
-        long_tailwind=long_tailwind,
-        short_tailwind=short_tailwind,
-        symbol_features={},
-        metadata={},
-    )
-
-
-def annotate_context(
-    context: LiveMarketContext,
-    previous_context: LiveMarketContext | None = None,
-) -> LiveMarketContext:
-    return RegimeTransitionDetector().annotate_context(
-        context=context,
-        previous_context=previous_context,
-    )
+from shared.macroregime_directional_notifier import (
+    MacroregimeDirectionalNotifier,
+)
 
 
 def make_algo(
-    context: LiveMarketContext,
+    current: str | None,
     *,
-    last_market_regime: str | None = None,
-) -> MarketRegimeNotifier:
-    cls = SimpleNamespace(
+    previous: str | None = None,
+) -> MacroregimeDirectionalNotifier:
+    evaluator = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
-        latest_market_context=context,
-        last_market_regime=last_market_regime,
-    )
-    return MarketRegimeNotifier(cast(Any, cls))
-
-
-@pytest.mark.asyncio
-async def test_market_regime_notifier_bootstraps_without_emitting_transition():
-    algo = make_algo(
-        annotate_context(
-            make_live_context(
-                timestamp=1_000,
-                advancers_ratio=0.67,
-                confidence=0.95,
-                long_tailwind=0.8,
-                short_tailwind=-0.2,
-                btc_regime_score=0.7,
-                market_stress_score=0.18,
+        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        macroregime_directional=current,
+        macroregime_oscillation_intensity=0.73,
+        microregime_directional="NONE",
+        microregime_oscillation_intensity=0.64,
+        last_macroregime_directional=previous,
+        context_timestamp_line=Mock(
+            return_value="- Context timestamp: 1970-01-01 00:00:02 UTC"
+        ),
+        regime_telegram_lines=Mock(
+            return_value=(
+                "- Macro directional (BTC): DOWN\n"
+                "- Macro oscillation intensity (BTC): 0.73\n"
+                "- Micro directional (TESTUSDT): NONE\n"
+                "- Micro oscillation intensity (TESTUSDT): 0.64"
             )
-        )
+        ),
     )
+    return MacroregimeDirectionalNotifier(cast(Any, evaluator))
+
+
+@pytest.mark.asyncio
+async def test_macroregime_notifier_bootstraps_without_emitting_transition() -> None:
+    algo = make_algo("UP")
+
+    await algo.signal()
+
+    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    assert algo.last_macroregime_directional == "UP"
+    assert algo.context_evaluator.last_macroregime_directional == "UP"
+
+
+@pytest.mark.asyncio
+async def test_macroregime_notifier_emits_directional_transition() -> None:
+    algo = make_algo("DOWN", previous="UP")
+
+    await algo.signal()
+
+    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    message = algo.telegram_consumer.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
+    assert "#macroregime_directional_transition" in message
+    assert "Macro directional transition: UP -> DOWN" in message
+    assert "Macro oscillation intensity (BTC): 0.73" in message
+    assert "Micro directional (TESTUSDT): NONE" in message
+    assert "Micro oscillation intensity (TESTUSDT): 0.64" in message
+    assert "Context timestamp: 1970-01-01 00:00:02 UTC" in message
+
+
+@pytest.mark.asyncio
+async def test_macroregime_notifier_skips_unchanged_direction() -> None:
+    algo = make_algo("NONE", previous="NONE")
 
     await algo.signal()
 
@@ -98,229 +75,9 @@ async def test_market_regime_notifier_bootstraps_without_emitting_transition():
 
 
 @pytest.mark.asyncio
-async def test_market_regime_notifier_emits_long_to_short_transition():
-    first_context = annotate_context(
-        make_live_context(
-            timestamp=1_000,
-            advancers_ratio=0.68,
-            confidence=0.95,
-            long_tailwind=0.75,
-            short_tailwind=-0.1,
-            btc_regime_score=0.65,
-            market_stress_score=0.2,
-        )
-    )
-    second_context = annotate_context(
-        make_live_context(
-            timestamp=2_000,
-            advancers_ratio=0.29,
-            confidence=0.94,
-            long_tailwind=-0.45,
-            short_tailwind=0.82,
-            btc_regime_score=-0.72,
-            market_stress_score=0.64,
-        ),
-        previous_context=first_context,
-    )
-    first = make_algo(first_context)
-    second = make_algo(second_context)
-
-    await first.signal()
-    await second.signal()
-
-    second.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-    await_args = second.telegram_consumer.dispatch_signal.call_args  # type: ignore[attr-defined]
-    assert await_args is not None
-    sent_message = await_args.args[0]
-    assert "Regime transition: TREND_UP -> HIGH_STRESS" in sent_message
-    assert "#market_regime_transition" in sent_message
-    assert "Context timestamp: 1970-01-01 00:00:02 UTC" in sent_message
-
-
-@pytest.mark.asyncio
-async def test_market_regime_notifier_emits_transition_into_neutral_regime():
-    first_context = annotate_context(
-        make_live_context(
-            timestamp=1_000,
-            advancers_ratio=0.66,
-            confidence=0.96,
-            long_tailwind=0.7,
-            short_tailwind=-0.1,
-            btc_regime_score=0.6,
-            market_stress_score=0.2,
-        )
-    )
-    second_context = annotate_context(
-        make_live_context(
-            timestamp=2_000,
-            advancers_ratio=0.51,
-            confidence=0.92,
-            long_tailwind=0.1,
-            short_tailwind=0.12,
-            btc_regime_score=0.02,
-            market_stress_score=0.41,
-        ),
-        previous_context=first_context,
-    )
-    first = make_algo(first_context)
-    second = make_algo(second_context)
-
-    await first.signal()
-    await second.signal()
-
-    second.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-    await_args = second.telegram_consumer.dispatch_signal.call_args  # type: ignore[attr-defined]
-    assert await_args is not None
-    sent_message = await_args.args[0]
-    assert "Regime transition: TREND_UP -> RANGE" in sent_message
-    assert "mean-reversion and range trading" in sent_message
-
-
-@pytest.mark.asyncio
-async def test_market_regime_notifier_emits_from_annotated_context_without_bootstrap_state():
-    first_context = annotate_context(
-        make_live_context(
-            timestamp=1_000,
-            advancers_ratio=0.67,
-            confidence=0.95,
-            long_tailwind=0.78,
-            short_tailwind=-0.12,
-            btc_regime_score=0.66,
-            market_stress_score=0.2,
-        )
-    )
-    transitioned_context = annotate_context(
-        make_live_context(
-            timestamp=2_000,
-            advancers_ratio=0.35,
-            confidence=0.93,
-            long_tailwind=-0.12,
-            short_tailwind=0.35,
-            btc_regime_score=-0.18,
-            market_stress_score=0.22,
-        ),
-        previous_context=first_context,
-    )
-
-    algo = make_algo(transitioned_context)
-
-    await algo.signal()
-
-    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-    await_args = algo.telegram_consumer.dispatch_signal.call_args  # type: ignore[attr-defined]
-    assert await_args is not None
-    sent_message = await_args.args[0]
-    assert "Regime transition:" in sent_message
-
-
-@pytest.mark.asyncio
-async def test_market_regime_notifier_skips_duplicate_transition_when_already_seen():
-    first_context = annotate_context(
-        make_live_context(
-            timestamp=1_000,
-            advancers_ratio=0.67,
-            confidence=0.95,
-            long_tailwind=0.78,
-            short_tailwind=-0.12,
-            btc_regime_score=0.66,
-            market_stress_score=0.2,
-        )
-    )
-    transitioned_context = annotate_context(
-        make_live_context(
-            timestamp=2_000,
-            advancers_ratio=0.35,
-            confidence=0.93,
-            long_tailwind=-0.12,
-            short_tailwind=0.35,
-            btc_regime_score=-0.18,
-            market_stress_score=0.22,
-        ),
-        previous_context=first_context,
-    )
-
-    algo = make_algo(
-        transitioned_context,
-        last_market_regime=transitioned_context.market_regime_transition,
-    )
+async def test_macroregime_notifier_skips_unavailable_btc_measure() -> None:
+    algo = make_algo(None, previous="UP")
 
     await algo.signal()
 
     algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
-
-
-@pytest.mark.asyncio
-async def test_market_regime_notifier_persists_last_transition_on_context_evaluator():
-    first_context = annotate_context(
-        make_live_context(
-            timestamp=1_000,
-            advancers_ratio=0.67,
-            confidence=0.95,
-            long_tailwind=0.78,
-            short_tailwind=-0.12,
-            btc_regime_score=0.66,
-            market_stress_score=0.2,
-        )
-    )
-    transitioned_context = annotate_context(
-        make_live_context(
-            timestamp=2_000,
-            advancers_ratio=0.35,
-            confidence=0.93,
-            long_tailwind=-0.12,
-            short_tailwind=0.35,
-            btc_regime_score=-0.18,
-            market_stress_score=0.22,
-        ),
-        previous_context=first_context,
-    )
-    cls = SimpleNamespace(
-        config=SimpleNamespace(env="test"),
-        symbol="TESTUSDT",
-        telegram_consumer=SimpleNamespace(dispatch_signal=Mock()),
-        latest_market_context=transitioned_context,
-        last_market_regime=None,
-    )
-    algo = MarketRegimeNotifier(cast(Any, cls))
-
-    await algo.signal()
-
-    assert cls.last_market_regime == transitioned_context.market_regime_transition
-
-
-@pytest.mark.asyncio
-async def test_market_regime_notifier_reads_latest_context_from_context_evaluator():
-    first_context = annotate_context(
-        make_live_context(
-            timestamp=1_000,
-            advancers_ratio=0.51,
-            confidence=0.92,
-            long_tailwind=0.1,
-            short_tailwind=0.12,
-            btc_regime_score=0.02,
-            market_stress_score=0.41,
-        )
-    )
-    transitioned_context = annotate_context(
-        make_live_context(
-            timestamp=2_000,
-            advancers_ratio=0.67,
-            confidence=0.95,
-            long_tailwind=0.78,
-            short_tailwind=-0.12,
-            btc_regime_score=0.66,
-            market_stress_score=0.2,
-        ),
-        previous_context=first_context,
-    )
-
-    algo = make_algo(first_context)
-    algo.context_evaluator.latest_market_context = transitioned_context
-
-    await algo.signal()
-
-    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-    await_args = algo.telegram_consumer.dispatch_signal.call_args  # type: ignore[attr-defined]
-    assert await_args is not None
-    sent_message = await_args.args[0]
-    assert "Regime transition: RANGE -> TREND_UP" in sent_message

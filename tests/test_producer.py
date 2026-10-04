@@ -24,6 +24,13 @@ from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import DerivativesPositioningFeatures
 
 
+def initialize_regime_measures(evaluator: ContextEvaluator) -> None:
+    evaluator.macroregime_directional = None
+    evaluator.macroregime_oscillation_intensity = None
+    evaluator.microregime_directional = None
+    evaluator.microregime_oscillation_intensity = None
+
+
 @pytest.fixture
 def klines_connector(monkeypatch):
     """
@@ -165,6 +172,7 @@ async def test_usdt_filtering():
 async def test_dispatch_signal_record_uses_json_mode_payloads_and_links_bot():
     evaluator = object.__new__(ContextEvaluator)
     evaluator.symbol = "MOVEUSDTM"
+    initialize_regime_measures(evaluator)
     evaluator.latest_market_context = None
     evaluator.binbot_api = Mock()
     evaluator.binbot_api.create_signal = AsyncMock(return_value=SimpleNamespace(id=42))
@@ -216,6 +224,7 @@ async def test_dispatch_signal_record_uses_json_mode_payloads_and_links_bot():
 async def test_dispatch_signal_record_links_grid_ladder():
     evaluator = object.__new__(ContextEvaluator)
     evaluator.symbol = "BTCUSDTM"
+    initialize_regime_measures(evaluator)
     evaluator.latest_market_context = None
     evaluator.binbot_api = Mock()
     evaluator.binbot_api.create_signal = AsyncMock(return_value=SimpleNamespace(id=43))
@@ -254,6 +263,7 @@ async def test_dispatch_signal_record_links_grid_ladder():
 async def test_dispatch_signal_record_timeout_does_not_block_trade_path(caplog):
     evaluator = object.__new__(ContextEvaluator)
     evaluator.symbol = "MOVEUSDTM"
+    initialize_regime_measures(evaluator)
     evaluator.latest_market_context = None
     evaluator.SIGNAL_PERSISTENCE_TIMEOUT_SECONDS = 0.01
     evaluator.binbot_api = Mock()
@@ -287,6 +297,7 @@ async def test_dispatch_signal_record_timeout_does_not_block_trade_path(caplog):
 async def test_dispatch_signal_record_snapshots_derivatives_in_indicators():
     evaluator = object.__new__(ContextEvaluator)
     evaluator.symbol = "MOVEUSDTM"
+    initialize_regime_measures(evaluator)
     snapshot_timestamp = int(datetime.now(UTC).timestamp() * 1000)
     derivatives = DerivativesPositioningFeatures(
         timestamp=snapshot_timestamp,
@@ -425,39 +436,22 @@ async def test_process_data_keeps_removed_5m_strategies_disabled(
     activity_signal.assert_not_awaited()
 
 
-@pytest.mark.parametrize(
-    ("environment", "expected_strategy_calls"),
-    [
-        pytest.param(
-            "staging",
-            {"MarketRegimeNotifier", "LowerHighPattern", "HigherLowPattern"},
-            id="staging-skips-production-strategies",
-        ),
-        pytest.param(
-            "development",
-            {"MarketRegimeNotifier", "LowerHighPattern", "HigherLowPattern"},
-            id="non-production-skips-production-strategies",
-        ),
-        pytest.param(
-            "production",
-            {
-                "MarketRegimeNotifier",
-                "LowerHighPattern",
-                "HigherLowPattern",
-                "TopGainerBreadth",
-                "TopLoserBreadth",
-                "TopGainerEarlyMomentum",
-                "TopLoserEarlyMomentum",
-            },
-            id="production-runs-temporary-strategy-allowlist",
-        ),
-    ],
-)
+ALL_NOTIFICATION_STRATEGIES = {
+    "MacroregimeDirectionalNotifier",
+    "LowerHighPattern",
+    "HigherLowPattern",
+    "TopGainerShort",
+    "TopLoserBreadth",
+    "TopGainerEarlyMomentum",
+    "TopLoserEarlyMomentum",
+}
+
+
+@pytest.mark.parametrize("environment", ["staging", "development", "production"])
 @pytest.mark.asyncio
-async def test_process_data_runs_environment_strategy_allowlist(
+async def test_process_data_runs_every_strategy_in_every_environment(
     monkeypatch,
     environment,
-    expected_strategy_calls,
 ):
     rows = 100
     dataframe = DataFrame(
@@ -490,12 +484,12 @@ async def test_process_data_runs_environment_strategy_allowlist(
             "TopGainerEarlyMomentum",
             "TopGainerMomentumRecovery",
             "FailedSpikeFade",
-            "MarketRegimeNotifier",
+            "MacroregimeDirectionalNotifier",
             "LowerHighPattern",
             "HigherLowPattern",
             "LiquidationSweepPump",
             "LadderDeployer",
-            "TopGainerBreadth",
+            "TopGainerShort",
             "TopLoserBreadth",
             "TopLoserEarlyMomentum",
         )
@@ -506,7 +500,7 @@ async def test_process_data_runs_environment_strategy_allowlist(
     evaluator.symbol = "TESTUSDTM"
     evaluator.latest_market_context = None
     evaluator.market_breadth_data = None
-    evaluator.last_market_regime = None
+    evaluator.last_macroregime_directional = None
     evaluator.symbol_dependent_data = Mock()
     evaluator.refresh_grid_only_policy = Mock()
     evaluator.indicators_enrichment = lambda df: df
@@ -532,9 +526,9 @@ async def test_process_data_runs_environment_strategy_allowlist(
         evaluator.failed_spike_fade = SimpleNamespace(
             signal=strategy_signals["FailedSpikeFade"]
         )
-        evaluator.market_regime_notifier = SimpleNamespace(
-            signal=strategy_signals["MarketRegimeNotifier"],
-            last_market_regime=None,
+        evaluator.macroregime_directional_notifier = SimpleNamespace(
+            signal=strategy_signals["MacroregimeDirectionalNotifier"],
+            last_macroregime_directional=None,
         )
         evaluator.lower_high_pattern = SimpleNamespace(
             signal=strategy_signals["LowerHighPattern"]
@@ -542,8 +536,8 @@ async def test_process_data_runs_environment_strategy_allowlist(
         evaluator.higher_low_pattern = SimpleNamespace(
             signal=strategy_signals["HigherLowPattern"]
         )
-        evaluator.top_gainer_breadth = SimpleNamespace(
-            signal=strategy_signals["TopGainerBreadth"]
+        evaluator.top_gainer_short = SimpleNamespace(
+            signal=strategy_signals["TopGainerShort"]
         )
         evaluator.top_loser_breadth = SimpleNamespace(
             signal=strategy_signals["TopLoserBreadth"]
@@ -559,7 +553,7 @@ async def test_process_data_runs_environment_strategy_allowlist(
     await evaluator.process_data(candles="5m", candles_15m="15m")
 
     for name, signal in strategy_signals.items():
-        assert signal.await_count == (1 if name in expected_strategy_calls else 0)
+        assert signal.await_count == (1 if name in ALL_NOTIFICATION_STRATEGIES else 0)
 
 
 def test_grid_only_policy_is_disabled_with_grid_ladder_switch() -> None:
