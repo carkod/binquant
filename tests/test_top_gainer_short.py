@@ -13,19 +13,15 @@ from pybinbot import (
     MarketBreadthSeries,
     MarketType,
     SymbolModel,
-    breadth_momentum_reversal,
-    btc_trend_confirms,
 )
 
 from strategies.top_gainer_short import TopGainerShort
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
-BEARISH_CROSS_BREADTH = [0.30] * 9 + [0.24, 0.20, 0.16]
-BEARISH_CROSS_BREADTH_MA = [0.24] * 9 + [0.235, 0.225, 0.21]
-BULLISH_CROSS_BREADTH = [-0.30] * 9 + [-0.24, -0.20, -0.16]
-BULLISH_CROSS_BREADTH_MA = [-0.24] * 9 + [-0.235, -0.225, -0.21]
-HIGH_CEILING_BREADTH = [value + 0.45 for value in BEARISH_CROSS_BREADTH]
-HIGH_CEILING_BREADTH_MA = [value + 0.45 for value in BEARISH_CROSS_BREADTH_MA]
+BEARISH_CROSS_BREADTH = [0.30] * 10 + [0.24, 0.20, 0.16]
+BEARISH_CROSS_BREADTH_MA = [0.24] * 10 + [0.235, 0.225, 0.21]
+BULLISH_CROSS_BREADTH = [-0.30] * 10 + [-0.24, -0.20, -0.16]
+BULLISH_CROSS_BREADTH_MA = [-0.24] * 10 + [-0.235, -0.225, -0.21]
 
 BASE_OPEN_TIME_MS = 1_700_000_000_000
 BAR_MS = 15 * 60 * 1000
@@ -43,16 +39,16 @@ def make_market_breadth(
     return MarketBreadthSeries(
         timestamp=[
             (latest_timestamp - timedelta(minutes=15 * offset)).isoformat()
-            for offset in reversed(range(12))
+            for offset in reversed(range(13))
         ],
-        advancers=[500] * 12,
-        decliners=[500] * 12,
+        advancers=[500] * 13,
+        decliners=[500] * 13,
         market_breadth=breadth_values,
         market_breadth_ma=breadth_ma_values,
-        avg_gain=[0.03] * 12,
-        avg_loss=[-0.01] * 12,
-        total_volume=[1_000.0] * 12,
-        strength_index=[0.1] * 12,
+        avg_gain=[0.03] * 13,
+        avg_loss=[-0.01] * 13,
+        total_volume=[1_000.0] * 13,
+        strength_index=[0.1] * 13,
     )
 
 
@@ -141,27 +137,33 @@ def make_top_gainers(
     *,
     symbol_rank: int | None = 4,
     recorded_at: datetime | None = None,
+    snapshot_count: int = 7,
+    price_change_percent: float = 18.5,
 ) -> list[GainersLosersSnapshot]:
-    entries = [
-        GainerLoserEntry(
-            symbol=f"COIN{rank}USDTM",
-            price_change_percent=float(30 - rank),
+    latest_at = recorded_at or NOW - timedelta(minutes=5)
+    snapshots = []
+    for hour_offset in range(snapshot_count):
+        entries = [
+            GainerLoserEntry(
+                symbol=f"COIN{rank}USDTM",
+                price_change_percent=float(30 - rank),
+            )
+            for rank in range(1, 13)
+        ]
+        if symbol_rank is not None:
+            entries[symbol_rank - 1] = GainerLoserEntry(
+                symbol="TESTUSDTM",
+                price_change_percent=price_change_percent,
+            )
+        snapshots.append(
+            GainersLosersSnapshot(
+                source="kucoin_futures",
+                recorded_at=(latest_at - timedelta(hours=hour_offset)).isoformat(),
+                top_gainers=entries,
+                top_losers=[],
+            )
         )
-        for rank in range(1, 13)
-    ]
-    if symbol_rank is not None:
-        entries[symbol_rank - 1] = GainerLoserEntry(
-            symbol="TESTUSDTM",
-            price_change_percent=18.5,
-        )
-    return [
-        GainersLosersSnapshot(
-            source="kucoin_futures",
-            recorded_at=(recorded_at or NOW - timedelta(minutes=5)).isoformat(),
-            top_gainers=entries,
-            top_losers=[],
-        )
-    ]
+    return snapshots
 
 
 def make_context(
@@ -220,27 +222,19 @@ def fixed_strategy_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_strategy_constants_classify_bearish_entry_fixture() -> None:
-    breadth_values, breadth_reason = breadth_momentum_reversal(
-        make_market_breadth(),
-        direction=-1,
-        min_history=TopGainerShort.MIN_BREADTH_HISTORY,
-        fast_ema_span=TopGainerShort.BREADTH_FAST_EMA_SPAN,
-        extension_threshold=TopGainerShort.BREADTH_EXTENSION_THRESHOLD,
-    )
-    assert breadth_reason == "breadth_momentum_bearish_reversal"
-    assert breadth_values is not None
-    assert breadth_values["market_breadth"] == 0.16
-    assert breadth_values["previous_breadth_oscillator"] > 0
-    assert breadth_values["breadth_oscillator"] < 0
+def test_strategy_uses_six_hour_watch_and_three_hour_macro_windows() -> None:
+    strategy = TopGainerShort(cast(Any, make_context()))
 
-    btc_trend = btc_trend_confirms(
-        make_btc_df(),
-        direction=-1,
-        min_history=TopGainerShort.MIN_BTC_HISTORY,
-        trend_ema_span=TopGainerShort.BTC_TREND_EMA_SPAN,
-    )
-    assert btc_trend is not None
+    watch = strategy._top_gainer_watch()
+    breadth = strategy._breadth_falling_three_hours()
+    btc = strategy._btc_falling_three_hours()
+
+    assert watch is not None
+    assert watch["top_gainer_watch_hours"] == 6.0
+    assert breadth is not None
+    assert breadth["breadth_change_three_hours"] < 0
+    assert btc is not None
+    assert btc["btc_change_three_hours_pct"] < 0
 
 
 @pytest.mark.asyncio
@@ -269,10 +263,10 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.bot_params.recovery_params is None
     assert "recovery_params" in value.bot_params.model_fields_set
     assert indicators["entry_reason"] == "lower_high_breakdown"
-    assert indicators["breadth_reversal_confirmed"] is True
-    assert indicators["breadth_reversal_reason"] == "breadth_momentum_bearish_reversal"
-    assert indicators["market_breadth"] == 0.16
-    assert indicators["btc_downtrend_confirmed"] is True
+    assert indicators["top_gainer_watch_hours"] == 6.0
+    assert indicators["strong_gainer"] is False
+    assert indicators["breadth_falling_three_hours"] is True
+    assert indicators["btc_falling_three_hours"] is True
     assert indicators["btc_close_15m"] == pytest.approx(101.0)
     assert indicators["lower_high_first_peak"] == 140.0
     assert indicators["lower_high_second_peak"] == 136.0
@@ -365,26 +359,24 @@ async def test_signal_rejects_stale_gainers_snapshot() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_still_enters_without_btc_downtrend_confirmation() -> None:
-    """Breadth and BTC trend are confirming context, not entry gates: the
-    lower-high price break is the trigger, so a missing BTC confirmation
-    lowers the score but does not block entry."""
+async def test_signal_still_enters_without_btc_falling_confirmation() -> None:
+    """BTC deterioration changes priority but does not replace the coin's
+    lower-high failure as the entry trigger."""
     context = make_context(btc_df=make_btc_df(downtrend=False))
 
     await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["btc_downtrend_confirmed"] is False
-    assert "btc_close_15m" not in indicators
-    assert indicators["breadth_reversal_confirmed"] is True
+    assert indicators["btc_falling_three_hours"] is False
+    assert indicators["breadth_falling_three_hours"] is True
     assert value.score == 1.5
 
 
 @pytest.mark.asyncio
-async def test_signal_still_enters_without_breadth_reversal_confirmation() -> None:
-    """Same as above for the breadth side: a stale or absent breadth
-    reversal lowers the score but does not block a confirmed lower high."""
+async def test_signal_still_enters_without_breadth_falling_confirmation() -> None:
+    """Breadth deterioration changes priority but does not replace the coin's
+    lower-high failure as the entry trigger."""
     context = make_context(
         breadth=make_market_breadth(
             breadth=BULLISH_CROSS_BREADTH,
@@ -396,9 +388,8 @@ async def test_signal_still_enters_without_breadth_reversal_confirmation() -> No
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["breadth_reversal_confirmed"] is False
-    assert "market_breadth" not in indicators
-    assert indicators["btc_downtrend_confirmed"] is True
+    assert indicators["breadth_falling_three_hours"] is False
+    assert indicators["btc_falling_three_hours"] is True
     assert value.score == 1.5
 
 
@@ -415,14 +406,14 @@ async def test_signal_treats_stale_breadth_as_unconfirmed() -> None:
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["breadth_reversal_confirmed"] is False
-    assert "market_breadth" not in indicators
-    assert indicators["btc_downtrend_confirmed"] is True
+    assert indicators["breadth_falling_three_hours"] is False
+    assert "breadth_latest" not in indicators
+    assert indicators["btc_falling_three_hours"] is True
     assert value.score == 1.5
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("symbol_rank", [1, 12])
+@pytest.mark.parametrize("symbol_rank", [1, 10])
 async def test_signal_accepts_any_rank_in_top_gainers_snapshot(
     symbol_rank: int,
 ) -> None:
@@ -437,6 +428,24 @@ async def test_signal_accepts_any_rank_in_top_gainers_snapshot(
 @pytest.mark.asyncio
 async def test_signal_requires_current_top_gainer_membership() -> None:
     context = make_context(gainers=make_top_gainers(symbol_rank=None))
+
+    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+
+    context.dispatch_signal_record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "gainers",
+    [
+        make_top_gainers(snapshot_count=6),
+        make_top_gainers(symbol_rank=11),
+    ],
+)
+async def test_signal_requires_a_six_hour_top_ten_watch(
+    gainers: list[GainersLosersSnapshot],
+) -> None:
+    context = make_context(gainers=gainers)
 
     await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
@@ -465,20 +474,18 @@ async def test_signal_emits_only_once_for_same_breadth_cross() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_tags_high_conviction_breadth_ceiling() -> None:
+async def test_signal_tags_a_twenty_percent_gainer_as_high_priority() -> None:
     context = make_context(
-        breadth=make_market_breadth(
-            breadth=HIGH_CEILING_BREADTH,
-            breadth_ma=HIGH_CEILING_BREADTH_MA,
-        )
+        gainers=make_top_gainers(price_change_percent=23.0),
     )
 
     await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
 
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["market_breadth"] == pytest.approx(0.61)
-    assert indicators["breadth_ceiling"] == 0.6
-    assert indicators["high_conviction_ceiling_reached"] is True
+    assert indicators["strong_gainer"] is True
+    assert indicators["top_gainer_watch_max_gain_24h_pct"] == 23.0
+    assert value.score == 2.5
 
 
 @pytest.mark.asyncio
