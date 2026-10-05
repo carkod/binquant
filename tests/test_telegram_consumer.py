@@ -64,18 +64,18 @@ class TestTelegramConsumer:
         telegram_consumer.bot = mock_bot_instance
 
         first_message = """
-            - [production] <strong>#top_loser_breadth algorithm</strong> #TAUSDTM
+            - [production] <strong>#top_gainer_short algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             - Current price: 0.071
-            - Strategy: top_loser_breadth
+            - Strategy: top_gainer_short
             - Autotrade route: market_trend_up_symbol_trend_up
             - Autotrade is enabled
         """
         duplicate_message = """
-            - [production] <strong>#top_loser_breadth algorithm</strong> #TAUSDTM
+            - [production] <strong>#top_gainer_short algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             - Current price: 0.074
-            - Strategy: top_loser_breadth
+            - Strategy: top_gainer_short
             - Autotrade route: market_trend_up_symbol_trend_up
             - Autotrade is enabled
         """
@@ -109,7 +109,6 @@ class TestTelegramConsumer:
         "algorithm",
         [
             "top_gainer_short",
-            "top_loser_breadth",
             "top_gainer_early_momentum",
             "top_loser_early_momentum",
         ],

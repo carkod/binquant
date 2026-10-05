@@ -28,7 +28,6 @@ OI_SIZED_STRATEGIES = frozenset(
         "relative_strength_impulse_rider",
         "top_gainer_short",
         "top_gainer_early_momentum",
-        "top_loser_breadth",
         "top_loser_early_momentum",
     }
 )
