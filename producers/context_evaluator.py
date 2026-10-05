@@ -110,6 +110,7 @@ class ContextEvaluator:
         self.df_5m: TypedDataFrame[KlineSchema]
         self.df_15m: TypedDataFrame[KlineSchema]
         self.df_1h: TypedDataFrame[KlineSchema]
+        self.df_1d: TypedDataFrame[KlineSchema]
         self.df_btc_15m: TypedDataFrame[KlineSchema]
         self.exchange = exchange
         self.interval = interval
@@ -545,6 +546,7 @@ class ContextEvaluator:
         candles_15m,
         candles_1h=None,
         btc_candles_15m=None,
+        candles_1d=None,
     ):
         """
         Create all the dataframes needed for the strategies
@@ -552,6 +554,7 @@ class ContextEvaluator:
         - Raw candles 15m
         - Raw candles 1h, falling back to 15m resampling for older callers
         - Raw BTC candles 15m
+        - Raw candles 1d, empty when the caller does not supply them
 
         Algorithms should consume this data
         """
@@ -569,6 +572,12 @@ class ContextEvaluator:
         if not self.df_5m.empty and self.df_5m.close.size > 0:
             self.df_5m = self.indicators_enrichment(self.df_5m)
             self.df_5m = raw_candles_5m.post_process(self.df_5m)
+
+        self.df_1d = (
+            Candles(exchange=self.exchange, candles=candles_1d).pre_process()
+            if candles_1d
+            else cast(TypedDataFrame[KlineSchema], DataFrame())
+        )
 
         self.df_15m = raw_candles_15m.pre_process()
         self.df_1h = cast(

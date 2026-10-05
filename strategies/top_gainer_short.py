@@ -1,4 +1,5 @@
 import logging
+from math import isfinite
 from time import time
 from typing import TYPE_CHECKING
 
@@ -36,9 +37,13 @@ class TopGainerShort:
       the trigger: without it nothing else here matters.
 
     A 24h gain of at least 20%, breadth falling over three hours, and BTC
-    falling over three hours raise the notification's conviction score. They
-    are context, not entry gates: the coin's lower high remains the required
-    failure signal.
+    falling over three hours raise the notification's conviction score. So does
+    a stretch score, which measures how far the move has run beyond the coin's
+    own daily history: a 24h gain larger than any prior daily gain, a weekly
+    high above every earlier daily high, and a weekly high far above the
+    earlier median close. These are context, not entry gates, and the stretch
+    score is intended as the groundwork for position sizing: the coin's lower
+    high remains the required failure signal.
 
     The resulting futures short uses a stop just beyond the preceding week's
     resistance and a weekly-range-scaled static trailing stop. Reversal and
@@ -63,6 +68,13 @@ class TopGainerShort:
     STRONG_GAIN_SCORE_BONUS = 0.5
     BREADTH_FALLING_SCORE_BONUS = 0.5
     BTC_FALLING_SCORE_BONUS = 0.5
+
+    STRETCH_RECENT_DAYS = 7
+    STRETCH_MIN_PRIOR_DAILY_CANDLES = 14
+    STRETCH_EXTENSION_THRESHOLD_PCT = 100.0
+    RECORD_GAIN_SCORE_BONUS = 0.5
+    NEW_HIGH_SCORE_BONUS = 0.5
+    EXTENSION_SCORE_BONUS = 0.5
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -245,6 +257,71 @@ class TopGainerShort:
             price_precision=self.price_precision,
         )
 
+    def _stretch_context(
+        self, max_gain_24h_pct: float, weekly_resistance: float
+    ) -> dict[str, float | bool] | None:
+        """Compare the current move with the coin's earlier daily history.
+
+        "Prior" candles are completed daily candles that closed before the
+        recent window, so this week's pump is not compared with itself.
+        Returns None when there are too few prior daily candles: a fresh
+        listing has no meaningful history to be stretched against.
+        """
+        df = self.ti.df_1d
+        required_columns = {"open", "high", "close", "close_time"}
+        if df is None or not required_columns.issubset(df.columns):
+            return None
+
+        now_ms = time() * 1000
+        recent_cutoff_ms = now_ms - self.STRETCH_RECENT_DAYS * 24 * 3600 * 1000
+        close_times = to_numeric(df["close_time"], errors="coerce")
+        prior = df.loc[close_times < recent_cutoff_ms]
+        if len(prior) < self.STRETCH_MIN_PRIOR_DAILY_CANDLES:
+            return None
+
+        opens = to_numeric(prior["open"], errors="coerce")
+        highs = to_numeric(prior["high"], errors="coerce")
+        closes = to_numeric(prior["close"], errors="coerce")
+        prior_high = float(highs.max())
+        prior_median_close = float(closes.median())
+        prior_best_daily_gain_pct = float(((highs / opens - 1) * 100).max())
+        if (
+            not isfinite(prior_high)
+            or not isfinite(prior_median_close)
+            or not isfinite(prior_best_daily_gain_pct)
+            or prior_median_close <= 0
+        ):
+            return None
+
+        extension_pct = (weekly_resistance / prior_median_close - 1) * 100
+        return {
+            "stretch_prior_daily_candles": len(prior),
+            "stretch_prior_best_daily_gain_pct": prior_best_daily_gain_pct,
+            "stretch_prior_high": prior_high,
+            "stretch_prior_median_close": prior_median_close,
+            "stretch_extension_pct": extension_pct,
+            "stretch_record_gain": max_gain_24h_pct > prior_best_daily_gain_pct,
+            "stretch_new_high": weekly_resistance > prior_high,
+            "stretch_extended": extension_pct >= self.STRETCH_EXTENSION_THRESHOLD_PCT,
+        }
+
+    def _stretch_telegram_line(
+        self,
+        stretch: dict[str, float | bool] | None,
+        stretch_score: float,
+        max_gain_24h_pct: float,
+    ) -> str:
+        if stretch is None:
+            return "- Stretch score: n/a (under 14 prior daily candles)"
+        return (
+            f"- Stretch score: +{stretch_score} of {self.RECORD_GAIN_SCORE_BONUS + self.NEW_HIGH_SCORE_BONUS + self.EXTENSION_SCORE_BONUS}"
+            f" | record 24h gain: {'Yes' if stretch['stretch_record_gain'] else 'No'}"
+            f" ({round_numbers(max_gain_24h_pct, 2)}% vs prior best daily {round_numbers(stretch['stretch_prior_best_daily_gain_pct'], 2)}%)"
+            f" | weekly high above all prior daily highs: {'Yes' if stretch['stretch_new_high'] else 'No'}"
+            f" | weekly high vs prior median close: +{round_numbers(stretch['stretch_extension_pct'], 1)}%"
+            f" ({'>=' if stretch['stretch_extended'] else '<'} {self.STRETCH_EXTENSION_THRESHOLD_PCT}%)"
+        )
+
     def _already_emitted(self, confirmation_open_time: int) -> bool:
         if self.strategy_cooldowns is None:
             return self._last_emitted_confirmation_open_time == confirmation_open_time
@@ -306,11 +383,24 @@ class TopGainerShort:
             btc_context is not None and btc_context["btc_change_three_hours_pct"] < 0
         )
 
+        stretch = self._stretch_context(
+            top_gainer_watch["top_gainer_watch_max_gain_24h_pct"],
+            protection.resistance,
+        )
+        stretch_score = (
+            (self.RECORD_GAIN_SCORE_BONUS if stretch["stretch_record_gain"] else 0.0)
+            + (self.NEW_HIGH_SCORE_BONUS if stretch["stretch_new_high"] else 0.0)
+            + (self.EXTENSION_SCORE_BONUS if stretch["stretch_extended"] else 0.0)
+            if stretch is not None
+            else 0.0
+        )
+
         score = round_numbers(
             self.BASE_SCORE
             + (self.STRONG_GAIN_SCORE_BONUS if strong_gainer else 0.0)
             + (self.BREADTH_FALLING_SCORE_BONUS if breadth_falling else 0.0)
-            + (self.BTC_FALLING_SCORE_BONUS if btc_falling else 0.0),
+            + (self.BTC_FALLING_SCORE_BONUS if btc_falling else 0.0)
+            + stretch_score,
             4,
         )
 
@@ -339,6 +429,8 @@ class TopGainerShort:
             "lower_high_confirmation_open_time": confirmation_open_time,
             "breadth_falling_three_hours": breadth_falling,
             "btc_falling_three_hours": btc_falling,
+            "stretch_score": stretch_score,
+            **(stretch or {}),
             "weekly_resistance": protection.resistance,
             "weekly_support": protection.support,
             "weekly_structure_candles": protection.candle_count,
@@ -395,6 +487,7 @@ class TopGainerShort:
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
             - Breadth falling over 3h: {"Yes" if breadth_falling else "No"}
             - BTC falling over 3h: {"Yes" if btc_falling else "No"}
+            {self._stretch_telegram_line(stretch, stretch_score, top_gainer_watch["top_gainer_watch_max_gain_24h_pct"])}
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
             - Max margin: {fiat_order_size} {quote_asset}

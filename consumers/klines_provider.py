@@ -52,7 +52,9 @@ class KlinesProvider:
 
     LIMIT = 400
     WEEKLY_STRUCTURE_HISTORY_LIMIT = (7 * 24) + 2
+    DAILY_HISTORY_LIMIT = 90
     HOUR_MILLISECONDS = 60 * 60 * 1000
+    DAY_MILLISECONDS = 24 * HOUR_MILLISECONDS
 
     def __init__(
         self,
@@ -70,12 +72,14 @@ class KlinesProvider:
         self.interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.interval_15m: BinanceKlineIntervals | KucoinKlineIntervals
         self.interval_1h: BinanceKlineIntervals | KucoinKlineIntervals
+        self.interval_1d: BinanceKlineIntervals | KucoinKlineIntervals
         # Apex Flow starting point for scoring signals
         self.first_seen_at = int(time() * 1000)
         # Candles/btc candles storage
         self.candles: list[list] = []
         self.candles_15m: list[list] = []
         self.candles_1h: list[list] = []
+        self.candles_1d: list[list] = []
         self.btc_candles_15m: list[list] = []
         self.market_state_store = MarketStateStore(max_bars_per_symbol=self.LIMIT)
         self.market_breadth_data: MarketBreadthSeries | None = None
@@ -119,6 +123,7 @@ class KlinesProvider:
             self.interval = KucoinKlineIntervals.FIVE_MINUTES
             self.interval_15m = KucoinKlineIntervals.FIFTEEN_MINUTES
             self.interval_1h = KucoinKlineIntervals.ONE_HOUR
+            self.interval_1d = KucoinKlineIntervals.ONE_DAY
             self.benchmark_symbol = "BTC-USDT"
             self.futures_benchmark_symbol = "XBTUSDTM"
         else:
@@ -127,6 +132,7 @@ class KlinesProvider:
             self.interval = BinanceKlineIntervals.five_minutes
             self.interval_15m = BinanceKlineIntervals.fifteen_minutes
             self.interval_1h = BinanceKlineIntervals.one_hour
+            self.interval_1d = BinanceKlineIntervals.one_day
             self.benchmark_symbol = "BTCUSDC"
             self.futures_benchmark_symbol = "BTCUSDTM"
 
@@ -157,6 +163,9 @@ class KlinesProvider:
         self._last_calibration_bucket: int | None = None
         self._last_market_tape_bucket: int | None = None
         self._completed_hourly_history_cache: dict[
+            tuple[MarketType, str], tuple[int, list[list]]
+        ] = {}
+        self._completed_daily_history_cache: dict[
             tuple[MarketType, str], tuple[int, list[list]]
         ] = {}
 
@@ -250,6 +259,10 @@ class KlinesProvider:
             api_symbol=api_symbol,
             market_type=market_type,
         )
+        self.candles_1d = self._completed_daily_history(
+            api_symbol=api_symbol,
+            market_type=market_type,
+        )
         self._refresh_btc_candles_15m(market_type)
         closed_symbol_candles = self._sync_market_state_from_ui_klines(
             symbol=api_symbol,
@@ -299,6 +312,34 @@ class KlinesProvider:
             row for row in hourly_history if len(row) > 6 and int(row[6]) < now_ms
         ]
         cache[cache_key] = (hourly_bucket, completed_history)
+        return completed_history
+
+    def _completed_daily_history(
+        self,
+        *,
+        api_symbol: str,
+        market_type: MarketType,
+    ) -> list[list]:
+        """Completed daily candles, fetched once per day per symbol."""
+        now_ms = int(time() * 1000)
+        daily_bucket = now_ms // self.DAY_MILLISECONDS
+        cache_key = (market_type, api_symbol)
+        cached = self._completed_daily_history_cache.get(cache_key)
+        if cached is not None and cached[0] == daily_bucket:
+            return cached[1]
+
+        daily_history = self.api.get_ui_klines(
+            symbol=api_symbol,
+            interval=self.interval_1d.value,
+            limit=self.DAILY_HISTORY_LIMIT,
+        )
+        completed_history = [
+            row for row in daily_history if len(row) > 6 and int(row[6]) < now_ms
+        ]
+        self._completed_daily_history_cache[cache_key] = (
+            daily_bucket,
+            completed_history,
+        )
         return completed_history
 
     def _refresh_btc_candles_15m(self, market_type: MarketType) -> None:
@@ -477,6 +518,7 @@ class KlinesProvider:
             candles=self.candles,
             candles_15m=self.candles_15m,
             candles_1h=self.candles_1h,
+            candles_1d=self.candles_1d,
             btc_candles_15m=self.btc_candles_15m,
         )
         self.last_macroregime_directional = (

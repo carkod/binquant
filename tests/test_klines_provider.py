@@ -155,6 +155,8 @@ def test_refresh_symbol_histories_fetches_a_full_week_of_hourly_candles() -> Non
     provider.interval = BinanceKlineIntervals.five_minutes
     provider.interval_15m = BinanceKlineIntervals.fifteen_minutes
     provider.interval_1h = BinanceKlineIntervals.one_hour
+    provider.interval_1d = BinanceKlineIntervals.one_day
+    provider._completed_daily_history_cache = {}
     provider._refresh_btc_candles_15m = Mock()
     provider._sync_market_state_from_ui_klines = Mock(return_value=[])
     provider._store_btc_history = Mock()
@@ -176,6 +178,11 @@ def test_refresh_symbol_histories_fetches_a_full_week_of_hourly_candles() -> Non
             symbol="TESTUSDT",
             interval=BinanceKlineIntervals.one_hour.value,
             limit=KlinesProvider.WEEKLY_STRUCTURE_HISTORY_LIMIT,
+        ),
+        call(
+            symbol="TESTUSDT",
+            interval=BinanceKlineIntervals.one_day.value,
+            limit=KlinesProvider.DAILY_HISTORY_LIMIT,
         ),
     ]
 
@@ -220,6 +227,8 @@ def test_completed_hourly_history_is_cached_until_next_hour(
     provider.interval = BinanceKlineIntervals.five_minutes
     provider.interval_15m = BinanceKlineIntervals.fifteen_minutes
     provider.interval_1h = BinanceKlineIntervals.one_hour
+    provider.interval_1d = BinanceKlineIntervals.one_day
+    provider._completed_daily_history_cache = {}
     provider._completed_hourly_history_cache = {}
     provider._refresh_btc_candles_15m = Mock()
     provider._sync_market_state_from_ui_klines = Mock(return_value=[])

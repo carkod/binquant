@@ -82,6 +82,29 @@ def make_weekly_structure_df() -> pd.DataFrame:
     )
 
 
+def make_daily_df(
+    *,
+    prior_high: float = 80.0,
+    prior_open: float = 40.0,
+    prior_close: float = 40.0,
+    prior_candles: int = 60,
+) -> pd.DataFrame:
+    """Daily candles that all closed before the 7-day recent window."""
+    day_ms = 24 * 60 * 60 * 1000
+    first_open_time = int((NOW - timedelta(days=prior_candles + 8)).timestamp() * 1000)
+    open_times = [first_open_time + index * day_ms for index in range(prior_candles)]
+    return pd.DataFrame(
+        {
+            "open": [prior_open] * prior_candles,
+            "high": [prior_high] * prior_candles,
+            "low": [prior_open] * prior_candles,
+            "close": [prior_close] * prior_candles,
+            "open_time": open_times,
+            "close_time": [open_time + day_ms - 1 for open_time in open_times],
+        }
+    )
+
+
 def make_lower_high_df(*, fresh: bool = True) -> pd.DataFrame:
     highs = [100.0 + index for index in range(30)]
     highs.extend([140.0, 132.0, 124.0, 120.0, 125.0, 130.0, 133.0, 136.0, 130.0, 124.0])
@@ -175,6 +198,7 @@ def make_context(
     market_type: MarketType = MarketType.FUTURES,
     gainers: list[GainersLosersSnapshot] | None = None,
     weekly_df: pd.DataFrame | None = None,
+    daily_df: pd.DataFrame | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="production"),
@@ -201,6 +225,7 @@ def make_context(
         df_btc_15m=btc_df if btc_df is not None else make_btc_df(),
         df_15m=symbol_df if symbol_df is not None else make_lower_high_df(),
         df_1h=weekly_df if weekly_df is not None else make_weekly_structure_df(),
+        df_1d=daily_df if daily_df is not None else pd.DataFrame(),
         gainers_losers_series=(
             gainers
             if gainers is not None
@@ -514,3 +539,58 @@ async def test_signal_marks_emitted_even_when_autotrade_processing_raises() -> N
     await strategy.signal(90.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stretched_move_raises_score_and_reports_breakdown() -> None:
+    """Weekly high 96 is above every prior daily high (80) and 140% above the
+    prior median close (40); the 18.5% gain is below the prior best daily
+    gain (100%), so only two of three stretch bonuses apply."""
+    context = make_context(daily_df=make_daily_df())
+
+    await TopGainerShort(cast(Any, context)).signal(
+        current_price=90.0, bb_high=95.0, bb_mid=92.0, bb_low=87.0
+    )
+
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    message = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    assert value.score == 3.0
+    assert indicators["stretch_score"] == 1.0
+    assert indicators["stretch_record_gain"] is False
+    assert indicators["stretch_new_high"] is True
+    assert indicators["stretch_extended"] is True
+    assert "Stretch score: +1.0 of 1.5" in message
+    assert "Confidence score: 3.0" in message
+
+
+@pytest.mark.asyncio
+async def test_move_inside_prior_daily_range_adds_no_stretch_score() -> None:
+    context = make_context(
+        daily_df=make_daily_df(prior_high=120.0, prior_open=60.0, prior_close=90.0)
+    )
+
+    await TopGainerShort(cast(Any, context)).signal(
+        current_price=90.0, bb_high=95.0, bb_mid=92.0, bb_low=87.0
+    )
+
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["stretch_score"] == 0.0
+    assert value.score == 2.0
+
+
+@pytest.mark.asyncio
+async def test_short_daily_history_gives_no_stretch_score_and_does_not_gate() -> None:
+    context = make_context(daily_df=make_daily_df(prior_candles=5))
+
+    await TopGainerShort(cast(Any, context)).signal(
+        current_price=90.0, bb_high=95.0, bb_mid=92.0, bb_low=87.0
+    )
+
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    message = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    assert value.score == 2.0
+    assert indicators["stretch_score"] == 0.0
+    assert "Stretch score: n/a" in message
