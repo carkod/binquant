@@ -1,4 +1,5 @@
 import logging
+from decimal import ROUND_CEILING, Decimal
 from math import isfinite
 from time import time
 from typing import TYPE_CHECKING
@@ -16,11 +17,6 @@ from pybinbot import (
 )
 
 from shared.utils import build_links_msg, format_context_timestamp_line
-from shared.weekly_structure_protection import (
-    BOUNDARY_BUFFER_PCT,
-    WeeklyStructureProtection,
-    weekly_structure_protection,
-)
 from strategies.lower_high_pattern import LowerHighPattern
 
 if TYPE_CHECKING:
@@ -45,8 +41,10 @@ class TopGainerShort:
     score is intended as the groundwork for position sizing: the coin's lower
     high remains the required failure signal.
 
-    The resulting futures short uses a stop just beyond the preceding week's
-    resistance and a weekly-range-scaled static trailing stop. Reversal and
+    Three or more close-to-close crossings of the current price over the last
+    24 completed 15m candles block entry as chop. Exact touches are ignored.
+    The resulting futures short uses a stop above the confirmed lower high
+    and a fixed static trailing stop. Reversal and
     recovery are explicitly disabled. This is a notification-only strategy;
     its parameters describe the proposed trade but do not open a bot.
     """
@@ -55,6 +53,12 @@ class TopGainerShort:
 
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
+    CHOP_LOOKBACK_BARS = 24
+    CANDLE_INTERVAL_MS = 15 * 60 * 1000
+    CHOP_CROSSING_THRESHOLD = 3
+    LOWER_HIGH_STOP_BUFFER_PCT = 0.25
+    TRAILING_PROFIT_PCT = 4.5
+    TRAILING_DEVIATION_PCT = 3.0
 
     TOP_GAINER_RANK_LIMIT = 10
     MIN_WATCH_HOURS = 6
@@ -241,21 +245,57 @@ class TopGainerShort:
             "btc_change_three_hours_pct": (btc_close / btc_three_hours_ago - 1) * 100,
         }
 
-    def _weekly_protection(
-        self, current_price: float
-    ) -> WeeklyStructureProtection | None:
-        df = self.ti.df_1h
-        if df is None or "close_time" not in df.columns:
+    def _price_crossings_six_hours(self, current_price: float) -> int | None:
+        """Count changes of side around a fixed current-price reference.
+
+        Require the 24 consecutive completed 15m bars immediately before the
+        current bar. Wicks alone and closes equal to the reference are not
+        crossings; equal closes preserve the last observed side.
+        """
+        df = self.ti.df_15m
+        if (
+            not isfinite(current_price)
+            or current_price <= 0
+            or df is None
+            or not {"open_time", "close_time", "close"}.issubset(df.columns)
+        ):
             return None
 
+        now_ms = time() * 1000
+        window_end = int(now_ms // self.CANDLE_INTERVAL_MS) * self.CANDLE_INTERVAL_MS
+        window_start = window_end - self.CHOP_LOOKBACK_BARS * self.CANDLE_INTERVAL_MS
+        open_times = to_numeric(df["open_time"], errors="coerce")
         close_times = to_numeric(df["close_time"], errors="coerce")
-        completed_candles = df.loc[close_times < time() * 1000]
-        return weekly_structure_protection(
-            completed_candles,
-            current_price=current_price,
-            position=Position.short,
-            price_precision=self.price_precision,
-        )
+        in_window = (open_times >= window_start) & (open_times < window_end)
+        window = df.loc[in_window]
+        if open_times.loc[in_window].tolist() != list(
+            range(window_start, window_end, self.CANDLE_INTERVAL_MS)
+        ):
+            return None
+        window_close_times = close_times.loc[in_window]
+        if not (
+            (window_close_times < now_ms)
+            & (window_close_times >= open_times.loc[in_window])
+            & (
+                window_close_times
+                <= open_times.loc[in_window] + self.CANDLE_INTERVAL_MS
+            )
+        ).all():
+            return None
+        closes = to_numeric(window["close"], errors="coerce")
+        if not closes.map(isfinite).all() or (closes <= 0).any():
+            return None
+
+        previous_side = 0
+        crossings = 0
+        for close in closes:
+            side = 1 if close > current_price else -1 if close < current_price else 0
+            if side == 0:
+                continue
+            if previous_side and side != previous_side:
+                crossings += 1
+            previous_side = side
+        return crossings
 
     def _stretch_context(
         self, max_gain_24h_pct: float, weekly_resistance: float
@@ -359,9 +399,34 @@ class TopGainerShort:
             logging.info("%s skipped: no_fresh_confirmed_lower_high", self.ALGO)
             return
 
-        protection = self._weekly_protection(current_price)
-        if protection is None:
-            logging.info("%s skipped: weekly_structure_protection_invalid", self.ALGO)
+        crossings = self._price_crossings_six_hours(current_price)
+        if crossings is None:
+            logging.info("%s skipped: six_hour_candle_history_invalid", self.ALGO)
+            return
+        if crossings >= self.CHOP_CROSSING_THRESHOLD:
+            logging.info(
+                "%s skipped: choppy_current_price_crossings=%s", self.ALGO, crossings
+            )
+            return
+
+        lower_high_price = float(lower_high["later_high"])
+        if not isfinite(lower_high_price) or current_price >= lower_high_price:
+            logging.info("%s skipped: lower_high_already_reclaimed", self.ALGO)
+            return
+        # Round a short stop upward so price precision cannot move it back
+        # inside the pattern. Round its percentage upward for the same reason.
+        stop_price = (
+            Decimal(str(lower_high_price))
+            * (1 + Decimal(str(self.LOWER_HIGH_STOP_BUFFER_PCT)) / 100)
+        ).quantize(Decimal(1).scaleb(-self.price_precision), rounding=ROUND_CEILING)
+        stop_loss_price = float(stop_price)
+        stop_loss_pct = float(
+            ((stop_price / Decimal(str(current_price)) - 1) * 100).quantize(
+                Decimal("0.0001"), rounding=ROUND_CEILING
+            )
+        )
+        if not 0 < stop_loss_pct <= 101:
+            logging.info("%s skipped: lower_high_stop_invalid", self.ALGO)
             return
 
         confirmation_open_time = int(lower_high["confirmation_open_time"])
@@ -429,18 +494,16 @@ class TopGainerShort:
             "lower_high_confirmation_open_time": confirmation_open_time,
             "breadth_falling_three_hours": breadth_falling,
             "btc_falling_three_hours": btc_falling,
-            "stretch_score": stretch_score,
-            **(stretch or {}),
-            "weekly_resistance": protection.resistance,
-            "weekly_support": protection.support,
-            "weekly_structure_candles": protection.candle_count,
-            "weekly_boundary_buffer_pct": BOUNDARY_BUFFER_PCT,
-            "stop_loss_source": "weekly_resistance",
-            "stop_loss_price_at_signal": protection.stop_loss_price,
-            "stop_loss_pct": protection.stop_loss_pct,
+            "price_crossings_six_hours": crossings,
+            "chop_crossing_threshold": self.CHOP_CROSSING_THRESHOLD,
+            "chop_lookback_bars": self.CHOP_LOOKBACK_BARS,
+            "lower_high_stop_buffer_pct": self.LOWER_HIGH_STOP_BUFFER_PCT,
+            "stop_loss_source": "lower_high",
+            "stop_loss_price_at_signal": stop_loss_price,
+            "stop_loss_pct": stop_loss_pct,
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
-            "trailing_profit_pct": protection.trailing_profit_pct,
-            "trailing_deviation_pct": protection.trailing_deviation_pct,
+            "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
+            "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
             "protective_exit": "exchange_native_reduce_only_stop",
             **(breadth_context or {}),
             **(btc_context or {}),
@@ -459,10 +522,10 @@ class TopGainerShort:
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=False,
                 fiat_order_size=fiat_order_size,
-                stop_loss=protection.stop_loss_pct,
+                stop_loss=stop_loss_pct,
                 trailing=True,
-                trailing_deviation=protection.trailing_deviation_pct,
-                trailing_profit=protection.trailing_profit_pct,
+                trailing_deviation=self.TRAILING_DEVIATION_PCT,
+                trailing_profit=self.TRAILING_PROFIT_PCT,
                 margin_short_reversal=False,
                 recovery_params=None,
             ),
@@ -491,10 +554,10 @@ class TopGainerShort:
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
             - Max margin: {fiat_order_size} {quote_asset}
-            - Weekly resistance / support ({protection.candle_count} completed 1h candles): {protection.resistance} / {protection.support}
-            - Stop loss: {BOUNDARY_BUFFER_PCT}% above weekly resistance at {protection.stop_loss_price} ({protection.stop_loss_pct}%)
+            - Current-price crossings over 6h: {crossings}; blocked at {self.CHOP_CROSSING_THRESHOLD}
+            - Stop loss: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
             - Stop behavior: exchange-native reduce-only close; no reversal position
-            - Trailing stop: arms after {protection.trailing_profit_pct}% profit with {protection.trailing_deviation_pct}% deviation
+            - Trailing stop: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Autotrade is disabled; notification only

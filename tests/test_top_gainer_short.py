@@ -23,8 +23,8 @@ BEARISH_CROSS_BREADTH_MA = [0.24] * 10 + [0.235, 0.225, 0.21]
 BULLISH_CROSS_BREADTH = [-0.30] * 10 + [-0.24, -0.20, -0.16]
 BULLISH_CROSS_BREADTH_MA = [-0.24] * 10 + [-0.235, -0.225, -0.21]
 
-BASE_OPEN_TIME_MS = 1_700_000_000_000
 BAR_MS = 15 * 60 * 1000
+BASE_OPEN_TIME_MS = int(NOW.timestamp() * 1000) // BAR_MS * BAR_MS - 40 * BAR_MS
 
 
 def make_market_breadth(
@@ -59,50 +59,6 @@ def make_btc_df(*, downtrend: bool = True) -> pd.DataFrame:
         else [100.0 + index for index in range(20)]
     )
     return pd.DataFrame({"close": closes})
-
-
-def make_weekly_structure_df() -> pd.DataFrame:
-    candle_count = 7 * 24
-    first_open_time = int((NOW - timedelta(hours=candle_count + 1)).timestamp() * 1000)
-    highs = [95.0] * candle_count
-    lows = [85.0] * candle_count
-    highs[0] = 96.0
-    lows[1] = 84.0
-    open_times = [
-        first_open_time + index * 60 * 60 * 1000 for index in range(candle_count)
-    ]
-    return pd.DataFrame(
-        {
-            "high": highs,
-            "low": lows,
-            "close": [90.0] * candle_count,
-            "open_time": open_times,
-            "close_time": [open_time + 60 * 60 * 1000 - 1 for open_time in open_times],
-        }
-    )
-
-
-def make_daily_df(
-    *,
-    prior_high: float = 80.0,
-    prior_open: float = 40.0,
-    prior_close: float = 40.0,
-    prior_candles: int = 60,
-) -> pd.DataFrame:
-    """Daily candles that all closed before the 7-day recent window."""
-    day_ms = 24 * 60 * 60 * 1000
-    first_open_time = int((NOW - timedelta(days=prior_candles + 8)).timestamp() * 1000)
-    open_times = [first_open_time + index * day_ms for index in range(prior_candles)]
-    return pd.DataFrame(
-        {
-            "open": [prior_open] * prior_candles,
-            "high": [prior_high] * prior_candles,
-            "low": [prior_open] * prior_candles,
-            "close": [prior_close] * prior_candles,
-            "open_time": open_times,
-            "close_time": [open_time + day_ms - 1 for open_time in open_times],
-        }
-    )
 
 
 def make_lower_high_df(*, fresh: bool = True) -> pd.DataFrame:
@@ -197,8 +153,6 @@ def make_context(
     symbol_rank: int = 4,
     market_type: MarketType = MarketType.FUTURES,
     gainers: list[GainersLosersSnapshot] | None = None,
-    weekly_df: pd.DataFrame | None = None,
-    daily_df: pd.DataFrame | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(env="production"),
@@ -224,8 +178,6 @@ def make_context(
         market_breadth_data=breadth or make_market_breadth(),
         df_btc_15m=btc_df if btc_df is not None else make_btc_df(),
         df_15m=symbol_df if symbol_df is not None else make_lower_high_df(),
-        df_1h=weekly_df if weekly_df is not None else make_weekly_structure_df(),
-        df_1d=daily_df if daily_df is not None else pd.DataFrame(),
         gainers_losers_series=(
             gainers
             if gainers is not None
@@ -267,7 +219,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     context = make_context()
 
     await TopGainerShort(cast(Any, context)).signal(
-        current_price=90.0,
+        current_price=135.0,
         bb_high=95.0,
         bb_mid=92.0,
         bb_low=87.0,
@@ -279,7 +231,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.direction == "SHORT"
     assert value.bot_params.name == "top_gainer_short"
     assert value.bot_params.position == "short"
-    assert value.bot_params.stop_loss == 6.9333
+    assert value.bot_params.stop_loss == 0.9926
     assert value.bot_params.dynamic_trailing is False
     assert value.bot_params.trailing is True
     assert value.bot_params.trailing_profit == 4.5
@@ -295,11 +247,10 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["btc_close_15m"] == pytest.approx(101.0)
     assert indicators["lower_high_first_peak"] == 140.0
     assert indicators["lower_high_second_peak"] == 136.0
-    assert indicators["weekly_resistance"] == 96.0
-    assert indicators["weekly_support"] == 84.0
-    assert indicators["weekly_structure_candles"] == 168
-    assert indicators["stop_loss_source"] == "weekly_resistance"
-    assert indicators["stop_loss_price_at_signal"] == 96.24
+    assert indicators["price_crossings_six_hours"] == 2
+    assert not any(key.startswith("weekly_") for key in indicators)
+    assert indicators["stop_loss_source"] == "lower_high"
+    assert indicators["stop_loss_price_at_signal"] == 136.34
     assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
     assert value.score == 2.0
     context.regime_telegram_lines.assert_called_once()
@@ -307,11 +258,11 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
 
 
 @pytest.mark.asyncio
-async def test_signal_uses_weekly_resistance_independent_of_bollinger_band() -> None:
+async def test_signal_uses_lower_high_stop_without_hourly_candles() -> None:
     context = make_context()
 
     await TopGainerShort(cast(Any, context)).signal(
-        current_price=90.0,
+        current_price=135.0,
         bb_high=92.0,
         bb_mid=90.0,
         bb_low=88.0,
@@ -319,12 +270,12 @@ async def test_signal_uses_weekly_resistance_independent_of_bollinger_band() -> 
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert value.bot_params.stop_loss == 6.9333
-    assert indicators["stop_loss_source"] == "weekly_resistance"
-    assert indicators["stop_loss_price_at_signal"] == 96.24
+    assert value.bot_params.stop_loss == 0.9926
+    assert indicators["stop_loss_source"] == "lower_high"
+    assert indicators["stop_loss_price_at_signal"] == 136.34
 
     msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
-    assert "Stop loss: 0.25% above weekly resistance at 96.24 (6.9333%)" in msg
+    assert "Stop loss: 0.25% above lower high at 136.34 (0.9926%)" in msg
     assert "Trailing stop: arms after 4.5% profit with 3.0% deviation" in msg
     assert "Autotrade is disabled; notification only" in msg
 
@@ -333,11 +284,16 @@ async def test_signal_uses_weekly_resistance_independent_of_bollinger_band() -> 
 async def test_signal_requires_fresh_confirmed_lower_high() -> None:
     contexts = [
         make_context(symbol_df=make_no_lower_high_df()),
-        make_context(symbol_df=make_lower_high_df(fresh=False)),
+        make_context(
+            symbol_df=make_lower_high_df(fresh=False).assign(
+                open_time=lambda df: df.open_time - BAR_MS,
+                close_time=lambda df: df.close_time - BAR_MS,
+            )
+        ),
     ]
 
     for context in contexts:
-        await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+        await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
         context.dispatch_signal_record.assert_not_awaited()
         context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
@@ -363,7 +319,7 @@ async def test_signal_uses_latest_completed_candle_for_lower_high() -> None:
     )
     context = make_context(symbol_df=frame)
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["lower_high_confirmation_open_time"] == int(
@@ -377,7 +333,7 @@ async def test_signal_rejects_stale_gainers_snapshot() -> None:
         gainers=make_top_gainers(recorded_at=NOW - timedelta(minutes=76))
     )
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
@@ -389,7 +345,7 @@ async def test_signal_still_enters_without_btc_falling_confirmation() -> None:
     lower-high failure as the entry trigger."""
     context = make_context(btc_df=make_btc_df(downtrend=False))
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
@@ -409,7 +365,7 @@ async def test_signal_still_enters_without_breadth_falling_confirmation() -> Non
         )
     )
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
@@ -427,7 +383,7 @@ async def test_signal_treats_stale_breadth_as_unconfirmed() -> None:
         breadth=make_market_breadth(latest_at=NOW - timedelta(minutes=31))
     )
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
@@ -444,7 +400,7 @@ async def test_signal_accepts_any_rank_in_top_gainers_snapshot(
 ) -> None:
     context = make_context(symbol_rank=symbol_rank)
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["top_gainer_rank"] == symbol_rank
@@ -454,7 +410,7 @@ async def test_signal_accepts_any_rank_in_top_gainers_snapshot(
 async def test_signal_requires_current_top_gainer_membership() -> None:
     context = make_context(gainers=make_top_gainers(symbol_rank=None))
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
 
@@ -472,16 +428,7 @@ async def test_signal_requires_a_six_hour_top_ten_watch(
 ) -> None:
     context = make_context(gainers=gainers)
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
-
-    context.dispatch_signal_record.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_signal_requires_seven_days_of_completed_hourly_candles() -> None:
-    context = make_context(weekly_df=make_weekly_structure_df().iloc[:-1])
-
-    await TopGainerShort(cast(Any, context)).signal(90.0, 89.0, 88.0, 85.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
 
@@ -492,7 +439,7 @@ async def test_signal_emits_only_once_for_same_breadth_cross() -> None:
     strategy = TopGainerShort(cast(Any, context))
 
     for _ in range(2):
-        await strategy.signal(90.0, 95.0, 92.0, 87.0)
+        await strategy.signal(135.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_awaited_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
@@ -504,7 +451,7 @@ async def test_signal_tags_a_twenty_percent_gainer_as_high_priority() -> None:
         gainers=make_top_gainers(price_change_percent=23.0),
     )
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
@@ -517,7 +464,7 @@ async def test_signal_tags_a_twenty_percent_gainer_as_high_priority() -> None:
 async def test_signal_ignores_non_futures_market() -> None:
     context = make_context(market_type=MarketType.SPOT)
 
-    await TopGainerShort(cast(Any, context)).signal(90.0, 95.0, 92.0, 87.0)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
 
@@ -534,63 +481,137 @@ async def test_signal_marks_emitted_even_when_autotrade_processing_raises() -> N
     strategy = TopGainerShort(cast(Any, context))
 
     with pytest.raises(RuntimeError):
-        await strategy.signal(90.0, 95.0, 92.0, 87.0)
+        await strategy.signal(135.0, 95.0, 92.0, 87.0)
 
-    await strategy.signal(90.0, 95.0, 92.0, 87.0)
+    await strategy.signal(135.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_stretched_move_raises_score_and_reports_breakdown() -> None:
-    """Weekly high 96 is above every prior daily high (80) and 140% above the
-    prior median close (40); the 18.5% gain is below the prior best daily
-    gain (100%), so only two of three stretch bonuses apply."""
-    context = make_context(daily_df=make_daily_df())
+@pytest.mark.parametrize(
+    ("closes", "expected"),
+    [
+        ([134.0] * 24, 0),
+        ([134.0] * 12 + [136.0] * 12, 1),
+        ([134.0] * 8 + [136.0] * 8 + [134.0] * 8, 2),
+        ([134.0] * 6 + [136.0] * 6 + [134.0] * 6 + [136.0] * 6, 3),
+        ([134.0, 136.0] * 12, 23),
+        ([134.0, 135.0, 134.0, 135.0, 136.0, 135.0] * 4, 7),
+        ([135.0] * 24, 0),
+    ],
+)
+def test_crossings_count_side_changes_and_ignore_exact_touches(closes, expected):
+    frame = make_lower_high_df()
+    frame.loc[frame.index[-24:], "close"] = closes
+    # Wicks straddle the reference on every bar; they are not close crossings.
+    frame.loc[:, "high"] = 140.0
+    frame.loc[:, "low"] = 130.0
+    strategy = TopGainerShort(cast(Any, make_context(symbol_df=frame)))
 
-    await TopGainerShort(cast(Any, context)).signal(
-        current_price=90.0, bb_high=95.0, bb_mid=92.0, bb_low=87.0
-    )
-
-    value = context.dispatch_signal_record.await_args.kwargs["value"]
-    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    message = context.telegram_consumer.dispatch_signal.await_args.args[0]
-    assert value.score == 3.0
-    assert indicators["stretch_score"] == 1.0
-    assert indicators["stretch_record_gain"] is False
-    assert indicators["stretch_new_high"] is True
-    assert indicators["stretch_extended"] is True
-    assert "Stretch score: +1.0 of 1.5" in message
-    assert "Confidence score: 3.0" in message
-
-
-@pytest.mark.asyncio
-async def test_move_inside_prior_daily_range_adds_no_stretch_score() -> None:
-    context = make_context(
-        daily_df=make_daily_df(prior_high=120.0, prior_open=60.0, prior_close=90.0)
-    )
-
-    await TopGainerShort(cast(Any, context)).signal(
-        current_price=90.0, bb_high=95.0, bb_mid=92.0, bb_low=87.0
-    )
-
-    value = context.dispatch_signal_record.await_args.kwargs["value"]
-    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["stretch_score"] == 0.0
-    assert value.score == 2.0
+    assert strategy._price_crossings_six_hours(135.0) == expected
 
 
 @pytest.mark.asyncio
-async def test_short_daily_history_gives_no_stretch_score_and_does_not_gate() -> None:
-    context = make_context(daily_df=make_daily_df(prior_candles=5))
+@pytest.mark.parametrize("crossings", [2, 3])
+async def test_chop_gate_blocks_at_three_crossings(monkeypatch, crossings):
+    context = make_context()
+    strategy = TopGainerShort(cast(Any, context))
+    monkeypatch.setattr(strategy, "_price_crossings_six_hours", lambda _: crossings)
 
-    await TopGainerShort(cast(Any, context)).signal(
-        current_price=90.0, bb_high=95.0, bb_mid=92.0, bb_low=87.0
+    await strategy.signal(135.0, 140.0, 132.0, 120.0)
+
+    if crossings == 2:
+        context.dispatch_signal_record.assert_awaited_once()
+    else:
+        context.dispatch_signal_record.assert_not_awaited()
+        context.telegram_consumer.dispatch_signal.assert_not_awaited()
+        context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+        assert context.strategy_cooldowns == {}
+
+
+@pytest.mark.asyncio
+async def test_repeated_crossings_reject_a_real_confirmed_lower_high():
+    context = make_context()
+    strategy = TopGainerShort(cast(Any, context))
+    assert strategy._fresh_lower_high() is not None
+    assert strategy._price_crossings_six_hours(124.0) == 4
+
+    await strategy.signal(124.0, 140.0, 132.0, 120.0)
+
+    context.dispatch_signal_record.assert_not_awaited()
+    context.telegram_consumer.dispatch_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "invalid_history", ["short", "gap", "duplicate", "stale", "nan", "infinite", "zero"]
+)
+def test_chop_check_requires_complete_recent_valid_history(invalid_history):
+    frame = make_lower_high_df()
+    if invalid_history == "short":
+        frame = frame.tail(23)
+    elif invalid_history == "gap":
+        frame = frame.drop(frame.index[-10])
+    elif invalid_history == "duplicate":
+        frame = pd.concat([frame, frame.tail(1)], ignore_index=True)
+    elif invalid_history == "stale":
+        frame["open_time"] -= BAR_MS
+        frame["close_time"] -= BAR_MS
+    else:
+        frame.loc[frame.index[-10], "close"] = {
+            "nan": float("nan"),
+            "infinite": float("inf"),
+            "zero": 0.0,
+        }[invalid_history]
+    strategy = TopGainerShort(cast(Any, make_context(symbol_df=frame)))
+
+    assert strategy._price_crossings_six_hours(135.0) is None
+
+
+def test_chop_check_ignores_old_and_forming_candles():
+    frame = make_lower_high_df()
+    frame.loc[frame.index[:-24], "close"] = [134.0, 136.0] * 8
+    frame.loc[frame.index[-24:], "close"] = 134.0
+    live_open = int(NOW.timestamp() * 1000) // BAR_MS * BAR_MS
+    frame = pd.concat(
+        [
+            frame,
+            pd.DataFrame(
+                {
+                    "open_time": [live_open],
+                    "close_time": [live_open + BAR_MS - 1],
+                    "high": [137.0],
+                    "low": [133.0],
+                    "close": [136.0],
+                }
+            ),
+        ],
+        ignore_index=True,
     )
+    strategy = TopGainerShort(cast(Any, make_context(symbol_df=frame)))
 
-    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    assert strategy._price_crossings_six_hours(135.0) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "current_price", [136.0, 136.1, 0.0, float("nan"), float("inf")]
+)
+async def test_signal_rejects_reclaimed_lower_high_or_invalid_price(current_price):
+    context = make_context()
+
+    await TopGainerShort(cast(Any, context)).signal(current_price, 140.0, 132.0, 120.0)
+
+    context.dispatch_signal_record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rounded_stop_stays_above_lower_high():
+    context = make_context()
+    context.price_precision = 0
+
+    await TopGainerShort(cast(Any, context)).signal(135.0, 140.0, 132.0, 120.0)
+
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    message = context.telegram_consumer.dispatch_signal.await_args.args[0]
-    assert value.score == 2.0
-    assert indicators["stretch_score"] == 0.0
-    assert "Stretch score: n/a" in message
+    assert indicators["stop_loss_price_at_signal"] == 137.0
+    assert indicators["stop_loss_pct"] == 1.4815
