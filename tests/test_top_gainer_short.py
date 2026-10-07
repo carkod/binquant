@@ -153,9 +153,10 @@ def make_context(
     symbol_rank: int = 4,
     market_type: MarketType = MarketType.FUTURES,
     gainers: list[GainersLosersSnapshot] | None = None,
+    environment: str = "production",
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(env="production"),
+        config=SimpleNamespace(env=environment),
         symbol="TESTUSDTM",
         exchange=ExchangeId.KUCOIN,
         market_type=market_type,
@@ -178,6 +179,7 @@ def make_context(
         market_breadth_data=breadth or make_market_breadth(),
         df_btc_15m=btc_df if btc_df is not None else make_btc_df(),
         df_15m=symbol_df if symbol_df is not None else make_lower_high_df(),
+        df_1d=None,
         gainers_losers_series=(
             gainers
             if gainers is not None
@@ -258,6 +260,36 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
 
 
 @pytest.mark.asyncio
+async def test_signal_requests_autotrade_in_staging_only() -> None:
+    staging = make_context(environment="staging")
+    production = make_context(environment="production")
+    development = make_context(environment="development")
+
+    for context in (staging, production, development):
+        await TopGainerShort(cast(Any, context)).signal(
+            current_price=135.0,
+            bb_high=95.0,
+            bb_mid=92.0,
+            bb_low=87.0,
+        )
+
+    staging_signal = staging.dispatch_signal_record.await_args.kwargs["value"]
+    production_signal = production.dispatch_signal_record.await_args.kwargs["value"]
+    development_signal = development.dispatch_signal_record.await_args.kwargs["value"]
+    assert staging_signal.autotrade is True
+    assert production_signal.autotrade is False
+    assert development_signal.autotrade is False
+    assert (
+        "Autotrade: enabled for staging"
+        in (staging.telegram_consumer.dispatch_signal.call_args.args[0])
+    )
+    assert (
+        "Autotrade: disabled; notification only"
+        in (production.telegram_consumer.dispatch_signal.call_args.args[0])
+    )
+
+
+@pytest.mark.asyncio
 async def test_signal_uses_lower_high_stop_without_hourly_candles() -> None:
     context = make_context()
 
@@ -277,7 +309,7 @@ async def test_signal_uses_lower_high_stop_without_hourly_candles() -> None:
     msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
     assert "Stop loss: 0.25% above lower high at 136.34 (0.9926%)" in msg
     assert "Trailing stop: arms after 4.5% profit with 3.0% deviation" in msg
-    assert "Autotrade is disabled; notification only" in msg
+    assert "Autotrade: disabled; notification only" in msg
 
 
 @pytest.mark.asyncio

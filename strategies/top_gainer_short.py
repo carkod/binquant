@@ -45,8 +45,8 @@ class TopGainerShort:
     24 completed 15m candles block entry as chop. Exact touches are ignored.
     The resulting futures short uses a stop above the confirmed lower high
     and a fixed static trailing stop. Reversal and
-    recovery are explicitly disabled. This is a notification-only strategy;
-    its parameters describe the proposed trade but do not open a bot.
+    recovery are explicitly disabled. The strategy requests autotrade in
+    staging only; development and production remain notification-only.
     """
 
     ALGO = "top_gainer_short"
@@ -450,7 +450,7 @@ class TopGainerShort:
 
         stretch = self._stretch_context(
             top_gainer_watch["top_gainer_watch_max_gain_24h_pct"],
-            protection.resistance,
+            lower_high_price,
         )
         stretch_score = (
             (self.RECORD_GAIN_SCORE_BONUS if stretch["stretch_record_gain"] else 0.0)
@@ -476,6 +476,7 @@ class TopGainerShort:
         )
         quote_asset = self.current_symbol_data.quote_asset
         context = self.ti.latest_market_context
+        autotrade_enabled = self.config.env.lower() == "staging"
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
             self.exchange,
@@ -511,7 +512,7 @@ class TopGainerShort:
 
         value = SignalsConsumer(
             direction=Position.short.value.upper(),
-            autotrade=False,
+            autotrade=autotrade_enabled,
             current_price=float(current_price),
             score=score,
             bot_params=BotBase(
@@ -560,7 +561,7 @@ class TopGainerShort:
             - Trailing stop: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
-            - Autotrade is disabled; notification only
+            - Autotrade: {"enabled for staging" if autotrade_enabled else "disabled; notification only"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
