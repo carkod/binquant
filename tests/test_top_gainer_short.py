@@ -18,10 +18,18 @@ from pybinbot import (
 from strategies.top_gainer_short import TopGainerShort
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
-BEARISH_CROSS_BREADTH = [0.30] * 10 + [0.24, 0.20, 0.16]
-BEARISH_CROSS_BREADTH_MA = [0.24] * 10 + [0.235, 0.225, 0.21]
-BULLISH_CROSS_BREADTH = [-0.30] * 10 + [-0.24, -0.20, -0.16]
-BULLISH_CROSS_BREADTH_MA = [-0.24] * 10 + [-0.235, -0.225, -0.21]
+HIGHER_LOW_BREADTH = [0.3] * 30 + [
+    -0.1,
+    -0.3,
+    -0.5,
+    -0.3,
+    -0.1,
+    0.0,
+    -0.2,
+    -0.3,
+    -0.1,
+    0.0,
+]
 
 BAR_MS = 15 * 60 * 1000
 BASE_OPEN_TIME_MS = int(NOW.timestamp() * 1000) // BAR_MS * BAR_MS - 40 * BAR_MS
@@ -33,22 +41,23 @@ def make_market_breadth(
     breadth_ma: list[float] | None = None,
     latest_at: datetime | None = None,
 ) -> MarketBreadthSeries:
-    breadth_values = breadth or BEARISH_CROSS_BREADTH
-    breadth_ma_values = breadth_ma or BEARISH_CROSS_BREADTH_MA
+    breadth_values = breadth if breadth is not None else HIGHER_LOW_BREADTH
+    breadth_ma_values = breadth_ma if breadth_ma is not None else breadth_values
+    count = len(breadth_values)
     latest_timestamp = latest_at or NOW - timedelta(minutes=5)
     return MarketBreadthSeries(
         timestamp=[
             (latest_timestamp - timedelta(minutes=15 * offset)).isoformat()
-            for offset in reversed(range(13))
+            for offset in reversed(range(count))
         ],
-        advancers=[500] * 13,
-        decliners=[500] * 13,
+        advancers=[500] * count,
+        decliners=[500] * count,
         market_breadth=breadth_values,
         market_breadth_ma=breadth_ma_values,
-        avg_gain=[0.03] * 13,
-        avg_loss=[-0.01] * 13,
-        total_volume=[1_000.0] * 13,
-        strength_index=[0.1] * 13,
+        avg_gain=[0.03] * count,
+        avg_loss=[-0.01] * count,
+        total_volume=[1_000.0] * count,
+        strength_index=[0.1] * count,
     )
 
 
@@ -201,19 +210,21 @@ def fixed_strategy_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_strategy_uses_six_hour_watch_and_three_hour_macro_windows() -> None:
+def test_strategy_requires_six_hour_watch_and_confirmed_breadth_higher_low() -> None:
     strategy = TopGainerShort(cast(Any, make_context()))
 
     watch = strategy._top_gainer_watch()
-    breadth = strategy._breadth_falling_three_hours()
-    btc = strategy._btc_falling_three_hours()
+    breadth = strategy._breadth_higher_low()
 
     assert watch is not None
     assert watch["top_gainer_watch_hours"] == 6.0
     assert breadth is not None
-    assert breadth["breadth_change_three_hours"] < 0
-    assert btc is not None
-    assert btc["btc_change_three_hours_pct"] < 0
+    assert breadth["breadth_higher_low_first_trough"] == -0.5
+    assert breadth["breadth_higher_low_second_trough"] == -0.3
+    assert (
+        breadth["breadth_higher_low_confirmation_timestamp"]
+        == (NOW - timedelta(minutes=5)).timestamp()
+    )
 
 
 @pytest.mark.asyncio
@@ -244,9 +255,15 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["entry_reason"] == "lower_high_breakdown"
     assert indicators["top_gainer_watch_hours"] == 6.0
     assert indicators["strong_gainer"] is False
-    assert indicators["breadth_falling_three_hours"] is True
-    assert indicators["btc_falling_three_hours"] is True
-    assert indicators["btc_close_15m"] == pytest.approx(101.0)
+    assert indicators["breadth_higher_low_confirmed"] is True
+    assert indicators["breadth_higher_low_first_trough"] == -0.5
+    assert indicators["breadth_higher_low_second_trough"] == -0.3
+    assert not any(key.startswith("btc_") for key in indicators)
+    assert "breadth_falling_three_hours" not in indicators
+    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "Breadth higher low confirmed: -0.5 -> -0.3" in msg
+    assert "BTC" not in msg
+    assert "Breadth falling" not in msg
     assert indicators["lower_high_first_peak"] == 140.0
     assert indicators["lower_high_second_peak"] == 136.0
     assert indicators["price_crossings_six_hours"] == 2
@@ -254,7 +271,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["stop_loss_source"] == "lower_high"
     assert indicators["stop_loss_price_at_signal"] == 136.34
     assert indicators["protective_exit"] == "exchange_native_reduce_only_stop"
-    assert value.score == 2.0
+    assert value.score == 1.0
     context.regime_telegram_lines.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
@@ -372,57 +389,112 @@ async def test_signal_rejects_stale_gainers_snapshot() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_still_enters_without_btc_falling_confirmation() -> None:
-    """BTC deterioration changes priority but does not replace the coin's
-    lower-high failure as the entry trigger."""
-    context = make_context(btc_df=make_btc_df(downtrend=False))
+@pytest.mark.parametrize("btc_state", ["falling", "rising", "missing"])
+async def test_btc_does_not_change_signal_or_score(btc_state: str) -> None:
+    context = make_context(btc_df=make_btc_df(downtrend=btc_state == "falling"))
+    if btc_state == "missing":
+        del context.df_btc_15m
 
     await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
-    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["btc_falling_three_hours"] is False
-    assert indicators["breadth_falling_three_hours"] is True
-    assert value.score == 1.5
+    assert value.score == 1.0
+
+
+@pytest.mark.parametrize("offset", [0.0, 0.5, 0.6])
+def test_breadth_higher_low_handles_negative_zero_and_positive_troughs(offset):
+    context = make_context(
+        breadth=make_market_breadth(breadth=[v + offset for v in HIGHER_LOW_BREADTH])
+    )
+
+    pattern = TopGainerShort(cast(Any, context))._breadth_higher_low()
+
+    assert pattern is not None
+    assert pattern["breadth_higher_low_rise"] == pytest.approx(0.2)
 
 
 @pytest.mark.asyncio
-async def test_signal_still_enters_without_breadth_falling_confirmation() -> None:
-    """Breadth deterioration changes priority but does not replace the coin's
-    lower-high failure as the entry trigger."""
-    context = make_context(
-        breadth=make_market_breadth(
-            breadth=BULLISH_CROSS_BREADTH,
-            breadth_ma=BULLISH_CROSS_BREADTH_MA,
-        )
-    )
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing",
+        "stale",
+        "future",
+        "short",
+        "monotonic",
+        "equal_lows",
+        "lower_low",
+        "unconfirmed",
+        "breached",
+        "breached_then_recovered",
+        "nan",
+        "infinity",
+        "gap",
+        "duplicates",
+        "misaligned",
+        "invalid_timestamp",
+        "newer_lower_low",
+    ],
+)
+async def test_signal_blocks_without_valid_breadth_higher_low(case: str) -> None:
+    breadth = make_market_breadth()
+    values = list(HIGHER_LOW_BREADTH)
+    if case == "stale":
+        breadth = make_market_breadth(latest_at=NOW - timedelta(minutes=31))
+    elif case == "future":
+        breadth = make_market_breadth(latest_at=NOW + timedelta(minutes=1))
+    elif case == "short":
+        breadth = make_market_breadth(breadth=values[1:])
+    elif case == "monotonic":
+        breadth.market_breadth = [i / 100 for i in range(40)]
+    elif case == "equal_lows":
+        breadth.market_breadth[37] = -0.5
+    elif case == "lower_low":
+        breadth.market_breadth[37] = -0.6
+    elif case == "unconfirmed":
+        breadth.market_breadth[-3:] = [-0.1, -0.3, -0.1]
+    elif case == "breached":
+        breadth = make_market_breadth(breadth=values + [-0.4])
+    elif case == "breached_then_recovered":
+        breadth = make_market_breadth(breadth=values + [-0.4, 0.0])
+    elif case == "newer_lower_low":
+        breadth = make_market_breadth(breadth=values + [-0.4, -0.2, 0.0])
+    elif case in {"nan", "infinity"}:
+        breadth.market_breadth[-1] = float("nan" if case == "nan" else "inf")
+    elif case == "gap":
+        breadth.timestamp[0] = (NOW - timedelta(hours=12)).isoformat()
+    elif case == "duplicates":
+        breadth.timestamp[-1] = breadth.timestamp[-2]
+    elif case == "misaligned":
+        breadth.timestamp.pop()
+    elif case == "invalid_timestamp":
+        breadth.timestamp[-1] = "invalid"
+    context = make_context(breadth=breadth)
+    if case == "missing":
+        context.market_breadth_data = None
 
     await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
-    value = context.dispatch_signal_record.await_args.kwargs["value"]
-    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["breadth_falling_three_hours"] is False
-    assert indicators["btc_falling_three_hours"] is True
-    assert value.score == 1.5
+    context.dispatch_signal_record.assert_not_awaited()
+    context.telegram_consumer.dispatch_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_signal_treats_stale_breadth_as_unconfirmed() -> None:
-    """A market-breadth refresh failure makes KlinesProvider retain the
-    previous snapshot; a historical cross buried in that stale data must
-    not be treated as a live confirmation (no score bonus, no indicators)."""
-    context = make_context(
-        breadth=make_market_breadth(latest_at=NOW - timedelta(minutes=31))
+def test_breadth_pattern_remains_valid_after_confirmation_until_breached():
+    breadth = make_market_breadth(breadth=HIGHER_LOW_BREADTH + [0.1, 0.2])
+    # API order is irrelevant as long as timestamp/value pairs remain intact.
+    breadth.timestamp.reverse()
+    breadth.market_breadth.reverse()
+    pattern = TopGainerShort(
+        cast(Any, make_context(breadth=breadth))
+    )._breadth_higher_low()
+
+    assert pattern is not None
+    assert (
+        pattern["breadth_higher_low_confirmation_timestamp"]
+        == (NOW - timedelta(minutes=35)).timestamp()
     )
-
-    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
-
-    value = context.dispatch_signal_record.await_args.kwargs["value"]
-    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["breadth_falling_three_hours"] is False
-    assert "breadth_latest" not in indicators
-    assert indicators["btc_falling_three_hours"] is True
-    assert value.score == 1.5
+    assert pattern["breadth_latest"] == 0.2
 
 
 @pytest.mark.asyncio
@@ -466,7 +538,7 @@ async def test_signal_requires_a_six_hour_top_ten_watch(
 
 
 @pytest.mark.asyncio
-async def test_signal_emits_only_once_for_same_breadth_cross() -> None:
+async def test_signal_emits_only_once_for_same_lower_high_confirmation() -> None:
     context = make_context()
     strategy = TopGainerShort(cast(Any, context))
 
@@ -489,7 +561,7 @@ async def test_signal_tags_a_twenty_percent_gainer_as_high_priority() -> None:
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["strong_gainer"] is True
     assert indicators["top_gainer_watch_max_gain_24h_pct"] == 23.0
-    assert value.score == 2.5
+    assert value.score == 1.5
 
 
 @pytest.mark.asyncio
