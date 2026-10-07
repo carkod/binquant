@@ -23,8 +23,12 @@ class TestTelegramConsumer:
         mock_bot_instance = MockBot.return_value
         mock_bot_instance.send_message = AsyncMock()
         consumer.bot = mock_bot_instance
-        await consumer.send_msg("Hello")
-        mock_bot_instance.send_message.assert_awaited()
+        message = '<a href="https://example.com">Dashboard</a>'
+        await consumer.send_msg(message)
+        mock_bot_instance.send_message.assert_awaited_once()
+        kwargs = mock_bot_instance.send_message.await_args.kwargs
+        assert kwargs["text"] == message
+        assert kwargs["link_preview_options"].is_disabled is True
 
     @pytest.mark.asyncio
     async def test_send_signal(self, MockBot):
@@ -54,6 +58,10 @@ class TestTelegramConsumer:
         await telegram_consumer.send_msg("Hello")
 
         assert mock_bot_instance.send_message.await_count == 2
+        assert all(
+            call.kwargs["link_preview_options"].is_disabled is True
+            for call in mock_bot_instance.send_message.await_args_list
+        )
 
     @pytest.mark.asyncio
     async def test_dispatch_signal_deduplicates_matching_signal_key(self, MockBot):
