@@ -88,6 +88,8 @@ def make_market_context(**overrides: Any) -> LiveMarketContext:
 
 
 def make_breakout_candles() -> DataFrame:
+    window_end = int(datetime.now(UTC).timestamp() * 1000) // 900_000 * 900_000
+    first_open = window_end - 100 * 900_000
     closes = [100.0] * 84
     closes.extend(
         [
@@ -118,8 +120,8 @@ def make_breakout_candles() -> DataFrame:
         volume = 230.0 if is_last else 100.0
         rows.append(
             {
-                "open_time": 1_700_000_000_000 + index * 900_000,
-                "close_time": 1_700_000_000_000 + (index + 1) * 900_000 - 1,
+                "open_time": first_open + index * 900_000,
+                "close_time": first_open + (index + 1) * 900_000 - 1,
                 "open": open_price,
                 "high": high,
                 "low": low,
@@ -163,9 +165,6 @@ def make_breakout_candles() -> DataFrame:
 
 def make_short_history_breakout_candles() -> DataFrame:
     rows = make_breakout_candles().iloc[-64:].copy()
-    rows["open_time"] = [
-        1_700_000_000_000 + index * 900_000 for index in range(len(rows))
-    ]
     return rows.reset_index(drop=True)
 
 

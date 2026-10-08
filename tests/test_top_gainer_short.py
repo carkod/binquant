@@ -15,6 +15,7 @@ from pybinbot import (
     SymbolModel,
 )
 
+from shared.price_crossings import price_crossings_six_hours
 from strategies.top_gainer_short import TopGainerShort
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
@@ -610,9 +611,10 @@ def test_crossings_count_side_changes_and_ignore_exact_touches(closes, expected)
     # Wicks straddle the reference on every bar; they are not close crossings.
     frame.loc[:, "high"] = 140.0
     frame.loc[:, "low"] = 130.0
-    strategy = TopGainerShort(cast(Any, make_context(symbol_df=frame)))
-
-    assert strategy._price_crossings_six_hours(135.0) == expected
+    assert (
+        price_crossings_six_hours(frame, 135.0, now_ms=NOW.timestamp() * 1000)
+        == expected
+    )
 
 
 @pytest.mark.asyncio
@@ -620,7 +622,10 @@ def test_crossings_count_side_changes_and_ignore_exact_touches(closes, expected)
 async def test_chop_gate_blocks_at_three_crossings(monkeypatch, crossings):
     context = make_context()
     strategy = TopGainerShort(cast(Any, context))
-    monkeypatch.setattr(strategy, "_price_crossings_six_hours", lambda _: crossings)
+    monkeypatch.setattr(
+        "strategies.top_gainer_short.price_crossings_six_hours",
+        lambda *args, **kwargs: crossings,
+    )
 
     await strategy.signal(135.0, 140.0, 132.0, 120.0)
 
@@ -638,7 +643,10 @@ async def test_repeated_crossings_reject_a_real_confirmed_lower_high():
     context = make_context()
     strategy = TopGainerShort(cast(Any, context))
     assert strategy._fresh_lower_high() is not None
-    assert strategy._price_crossings_six_hours(124.0) == 4
+    assert (
+        price_crossings_six_hours(context.df_15m, 124.0, now_ms=NOW.timestamp() * 1000)
+        == 4
+    )
 
     await strategy.signal(124.0, 140.0, 132.0, 120.0)
 
@@ -667,9 +675,9 @@ def test_chop_check_requires_complete_recent_valid_history(invalid_history):
             "infinite": float("inf"),
             "zero": 0.0,
         }[invalid_history]
-    strategy = TopGainerShort(cast(Any, make_context(symbol_df=frame)))
-
-    assert strategy._price_crossings_six_hours(135.0) is None
+    assert (
+        price_crossings_six_hours(frame, 135.0, now_ms=NOW.timestamp() * 1000) is None
+    )
 
 
 def test_chop_check_ignores_old_and_forming_candles():
@@ -692,9 +700,7 @@ def test_chop_check_ignores_old_and_forming_candles():
         ],
         ignore_index=True,
     )
-    strategy = TopGainerShort(cast(Any, make_context(symbol_df=frame)))
-
-    assert strategy._price_crossings_six_hours(135.0) == 0
+    assert price_crossings_six_hours(frame, 135.0, now_ms=NOW.timestamp() * 1000) == 0
 
 
 @pytest.mark.asyncio
