@@ -52,7 +52,6 @@ from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.lower_high_pattern import LowerHighPattern
 from strategies.top_gainer_short import TopGainerShort
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
-from strategies.top_loser_breadth import TopLoserBreadth
 from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
 if TYPE_CHECKING:
@@ -111,6 +110,7 @@ class ContextEvaluator:
         self.df_5m: TypedDataFrame[KlineSchema]
         self.df_15m: TypedDataFrame[KlineSchema]
         self.df_1h: TypedDataFrame[KlineSchema]
+        self.df_1d: TypedDataFrame[KlineSchema]
         self.df_btc_15m: TypedDataFrame[KlineSchema]
         self.exchange = exchange
         self.interval = interval
@@ -369,7 +369,6 @@ class ContextEvaluator:
         """
         self.macroregime_directional_notifier = MacroregimeDirectionalNotifier(cls=self)
         self.top_gainer_short = TopGainerShort(cls=self)
-        self.top_loser_breadth = TopLoserBreadth(cls=self)
         self.top_gainer_early_momentum = TopGainerEarlyMomentum(cls=self)
         self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
         self.lower_high_pattern = LowerHighPattern(cls=self)
@@ -547,6 +546,7 @@ class ContextEvaluator:
         candles_15m,
         candles_1h=None,
         btc_candles_15m=None,
+        candles_1d=None,
     ):
         """
         Create all the dataframes needed for the strategies
@@ -554,6 +554,7 @@ class ContextEvaluator:
         - Raw candles 15m
         - Raw candles 1h, falling back to 15m resampling for older callers
         - Raw BTC candles 15m
+        - Raw candles 1d, empty when the caller does not supply them
 
         Algorithms should consume this data
         """
@@ -571,6 +572,12 @@ class ContextEvaluator:
         if not self.df_5m.empty and self.df_5m.close.size > 0:
             self.df_5m = self.indicators_enrichment(self.df_5m)
             self.df_5m = raw_candles_5m.post_process(self.df_5m)
+
+        self.df_1d = (
+            Candles(exchange=self.exchange, candles=candles_1d).pre_process()
+            if candles_1d
+            else cast(TypedDataFrame[KlineSchema], DataFrame())
+        )
 
         self.df_15m = raw_candles_15m.pre_process()
         self.df_1h = cast(
@@ -628,16 +635,6 @@ class ContextEvaluator:
             await self._safe_signal(
                 "TopGainerShort",
                 self.top_gainer_short.signal(
-                    current_price=close_price,
-                    bb_high=spreads.bb_high,
-                    bb_mid=spreads.bb_mid,
-                    bb_low=spreads.bb_low,
-                ),
-            )
-
-            await self._safe_signal(
-                "TopLoserBreadth",
-                self.top_loser_breadth.signal(
                     current_price=close_price,
                     bb_high=spreads.bb_high,
                     bb_mid=spreads.bb_mid,

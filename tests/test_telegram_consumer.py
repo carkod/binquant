@@ -23,8 +23,12 @@ class TestTelegramConsumer:
         mock_bot_instance = MockBot.return_value
         mock_bot_instance.send_message = AsyncMock()
         consumer.bot = mock_bot_instance
-        await consumer.send_msg("Hello")
-        mock_bot_instance.send_message.assert_awaited()
+        message = '<a href="https://example.com">Dashboard</a>'
+        await consumer.send_msg(message)
+        mock_bot_instance.send_message.assert_awaited_once()
+        kwargs = mock_bot_instance.send_message.await_args.kwargs
+        assert kwargs["text"] == message
+        assert kwargs["link_preview_options"].is_disabled is True
 
     @pytest.mark.asyncio
     async def test_send_signal(self, MockBot):
@@ -54,6 +58,10 @@ class TestTelegramConsumer:
         await telegram_consumer.send_msg("Hello")
 
         assert mock_bot_instance.send_message.await_count == 2
+        assert all(
+            call.kwargs["link_preview_options"].is_disabled is True
+            for call in mock_bot_instance.send_message.await_args_list
+        )
 
     @pytest.mark.asyncio
     async def test_dispatch_signal_deduplicates_matching_signal_key(self, MockBot):
@@ -64,18 +72,18 @@ class TestTelegramConsumer:
         telegram_consumer.bot = mock_bot_instance
 
         first_message = """
-            - [production] <strong>#top_loser_breadth algorithm</strong> #TAUSDTM
+            - [production] <strong>#top_gainer_short algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             - Current price: 0.071
-            - Strategy: top_loser_breadth
+            - Strategy: top_gainer_short
             - Autotrade route: market_trend_up_symbol_trend_up
             - Autotrade is enabled
         """
         duplicate_message = """
-            - [production] <strong>#top_loser_breadth algorithm</strong> #TAUSDTM
+            - [production] <strong>#top_gainer_short algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             - Current price: 0.074
-            - Strategy: top_loser_breadth
+            - Strategy: top_gainer_short
             - Autotrade route: market_trend_up_symbol_trend_up
             - Autotrade is enabled
         """
@@ -109,7 +117,6 @@ class TestTelegramConsumer:
         "algorithm",
         [
             "top_gainer_short",
-            "top_loser_breadth",
             "top_gainer_early_momentum",
             "top_loser_early_momentum",
         ],

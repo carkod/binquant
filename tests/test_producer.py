@@ -441,7 +441,6 @@ ALL_NOTIFICATION_STRATEGIES = {
     "LowerHighPattern",
     "HigherLowPattern",
     "TopGainerShort",
-    "TopLoserBreadth",
     "TopGainerEarlyMomentum",
     "TopLoserEarlyMomentum",
 }
@@ -490,7 +489,6 @@ async def test_process_data_runs_every_strategy_in_every_environment(
             "LiquidationSweepPump",
             "LadderDeployer",
             "TopGainerShort",
-            "TopLoserBreadth",
             "TopLoserEarlyMomentum",
         )
     }
@@ -538,9 +536,6 @@ async def test_process_data_runs_every_strategy_in_every_environment(
         )
         evaluator.top_gainer_short = SimpleNamespace(
             signal=strategy_signals["TopGainerShort"]
-        )
-        evaluator.top_loser_breadth = SimpleNamespace(
-            signal=strategy_signals["TopLoserBreadth"]
         )
         evaluator.top_loser_early_momentum = SimpleNamespace(
             signal=strategy_signals["TopLoserEarlyMomentum"]

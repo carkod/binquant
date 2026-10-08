@@ -1,4 +1,6 @@
 import logging
+from decimal import ROUND_CEILING, Decimal
+from math import isfinite
 from time import time
 from typing import TYPE_CHECKING
 
@@ -15,11 +17,6 @@ from pybinbot import (
 )
 
 from shared.utils import build_links_msg, format_context_timestamp_line
-from shared.weekly_structure_protection import (
-    BOUNDARY_BUFFER_PCT,
-    WeeklyStructureProtection,
-    weekly_structure_protection,
-)
 from strategies.lower_high_pattern import LowerHighPattern
 
 if TYPE_CHECKING:
@@ -35,34 +32,57 @@ class TopGainerShort:
     - the symbol's own 15m candles have just confirmed a lower high. This is
       the trigger: without it nothing else here matters.
 
-    A 24h gain of at least 20%, breadth falling over three hours, and BTC
-    falling over three hours raise the notification's conviction score. They
-    are context, not entry gates: the coin's lower high remains the required
-    failure signal.
+    Breadth must also have a confirmed higher low in its latest 40 samples
+    (about ten hours at the ingestion cadence). Compare the latest two strict
+    troughs, each confirmed by two readings on either side. The second must
+    be higher and remain unbroken. Breadth must be fresh and continuous.
+    This deliberately combines a failing symbol with recovering breadth.
 
-    The resulting futures short uses a stop just beyond the preceding week's
-    resistance and a weekly-range-scaled static trailing stop. Reversal and
-    recovery are explicitly disabled. This is a notification-only strategy;
-    its parameters describe the proposed trade but do not open a bot.
+    A 24h gain of at least 20% raises the notification's conviction score,
+    as does a stretch score, which measures how far the move has run beyond
+    the coin's own daily history: a 24h gain larger than any prior daily gain, a weekly
+    high above every earlier daily high, and a weekly high far above the
+    earlier median close. These are context, not entry gates, and the stretch
+    score is intended as the groundwork for position sizing: the coin's lower
+    high remains the required failure signal.
+
+    Three or more close-to-close crossings of the current price over the last
+    24 completed 15m candles block entry as chop. Exact touches are ignored.
+    The resulting futures short uses a stop above the confirmed lower high
+    and a fixed static trailing stop. Reversal and
+    recovery are explicitly disabled. The strategy requests autotrade in
+    staging only; development and production remain notification-only.
     """
 
     ALGO = "top_gainer_short"
 
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
+    CHOP_LOOKBACK_BARS = 24
+    CANDLE_INTERVAL_MS = 15 * 60 * 1000
+    CHOP_CROSSING_THRESHOLD = 3
+    LOWER_HIGH_STOP_BUFFER_PCT = 0.25
+    TRAILING_PROFIT_PCT = 4.5
+    TRAILING_DEVIATION_PCT = 3.0
 
     TOP_GAINER_RANK_LIMIT = 10
     MIN_WATCH_HOURS = 6
     MAX_WATCH_SNAPSHOT_GAP_SECONDS = 90 * 60
     STRONG_GAIN_THRESHOLD_PCT = 20.0
-    MACRO_LOOKBACK_HOURS = 3
+    BREADTH_LOOKBACK_SAMPLES = 40
+    BREADTH_FRACTAL_WING = 2
     MAX_BREADTH_AGE_SECONDS = 30 * 60
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     BASE_SCORE = 1.0
     STRONG_GAIN_SCORE_BONUS = 0.5
-    BREADTH_FALLING_SCORE_BONUS = 0.5
-    BTC_FALLING_SCORE_BONUS = 0.5
+
+    STRETCH_RECENT_DAYS = 7
+    STRETCH_MIN_PRIOR_DAILY_CANDLES = 14
+    STRETCH_EXTENSION_THRESHOLD_PCT = 100.0
+    RECORD_GAIN_SCORE_BONUS = 0.5
+    NEW_HIGH_SCORE_BONUS = 0.5
+    EXTENSION_SCORE_BONUS = 0.5
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -167,82 +187,186 @@ class TopGainerShort:
             return None
         return pattern
 
-    def _breadth_falling_three_hours(self) -> dict[str, float] | None:
-        market_breadth_data = self.market_breadth_data
-        if market_breadth_data is None:
+    def _breadth_higher_low(self) -> dict[str, float] | None:
+        """Confirm structure on the signed breadth index, not price percentages.
+
+        A higher low remains valid after confirmation until breached or replaced
+        by a newer pair of confirmed troughs within the lookback window.
+        """
+        breadth = self.market_breadth_data
+        if breadth is None or len(breadth.timestamp) != len(breadth.market_breadth):
             return None
 
         samples: list[tuple[float, float]] = []
         for timestamp, value in zip(
-            market_breadth_data.timestamp,
-            market_breadth_data.market_breadth,
-            strict=False,
+            breadth.timestamp, breadth.market_breadth, strict=True
         ):
             timestamp_seconds = timestamp_sort_key(timestamp)
-            if timestamp_seconds is not None:
-                samples.append((timestamp_seconds, float(value)))
+            if timestamp_seconds is None or not isfinite(timestamp_seconds):
+                return None
+            samples.append((timestamp_seconds, value))
         samples.sort(key=lambda sample: sample[0])
-        if not samples:
+        if len(samples) < self.BREADTH_LOOKBACK_SAMPLES:
             return None
+        samples = samples[-self.BREADTH_LOOKBACK_SAMPLES :]
         latest_timestamp, latest_breadth = samples[-1]
         if not self._timestamp_is_fresh(latest_timestamp, self.MAX_BREADTH_AGE_SECONDS):
             return None
-
-        target_timestamp = latest_timestamp - self.MACRO_LOOKBACK_HOURS * 3600
-        prior_sample = next(
-            (
-                sample
-                for sample in reversed(samples[:-1])
-                if sample[0] <= target_timestamp
-            ),
-            None,
-        )
-        if prior_sample is None:
+        if any(not isfinite(value) for _, value in samples):
             return None
-        prior_timestamp, prior_breadth = prior_sample
+        if any(
+            not 0 < later[0] - earlier[0] <= self.MAX_BREADTH_AGE_SECONDS
+            for earlier, later in zip(samples, samples[1:], strict=False)
+        ):
+            return None
+
+        wing = self.BREADTH_FRACTAL_WING
+        lows = [
+            i
+            for i in range(wing, len(samples) - wing)
+            if all(
+                samples[i][1] < samples[j][1]
+                for j in range(i - wing, i + wing + 1)
+                if i != j
+            )
+        ]
+        if len(lows) < 2:
+            return None
+        earlier_pos, later_pos = lows[-2:]
+        earlier_timestamp, earlier_low = samples[earlier_pos]
+        later_timestamp, later_low = samples[later_pos]
+        # Breadth crosses zero, so compare index values directly. Percentage
+        # ratios would invert negative troughs and fail at zero.
+        if later_low <= earlier_low or any(
+            value <= later_low for _, value in samples[later_pos + 1 :]
+        ):
+            return None
         return {
             "breadth_latest": latest_breadth,
-            "breadth_three_hours_ago": prior_breadth,
-            "breadth_change_three_hours": latest_breadth - prior_breadth,
-            "breadth_three_hours_ago_timestamp": prior_timestamp,
+            "breadth_timestamp": latest_timestamp,
+            "breadth_higher_low_first_trough": earlier_low,
+            "breadth_higher_low_second_trough": later_low,
+            "breadth_higher_low_rise": later_low - earlier_low,
+            "breadth_higher_low_first_timestamp": earlier_timestamp,
+            "breadth_higher_low_second_timestamp": later_timestamp,
+            "breadth_higher_low_confirmation_timestamp": samples[later_pos + wing][0],
         }
 
-    def _btc_falling_three_hours(self) -> dict[str, float] | None:
-        df = self.ti.df_btc_15m
-        if df is None or "close" not in df.columns:
-            return None
-        completed_candles = df
-        if "close_time" in df.columns:
-            close_times = to_numeric(df["close_time"], errors="coerce")
-            completed_candles = df.loc[close_times < time() * 1000]
-        required_candles = self.MACRO_LOOKBACK_HOURS * 4 + 1
-        if len(completed_candles) < required_candles:
+    def _price_crossings_six_hours(self, current_price: float) -> int | None:
+        """Count changes of side around a fixed current-price reference.
+
+        Require the 24 consecutive completed 15m bars immediately before the
+        current bar. Wicks alone and closes equal to the reference are not
+        crossings; equal closes preserve the last observed side.
+        """
+        df = self.ti.df_15m
+        if (
+            not isfinite(current_price)
+            or current_price <= 0
+            or df is None
+            or not {"open_time", "close_time", "close"}.issubset(df.columns)
+        ):
             return None
 
-        btc_close = float(completed_candles["close"].iloc[-1])
-        btc_three_hours_ago = float(completed_candles["close"].iloc[-required_candles])
-        if btc_close <= 0 or btc_three_hours_ago <= 0:
-            return None
-        return {
-            "btc_close_15m": btc_close,
-            "btc_close_three_hours_ago": btc_three_hours_ago,
-            "btc_change_three_hours_pct": (btc_close / btc_three_hours_ago - 1) * 100,
-        }
-
-    def _weekly_protection(
-        self, current_price: float
-    ) -> WeeklyStructureProtection | None:
-        df = self.ti.df_1h
-        if df is None or "close_time" not in df.columns:
-            return None
-
+        now_ms = time() * 1000
+        window_end = int(now_ms // self.CANDLE_INTERVAL_MS) * self.CANDLE_INTERVAL_MS
+        window_start = window_end - self.CHOP_LOOKBACK_BARS * self.CANDLE_INTERVAL_MS
+        open_times = to_numeric(df["open_time"], errors="coerce")
         close_times = to_numeric(df["close_time"], errors="coerce")
-        completed_candles = df.loc[close_times < time() * 1000]
-        return weekly_structure_protection(
-            completed_candles,
-            current_price=current_price,
-            position=Position.short,
-            price_precision=self.price_precision,
+        in_window = (open_times >= window_start) & (open_times < window_end)
+        window = df.loc[in_window]
+        if open_times.loc[in_window].tolist() != list(
+            range(window_start, window_end, self.CANDLE_INTERVAL_MS)
+        ):
+            return None
+        window_close_times = close_times.loc[in_window]
+        if not (
+            (window_close_times < now_ms)
+            & (window_close_times >= open_times.loc[in_window])
+            & (
+                window_close_times
+                <= open_times.loc[in_window] + self.CANDLE_INTERVAL_MS
+            )
+        ).all():
+            return None
+        closes = to_numeric(window["close"], errors="coerce")
+        if not closes.map(isfinite).all() or (closes <= 0).any():
+            return None
+
+        previous_side = 0
+        crossings = 0
+        for close in closes:
+            side = 1 if close > current_price else -1 if close < current_price else 0
+            if side == 0:
+                continue
+            if previous_side and side != previous_side:
+                crossings += 1
+            previous_side = side
+        return crossings
+
+    def _stretch_context(
+        self, max_gain_24h_pct: float, weekly_resistance: float
+    ) -> dict[str, float | bool] | None:
+        """Compare the current move with the coin's earlier daily history.
+
+        "Prior" candles are completed daily candles that closed before the
+        recent window, so this week's pump is not compared with itself.
+        Returns None when there are too few prior daily candles: a fresh
+        listing has no meaningful history to be stretched against.
+        """
+        df = self.ti.df_1d
+        required_columns = {"open", "high", "close", "close_time"}
+        if df is None or not required_columns.issubset(df.columns):
+            return None
+
+        now_ms = time() * 1000
+        recent_cutoff_ms = now_ms - self.STRETCH_RECENT_DAYS * 24 * 3600 * 1000
+        close_times = to_numeric(df["close_time"], errors="coerce")
+        prior = df.loc[close_times < recent_cutoff_ms]
+        if len(prior) < self.STRETCH_MIN_PRIOR_DAILY_CANDLES:
+            return None
+
+        opens = to_numeric(prior["open"], errors="coerce")
+        highs = to_numeric(prior["high"], errors="coerce")
+        closes = to_numeric(prior["close"], errors="coerce")
+        prior_high = float(highs.max())
+        prior_median_close = float(closes.median())
+        prior_best_daily_gain_pct = float(((highs / opens - 1) * 100).max())
+        if (
+            not isfinite(prior_high)
+            or not isfinite(prior_median_close)
+            or not isfinite(prior_best_daily_gain_pct)
+            or prior_median_close <= 0
+        ):
+            return None
+
+        extension_pct = (weekly_resistance / prior_median_close - 1) * 100
+        return {
+            "stretch_prior_daily_candles": len(prior),
+            "stretch_prior_best_daily_gain_pct": prior_best_daily_gain_pct,
+            "stretch_prior_high": prior_high,
+            "stretch_prior_median_close": prior_median_close,
+            "stretch_extension_pct": extension_pct,
+            "stretch_record_gain": max_gain_24h_pct > prior_best_daily_gain_pct,
+            "stretch_new_high": weekly_resistance > prior_high,
+            "stretch_extended": extension_pct >= self.STRETCH_EXTENSION_THRESHOLD_PCT,
+        }
+
+    def _stretch_telegram_line(
+        self,
+        stretch: dict[str, float | bool] | None,
+        stretch_score: float,
+        max_gain_24h_pct: float,
+    ) -> str:
+        if stretch is None:
+            return "- Stretch score: n/a (under 14 prior daily candles)"
+        return (
+            f"- Stretch score: +{stretch_score} of {self.RECORD_GAIN_SCORE_BONUS + self.NEW_HIGH_SCORE_BONUS + self.EXTENSION_SCORE_BONUS}"
+            f" | record 24h gain: {'Yes' if stretch['stretch_record_gain'] else 'No'}"
+            f" ({round_numbers(max_gain_24h_pct, 2)}% vs prior best daily {round_numbers(stretch['stretch_prior_best_daily_gain_pct'], 2)}%)"
+            f" | weekly high above all prior daily highs: {'Yes' if stretch['stretch_new_high'] else 'No'}"
+            f" | weekly high vs prior median close: +{round_numbers(stretch['stretch_extension_pct'], 1)}%"
+            f" ({'>=' if stretch['stretch_extended'] else '<'} {self.STRETCH_EXTENSION_THRESHOLD_PCT}%)"
         )
 
     def _already_emitted(self, confirmation_open_time: int) -> bool:
@@ -282,9 +406,39 @@ class TopGainerShort:
             logging.info("%s skipped: no_fresh_confirmed_lower_high", self.ALGO)
             return
 
-        protection = self._weekly_protection(current_price)
-        if protection is None:
-            logging.info("%s skipped: weekly_structure_protection_invalid", self.ALGO)
+        breadth_context = self._breadth_higher_low()
+        if breadth_context is None:
+            logging.info("%s skipped: no_valid_breadth_higher_low", self.ALGO)
+            return
+
+        crossings = self._price_crossings_six_hours(current_price)
+        if crossings is None:
+            logging.info("%s skipped: six_hour_candle_history_invalid", self.ALGO)
+            return
+        if crossings >= self.CHOP_CROSSING_THRESHOLD:
+            logging.info(
+                "%s skipped: choppy_current_price_crossings=%s", self.ALGO, crossings
+            )
+            return
+
+        lower_high_price = float(lower_high["later_high"])
+        if not isfinite(lower_high_price) or current_price >= lower_high_price:
+            logging.info("%s skipped: lower_high_already_reclaimed", self.ALGO)
+            return
+        # Round a short stop upward so price precision cannot move it back
+        # inside the pattern. Round its percentage upward for the same reason.
+        stop_price = (
+            Decimal(str(lower_high_price))
+            * (1 + Decimal(str(self.LOWER_HIGH_STOP_BUFFER_PCT)) / 100)
+        ).quantize(Decimal(1).scaleb(-self.price_precision), rounding=ROUND_CEILING)
+        stop_loss_price = float(stop_price)
+        stop_loss_pct = float(
+            ((stop_price / Decimal(str(current_price)) - 1) * 100).quantize(
+                Decimal("0.0001"), rounding=ROUND_CEILING
+            )
+        )
+        if not 0 < stop_loss_pct <= 101:
+            logging.info("%s skipped: lower_high_stop_invalid", self.ALGO)
             return
 
         confirmation_open_time = int(lower_high["confirmation_open_time"])
@@ -296,21 +450,22 @@ class TopGainerShort:
             top_gainer_watch["top_gainer_watch_max_gain_24h_pct"]
             >= self.STRONG_GAIN_THRESHOLD_PCT
         )
-        breadth_context = self._breadth_falling_three_hours()
-        breadth_falling = (
-            breadth_context is not None
-            and breadth_context["breadth_change_three_hours"] < 0
+        stretch = self._stretch_context(
+            top_gainer_watch["top_gainer_watch_max_gain_24h_pct"],
+            lower_high_price,
         )
-        btc_context = self._btc_falling_three_hours()
-        btc_falling = (
-            btc_context is not None and btc_context["btc_change_three_hours_pct"] < 0
+        stretch_score = (
+            (self.RECORD_GAIN_SCORE_BONUS if stretch["stretch_record_gain"] else 0.0)
+            + (self.NEW_HIGH_SCORE_BONUS if stretch["stretch_new_high"] else 0.0)
+            + (self.EXTENSION_SCORE_BONUS if stretch["stretch_extended"] else 0.0)
+            if stretch is not None
+            else 0.0
         )
 
         score = round_numbers(
             self.BASE_SCORE
             + (self.STRONG_GAIN_SCORE_BONUS if strong_gainer else 0.0)
-            + (self.BREADTH_FALLING_SCORE_BONUS if breadth_falling else 0.0)
-            + (self.BTC_FALLING_SCORE_BONUS if btc_falling else 0.0),
+            + stretch_score,
             4,
         )
 
@@ -321,6 +476,7 @@ class TopGainerShort:
         )
         quote_asset = self.current_symbol_data.quote_asset
         context = self.ti.latest_market_context
+        autotrade_enabled = self.config.env.lower() == "staging"
         kucoin_link, terminal_link = build_links_msg(
             self.config.env,
             self.exchange,
@@ -337,26 +493,24 @@ class TopGainerShort:
             "lower_high_second_peak": lower_high["later_high"],
             "lower_high_drop_pct": lower_high["drop_pct"],
             "lower_high_confirmation_open_time": confirmation_open_time,
-            "breadth_falling_three_hours": breadth_falling,
-            "btc_falling_three_hours": btc_falling,
-            "weekly_resistance": protection.resistance,
-            "weekly_support": protection.support,
-            "weekly_structure_candles": protection.candle_count,
-            "weekly_boundary_buffer_pct": BOUNDARY_BUFFER_PCT,
-            "stop_loss_source": "weekly_resistance",
-            "stop_loss_price_at_signal": protection.stop_loss_price,
-            "stop_loss_pct": protection.stop_loss_pct,
+            "breadth_higher_low_confirmed": True,
+            "price_crossings_six_hours": crossings,
+            "chop_crossing_threshold": self.CHOP_CROSSING_THRESHOLD,
+            "chop_lookback_bars": self.CHOP_LOOKBACK_BARS,
+            "lower_high_stop_buffer_pct": self.LOWER_HIGH_STOP_BUFFER_PCT,
+            "stop_loss_source": "lower_high",
+            "stop_loss_price_at_signal": stop_loss_price,
+            "stop_loss_pct": stop_loss_pct,
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
-            "trailing_profit_pct": protection.trailing_profit_pct,
-            "trailing_deviation_pct": protection.trailing_deviation_pct,
+            "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
+            "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
             "protective_exit": "exchange_native_reduce_only_stop",
-            **(breadth_context or {}),
-            **(btc_context or {}),
+            **breadth_context,
         }
 
         value = SignalsConsumer(
             direction=Position.short.value.upper(),
-            autotrade=False,
+            autotrade=autotrade_enabled,
             current_price=float(current_price),
             score=score,
             bot_params=BotBase(
@@ -367,10 +521,10 @@ class TopGainerShort:
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=False,
                 fiat_order_size=fiat_order_size,
-                stop_loss=protection.stop_loss_pct,
+                stop_loss=stop_loss_pct,
                 trailing=True,
-                trailing_deviation=protection.trailing_deviation_pct,
-                trailing_profit=protection.trailing_profit_pct,
+                trailing_deviation=self.TRAILING_DEVIATION_PCT,
+                trailing_profit=self.TRAILING_PROFIT_PCT,
                 margin_short_reversal=False,
                 recovery_params=None,
             ),
@@ -388,23 +542,23 @@ class TopGainerShort:
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT a watched 24h top gainer when price confirms a lower high; BTC and breadth deterioration increase priority
+            - Rule intent: SHORT a watched 24h top gainer when price confirms a lower high and the breadth index has a confirmed higher low
             - Top-gainer rank / 24h move: {top_gainer_watch["top_gainer_rank"]} / {round_numbers(top_gainer_watch["top_gainer_price_change_24h_pct"], 2)}%
             - Continuous top-10 watch: {round_numbers(watch_hours, 2)}h; maximum 24h gain: {round_numbers(top_gainer_watch["top_gainer_watch_max_gain_24h_pct"], 2)}%
             - Strong-gainer threshold (>= {self.STRONG_GAIN_THRESHOLD_PCT}%): {"Yes" if strong_gainer else "No"}
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
-            - Breadth falling over 3h: {"Yes" if breadth_falling else "No"}
-            - BTC falling over 3h: {"Yes" if btc_falling else "No"}
+            - Breadth higher low confirmed: {round_numbers(breadth_context["breadth_higher_low_first_trough"], 4)} -> {round_numbers(breadth_context["breadth_higher_low_second_trough"], 4)}; latest index: {round_numbers(breadth_context["breadth_latest"], 4)}
+            {self._stretch_telegram_line(stretch, stretch_score, top_gainer_watch["top_gainer_watch_max_gain_24h_pct"])}
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
             - Max margin: {fiat_order_size} {quote_asset}
-            - Weekly resistance / support ({protection.candle_count} completed 1h candles): {protection.resistance} / {protection.support}
-            - Stop loss: {BOUNDARY_BUFFER_PCT}% above weekly resistance at {protection.stop_loss_price} ({protection.stop_loss_pct}%)
+            - Current-price crossings over 6h: {crossings}; blocked at {self.CHOP_CROSSING_THRESHOLD}
+            - Stop loss: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
             - Stop behavior: exchange-native reduce-only close; no reversal position
-            - Trailing stop: arms after {protection.trailing_profit_pct}% profit with {protection.trailing_deviation_pct}% deviation
+            - Trailing stop: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
-            - Autotrade is disabled; notification only
+            - Autotrade: {"enabled for staging" if autotrade_enabled else "disabled; notification only"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """

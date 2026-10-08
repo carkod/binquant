@@ -6,7 +6,7 @@ import logging
 import re
 import time
 
-from telegram import Bot
+from telegram import Bot, LinkPreviewOptions
 from telegram.constants import ParseMode
 from telegram.error import RetryAfter, TimedOut
 from telegram.helpers import escape
@@ -17,7 +17,6 @@ class TelegramConsumer:
     _ALLOWED_SIGNAL_ALGORITHMS = frozenset(
         {
             "top_gainer_short",
-            "top_loser_breadth",
             "top_gainer_early_momentum",
             "top_loser_early_momentum",
         }
@@ -167,6 +166,7 @@ class TelegramConsumer:
                         self.chat_id,
                         text=self._sanitize_html(message),
                         parse_mode=ParseMode.HTML,
+                        link_preview_options=LinkPreviewOptions(is_disabled=True),
                     )
                     self._last_send_at = time.monotonic()
                     return
