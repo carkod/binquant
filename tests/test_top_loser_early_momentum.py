@@ -19,6 +19,8 @@ from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
 
 def make_breakdown_candles() -> DataFrame:
+    window_end = int(datetime.now(UTC).timestamp() * 1000) // 900_000 * 900_000
+    first_open = window_end - 100 * 900_000
     closes = [100.0] * 84 + [
         99.0,
         98.2,
@@ -41,8 +43,8 @@ def make_breakdown_candles() -> DataFrame:
     for index, close in enumerate(closes):
         rows.append(
             {
-                "open_time": 1_700_000_000_000 + index * 900_000,
-                "close_time": 1_700_000_000_000 + (index + 1) * 900_000 - 1,
+                "open_time": first_open + index * 900_000,
+                "close_time": first_open + (index + 1) * 900_000 - 1,
                 "open": close + 0.15,
                 "high": close + 0.35,
                 "low": close - 0.25,

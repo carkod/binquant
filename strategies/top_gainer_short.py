@@ -16,6 +16,11 @@ from pybinbot import (
     timestamp_sort_key,
 )
 
+from shared.price_crossings import (
+    CHOP_CROSSING_THRESHOLD,
+    CHOP_LOOKBACK_BARS,
+    price_crossings_six_hours,
+)
 from shared.utils import build_links_msg, format_context_timestamp_line
 from strategies.lower_high_pattern import LowerHighPattern
 
@@ -58,9 +63,6 @@ class TopGainerShort:
 
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
-    CHOP_LOOKBACK_BARS = 24
-    CANDLE_INTERVAL_MS = 15 * 60 * 1000
-    CHOP_CROSSING_THRESHOLD = 3
     LOWER_HIGH_STOP_BUFFER_PCT = 0.25
     TRAILING_PROFIT_PCT = 4.5
     TRAILING_DEVIATION_PCT = 3.0
@@ -252,58 +254,6 @@ class TopGainerShort:
             "breadth_higher_low_confirmation_timestamp": samples[later_pos + wing][0],
         }
 
-    def _price_crossings_six_hours(self, current_price: float) -> int | None:
-        """Count changes of side around a fixed current-price reference.
-
-        Require the 24 consecutive completed 15m bars immediately before the
-        current bar. Wicks alone and closes equal to the reference are not
-        crossings; equal closes preserve the last observed side.
-        """
-        df = self.ti.df_15m
-        if (
-            not isfinite(current_price)
-            or current_price <= 0
-            or df is None
-            or not {"open_time", "close_time", "close"}.issubset(df.columns)
-        ):
-            return None
-
-        now_ms = time() * 1000
-        window_end = int(now_ms // self.CANDLE_INTERVAL_MS) * self.CANDLE_INTERVAL_MS
-        window_start = window_end - self.CHOP_LOOKBACK_BARS * self.CANDLE_INTERVAL_MS
-        open_times = to_numeric(df["open_time"], errors="coerce")
-        close_times = to_numeric(df["close_time"], errors="coerce")
-        in_window = (open_times >= window_start) & (open_times < window_end)
-        window = df.loc[in_window]
-        if open_times.loc[in_window].tolist() != list(
-            range(window_start, window_end, self.CANDLE_INTERVAL_MS)
-        ):
-            return None
-        window_close_times = close_times.loc[in_window]
-        if not (
-            (window_close_times < now_ms)
-            & (window_close_times >= open_times.loc[in_window])
-            & (
-                window_close_times
-                <= open_times.loc[in_window] + self.CANDLE_INTERVAL_MS
-            )
-        ).all():
-            return None
-        closes = to_numeric(window["close"], errors="coerce")
-        if not closes.map(isfinite).all() or (closes <= 0).any():
-            return None
-
-        previous_side = 0
-        crossings = 0
-        for close in closes:
-            side = 1 if close > current_price else -1 if close < current_price else 0
-            if side == 0:
-                continue
-            if previous_side and side != previous_side:
-                crossings += 1
-            previous_side = side
-        return crossings
-
     def _stretch_context(
         self, max_gain_24h_pct: float, weekly_resistance: float
     ) -> dict[str, float | bool] | None:
@@ -411,11 +361,13 @@ class TopGainerShort:
             logging.info("%s skipped: no_valid_breadth_higher_low", self.ALGO)
             return
 
-        crossings = self._price_crossings_six_hours(current_price)
+        crossings = price_crossings_six_hours(
+            self.ti.df_15m, current_price, now_ms=time() * 1000
+        )
         if crossings is None:
             logging.info("%s skipped: six_hour_candle_history_invalid", self.ALGO)
             return
-        if crossings >= self.CHOP_CROSSING_THRESHOLD:
+        if crossings >= CHOP_CROSSING_THRESHOLD:
             logging.info(
                 "%s skipped: choppy_current_price_crossings=%s", self.ALGO, crossings
             )
@@ -495,8 +447,8 @@ class TopGainerShort:
             "lower_high_confirmation_open_time": confirmation_open_time,
             "breadth_higher_low_confirmed": True,
             "price_crossings_six_hours": crossings,
-            "chop_crossing_threshold": self.CHOP_CROSSING_THRESHOLD,
-            "chop_lookback_bars": self.CHOP_LOOKBACK_BARS,
+            "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
+            "chop_lookback_bars": CHOP_LOOKBACK_BARS,
             "lower_high_stop_buffer_pct": self.LOWER_HIGH_STOP_BUFFER_PCT,
             "stop_loss_source": "lower_high",
             "stop_loss_price_at_signal": stop_loss_price,
@@ -552,7 +504,7 @@ class TopGainerShort:
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
             - Max margin: {fiat_order_size} {quote_asset}
-            - Current-price crossings over 6h: {crossings}; blocked at {self.CHOP_CROSSING_THRESHOLD}
+            - Current-price crossings over 6h: {crossings}; blocked at {CHOP_CROSSING_THRESHOLD}
             - Stop loss: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
             - Stop behavior: exchange-native reduce-only close; no reversal position
             - Trailing stop: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation

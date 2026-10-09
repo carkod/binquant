@@ -17,6 +17,11 @@ from pybinbot import (
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
+from shared.price_crossings import (
+    CHOP_CROSSING_THRESHOLD,
+    CHOP_LOOKBACK_BARS,
+    price_crossings_six_hours,
+)
 from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
@@ -32,6 +37,9 @@ class TopLoserEarlyMomentum:
     established-mover/rebound strategy and are excluded here. An eligible
     candidate must confirm its breakdown with two further lower closes before
     this strategy emits a notification-only short.
+    Three or more close-to-close crossings of the current price over the last
+    24 completed 15m candles block entry. Exact touches and wicks do not count;
+    missing or invalid candle history also blocks entry.
     """
 
     ALGO = "top_loser_early_momentum"
@@ -390,9 +398,22 @@ class TopLoserEarlyMomentum:
             logging.info("%s skipped: symbol_already_top_loser", self.ALGO)
             return
 
+        now_ms = int(datetime.now(UTC).timestamp() * 1000)
+        crossings = price_crossings_six_hours(
+            self.ti.df_15m, current_price, now_ms=now_ms
+        )
+        if crossings is None:
+            logging.info("%s skipped: six_hour_candle_history_invalid", self.ALGO)
+            return
+        if crossings >= CHOP_CROSSING_THRESHOLD:
+            logging.info(
+                "%s skipped: choppy_current_price_crossings=%s", self.ALGO, crossings
+            )
+            return
+
         df = self._completed_candles(
             self.ti.df_15m,
-            now_ms=int(datetime.now(UTC).timestamp() * 1000),
+            now_ms=now_ms,
         )
         if len(df) < self.MIN_HISTORY + 2:
             logging.info("%s skipped: history_too_short", self.ALGO)
@@ -486,6 +507,9 @@ class TopLoserEarlyMomentum:
             "current_top_loser": False,
             "risk_reason": risk_reason,
             "route_reason": route_reason,
+            "price_crossings_six_hours": crossings,
+            "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
+            "chop_lookback_bars": CHOP_LOOKBACK_BARS,
             "stop_loss_pct": stop_loss,
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
@@ -526,6 +550,7 @@ class TopLoserEarlyMomentum:
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(float(current_price), decimals=self.price_precision)}
+            - Current-price crossings over 6h: {crossings}; blocked at {CHOP_CROSSING_THRESHOLD}
             - Rule intent: SELL momentum before the symbol reaches the top-loser list, after price holds below the recent low
             - Breakdown setup: {entry_reason}
             - Entry setup: {confirmation_reason}
