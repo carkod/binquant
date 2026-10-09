@@ -1,6 +1,7 @@
 from typing import Any, cast
 from unittest.mock import Mock
 
+from pandas import DataFrame
 import pytest
 
 from shared.price_crossings import price_crossings_six_hours
@@ -15,6 +16,36 @@ from tests.test_top_loser_early_momentum import (
     make_breakdown_candles,
     make_context as make_loser_context,
 )
+
+
+@pytest.mark.parametrize("interval_ms", [5 * 60 * 1000, 15 * 60 * 1000])
+def test_crossings_cover_six_hours_at_candle_interval(interval_ms: int) -> None:
+    lookback_ms = 6 * 60 * 60 * 1000
+    now_ms = 1_800_000_000_000 // interval_ms * interval_ms + 1_000
+    candle_count = lookback_ms // interval_ms
+    segment_length = candle_count // 4
+    window_start = now_ms // interval_ms * interval_ms - lookback_ms
+    frame = DataFrame(
+        [
+            {
+                "open_time": window_start + i * interval_ms,
+                "close_time": window_start + (i + 1) * interval_ms - 1,
+                "close": 100.0 if (i // segment_length) % 2 == 0 else 102.0,
+            }
+            for i in range(candle_count)
+        ]
+    )
+
+    assert (
+        price_crossings_six_hours(frame, 101.0, now_ms=now_ms, interval_ms=interval_ms)
+        == 3
+    )
+    assert (
+        price_crossings_six_hours(
+            frame, 101.0, now_ms=now_ms, interval_ms=interval_ms * 3
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -64,9 +95,12 @@ async def test_momentum_chop_gate_before_dispatch_and_cooldown(
                 close - 0.25,
                 close,
             ]
-        assert price_crossings_six_hours(frame, current_price, now_ms=now_ms) == (
-            2 if case == "two_crossings" else 3
-        )
+        assert price_crossings_six_hours(
+            frame,
+            current_price,
+            now_ms=now_ms,
+            interval_ms=strategy.candlestick_interval.get_ms(),
+        ) == (2 if case == "two_crossings" else 3)
     elif case == "missing":
         context.df_15m = frame.iloc[-23:]
     elif case == "gap":

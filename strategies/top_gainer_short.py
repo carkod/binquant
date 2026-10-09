@@ -18,7 +18,7 @@ from pybinbot import (
 
 from shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
-    CHOP_LOOKBACK_BARS,
+    CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -88,6 +88,7 @@ class TopGainerShort:
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
+        self.candlestick_interval = cls.candlestick_interval
         self.config = cls.config
         self.symbol = cls.symbol
         self.exchange = cls.exchange
@@ -362,7 +363,10 @@ class TopGainerShort:
             return
 
         crossings = price_crossings_six_hours(
-            self.ti.df_15m, current_price, now_ms=time() * 1000
+            self.ti.df_15m,
+            current_price,
+            now_ms=time() * 1000,
+            interval_ms=self.candlestick_interval.get_ms(),
         )
         if crossings is None:
             logging.info("%s skipped: six_hour_candle_history_invalid", self.ALGO)
@@ -448,7 +452,13 @@ class TopGainerShort:
             "breadth_higher_low_confirmed": True,
             "price_crossings_six_hours": crossings,
             "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
-            "chop_lookback_bars": CHOP_LOOKBACK_BARS,
+            "chop_lookback_bars": (
+                CHOP_LOOKBACK_HOURS
+                * 60
+                * 60
+                * 1000
+                // self.candlestick_interval.get_ms()
+            ),
             "lower_high_stop_buffer_pct": self.LOWER_HIGH_STOP_BUFFER_PCT,
             "stop_loss_source": "lower_high",
             "stop_loss_price_at_signal": stop_loss_price,

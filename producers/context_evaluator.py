@@ -78,7 +78,8 @@ class ContextEvaluator:
         ac_api: AutotradeConsumer,
         exchange: ExchangeId,
         first_seen_at: int,
-        interval: BinanceKlineIntervals | KucoinKlineIntervals,
+        feed_interval: BinanceKlineIntervals | KucoinKlineIntervals,
+        candlestick_interval: BinanceKlineIntervals | KucoinKlineIntervals,
         binbot_api: BinbotApi,
         telegram_consumer: TelegramConsumer,
         strategy_cooldowns: dict[tuple[str, str], int] | None = None,
@@ -113,7 +114,8 @@ class ContextEvaluator:
         self.df_1d: TypedDataFrame[KlineSchema]
         self.df_btc_15m: TypedDataFrame[KlineSchema]
         self.exchange = exchange
-        self.interval = interval
+        self.feed_interval = feed_interval
+        self.candlestick_interval = candlestick_interval
         # describes current USDC market: gainers vs losers
         self.current_market_dominance: MarketDominance = MarketDominance.NEUTRAL
         # describes whether tide is shifting

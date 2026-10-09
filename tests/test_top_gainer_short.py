@@ -10,6 +10,7 @@ from pybinbot import (
     ExchangeId,
     GainerLoserEntry,
     GainersLosersSnapshot,
+    KucoinKlineIntervals,
     MarketBreadthSeries,
     MarketType,
     SymbolModel,
@@ -186,6 +187,7 @@ def make_context(
             ),
             process_autotrade_restrictions=AsyncMock(),
         ),
+        candlestick_interval=KucoinKlineIntervals.FIFTEEN_MINUTES,
         market_breadth_data=breadth or make_market_breadth(),
         df_btc_15m=btc_df if btc_df is not None else make_btc_df(),
         df_15m=symbol_df if symbol_df is not None else make_lower_high_df(),
@@ -612,7 +614,9 @@ def test_crossings_count_side_changes_and_ignore_exact_touches(closes, expected)
     frame.loc[:, "high"] = 140.0
     frame.loc[:, "low"] = 130.0
     assert (
-        price_crossings_six_hours(frame, 135.0, now_ms=NOW.timestamp() * 1000)
+        price_crossings_six_hours(
+            frame, 135.0, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
+        )
         == expected
     )
 
@@ -644,7 +648,9 @@ async def test_repeated_crossings_reject_a_real_confirmed_lower_high():
     strategy = TopGainerShort(cast(Any, context))
     assert strategy._fresh_lower_high() is not None
     assert (
-        price_crossings_six_hours(context.df_15m, 124.0, now_ms=NOW.timestamp() * 1000)
+        price_crossings_six_hours(
+            context.df_15m, 124.0, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
+        )
         == 4
     )
 
@@ -676,7 +682,10 @@ def test_chop_check_requires_complete_recent_valid_history(invalid_history):
             "zero": 0.0,
         }[invalid_history]
     assert (
-        price_crossings_six_hours(frame, 135.0, now_ms=NOW.timestamp() * 1000) is None
+        price_crossings_six_hours(
+            frame, 135.0, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
+        )
+        is None
     )
 
 
@@ -700,7 +709,12 @@ def test_chop_check_ignores_old_and_forming_candles():
         ],
         ignore_index=True,
     )
-    assert price_crossings_six_hours(frame, 135.0, now_ms=NOW.timestamp() * 1000) == 0
+    assert (
+        price_crossings_six_hours(
+            frame, 135.0, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
+        )
+        == 0
+    )
 
 
 @pytest.mark.asyncio
