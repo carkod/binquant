@@ -69,8 +69,8 @@ class KlinesProvider:
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.api: KucoinApi | BinanceApi | KucoinFutures
         self.exchange: ExchangeId
-        self.interval: BinanceKlineIntervals | KucoinKlineIntervals
-        self.interval_15m: BinanceKlineIntervals | KucoinKlineIntervals
+        self.feed_interval: BinanceKlineIntervals | KucoinKlineIntervals
+        self.candlestick_interval: BinanceKlineIntervals | KucoinKlineIntervals
         self.interval_1h: BinanceKlineIntervals | KucoinKlineIntervals
         self.interval_1d: BinanceKlineIntervals | KucoinKlineIntervals
         # Apex Flow starting point for scoring signals
@@ -120,8 +120,8 @@ class KlinesProvider:
                 secret=self.config.kucoin_secret,
                 passphrase=self.config.kucoin_passphrase,
             )
-            self.interval = KucoinKlineIntervals.FIVE_MINUTES
-            self.interval_15m = KucoinKlineIntervals.FIFTEEN_MINUTES
+            self.feed_interval = KucoinKlineIntervals.FIVE_MINUTES
+            self.candlestick_interval = KucoinKlineIntervals.FIFTEEN_MINUTES
             self.interval_1h = KucoinKlineIntervals.ONE_HOUR
             self.interval_1d = KucoinKlineIntervals.ONE_DAY
             self.benchmark_symbol = "BTC-USDT"
@@ -129,8 +129,8 @@ class KlinesProvider:
         else:
             self.exchange = ExchangeId.BINANCE
             self.api = self.binance_api
-            self.interval = BinanceKlineIntervals.five_minutes
-            self.interval_15m = BinanceKlineIntervals.fifteen_minutes
+            self.feed_interval = BinanceKlineIntervals.five_minutes
+            self.candlestick_interval = BinanceKlineIntervals.fifteen_minutes
             self.interval_1h = BinanceKlineIntervals.one_hour
             self.interval_1d = BinanceKlineIntervals.one_day
             self.benchmark_symbol = "BTCUSDC"
@@ -247,12 +247,12 @@ class KlinesProvider:
     ) -> None:
         self.candles = self.api.get_ui_klines(
             symbol=api_symbol,
-            interval=self.interval.value,
+            interval=self.feed_interval.value,
             limit=self.LIMIT,
         )
         self.candles_15m = self.api.get_ui_klines(
             symbol=api_symbol,
-            interval=self.interval_15m.value,
+            interval=self.candlestick_interval.value,
             limit=self.LIMIT,
         )
         self.candles_1h = self._completed_hourly_history(
@@ -352,13 +352,13 @@ class KlinesProvider:
             last_btc_open_time = self.btc_candles_15m[-1][0]  # open_time in ms
             now_ts = int(time() * 1000)
             refresh_btc_candles = now_ts - last_btc_open_time > int(
-                self.interval_15m.get_ms()
+                self.candlestick_interval.get_ms()
             )
 
         if refresh_btc_candles:
             self.btc_candles_15m = self.api.get_ui_klines(
                 symbol=self._get_benchmark_symbol(market_type),
-                interval=self.interval_15m.value,
+                interval=self.candlestick_interval.value,
                 limit=self.LIMIT,
             )
 
@@ -370,7 +370,9 @@ class KlinesProvider:
         15m cadence re-reads the same snapshot a few times rather than missing
         one, which is the cheaper failure of the two.
         """
-        bucket = int(current_time.timestamp() * 1000 // self.interval_15m.get_ms())
+        bucket = int(
+            current_time.timestamp() * 1000 // self.candlestick_interval.get_ms()
+        )
         if bucket == self._last_market_tape_bucket:
             return
 
@@ -401,13 +403,13 @@ class KlinesProvider:
         self.active_pairs = self.binbot_api.get_active_pairs()
         await self._refresh_market_tape()
         self._last_market_tape_bucket = int(
-            datetime.now().timestamp() * 1000 // self.interval_15m.get_ms()
+            datetime.now().timestamp() * 1000 // self.candlestick_interval.get_ms()
         )
 
         # Load BTC benchmark candles
         self.btc_candles_15m = self.api.get_ui_klines(
             symbol=self._get_benchmark_symbol(MarketType.SPOT),
-            interval=self.interval_15m.value,
+            interval=self.candlestick_interval.value,
             limit=self.LIMIT,
         )
         self._store_btc_history(MarketType.SPOT)
@@ -497,7 +499,8 @@ class KlinesProvider:
             ac_api=self.ac_api,
             exchange=self.exchange,
             first_seen_at=self.first_seen_at,
-            interval=self.interval,
+            feed_interval=self.feed_interval,
+            candlestick_interval=self.candlestick_interval,
             market_type=market_type,
             latest_market_context=self.latest_market_context,
             binbot_api=self.binbot_api,

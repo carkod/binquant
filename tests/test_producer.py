@@ -41,8 +41,8 @@ def klines_connector(monkeypatch):
         def klines(self):
             return None
 
-    def new_init(self, producer, interval="1m"):
-        self.interval = interval
+    def new_init(self, producer, feed_interval="1m"):
+        self.feed_interval = feed_interval
         self.last_processed_kline = {}
         self.client = Client()
 
