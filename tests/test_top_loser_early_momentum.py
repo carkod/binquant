@@ -10,6 +10,7 @@ from pybinbot import (
     ExchangeId,
     GainerLoserEntry,
     GainersLosersSnapshot,
+    KucoinKlineIntervals,
     MarketType,
     SymbolModel,
 )
@@ -157,6 +158,7 @@ def make_context(
         symbol="TESTUSDTM",
         market_type=MarketType.FUTURES,
         df_15m=df,
+        candlestick_interval=KucoinKlineIntervals.FIFTEEN_MINUTES,
         macroregime_directional="DOWN",
         macroregime_oscillation_intensity=0.2,
         microregime_directional="DOWN",

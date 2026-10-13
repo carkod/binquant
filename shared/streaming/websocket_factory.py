@@ -51,7 +51,7 @@ class WebsocketClientFactory:
         self.exchange = ExchangeId(self.autotrade_settings.exchange_id)
         self.queue = queue
         self.liquidation_store = liquidation_store or LiquidationStateStore()
-        self.interval = (
+        self.candlestick_interval = (
             KucoinKlineIntervals.FIFTEEN_MINUTES
             if self.exchange == ExchangeId.KUCOIN
             else BinanceKlineIntervals.fifteen_minutes
@@ -88,7 +88,9 @@ class WebsocketClientFactory:
 
             for s in chunk:
                 symbol_name = s.base_asset + "-" + s.quote_asset
-                await client.subscribe_klines(symbol_name, interval=self.interval.value)
+                await client.subscribe_klines(
+                    symbol_name, interval=self.candlestick_interval.value
+                )
 
             clients.append(client)
 
@@ -139,7 +141,9 @@ class WebsocketClientFactory:
                 len(chunk),
             )
             for s in chunk:
-                await client.subscribe_klines(s.id, interval=self.interval.value)
+                await client.subscribe_klines(
+                    s.id, interval=self.candlestick_interval.value
+                )
                 total_subscriptions += 1
 
             clients.append(client)

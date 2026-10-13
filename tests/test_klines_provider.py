@@ -152,8 +152,8 @@ class TestKlinesProvider:
 def test_refresh_symbol_histories_fetches_a_full_week_of_hourly_candles() -> None:
     provider = cast(Any, object.__new__(KlinesProvider))
     provider.api = SimpleNamespace(get_ui_klines=Mock(return_value=[]))
-    provider.interval = BinanceKlineIntervals.five_minutes
-    provider.interval_15m = BinanceKlineIntervals.fifteen_minutes
+    provider.feed_interval = BinanceKlineIntervals.five_minutes
+    provider.candlestick_interval = BinanceKlineIntervals.fifteen_minutes
     provider.interval_1h = BinanceKlineIntervals.one_hour
     provider.interval_1d = BinanceKlineIntervals.one_day
     provider._completed_daily_history_cache = {}
@@ -224,8 +224,8 @@ def test_completed_hourly_history_is_cached_until_next_hour(
 
     provider = cast(Any, object.__new__(KlinesProvider))
     provider.api = SimpleNamespace(get_ui_klines=Mock(side_effect=get_ui_klines))
-    provider.interval = BinanceKlineIntervals.five_minutes
-    provider.interval_15m = BinanceKlineIntervals.fifteen_minutes
+    provider.feed_interval = BinanceKlineIntervals.five_minutes
+    provider.candlestick_interval = BinanceKlineIntervals.fifteen_minutes
     provider.interval_1h = BinanceKlineIntervals.one_hour
     provider.interval_1d = BinanceKlineIntervals.one_day
     provider._completed_daily_history_cache = {}
@@ -363,7 +363,7 @@ def make_market_tape_refresh_provider() -> Any:
     provider.market_breadth_data = make_market_breadth_series(0.1, 0.09)
     provider.gainers_losers_series = []
     provider._last_market_tape_bucket = None
-    provider.interval_15m = KucoinKlineIntervals.FIFTEEN_MINUTES
+    provider.candlestick_interval = KucoinKlineIntervals.FIFTEEN_MINUTES
     return provider
 
 

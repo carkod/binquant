@@ -1,8 +1,8 @@
 import logging
-from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
 from math import isfinite
 from time import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pandas import to_numeric
 from pybinbot import (
@@ -18,7 +18,7 @@ from pybinbot import (
 
 from shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
-    CHOP_LOOKBACK_BARS,
+    CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -53,9 +53,15 @@ class TopGainerShort:
 
     Three or more close-to-close crossings of the current price over the last
     24 completed 15m candles block entry as chop. Exact touches are ignored.
-    The resulting futures short uses a stop above the confirmed lower high
-    and a fixed static trailing stop. Reversal and
-    recovery are explicitly disabled. The strategy requests autotrade in
+    The resulting futures short uses existing dynamic position sizing: reduce
+    at the lower-high threshold and increase at 4.5% profit. The backend's
+    default 25% adjustment repeats with thresholds reset after fills, replacing
+    the full stop while active. Static trailing remains the fallback.
+    The wider 2% buffer is paired with a smaller initial margin using the
+    original 0.25% buffer's stop-risk budget, before fees, slippage and contract
+    rounding. This sizes initial exposure; it does not cap total loss after
+    repeated adjustments. Reversal and recovery are explicitly disabled.
+    The strategy requests autotrade in
     staging only; development and production remain notification-only.
     """
 
@@ -63,7 +69,8 @@ class TopGainerShort:
 
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
-    LOWER_HIGH_STOP_BUFFER_PCT = 0.25
+    LOWER_HIGH_STOP_BUFFER_PCT = 2.0
+    RISK_BUDGET_STOP_BUFFER_PCT = 0.25
     TRAILING_PROFIT_PCT = 4.5
     TRAILING_DEVIATION_PCT = 3.0
 
@@ -88,6 +95,7 @@ class TopGainerShort:
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
+        self.candlestick_interval = cls.candlestick_interval
         self.config = cls.config
         self.symbol = cls.symbol
         self.exchange = cls.exchange
@@ -362,7 +370,10 @@ class TopGainerShort:
             return
 
         crossings = price_crossings_six_hours(
-            self.ti.df_15m, current_price, now_ms=time() * 1000
+            self.ti.df_15m,
+            current_price,
+            now_ms=time() * 1000,
+            interval_ms=self.candlestick_interval.get_ms(),
         )
         if crossings is None:
             logging.info("%s skipped: six_hour_candle_history_invalid", self.ALGO)
@@ -389,7 +400,7 @@ class TopGainerShort:
                 Decimal("0.0001"), rounding=ROUND_CEILING
             )
         )
-        if not 0 < stop_loss_pct <= 101:
+        if not 0 < stop_loss_pct < 100:
             logging.info("%s skipped: lower_high_stop_invalid", self.ALGO)
             return
 
@@ -436,7 +447,7 @@ class TopGainerShort:
             self.symbol,
         )
 
-        indicators = {
+        indicators: dict[str, Any] = {
             "entry_reason": "lower_high_breakdown",
             **top_gainer_watch,
             "strong_gainer": strong_gainer,
@@ -448,7 +459,13 @@ class TopGainerShort:
             "breadth_higher_low_confirmed": True,
             "price_crossings_six_hours": crossings,
             "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
-            "chop_lookback_bars": CHOP_LOOKBACK_BARS,
+            "chop_lookback_bars": (
+                CHOP_LOOKBACK_HOURS
+                * 60
+                * 60
+                * 1000
+                // self.candlestick_interval.get_ms()
+            ),
             "lower_high_stop_buffer_pct": self.LOWER_HIGH_STOP_BUFFER_PCT,
             "stop_loss_source": "lower_high",
             "stop_loss_price_at_signal": stop_loss_price,
@@ -456,7 +473,7 @@ class TopGainerShort:
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
             "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
-            "protective_exit": "exchange_native_reduce_only_stop",
+            "protective_exit": "dynamic_position_sizing",
             **breadth_context,
         }
 
@@ -472,8 +489,10 @@ class TopGainerShort:
                 market_type=MarketType.FUTURES,
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=False,
+                dynamic_position_sizing=True,
                 fiat_order_size=fiat_order_size,
                 stop_loss=stop_loss_pct,
+                take_profit=self.TRAILING_PROFIT_PCT,
                 trailing=True,
                 trailing_deviation=self.TRAILING_DEVIATION_PCT,
                 trailing_profit=self.TRAILING_PROFIT_PCT,
@@ -488,7 +507,32 @@ class TopGainerShort:
         )
         self.ti.finalize_signal_bot_params(value)
         assert value.bot_params is not None
-        fiat_order_size = value.bot_params.fiat_order_size
+        # Apply after open-interest sizing so that it cannot overwrite the
+        # reduction. Reproduce the original rounded stop to retain its budget.
+        reference_stop_price = (
+            Decimal(str(lower_high_price))
+            * (1 + Decimal(str(self.RISK_BUDGET_STOP_BUFFER_PCT)) / 100)
+        ).quantize(Decimal(1).scaleb(-self.price_precision), rounding=ROUND_CEILING)
+        reference_stop_pct = (
+            (reference_stop_price / Decimal(str(current_price)) - 1) * 100
+        ).quantize(Decimal("0.0001"), rounding=ROUND_CEILING)
+        margin_before_risk_sizing = value.bot_params.fiat_order_size
+        margin_multiplier = min(
+            Decimal(1), reference_stop_pct / Decimal(str(stop_loss_pct))
+        )
+        fiat_order_size = float(
+            (Decimal(str(margin_before_risk_sizing)) * margin_multiplier).quantize(
+                Decimal("0.00000001"), rounding=ROUND_DOWN
+            )
+        )
+        value.bot_params.fiat_order_size = fiat_order_size
+        indicators["stop_risk_sizing"] = {
+            "margin_before": margin_before_risk_sizing,
+            "margin_after": fiat_order_size,
+            "reference_stop_buffer_pct": self.RISK_BUDGET_STOP_BUFFER_PCT,
+            "reference_stop_pct": float(reference_stop_pct),
+            "margin_multiplier": float(margin_multiplier),
+        }
 
         msg = f"""
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
@@ -503,11 +547,13 @@ class TopGainerShort:
             {self._stretch_telegram_line(stretch, stretch_score, top_gainer_watch["top_gainer_watch_max_gain_24h_pct"])}
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
-            - Max margin: {fiat_order_size} {quote_asset}
+            - Initial margin: {fiat_order_size} {quote_asset}
+            - Initial risk sizing: margin reduced from {margin_before_risk_sizing} {quote_asset} using the prior {self.RISK_BUDGET_STOP_BUFFER_PCT}% buffer's stop-risk budget; subsequent adjustments change exposure
             - Current-price crossings over 6h: {crossings}; blocked at {CHOP_CROSSING_THRESHOLD}
-            - Stop loss: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
-            - Stop behavior: exchange-native reduce-only close; no reversal position
-            - Trailing stop: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
+            - Initial reduction threshold: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
+            - Position sizing: default 25% reduction at stop threshold / increase at {self.TRAILING_PROFIT_PCT}% profit; repeats with thresholds reset after fills
+            - Stop behavior: dynamic sizing replaces full stop; no reversal position
+            - Trailing fallback: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Autotrade: {"enabled for staging" if autotrade_enabled else "disabled; notification only"}

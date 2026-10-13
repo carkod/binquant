@@ -19,7 +19,7 @@ from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
-    CHOP_LOOKBACK_BARS,
+    CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
 from shared.utils import build_links_msg, format_context_timestamp_line
@@ -37,8 +37,8 @@ class TopLoserEarlyMomentum:
     established-mover/rebound strategy and are excluded here. An eligible
     candidate must confirm its breakdown with two further lower closes before
     this strategy emits a notification-only short.
-    Three or more close-to-close crossings of the current price over the last
-    24 completed 15m candles block entry. Exact touches and wicks do not count;
+    Three or more close-to-close crossings of the current price over six hours
+    of completed candles block entry. Exact touches and wicks do not count;
     missing or invalid candle history also blocks entry.
     """
 
@@ -79,6 +79,7 @@ class TopLoserEarlyMomentum:
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
+        self.candlestick_interval = cls.candlestick_interval
         self.config = cls.config
         self.symbol = cls.symbol
         self.exchange = cls.exchange
@@ -400,7 +401,10 @@ class TopLoserEarlyMomentum:
 
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
         crossings = price_crossings_six_hours(
-            self.ti.df_15m, current_price, now_ms=now_ms
+            self.ti.df_15m,
+            current_price,
+            now_ms=now_ms,
+            interval_ms=self.candlestick_interval.get_ms(),
         )
         if crossings is None:
             logging.info("%s skipped: six_hour_candle_history_invalid", self.ALGO)
@@ -509,7 +513,13 @@ class TopLoserEarlyMomentum:
             "route_reason": route_reason,
             "price_crossings_six_hours": crossings,
             "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
-            "chop_lookback_bars": CHOP_LOOKBACK_BARS,
+            "chop_lookback_bars": (
+                CHOP_LOOKBACK_HOURS
+                * 60
+                * 60
+                * 1000
+                // self.candlestick_interval.get_ms()
+            ),
             "stop_loss_pct": stop_loss,
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,

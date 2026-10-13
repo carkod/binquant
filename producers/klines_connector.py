@@ -26,7 +26,7 @@ class KlinesConnector:
     def __init__(
         self,
         queue: asyncio.Queue,
-        interval: BinanceKlineIntervals = BinanceKlineIntervals.five_minutes,
+        feed_interval: BinanceKlineIntervals = BinanceKlineIntervals.five_minutes,
     ) -> None:
         super().__init__()
         self.config = Config()
@@ -35,7 +35,7 @@ class KlinesConnector:
             service_email=self.config.service_email,
             service_password=self.config.service_password,
         )
-        self.interval = interval
+        self.feed_interval = feed_interval
         self.queue = queue
         self.autotrade_settings = self.binbot_api.get_autotrade_settings()
         self.clients: list[AsyncSpotWebsocketStreamClient] = []
@@ -108,7 +108,8 @@ class KlinesConnector:
         ]
         for idx, chunk in enumerate(symbol_chunks):
             markets = [
-                f"{symbol.id.lower()}@kline_{self.interval.value}" for symbol in chunk
+                f"{symbol.id.lower()}@kline_{self.feed_interval.value}"
+                for symbol in chunk
             ]
             logging.debug(
                 f"Preparing subscription (client {idx}) markets={len(markets)}"
@@ -136,7 +137,7 @@ class KlinesConnector:
         ]
         chunk = symbol_chunks[idx]
         markets = [
-            f"{symbol.id.lower()}@kline_{self.interval.value}" for symbol in chunk
+            f"{symbol.id.lower()}@kline_{self.feed_interval.value}" for symbol in chunk
         ]
         await self.clients[idx].send_message_to_server(
             markets,
