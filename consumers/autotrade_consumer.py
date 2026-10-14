@@ -19,7 +19,6 @@ from pybinbot import (
     SignalsConsumer,
     Status,
     SymbolModel,
-    TestAutotradeSettingsSchema,
     round_numbers,
 )
 
@@ -64,17 +63,13 @@ class AutotradeConsumer:
     def __init__(
         self,
         autotrade_settings: AutotradeSettingsSchema,
-        active_test_bots,
         all_symbols: list[SymbolModel],
-        test_autotrade_settings: TestAutotradeSettingsSchema,
         active_grid_ladders,
         binbot_api: BinbotApi,
     ) -> None:
         self.market_domination_reversal = False
         self.active_bots: list = []
         self.active_grid_ladders = active_grid_ladders
-        self.paper_trading_active_bots: list = []
-        self.active_test_bots: list = active_test_bots
         self.grid_ladder_attempts: dict[tuple[str, str, str, str], float] = {}
         self.grid_only_policy = GridOnlyPolicy.disabled("not_evaluated")
         self._futures_multiplier_cache: dict[str, float] = {}
@@ -85,7 +80,6 @@ class AutotradeConsumer:
         # API dependencies
         self.autotrade_settings = autotrade_settings
         self.all_symbols = all_symbols
-        self.test_autotrade_settings = test_autotrade_settings
         self.exchange = autotrade_settings.exchange_id
         self.config = Config()
         self.binbot_api = binbot_api
@@ -242,36 +236,10 @@ class AutotradeConsumer:
 
         return True
 
-    def reached_max_active_autobots(self, db_collection_name: str) -> bool:
-        """
-        Check max `max_active_autotrade_bots` in controller settings
-
-        Args:
-        - db_collection_name: Database collection name ["paper_trading", "bots"]
-
-        If total active bots > settings.max_active_autotrade_bots
-        do not open more bots. There are two reasons for this:
-        - In the case of test bots, infininately opening bots will open hundreds of bots
-        which will drain memory and downgrade server performance
-        - In the case of real bots, opening too many bots could drain all funds
-        in bots that are actually not useful or not profitable. Some funds
-        need to be left for Safety orders
-        """
-        if db_collection_name == "paper_trading":
-            self.active_test_bots = self.binbot_api.get_active_pairs(
-                collection_name="paper_trading"
-            )
-            active_count = len(self.active_test_bots)
-            if active_count > self.test_autotrade_settings.max_active_autotrade_bots:
-                return True
-
-        if db_collection_name == "bots":
-            self.active_bots = self.binbot_api.get_active_pairs(collection_name="bots")
-            active_count = len(self.active_bots)
-            if active_count > self.autotrade_settings.max_active_autotrade_bots:
-                return True
-
-        return False
+    def reached_max_active_autobots(self) -> bool:
+        """Keep the configured limit on concurrently active autotrade bots."""
+        self.active_bots = self.binbot_api.get_active_pairs()
+        return len(self.active_bots) > self.autotrade_settings.max_active_autotrade_bots
 
     def conflicting_momentum_bot(
         self, algorithm_name: str, collection_name: str
@@ -367,7 +335,7 @@ class AutotradeConsumer:
         """Circuit breaker: block new real autotrade opens (bots and grid
         ladders alike) once today's estimated realized PnL breaches
         DAILY_LOSS_LIMIT_QUOTE. Resets naturally at UTC midnight. Does not
-        gate paper trading, which risks no real capital.
+        apply when autotrade is disabled.
 
         Deliberately scoped to the `bots` collection only — grid ladders
         are treated as a separately-risk-managed pool (bounded margin per
@@ -578,36 +546,6 @@ class AutotradeConsumer:
         )
         market_type = bot_params.market_type or MarketType.FUTURES
 
-        # Includes both test and non-test autotrade
-        # Test autotrade settings must be enabled
-        if self.test_autotrade_settings.autotrade and not result.autotrade:
-            if self.reached_max_active_autobots("paper_trading"):
-                logging.info(
-                    "Reached maximum number of paper_trading active bots set in controller settings"
-                )
-            elif conflict := self.conflicting_momentum_bot(
-                algorithm_name, "paper_trading"
-            ):
-                logging.info(
-                    "Skipping paper trading: %s conflicts with %s bot on %s",
-                    algorithm_name,
-                    conflict.name,
-                    conflict.pair,
-                )
-            elif symbol in self.active_test_bots:
-                logging.info(
-                    "Skipping paper trading: active bot already exists for %s", symbol
-                )
-            else:
-                # Test autotrade runs independently of autotrade = 1
-                test_autotrade = Autotrade(
-                    pair=symbol,
-                    settings=self.test_autotrade_settings,
-                    algorithm_name=algorithm_name,
-                    binbot_api=self.binbot_api,
-                )
-                await test_autotrade.activate_autotrade(result)
-
         # enable_grid_ladders is the master switch: when grid ladders are off
         # the grid-only policy must never block standard bots, whatever the
         # breadth reads. This supersedes the temporary staging-only bypass,
@@ -676,7 +614,7 @@ class AutotradeConsumer:
         Real autotrade starts
         """
         if self.autotrade_settings.autotrade and result.autotrade:
-            if self.reached_max_active_autobots("bots"):
+            if self.reached_max_active_autobots():
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
                 )
@@ -707,7 +645,6 @@ class AutotradeConsumer:
                     pair=symbol,
                     settings=self.autotrade_settings,
                     algorithm_name=algorithm_name,
-                    db_collection_name="bots",
                     binbot_api=self.binbot_api,
                 )
                 await autotrade.activate_autotrade(result)

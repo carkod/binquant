@@ -15,7 +15,6 @@ from pybinbot import (
     RecoveryParams,
     SignalsConsumer,
     Status,
-    TestAutotradeSettingsSchema,
     round_numbers,
 )
 from shared.exceptions import AutotradeError
@@ -32,23 +31,18 @@ class Autotrade:
     def __init__(
         self,
         pair,
-        settings: AutotradeSettingsSchema | TestAutotradeSettingsSchema,
+        settings: AutotradeSettingsSchema,
         algorithm_name,
         binbot_api: BinbotApi,
-        db_collection_name="paper_trading",
     ) -> None:
         """
         Initialize automatic bot trading.
         This hits the same endpoints as the UI terminal.binbot dashboard,
         but it's triggered by signals
 
-        There are two types of autotrade: autotrade and test_autotrade. The test_autotrade uses
-        the paper_trading db collection and it doesn't use real quantities.
-
         Args:
-        settings: autotrade/test_autotrade settings
+        settings: autotrade settings
         algorithm_name: usually the filename
-        db_collection_name: Mongodb collection name ["paper_trading", "bots"]
         """
         self.pair: str = pair
         self.config = Config()
@@ -87,7 +81,6 @@ class Autotrade:
             close_condition=CloseConditions.dynamic_trailing,
             dynamic_trailing=True,  # not added to settings yet
         )
-        self.db_collection_name = db_collection_name
         self.bot_override_fields: set[str] = set()
         # restart streams after bot activation
         super().__init__()
@@ -195,11 +188,6 @@ class Autotrade:
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)
 
-    def set_paper_trading_values(self, data: SignalsConsumer):
-        if data.bb_spreads:
-            self._set_bollinguer_spreads(data)
-        pass
-
     def _get_kucoin_futures_mark_price(self) -> float:
         futures_api = KucoinFutures(
             key=self.config.kucoin_key,
@@ -233,8 +221,7 @@ class Autotrade:
 
         self._apply_signal_bot_overrides(data)
         if (
-            self.db_collection_name == "bots"
-            and self.exchange == ExchangeId.KUCOIN
+            self.exchange == ExchangeId.KUCOIN
             and self.default_bot.market_type == MarketType.FUTURES
             and not self._is_field_overridden("recovery_params")
         ):
@@ -242,54 +229,39 @@ class Autotrade:
                 RecoveryParams() if self.default_bot.margin_short_reversal else None
             )
 
-        if self.db_collection_name == "paper_trading":
-            # Dynamic switch to real bot URLs
-            create_func = self.binbot_api.create_paper_bot
-            activate_func = self.binbot_api.activate_paper_bot
-            errors_func = self.binbot_api.submit_paper_trading_event_logs
-
-            if self.default_bot.position == Position.short:
-                self.set_margin_short_values(data)
-                pass
-            else:
-                self.set_paper_trading_values(data)
-                pass
-
         # Can't get balance qty, because balance = 0 if real bot is trading
         # Base order set to default 1 to avoid errors
         # and because there is no matching engine endpoint to get market qty
         # So deal base_order should update this to the correct amount
-        if self.db_collection_name == "bots":
-            create_func = self.binbot_api.create_bot
-            activate_func = self.binbot_api.activate_bot
-            errors_func = self.binbot_api.submit_bot_event_logs
+        create_func = self.binbot_api.create_bot
+        activate_func = self.binbot_api.activate_bot
+        errors_func = self.binbot_api.submit_bot_event_logs
 
-            if self.default_bot.position == Position.short:
-                initial_price = self._get_initial_price()
+        if self.default_bot.position == Position.short:
+            initial_price = self._get_initial_price()
 
-                estimate_qty = float(self.default_bot.fiat_order_size) / initial_price
-                stop_loss_price_inc = initial_price * (
-                    1 + (self.default_bot.stop_loss / 100)
+            estimate_qty = float(self.default_bot.fiat_order_size) / initial_price
+            stop_loss_price_inc = initial_price * (
+                1 + (self.default_bot.stop_loss / 100)
+            )
+            # transfer quantity required to cover losses
+            transfer_qty = stop_loss_price_inc * estimate_qty
+            balance_check = self.binbot_api.get_available_fiat(
+                exchange=self.exchange, fiat=self.default_bot.fiat
+            )
+            if balance_check < transfer_qty:
+                logging.error(
+                    f"Not enough funds to autotrade short bot. Unable to cover potential losses. balances: {balance_check}. transfer qty: {transfer_qty}"
                 )
-                # transfer quantity required to cover losses
-                transfer_qty = stop_loss_price_inc * estimate_qty
-                balance_check = self.binbot_api.get_available_fiat(
-                    exchange=self.exchange, fiat=self.default_bot.fiat
-                )
-                if balance_check < transfer_qty:
-                    logging.error(
-                        f"Not enough funds to autotrade short bot. Unable to cover potential losses. balances: {balance_check}. transfer qty: {transfer_qty}"
-                    )
-                    return
-                self.set_margin_short_values(data)
-                pass
-            else:
-                self.set_bot_values(data)
-                pass
+                return
+            self.set_margin_short_values(data)
+            pass
+        else:
+            self.set_bot_values(data)
+            pass
 
         # Create bot
         payload = self.default_bot.model_dump(mode="json")
-        # create paper or real bot
         create_bot = BotResponse.model_validate(create_func(payload))
 
         if create_bot.error == 1:
@@ -298,7 +270,6 @@ class Autotrade:
         # Activate bot
         created_bot = self._response_bot(create_bot)
         bot_id = str(created_bot.id)
-        # paper or real bot activation
         bot = BotResponse.model_validate(activate_func(bot_id))
 
         if bot.error > 0:
@@ -316,9 +287,7 @@ class Autotrade:
                 errors_func(bot_id, message)
             if self.default_bot.position == Position.short:
                 self.binbot_api.clean_margin_short(self.default_bot.pair)
-            if self.db_collection_name == "paper_trading":
-                self.binbot_api.delete_paper_bot(bot_id)
-            elif not terminal_entry_rejection:
+            if not terminal_entry_rejection:
                 try:
                     self.binbot_api.deactivate_bot(
                         bot_id,
@@ -334,8 +303,5 @@ class Autotrade:
         else:
             activated_bot = self._response_bot(bot)
             action = "submitted" if activated_bot.status == Status.pending else "opened"
-            message = (
-                f"Succesful {self.db_collection_name} autotrade, "
-                f"{action} with {self.pair}!"
-            )
+            message = f"Successful autotrade, {action} with {self.pair}!"
             errors_func(bot_id, message)
