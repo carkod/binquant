@@ -15,7 +15,6 @@ from pybinbot import (
     MarketBreadthSeries,
     MarketType,
     Status,
-    TestAutotradeSettingsSchema,
 )
 from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 
@@ -27,13 +26,8 @@ class TestKlinesProvider:
     )
     @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
     @patch("consumers.klines_provider.BinbotApi.get_active_pairs", return_value=set())
-    @patch(
-        "consumers.klines_provider.BinbotApi.get_test_autotrade_settings",
-        return_value=TestAutotradeSettingsSchema(),
-    )
     def test_init(
         self,
-        mock_get_test_autotrade,
         mock_get_active_pairs,
         mock_get_symbols,
         mock_get_settings,
@@ -55,9 +49,6 @@ class TestKlinesProvider:
         api_instance.get_gainers_losers_series = AsyncMock(return_value=[])
         api_instance.get_autotrade_settings.return_value = AutotradeSettingsSchema(
             exchange_id="kucoin"
-        )
-        api_instance.get_test_autotrade_settings.return_value = (
-            TestAutotradeSettingsSchema()
         )
         provider.binbot_api = api_instance
         await provider.load_data_on_start()
@@ -89,13 +80,8 @@ class TestKlinesProvider:
     )
     @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
     @patch("consumers.klines_provider.BinbotApi.get_active_pairs", return_value=set())
-    @patch(
-        "consumers.klines_provider.BinbotApi.get_test_autotrade_settings",
-        return_value=TestAutotradeSettingsSchema(),
-    )
     def test_sync_market_state_from_ui_klines(
         self,
-        mock_get_test_autotrade,
         mock_get_active_pairs,
         mock_get_symbols,
         mock_get_settings,
@@ -120,13 +106,8 @@ class TestKlinesProvider:
     )
     @patch("consumers.klines_provider.BinbotApi.get_symbols", return_value=[])
     @patch("consumers.klines_provider.BinbotApi.get_active_pairs", return_value=set())
-    @patch(
-        "consumers.klines_provider.BinbotApi.get_test_autotrade_settings",
-        return_value=TestAutotradeSettingsSchema(),
-    )
     def test_sync_market_state_ignores_unclosed_ui_kline(
         self,
-        mock_get_test_autotrade,
         mock_get_active_pairs,
         mock_get_symbols,
         mock_get_settings,

@@ -148,11 +148,7 @@ class KlinesProvider:
         # Autotrade consumer setup
         self.ac_api = AutotradeConsumer(
             autotrade_settings=self.autotrade_settings,
-            active_test_bots=self.binbot_api.get_active_pairs(
-                collection_name="paper_trading"
-            ),
             all_symbols=self.all_symbols,
-            test_autotrade_settings=self.binbot_api.get_test_autotrade_settings(),
             active_grid_ladders=self.binbot_api.get_active_grid_ladders(),
             binbot_api=self.binbot_api,
         )
