@@ -18,6 +18,7 @@ from pybinbot import (
 
 from shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
+    CHOP_CROSSING_SCORE_PENALTY,
     CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
@@ -51,8 +52,9 @@ class TopGainerShort:
     score is intended as the groundwork for position sizing: the coin's lower
     high remains the required failure signal.
 
-    Three or more close-to-close crossings of the current price over the last
-    24 completed 15m candles block entry as chop. Exact touches are ignored.
+    More than three close-to-close crossings of the current price over the
+    last six hours of completed 15m candles block entry as chop. Each crossing
+    reduces the score by a fixed penalty. Exact touches are ignored.
     The resulting futures short uses existing dynamic position sizing: reduce
     at the lower-high threshold and increase at 4.5% profit. The backend's
     default 25% adjustment repeats with thresholds reset after fills, replacing
@@ -425,12 +427,14 @@ class TopGainerShort:
             else 0.0
         )
 
-        score = round_numbers(
+        score_before_chop_penalty = round_numbers(
             self.BASE_SCORE
             + (self.STRONG_GAIN_SCORE_BONUS if strong_gainer else 0.0)
             + stretch_score,
             4,
         )
+        chop_score_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
+        score = round_numbers(score_before_chop_penalty - chop_score_penalty, 4)
 
         fiat_order_size = round_numbers(
             self.at_consumer.autotrade_settings.base_order_size
@@ -459,6 +463,9 @@ class TopGainerShort:
             "breadth_higher_low_confirmed": True,
             "price_crossings_six_hours": crossings,
             "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
+            "chop_score_penalty_per_crossing": CHOP_CROSSING_SCORE_PENALTY,
+            "chop_score_penalty": chop_score_penalty,
+            "score_before_chop_penalty": score_before_chop_penalty,
             "chop_lookback_bars": (
                 CHOP_LOOKBACK_HOURS
                 * 60
@@ -549,7 +556,7 @@ class TopGainerShort:
             {self.ti.regime_telegram_lines()}
             - Initial margin: {fiat_order_size} {quote_asset}
             - Initial risk sizing: margin reduced from {margin_before_risk_sizing} {quote_asset} using the prior {self.RISK_BUDGET_STOP_BUFFER_PCT}% buffer's stop-risk budget; subsequent adjustments change exposure
-            - Current-price crossings over 6h: {crossings}; blocked at {CHOP_CROSSING_THRESHOLD}
+            - Current-price crossings over 6h: {crossings}; rejected at {CHOP_CROSSING_THRESHOLD}+; score penalty: {CHOP_CROSSING_SCORE_PENALTY} per crossing
             - Initial reduction threshold: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
             - Position sizing: default 25% reduction at stop threshold / increase at {self.TRAILING_PROFIT_PCT}% profit; repeats with thresholds reset after fills
             - Stop behavior: dynamic sizing replaces full stop; no reversal position

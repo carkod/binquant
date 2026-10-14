@@ -19,7 +19,11 @@ from pybinbot import (
 
 from market_regime.models import DerivativesPositioningFeatures
 from market_regime.open_interest_order_sizing import apply_open_interest_sizing
-from shared.price_crossings import price_crossings_six_hours
+from shared.price_crossings import (
+    CHOP_CROSSING_SCORE_PENALTY,
+    CHOP_CROSSING_THRESHOLD,
+    price_crossings_six_hours,
+)
 from strategies.top_gainer_short import TopGainerShort
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
@@ -169,6 +173,12 @@ def make_context(
     gainers: list[GainersLosersSnapshot] | None = None,
     environment: str = "production",
 ) -> SimpleNamespace:
+    if symbol_df is None:
+        symbol_df = make_lower_high_df()
+        # Keep the confirmation candles intact but make the six-hour history
+        # one-sided around the default signal price of 135.
+        symbol_df.loc[symbol_df.index[-24:-3], "close"] = 134.0
+
     return SimpleNamespace(
         config=SimpleNamespace(env=environment),
         symbol="TESTUSDTM",
@@ -193,7 +203,7 @@ def make_context(
         candlestick_interval=KucoinKlineIntervals.FIFTEEN_MINUTES,
         market_breadth_data=breadth or make_market_breadth(),
         df_btc_15m=btc_df if btc_df is not None else make_btc_df(),
-        df_15m=symbol_df if symbol_df is not None else make_lower_high_df(),
+        df_15m=symbol_df,
         df_1d=None,
         gainers_losers_series=(
             gainers
@@ -274,7 +284,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert "Breadth falling" not in msg
     assert indicators["lower_high_first_peak"] == 140.0
     assert indicators["lower_high_second_peak"] == 136.0
-    assert indicators["price_crossings_six_hours"] == 2
+    assert indicators["price_crossings_six_hours"] == 0
     assert not any(key.startswith("weekly_") for key in indicators)
     assert indicators["stop_loss_source"] == "lower_high"
     assert indicators["lower_high_stop_buffer_pct"] == 2.0
@@ -428,6 +438,7 @@ async def test_signal_requires_fresh_confirmed_lower_high() -> None:
 @pytest.mark.asyncio
 async def test_signal_uses_latest_completed_candle_for_lower_high() -> None:
     frame = make_lower_high_df()
+    frame.loc[frame.index[-24:-3], "close"] = 134.0
     live_open_time = int(frame["open_time"].iloc[-1]) + BAR_MS
     frame = pd.concat(
         [
@@ -697,8 +708,10 @@ def test_crossings_count_side_changes_and_ignore_exact_touches(closes, expected)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("crossings", [2, 3])
-async def test_chop_gate_blocks_at_three_crossings(monkeypatch, crossings):
+@pytest.mark.parametrize("crossings", [0, 1, 2, 3, 4])
+async def test_chop_gate_penalizes_crossings_and_rejects_above_three(
+    monkeypatch, crossings
+):
     context = make_context()
     strategy = TopGainerShort(cast(Any, context))
     monkeypatch.setattr(
@@ -708,18 +721,29 @@ async def test_chop_gate_blocks_at_three_crossings(monkeypatch, crossings):
 
     await strategy.signal(135.0, 140.0, 132.0, 120.0)
 
-    if crossings == 2:
-        context.dispatch_signal_record.assert_awaited_once()
-    else:
+    if crossings > 3:
         context.dispatch_signal_record.assert_not_awaited()
         context.telegram_consumer.dispatch_signal.assert_not_awaited()
         context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
         assert context.strategy_cooldowns == {}
+        return
+
+    context.dispatch_signal_record.assert_awaited_once()
+    context.telegram_consumer.dispatch_signal.assert_awaited_once()
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    expected_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
+    assert indicators["price_crossings_six_hours"] == crossings
+    assert indicators["chop_crossing_threshold"] == CHOP_CROSSING_THRESHOLD == 4
+    assert indicators["chop_score_penalty"] == expected_penalty
+    assert value.score == round(1.0 - expected_penalty, 4)
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_repeated_crossings_reject_a_real_confirmed_lower_high():
     context = make_context()
+    context.df_15m = make_lower_high_df()
     strategy = TopGainerShort(cast(Any, context))
     assert strategy._fresh_lower_high() is not None
     assert (
