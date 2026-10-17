@@ -20,6 +20,7 @@ from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
+    CHOP_CROSSING_SCORE_PENALTY,
     CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
@@ -35,6 +36,9 @@ class TopGainerEarlyMomentum:
     """
     Long-only continuation setup predicting entry into the top-gainer tape.
 
+    Disabled in ContextEvaluator routing on 2026-10-17 after inconsistent
+    opportunities. Retained for analysis; Telegram and autotrade are blocked.
+
     The production top-gainer sample showed the first tradable impulse usually
     shared four traits: close above the recent 15m high, accelerating 1h/2h
     return, volume expansion, and a candle closing near its high.
@@ -43,9 +47,10 @@ class TopGainerEarlyMomentum:
     established-mover/fade strategy and is excluded here. Eligible candidates
     must still pass the two-close breakout confirmation and the `_entry_allows`
     extension guards before this strategy emits a notification-only long.
-    Three or more close-to-close crossings of the current price over six hours
-    of completed candles block entry. Exact touches and wicks do not count;
-    missing or invalid candle history also blocks entry.
+    More than three close-to-close crossings of the current price over six
+    hours of completed candles block entry. Each crossing reduces the score by
+    a fixed penalty. Exact touches and wicks do not count; missing or invalid
+    candle history also blocks entry.
     """
 
     ALGO = "top_gainer_early_momentum"
@@ -503,7 +508,9 @@ class TopGainerEarlyMomentum:
             close=float(candidate["close"]),
             atr=float(candidate["ATR"]) if "ATR" in df.columns else 0.0,
         )
-        score = self._score(values)
+        score_before_chop_penalty = self._score(values)
+        chop_score_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
+        score = round_numbers(score_before_chop_penalty - chop_score_penalty, 4)
         base_asset = self.current_symbol_data.base_asset
         quote_asset = self.current_symbol_data.quote_asset
         kucoin_link, terminal_link = build_links_msg(
@@ -525,6 +532,9 @@ class TopGainerEarlyMomentum:
             "route_reason": route_reason,
             "price_crossings_six_hours": crossings,
             "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
+            "chop_score_penalty_per_crossing": CHOP_CROSSING_SCORE_PENALTY,
+            "chop_score_penalty": chop_score_penalty,
+            "score_before_chop_penalty": score_before_chop_penalty,
             "chop_lookback_bars": (
                 CHOP_LOOKBACK_HOURS
                 * 60
@@ -572,7 +582,7 @@ class TopGainerEarlyMomentum:
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: LONG ENTRY
             - Current price: {round_numbers(float(current_price), decimals=self.price_precision)}
-            - Current-price crossings over 6h: {crossings}; blocked at {CHOP_CROSSING_THRESHOLD}
+            - Current-price crossings over 6h: {crossings}; rejected at {CHOP_CROSSING_THRESHOLD}+; score penalty: {CHOP_CROSSING_SCORE_PENALTY} per crossing
             - Rule intent: BUY momentum before the symbol reaches the top-gainer list, after price holds the recent high and then clears the breakout close
             - Breakout setup: {entry_reason}
             - Entry setup: {confirmation_reason}

@@ -32,8 +32,13 @@ class AutotradeConsumer:
     GRID_DEPLOYMENT_ATTEMPT_COOLDOWN_SECONDS = 60 * 60
     # top_loser_early_momentum: disabled 2026-09-28, net-losing in live trading
     # (majority of filled trades lost, ~50% no-fill rate on top).
+    # top_gainer_early_momentum: disabled 2026-10-17, inconsistent opportunities.
     DISABLED_STRATEGIES = frozenset(
-        {"coinrule_price_tracker", "top_loser_early_momentum"}
+        {
+            "coinrule_price_tracker",
+            "top_loser_early_momentum",
+            "top_gainer_early_momentum",
+        }
     )
     MUTUALLY_EXCLUSIVE_MOMENTUM_STRATEGIES = {
         "top_gainer_early_momentum": frozenset(
