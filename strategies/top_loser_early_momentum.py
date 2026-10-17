@@ -19,6 +19,7 @@ from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from market_regime.regime_routing import resolve_symbol_features
 from shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
+    CHOP_CROSSING_SCORE_PENALTY,
     CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
@@ -37,9 +38,10 @@ class TopLoserEarlyMomentum:
     established-mover/rebound strategy and are excluded here. An eligible
     candidate must confirm its breakdown with two further lower closes before
     this strategy emits a notification-only short.
-    Three or more close-to-close crossings of the current price over six hours
-    of completed candles block entry. Exact touches and wicks do not count;
-    missing or invalid candle history also blocks entry.
+    More than three close-to-close crossings of the current price over six
+    hours of completed candles block entry. Each crossing reduces the score by
+    a fixed penalty. Exact touches and wicks do not count; missing or invalid
+    candle history also blocks entry.
     """
 
     ALGO = "top_loser_early_momentum"
@@ -490,7 +492,9 @@ class TopLoserEarlyMomentum:
             close=candidate_close,
             atr=float(candidate["ATR"]) if "ATR" in df.columns else 0.0,
         )
-        score = self._score(values)
+        score_before_chop_penalty = self._score(values)
+        chop_score_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
+        score = round_numbers(score_before_chop_penalty - chop_score_penalty, 4)
         base_asset = self.current_symbol_data.base_asset
         quote_asset = self.current_symbol_data.quote_asset
         kucoin_link, terminal_link = build_links_msg(
@@ -513,6 +517,9 @@ class TopLoserEarlyMomentum:
             "route_reason": route_reason,
             "price_crossings_six_hours": crossings,
             "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
+            "chop_score_penalty_per_crossing": CHOP_CROSSING_SCORE_PENALTY,
+            "chop_score_penalty": chop_score_penalty,
+            "score_before_chop_penalty": score_before_chop_penalty,
             "chop_lookback_bars": (
                 CHOP_LOOKBACK_HOURS
                 * 60
@@ -560,7 +567,7 @@ class TopLoserEarlyMomentum:
             - [{getenv("ENV")}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(float(current_price), decimals=self.price_precision)}
-            - Current-price crossings over 6h: {crossings}; blocked at {CHOP_CROSSING_THRESHOLD}
+            - Current-price crossings over 6h: {crossings}; rejected at {CHOP_CROSSING_THRESHOLD}+; score penalty: {CHOP_CROSSING_SCORE_PENALTY} per crossing
             - Rule intent: SELL momentum before the symbol reaches the top-loser list, after price holds below the recent low
             - Breakdown setup: {entry_reason}
             - Entry setup: {confirmation_reason}

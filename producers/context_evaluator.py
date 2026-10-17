@@ -516,7 +516,16 @@ class ContextEvaluator:
                     context=context.model_dump(mode="json") if context else {},
                     signal_kind=signal_kind,
                     bot_params=(
-                        bot_params.model_dump(mode="json") if bot_params else {}
+                        bot_params.model_dump(
+                            mode="json",
+                            exclude=(
+                                {"futures_leverage"}
+                                if "futures_leverage" not in bot_params.model_fields_set
+                                else set()
+                            ),
+                        )
+                        if bot_params
+                        else {}
                     ),
                     grid_params=(
                         grid_params.model_dump(mode="json") if grid_params else {}

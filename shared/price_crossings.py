@@ -3,7 +3,8 @@ from math import isfinite
 from pandas import DataFrame, to_numeric
 
 CHOP_LOOKBACK_HOURS = 6
-CHOP_CROSSING_THRESHOLD = 3
+CHOP_CROSSING_THRESHOLD = 4
+CHOP_CROSSING_SCORE_PENALTY = 0.1
 
 
 def price_crossings_six_hours(
