@@ -1,6 +1,6 @@
 import logging
 from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
-from math import isfinite
+from math import floor, isfinite
 from time import time
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +18,7 @@ from pybinbot import (
 
 from shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
+    CHOP_CROSSING_SCORE_PENALTY,
     CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
@@ -29,13 +30,16 @@ if TYPE_CHECKING:
 
 
 class TopGainerShort:
-    """Short a current top gainer as bullish momentum fails.
+    """Short a symbol as bullish momentum fails, favoring current top gainers.
 
-    Entry requires:
-    - the symbol has remained in the current top-ten gainers for at least six
-      hours — the ranking is a watchlist, rather than the entry trigger;
-    - the symbol's own 15m candles have just confirmed a lower high. This is
-      the trigger: without it nothing else here matters.
+    Entry requires the symbol's own 15m candles to have just confirmed a lower
+    high. This is the trigger: without it nothing else here matters.
+
+    Current top-ten membership adds a substantial conviction score bonus,
+    regardless of watch duration. Missing or stale rankings do not block entry.
+    Continuous top-ten watch duration remains notification context.
+    The final score, including crossing penalties, maps its possible 0.7–5.0
+    range to whole futures leverage levels from 1x to 5x.
 
     Breadth must also have a confirmed higher low in its latest 40 samples
     (about ten hours at the ingestion cadence). Compare the latest two strict
@@ -51,8 +55,9 @@ class TopGainerShort:
     score is intended as the groundwork for position sizing: the coin's lower
     high remains the required failure signal.
 
-    Three or more close-to-close crossings of the current price over the last
-    24 completed 15m candles block entry as chop. Exact touches are ignored.
+    More than three close-to-close crossings of the current price over the
+    last six hours of completed 15m candles block entry as chop. Each crossing
+    reduces the score by a fixed penalty. Exact touches are ignored.
     The resulting futures short uses existing dynamic position sizing: reduce
     at the lower-high threshold and increase at 4.5% profit. The backend's
     default 25% adjustment repeats with thresholds reset after fills, replacing
@@ -75,7 +80,6 @@ class TopGainerShort:
     TRAILING_DEVIATION_PCT = 3.0
 
     TOP_GAINER_RANK_LIMIT = 10
-    MIN_WATCH_HOURS = 6
     MAX_WATCH_SNAPSHOT_GAP_SECONDS = 90 * 60
     STRONG_GAIN_THRESHOLD_PCT = 20.0
     BREADTH_LOOKBACK_SAMPLES = 40
@@ -84,6 +88,7 @@ class TopGainerShort:
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     BASE_SCORE = 1.0
+    TOP_GAINER_SCORE_BONUS = 2.0
     STRONG_GAIN_SCORE_BONUS = 0.5
 
     STRETCH_RECENT_DAYS = 7
@@ -92,6 +97,29 @@ class TopGainerShort:
     RECORD_GAIN_SCORE_BONUS = 0.5
     NEW_HIGH_SCORE_BONUS = 0.5
     EXTENSION_SCORE_BONUS = 0.5
+
+    MIN_SCORE = BASE_SCORE - (CHOP_CROSSING_THRESHOLD - 1) * CHOP_CROSSING_SCORE_PENALTY
+    MAX_SCORE = (
+        BASE_SCORE
+        + TOP_GAINER_SCORE_BONUS
+        + STRONG_GAIN_SCORE_BONUS
+        + RECORD_GAIN_SCORE_BONUS
+        + NEW_HIGH_SCORE_BONUS
+        + EXTENSION_SCORE_BONUS
+    )
+    MIN_LEVERAGE = 1
+    MAX_LEVERAGE = 5
+
+    @classmethod
+    def futures_leverage_for_score(cls, score: float) -> int:
+        """Scale the attainable score range to whole leverage levels, ties up."""
+        bounded_score = min(cls.MAX_SCORE, max(cls.MIN_SCORE, score))
+        scaled = cls.MIN_LEVERAGE + (
+            (bounded_score - cls.MIN_SCORE)
+            / (cls.MAX_SCORE - cls.MIN_SCORE)
+            * (cls.MAX_LEVERAGE - cls.MIN_LEVERAGE)
+        )
+        return floor(scaled + 0.5)
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -263,7 +291,7 @@ class TopGainerShort:
         }
 
     def _stretch_context(
-        self, max_gain_24h_pct: float, weekly_resistance: float
+        self, max_gain_24h_pct: float | None, weekly_resistance: float
     ) -> dict[str, float | bool] | None:
         """Compare the current move with the coin's earlier daily history.
 
@@ -305,7 +333,10 @@ class TopGainerShort:
             "stretch_prior_high": prior_high,
             "stretch_prior_median_close": prior_median_close,
             "stretch_extension_pct": extension_pct,
-            "stretch_record_gain": max_gain_24h_pct > prior_best_daily_gain_pct,
+            "stretch_record_gain": (
+                max_gain_24h_pct is not None
+                and max_gain_24h_pct > prior_best_daily_gain_pct
+            ),
             "stretch_new_high": weekly_resistance > prior_high,
             "stretch_extended": extension_pct >= self.STRETCH_EXTENSION_THRESHOLD_PCT,
         }
@@ -314,14 +345,19 @@ class TopGainerShort:
         self,
         stretch: dict[str, float | bool] | None,
         stretch_score: float,
-        max_gain_24h_pct: float,
+        max_gain_24h_pct: float | None,
     ) -> str:
         if stretch is None:
             return "- Stretch score: n/a (under 14 prior daily candles)"
+        record_gain = (
+            f"{'Yes' if stretch['stretch_record_gain'] else 'No'}"
+            f" ({round_numbers(max_gain_24h_pct, 2)}% vs prior best daily {round_numbers(stretch['stretch_prior_best_daily_gain_pct'], 2)}%)"
+            if max_gain_24h_pct is not None
+            else "n/a (no fresh top-10 gain data)"
+        )
         return (
             f"- Stretch score: +{stretch_score} of {self.RECORD_GAIN_SCORE_BONUS + self.NEW_HIGH_SCORE_BONUS + self.EXTENSION_SCORE_BONUS}"
-            f" | record 24h gain: {'Yes' if stretch['stretch_record_gain'] else 'No'}"
-            f" ({round_numbers(max_gain_24h_pct, 2)}% vs prior best daily {round_numbers(stretch['stretch_prior_best_daily_gain_pct'], 2)}%)"
+            f" | record 24h gain: {record_gain}"
             f" | weekly high above all prior daily highs: {'Yes' if stretch['stretch_new_high'] else 'No'}"
             f" | weekly high vs prior median close: +{round_numbers(stretch['stretch_extension_pct'], 1)}%"
             f" ({'>=' if stretch['stretch_extended'] else '<'} {self.STRETCH_EXTENSION_THRESHOLD_PCT}%)"
@@ -351,13 +387,6 @@ class TopGainerShort:
             return
 
         top_gainer_watch = self._top_gainer_watch()
-        if top_gainer_watch is None:
-            logging.info("%s skipped: symbol_not_in_ranked_gainer_window", self.ALGO)
-            return
-        watch_hours = top_gainer_watch["top_gainer_watch_hours"]
-        if watch_hours < self.MIN_WATCH_HOURS:
-            logging.info("%s skipped: top_gainer_watch_under_six_hours", self.ALGO)
-            return
 
         lower_high = self._fresh_lower_high()
         if lower_high is None:
@@ -409,14 +438,19 @@ class TopGainerShort:
             logging.info("%s skipped: lower_high_already_emitted", self.ALGO)
             return
 
-        strong_gainer = (
+        top_gainer_score = (
+            self.TOP_GAINER_SCORE_BONUS if top_gainer_watch is not None else 0.0
+        )
+        max_gain_24h_pct = (
             top_gainer_watch["top_gainer_watch_max_gain_24h_pct"]
-            >= self.STRONG_GAIN_THRESHOLD_PCT
+            if top_gainer_watch is not None
+            else None
         )
-        stretch = self._stretch_context(
-            top_gainer_watch["top_gainer_watch_max_gain_24h_pct"],
-            lower_high_price,
+        strong_gainer = (
+            max_gain_24h_pct is not None
+            and max_gain_24h_pct >= self.STRONG_GAIN_THRESHOLD_PCT
         )
+        stretch = self._stretch_context(max_gain_24h_pct, lower_high_price)
         stretch_score = (
             (self.RECORD_GAIN_SCORE_BONUS if stretch["stretch_record_gain"] else 0.0)
             + (self.NEW_HIGH_SCORE_BONUS if stretch["stretch_new_high"] else 0.0)
@@ -425,12 +459,16 @@ class TopGainerShort:
             else 0.0
         )
 
-        score = round_numbers(
+        score_before_chop_penalty = round_numbers(
             self.BASE_SCORE
+            + top_gainer_score
             + (self.STRONG_GAIN_SCORE_BONUS if strong_gainer else 0.0)
             + stretch_score,
             4,
         )
+        chop_score_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
+        score = round_numbers(score_before_chop_penalty - chop_score_penalty, 4)
+        futures_leverage = self.futures_leverage_for_score(score)
 
         fiat_order_size = round_numbers(
             self.at_consumer.autotrade_settings.base_order_size
@@ -449,7 +487,9 @@ class TopGainerShort:
 
         indicators: dict[str, Any] = {
             "entry_reason": "lower_high_breakdown",
-            **top_gainer_watch,
+            **(top_gainer_watch if top_gainer_watch is not None else {}),
+            "current_top_gainer": top_gainer_watch is not None,
+            "top_gainer_score_bonus": top_gainer_score,
             "strong_gainer": strong_gainer,
             "strong_gainer_threshold_pct": self.STRONG_GAIN_THRESHOLD_PCT,
             "lower_high_first_peak": lower_high["earlier_high"],
@@ -459,6 +499,12 @@ class TopGainerShort:
             "breadth_higher_low_confirmed": True,
             "price_crossings_six_hours": crossings,
             "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
+            "chop_score_penalty_per_crossing": CHOP_CROSSING_SCORE_PENALTY,
+            "chop_score_penalty": chop_score_penalty,
+            "score_before_chop_penalty": score_before_chop_penalty,
+            "futures_leverage": futures_leverage,
+            "futures_leverage_score_min": round_numbers(self.MIN_SCORE, 4),
+            "futures_leverage_score_max": self.MAX_SCORE,
             "chop_lookback_bars": (
                 CHOP_LOOKBACK_HOURS
                 * 60
@@ -491,6 +537,7 @@ class TopGainerShort:
                 dynamic_trailing=False,
                 dynamic_position_sizing=True,
                 fiat_order_size=fiat_order_size,
+                futures_leverage=futures_leverage,
                 stop_loss=stop_loss_pct,
                 take_profit=self.TRAILING_PROFIT_PCT,
                 trailing=True,
@@ -534,28 +581,35 @@ class TopGainerShort:
             "margin_multiplier": float(margin_multiplier),
         }
 
+        top_gainer_lines = (
+            f"- Top-gainer rank / 24h move: {top_gainer_watch['top_gainer_rank']} / {round_numbers(top_gainer_watch['top_gainer_price_change_24h_pct'], 2)}%\n"
+            f"- Continuous top-10 watch: {round_numbers(top_gainer_watch['top_gainer_watch_hours'], 2)}h; maximum 24h gain: {round_numbers(top_gainer_watch['top_gainer_watch_max_gain_24h_pct'], 2)}%"
+            if top_gainer_watch is not None
+            else "- Top-gainer context: no fresh top-10 membership"
+        )
         msg = f"""
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT a watched 24h top gainer when price confirms a lower high and the breadth index has a confirmed higher low
-            - Top-gainer rank / 24h move: {top_gainer_watch["top_gainer_rank"]} / {round_numbers(top_gainer_watch["top_gainer_price_change_24h_pct"], 2)}%
-            - Continuous top-10 watch: {round_numbers(watch_hours, 2)}h; maximum 24h gain: {round_numbers(top_gainer_watch["top_gainer_watch_max_gain_24h_pct"], 2)}%
+            - Rule intent: SHORT when price confirms a lower high and the breadth index has a confirmed higher low; current top-10 gainers receive a score bonus
+            {top_gainer_lines}
+            - Top-gainer score bonus: +{top_gainer_score}
             - Strong-gainer threshold (>= {self.STRONG_GAIN_THRESHOLD_PCT}%): {"Yes" if strong_gainer else "No"}
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
             - Breadth higher low confirmed: {round_numbers(breadth_context["breadth_higher_low_first_trough"], 4)} -> {round_numbers(breadth_context["breadth_higher_low_second_trough"], 4)}; latest index: {round_numbers(breadth_context["breadth_latest"], 4)}
-            {self._stretch_telegram_line(stretch, stretch_score, top_gainer_watch["top_gainer_watch_max_gain_24h_pct"])}
+            {self._stretch_telegram_line(stretch, stretch_score, max_gain_24h_pct)}
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
             - Initial margin: {fiat_order_size} {quote_asset}
             - Initial risk sizing: margin reduced from {margin_before_risk_sizing} {quote_asset} using the prior {self.RISK_BUDGET_STOP_BUFFER_PCT}% buffer's stop-risk budget; subsequent adjustments change exposure
-            - Current-price crossings over 6h: {crossings}; blocked at {CHOP_CROSSING_THRESHOLD}
+            - Current-price crossings over 6h: {crossings}; rejected at {CHOP_CROSSING_THRESHOLD}+; score penalty: {CHOP_CROSSING_SCORE_PENALTY} per crossing
             - Initial reduction threshold: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
             - Position sizing: default 25% reduction at stop threshold / increase at {self.TRAILING_PROFIT_PCT}% profit; repeats with thresholds reset after fills
             - Stop behavior: dynamic sizing replaces full stop; no reversal position
             - Trailing fallback: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
+            - Futures leverage: {futures_leverage}x (score range {round_numbers(self.MIN_SCORE, 4)}–{self.MAX_SCORE})
             - Autotrade: {"enabled for staging" if autotrade_enabled else "disabled; notification only"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
