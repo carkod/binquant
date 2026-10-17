@@ -70,6 +70,7 @@ class Autotrade:
             name=algorithm_name,
             fiat=settings.fiat,
             fiat_order_size=settings.base_order_size,
+            futures_leverage=self.symbol_data.futures_leverage,
             quote_asset=self.symbol_data.quote_asset,
             position=Position.long,
             stop_loss=settings.stop_loss,

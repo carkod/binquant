@@ -127,6 +127,7 @@ class AutotradeConsumer:
         stop_loss: float,
         fiat_order_size: float,
         available_balance: float,
+        futures_leverage: int,
     ) -> float | None:
         """
         Resolve the effective futures fiat_order_size, interpreted as the
@@ -150,13 +151,11 @@ class AutotradeConsumer:
             )
             return None
 
-        symbol_info = self.binbot_api.get_single_symbol(symbol)
         futures_symbol_info = self.kucoin_futures_api.get_symbol_info(symbol)
 
         multiplier = float(futures_symbol_info.multiplier)
         lot_size = float(futures_symbol_info.lot_size)
         taker_fee_rate = float(futures_symbol_info.taker_fee_rate)
-        futures_leverage = float(symbol_info.futures_leverage)
 
         min_step_margin = self._required_margin_for_contracts(
             lot_size,
@@ -602,12 +601,17 @@ class AutotradeConsumer:
             ):
                 return
 
+            if "futures_leverage" not in bot_params.model_fields_set:
+                bot_params.futures_leverage = self.binbot_api.get_single_symbol(
+                    symbol
+                ).futures_leverage
             effective_fiat_order_size = self._resolve_futures_order_size(
                 symbol=symbol,
                 price=float(result.current_price),
                 stop_loss=float(stop_loss),
                 fiat_order_size=float(requested_fiat_order_size),
                 available_balance=float(balance_check),
+                futures_leverage=bot_params.futures_leverage,
             )
             if effective_fiat_order_size is None:
                 return

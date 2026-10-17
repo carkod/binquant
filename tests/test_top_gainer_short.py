@@ -930,3 +930,65 @@ async def test_rounded_stop_stays_above_lower_high():
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["stop_loss_price_at_signal"] == 139.0
     assert indicators["stop_loss_pct"] == 2.963
+
+
+@pytest.mark.parametrize(
+    "score,expected_leverage",
+    [
+        (0.7, 1),
+        (1.0, 1),
+        (1.5, 2),
+        (2.0, 2),
+        (2.5, 3),
+        (3.0, 3),
+        (3.5, 4),
+        (4.0, 4),
+        (4.5, 5),
+        (5.0, 5),
+        (-1, 1),
+        (6, 5),
+    ],
+)
+def test_score_maps_possible_range_to_whole_futures_leverage(score, expected_leverage):
+    assert TopGainerShort.MIN_SCORE == pytest.approx(0.7)
+    assert TopGainerShort.MAX_SCORE == 5.0
+    assert TopGainerShort.futures_leverage_for_score(score) == expected_leverage
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ranked,crossings,expected_score,expected_leverage",
+    [
+        (True, 0, 3.5, 4),
+        (True, 1, 3.4, 4),
+        (True, 2, 3.3, 3),
+        (True, 3, 3.2, 3),
+        (False, 3, 0.7, 1),
+    ],
+)
+async def test_emitted_leverage_uses_final_score_after_crossing_penalty(
+    monkeypatch,
+    ranked,
+    crossings,
+    expected_score,
+    expected_leverage,
+):
+    context = make_context(
+        gainers=make_top_gainers(price_change_percent=23.0) if ranked else [],
+    )
+    monkeypatch.setattr(
+        "strategies.top_gainer_short.price_crossings_six_hours",
+        lambda *args, **kwargs: crossings,
+    )
+
+    await TopGainerShort(cast(Any, context)).signal(135.0, 140.0, 132.0, 120.0)
+
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert value.score == expected_score
+    assert value.bot_params.futures_leverage == expected_leverage
+    assert indicators["futures_leverage"] == expected_leverage
+    assert indicators["futures_leverage_score_min"] == 0.7
+    assert indicators["futures_leverage_score_max"] == 5.0
+    message = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    assert f"Futures leverage: {expected_leverage}x" in message

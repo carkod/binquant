@@ -1,6 +1,6 @@
 import logging
 from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
-from math import isfinite
+from math import floor, isfinite
 from time import time
 from typing import TYPE_CHECKING, Any
 
@@ -38,6 +38,8 @@ class TopGainerShort:
     Current top-ten membership adds a substantial conviction score bonus,
     regardless of watch duration. Missing or stale rankings do not block entry.
     Continuous top-ten watch duration remains notification context.
+    The final score, including crossing penalties, maps its possible 0.7–5.0
+    range to whole futures leverage levels from 1x to 5x.
 
     Breadth must also have a confirmed higher low in its latest 40 samples
     (about ten hours at the ingestion cadence). Compare the latest two strict
@@ -95,6 +97,29 @@ class TopGainerShort:
     RECORD_GAIN_SCORE_BONUS = 0.5
     NEW_HIGH_SCORE_BONUS = 0.5
     EXTENSION_SCORE_BONUS = 0.5
+
+    MIN_SCORE = BASE_SCORE - (CHOP_CROSSING_THRESHOLD - 1) * CHOP_CROSSING_SCORE_PENALTY
+    MAX_SCORE = (
+        BASE_SCORE
+        + TOP_GAINER_SCORE_BONUS
+        + STRONG_GAIN_SCORE_BONUS
+        + RECORD_GAIN_SCORE_BONUS
+        + NEW_HIGH_SCORE_BONUS
+        + EXTENSION_SCORE_BONUS
+    )
+    MIN_LEVERAGE = 1
+    MAX_LEVERAGE = 5
+
+    @classmethod
+    def futures_leverage_for_score(cls, score: float) -> int:
+        """Scale the attainable score range to whole leverage levels, ties up."""
+        bounded_score = min(cls.MAX_SCORE, max(cls.MIN_SCORE, score))
+        scaled = cls.MIN_LEVERAGE + (
+            (bounded_score - cls.MIN_SCORE)
+            / (cls.MAX_SCORE - cls.MIN_SCORE)
+            * (cls.MAX_LEVERAGE - cls.MIN_LEVERAGE)
+        )
+        return floor(scaled + 0.5)
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -443,6 +468,7 @@ class TopGainerShort:
         )
         chop_score_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
         score = round_numbers(score_before_chop_penalty - chop_score_penalty, 4)
+        futures_leverage = self.futures_leverage_for_score(score)
 
         fiat_order_size = round_numbers(
             self.at_consumer.autotrade_settings.base_order_size
@@ -476,6 +502,9 @@ class TopGainerShort:
             "chop_score_penalty_per_crossing": CHOP_CROSSING_SCORE_PENALTY,
             "chop_score_penalty": chop_score_penalty,
             "score_before_chop_penalty": score_before_chop_penalty,
+            "futures_leverage": futures_leverage,
+            "futures_leverage_score_min": round_numbers(self.MIN_SCORE, 4),
+            "futures_leverage_score_max": self.MAX_SCORE,
             "chop_lookback_bars": (
                 CHOP_LOOKBACK_HOURS
                 * 60
@@ -508,6 +537,7 @@ class TopGainerShort:
                 dynamic_trailing=False,
                 dynamic_position_sizing=True,
                 fiat_order_size=fiat_order_size,
+                futures_leverage=futures_leverage,
                 stop_loss=stop_loss_pct,
                 take_profit=self.TRAILING_PROFIT_PCT,
                 trailing=True,
@@ -579,6 +609,7 @@ class TopGainerShort:
             - Trailing fallback: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
+            - Futures leverage: {futures_leverage}x (score range {round_numbers(self.MIN_SCORE, 4)}–{self.MAX_SCORE})
             - Autotrade: {"enabled for staging" if autotrade_enabled else "disabled; notification only"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
