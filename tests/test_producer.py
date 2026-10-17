@@ -441,14 +441,13 @@ ALL_NOTIFICATION_STRATEGIES = {
     "LowerHighPattern",
     "HigherLowPattern",
     "TopGainerShort",
-    "TopGainerEarlyMomentum",
     "TopLoserEarlyMomentum",
 }
 
 
 @pytest.mark.parametrize("environment", ["staging", "development", "production"])
 @pytest.mark.asyncio
-async def test_process_data_runs_every_strategy_in_every_environment(
+async def test_process_data_runs_only_enabled_strategies_in_every_environment(
     monkeypatch,
     environment,
 ):

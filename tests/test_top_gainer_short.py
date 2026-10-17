@@ -226,7 +226,7 @@ def fixed_strategy_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_strategy_requires_six_hour_watch_and_confirmed_breadth_higher_low() -> None:
+def test_strategy_tracks_watch_duration_and_confirmed_breadth_higher_low() -> None:
     strategy = TopGainerShort(cast(Any, make_context()))
 
     watch = strategy._top_gainer_watch()
@@ -272,6 +272,8 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert "recovery_params" in value.bot_params.model_fields_set
     assert indicators["entry_reason"] == "lower_high_breakdown"
     assert indicators["top_gainer_watch_hours"] == 6.0
+    assert indicators["current_top_gainer"] is True
+    assert indicators["top_gainer_score_bonus"] == 2.0
     assert indicators["strong_gainer"] is False
     assert indicators["breadth_higher_low_confirmed"] is True
     assert indicators["breadth_higher_low_first_trough"] == -0.5
@@ -293,7 +295,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert "default 25% reduction" in msg
     assert "increase at 4.5% profit" in msg
     assert "dynamic sizing replaces full stop" in msg
-    assert value.score == 1.0
+    assert value.score == 3.0
     context.regime_telegram_lines.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
@@ -466,15 +468,44 @@ async def test_signal_uses_latest_completed_candle_for_lower_high() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_rejects_stale_gainers_snapshot() -> None:
-    context = make_context(
-        gainers=make_top_gainers(recorded_at=NOW - timedelta(minutes=76))
-    )
+@pytest.mark.parametrize(
+    "gainers",
+    [
+        pytest.param([], id="missing"),
+        pytest.param(make_top_gainers(symbol_rank=None), id="unranked"),
+        pytest.param(make_top_gainers(symbol_rank=11), id="rank-eleven"),
+        pytest.param(make_top_gainers(symbol_rank=12), id="rank-twelve"),
+        pytest.param(
+            make_top_gainers(
+                recorded_at=NOW - timedelta(minutes=76), price_change_percent=23.0
+            ),
+            id="stale",
+        ),
+        pytest.param(
+            make_top_gainers(recorded_at=NOW + timedelta(minutes=1)), id="future"
+        ),
+    ],
+)
+async def test_signal_emits_without_top_gainer_bonus_when_ranking_is_unavailable(
+    gainers: list[GainersLosersSnapshot],
+) -> None:
+    context = make_context(gainers=gainers)
 
     await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
-    context.dispatch_signal_record.assert_not_awaited()
-    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    context.dispatch_signal_record.assert_awaited_once()
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert value.score == 1.0
+    assert indicators["current_top_gainer"] is False
+    assert indicators["top_gainer_score_bonus"] == 0.0
+    assert indicators["strong_gainer"] is False
+    assert "top_gainer_rank" not in indicators
+    msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    assert "Top-gainer context: no fresh top-10 membership" in msg
+    assert "Top-gainer score bonus: +0.0" in msg
+    assert "SHORT when price confirms a lower high" in msg
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
 
 @pytest.mark.asyncio
@@ -487,7 +518,7 @@ async def test_btc_does_not_change_signal_or_score(btc_state: str) -> None:
     await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
-    assert value.score == 1.0
+    assert value.score == 3.0
 
 
 @pytest.mark.parametrize("offset", [0.0, 0.5, 0.6])
@@ -600,30 +631,39 @@ async def test_signal_accepts_any_rank_in_top_gainers_snapshot(
 
 
 @pytest.mark.asyncio
-async def test_signal_requires_current_top_gainer_membership() -> None:
-    context = make_context(gainers=make_top_gainers(symbol_rank=None))
+async def test_current_top_gainer_scores_considerably_above_same_unranked_setup() -> (
+    None
+):
+    ranked = make_context()
+    unranked = make_context(gainers=make_top_gainers(symbol_rank=None))
 
-    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
+    for context in (ranked, unranked):
+        await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
-    context.dispatch_signal_record.assert_not_awaited()
+    ranked_signal = ranked.dispatch_signal_record.await_args.kwargs["value"]
+    unranked_signal = unranked.dispatch_signal_record.await_args.kwargs["value"]
+    assert ranked_signal.score - unranked_signal.score == 2.0
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "gainers",
-    [
-        make_top_gainers(snapshot_count=6),
-        make_top_gainers(symbol_rank=11),
-    ],
+    "snapshot_count",
+    [1, 6, 7],
 )
-async def test_signal_requires_a_six_hour_top_ten_watch(
-    gainers: list[GainersLosersSnapshot],
+async def test_top_gainer_bonus_does_not_require_six_hour_watch(
+    snapshot_count: int,
 ) -> None:
-    context = make_context(gainers=gainers)
+    context = make_context(gainers=make_top_gainers(snapshot_count=snapshot_count))
 
     await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
-    context.dispatch_signal_record.assert_not_awaited()
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert value.score == 3.0
+    assert indicators["top_gainer_watch_hours"] == snapshot_count - 1
+    assert indicators["top_gainer_score_bonus"] == 2.0
+    msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    assert "Top-gainer score bonus: +2.0" in msg
 
 
 @pytest.mark.asyncio
@@ -650,7 +690,42 @@ async def test_signal_tags_a_twenty_percent_gainer_as_high_priority() -> None:
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["strong_gainer"] is True
     assert indicators["top_gainer_watch_max_gain_24h_pct"] == 23.0
-    assert value.score == 1.5
+    assert value.score == 3.5
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ranked", [False, True])
+async def test_stretch_scores_price_history_without_inventing_missing_gainer_data(
+    ranked: bool,
+) -> None:
+    context = make_context(
+        gainers=make_top_gainers(price_change_percent=23.0) if ranked else []
+    )
+    context.df_1d = pd.DataFrame(
+        {
+            "open": [40.0] * 14,
+            "high": [44.0] * 14,
+            "close": [40.0] * 14,
+            "close_time": [
+                (NOW - timedelta(days=offset)).timestamp() * 1000
+                for offset in range(8, 22)
+            ],
+        }
+    )
+
+    await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
+
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    # New high and extension still score without a ranking; record gain needs data.
+    assert value.score == (5.0 if ranked else 2.0)
+    msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    assert f"Stretch score: +{1.5 if ranked else 1.0}" in msg
+    assert "weekly high above all prior daily highs: Yes" in msg
+    assert (
+        "record 24h gain: Yes (23.0%"
+        if ranked
+        else "record 24h gain: n/a (no fresh top-10 gain data)"
+    ) in msg
 
 
 @pytest.mark.asyncio
@@ -736,7 +811,7 @@ async def test_chop_gate_penalizes_crossings_and_rejects_above_three(
     assert indicators["price_crossings_six_hours"] == crossings
     assert indicators["chop_crossing_threshold"] == CHOP_CROSSING_THRESHOLD == 4
     assert indicators["chop_score_penalty"] == expected_penalty
-    assert value.score == round(1.0 - expected_penalty, 4)
+    assert value.score == round(3.0 - expected_penalty, 4)
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
 
 

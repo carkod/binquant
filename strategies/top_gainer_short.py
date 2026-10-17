@@ -30,13 +30,14 @@ if TYPE_CHECKING:
 
 
 class TopGainerShort:
-    """Short a current top gainer as bullish momentum fails.
+    """Short a symbol as bullish momentum fails, favoring current top gainers.
 
-    Entry requires:
-    - the symbol has remained in the current top-ten gainers for at least six
-      hours — the ranking is a watchlist, rather than the entry trigger;
-    - the symbol's own 15m candles have just confirmed a lower high. This is
-      the trigger: without it nothing else here matters.
+    Entry requires the symbol's own 15m candles to have just confirmed a lower
+    high. This is the trigger: without it nothing else here matters.
+
+    Current top-ten membership adds a substantial conviction score bonus,
+    regardless of watch duration. Missing or stale rankings do not block entry.
+    Continuous top-ten watch duration remains notification context.
 
     Breadth must also have a confirmed higher low in its latest 40 samples
     (about ten hours at the ingestion cadence). Compare the latest two strict
@@ -77,7 +78,6 @@ class TopGainerShort:
     TRAILING_DEVIATION_PCT = 3.0
 
     TOP_GAINER_RANK_LIMIT = 10
-    MIN_WATCH_HOURS = 6
     MAX_WATCH_SNAPSHOT_GAP_SECONDS = 90 * 60
     STRONG_GAIN_THRESHOLD_PCT = 20.0
     BREADTH_LOOKBACK_SAMPLES = 40
@@ -86,6 +86,7 @@ class TopGainerShort:
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     BASE_SCORE = 1.0
+    TOP_GAINER_SCORE_BONUS = 2.0
     STRONG_GAIN_SCORE_BONUS = 0.5
 
     STRETCH_RECENT_DAYS = 7
@@ -265,7 +266,7 @@ class TopGainerShort:
         }
 
     def _stretch_context(
-        self, max_gain_24h_pct: float, weekly_resistance: float
+        self, max_gain_24h_pct: float | None, weekly_resistance: float
     ) -> dict[str, float | bool] | None:
         """Compare the current move with the coin's earlier daily history.
 
@@ -307,7 +308,10 @@ class TopGainerShort:
             "stretch_prior_high": prior_high,
             "stretch_prior_median_close": prior_median_close,
             "stretch_extension_pct": extension_pct,
-            "stretch_record_gain": max_gain_24h_pct > prior_best_daily_gain_pct,
+            "stretch_record_gain": (
+                max_gain_24h_pct is not None
+                and max_gain_24h_pct > prior_best_daily_gain_pct
+            ),
             "stretch_new_high": weekly_resistance > prior_high,
             "stretch_extended": extension_pct >= self.STRETCH_EXTENSION_THRESHOLD_PCT,
         }
@@ -316,14 +320,19 @@ class TopGainerShort:
         self,
         stretch: dict[str, float | bool] | None,
         stretch_score: float,
-        max_gain_24h_pct: float,
+        max_gain_24h_pct: float | None,
     ) -> str:
         if stretch is None:
             return "- Stretch score: n/a (under 14 prior daily candles)"
+        record_gain = (
+            f"{'Yes' if stretch['stretch_record_gain'] else 'No'}"
+            f" ({round_numbers(max_gain_24h_pct, 2)}% vs prior best daily {round_numbers(stretch['stretch_prior_best_daily_gain_pct'], 2)}%)"
+            if max_gain_24h_pct is not None
+            else "n/a (no fresh top-10 gain data)"
+        )
         return (
             f"- Stretch score: +{stretch_score} of {self.RECORD_GAIN_SCORE_BONUS + self.NEW_HIGH_SCORE_BONUS + self.EXTENSION_SCORE_BONUS}"
-            f" | record 24h gain: {'Yes' if stretch['stretch_record_gain'] else 'No'}"
-            f" ({round_numbers(max_gain_24h_pct, 2)}% vs prior best daily {round_numbers(stretch['stretch_prior_best_daily_gain_pct'], 2)}%)"
+            f" | record 24h gain: {record_gain}"
             f" | weekly high above all prior daily highs: {'Yes' if stretch['stretch_new_high'] else 'No'}"
             f" | weekly high vs prior median close: +{round_numbers(stretch['stretch_extension_pct'], 1)}%"
             f" ({'>=' if stretch['stretch_extended'] else '<'} {self.STRETCH_EXTENSION_THRESHOLD_PCT}%)"
@@ -353,13 +362,6 @@ class TopGainerShort:
             return
 
         top_gainer_watch = self._top_gainer_watch()
-        if top_gainer_watch is None:
-            logging.info("%s skipped: symbol_not_in_ranked_gainer_window", self.ALGO)
-            return
-        watch_hours = top_gainer_watch["top_gainer_watch_hours"]
-        if watch_hours < self.MIN_WATCH_HOURS:
-            logging.info("%s skipped: top_gainer_watch_under_six_hours", self.ALGO)
-            return
 
         lower_high = self._fresh_lower_high()
         if lower_high is None:
@@ -411,14 +413,19 @@ class TopGainerShort:
             logging.info("%s skipped: lower_high_already_emitted", self.ALGO)
             return
 
-        strong_gainer = (
+        top_gainer_score = (
+            self.TOP_GAINER_SCORE_BONUS if top_gainer_watch is not None else 0.0
+        )
+        max_gain_24h_pct = (
             top_gainer_watch["top_gainer_watch_max_gain_24h_pct"]
-            >= self.STRONG_GAIN_THRESHOLD_PCT
+            if top_gainer_watch is not None
+            else None
         )
-        stretch = self._stretch_context(
-            top_gainer_watch["top_gainer_watch_max_gain_24h_pct"],
-            lower_high_price,
+        strong_gainer = (
+            max_gain_24h_pct is not None
+            and max_gain_24h_pct >= self.STRONG_GAIN_THRESHOLD_PCT
         )
+        stretch = self._stretch_context(max_gain_24h_pct, lower_high_price)
         stretch_score = (
             (self.RECORD_GAIN_SCORE_BONUS if stretch["stretch_record_gain"] else 0.0)
             + (self.NEW_HIGH_SCORE_BONUS if stretch["stretch_new_high"] else 0.0)
@@ -429,6 +436,7 @@ class TopGainerShort:
 
         score_before_chop_penalty = round_numbers(
             self.BASE_SCORE
+            + top_gainer_score
             + (self.STRONG_GAIN_SCORE_BONUS if strong_gainer else 0.0)
             + stretch_score,
             4,
@@ -453,7 +461,9 @@ class TopGainerShort:
 
         indicators: dict[str, Any] = {
             "entry_reason": "lower_high_breakdown",
-            **top_gainer_watch,
+            **(top_gainer_watch if top_gainer_watch is not None else {}),
+            "current_top_gainer": top_gainer_watch is not None,
+            "top_gainer_score_bonus": top_gainer_score,
             "strong_gainer": strong_gainer,
             "strong_gainer_threshold_pct": self.STRONG_GAIN_THRESHOLD_PCT,
             "lower_high_first_peak": lower_high["earlier_high"],
@@ -541,17 +551,23 @@ class TopGainerShort:
             "margin_multiplier": float(margin_multiplier),
         }
 
+        top_gainer_lines = (
+            f"- Top-gainer rank / 24h move: {top_gainer_watch['top_gainer_rank']} / {round_numbers(top_gainer_watch['top_gainer_price_change_24h_pct'], 2)}%\n"
+            f"- Continuous top-10 watch: {round_numbers(top_gainer_watch['top_gainer_watch_hours'], 2)}h; maximum 24h gain: {round_numbers(top_gainer_watch['top_gainer_watch_max_gain_24h_pct'], 2)}%"
+            if top_gainer_watch is not None
+            else "- Top-gainer context: no fresh top-10 membership"
+        )
         msg = f"""
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT a watched 24h top gainer when price confirms a lower high and the breadth index has a confirmed higher low
-            - Top-gainer rank / 24h move: {top_gainer_watch["top_gainer_rank"]} / {round_numbers(top_gainer_watch["top_gainer_price_change_24h_pct"], 2)}%
-            - Continuous top-10 watch: {round_numbers(watch_hours, 2)}h; maximum 24h gain: {round_numbers(top_gainer_watch["top_gainer_watch_max_gain_24h_pct"], 2)}%
+            - Rule intent: SHORT when price confirms a lower high and the breadth index has a confirmed higher low; current top-10 gainers receive a score bonus
+            {top_gainer_lines}
+            - Top-gainer score bonus: +{top_gainer_score}
             - Strong-gainer threshold (>= {self.STRONG_GAIN_THRESHOLD_PCT}%): {"Yes" if strong_gainer else "No"}
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
             - Breadth higher low confirmed: {round_numbers(breadth_context["breadth_higher_low_first_trough"], 4)} -> {round_numbers(breadth_context["breadth_higher_low_second_trough"], 4)}; latest index: {round_numbers(breadth_context["breadth_latest"], 4)}
-            {self._stretch_telegram_line(stretch, stretch_score, top_gainer_watch["top_gainer_watch_max_gain_24h_pct"])}
+            {self._stretch_telegram_line(stretch, stretch_score, max_gain_24h_pct)}
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
             - Initial margin: {fiat_order_size} {quote_asset}

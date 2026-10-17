@@ -36,6 +36,9 @@ class TopGainerEarlyMomentum:
     """
     Long-only continuation setup predicting entry into the top-gainer tape.
 
+    Disabled in ContextEvaluator routing on 2026-10-17 after inconsistent
+    opportunities. Retained for analysis; Telegram and autotrade are blocked.
+
     The production top-gainer sample showed the first tradable impulse usually
     shared four traits: close above the recent 15m high, accelerating 1h/2h
     return, volume expansion, and a candle closing near its high.

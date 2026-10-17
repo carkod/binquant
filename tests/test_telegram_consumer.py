@@ -96,15 +96,18 @@ class TestTelegramConsumer:
         assert mock_bot_instance.send_message.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_dispatch_signal_rejects_disabled_strategy(self, MockBot):
+    @pytest.mark.parametrize(
+        "algorithm", ["higher_low_pattern", "top_gainer_early_momentum"]
+    )
+    async def test_dispatch_signal_rejects_disabled_strategy(self, MockBot, algorithm):
         mock_bot_instance = MockBot.return_value
         mock_bot_instance.send_message = AsyncMock()
         telegram_consumer = TelegramConsumer(token="fake_token", chat_id="fake_chat_id")
         telegram_consumer.bot = mock_bot_instance
 
         sent = await telegram_consumer.dispatch_signal(
-            """
-            - [production] <strong>#higher_low_pattern algorithm</strong> #TAUSDTM
+            f"""
+            - [production] <strong>#{algorithm} algorithm</strong> #TAUSDTM
             - Action: LONG ENTRY
             """
         )
@@ -117,7 +120,6 @@ class TestTelegramConsumer:
         "algorithm",
         [
             "top_gainer_short",
-            "top_gainer_early_momentum",
             "top_loser_early_momentum",
         ],
     )
