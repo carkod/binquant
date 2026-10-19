@@ -401,7 +401,6 @@ class TestAutotradeConsumer:
             "mean_reversion_fade",
             "liquidation_sweep_pump",
             "relative_strength_impulse_rider",
-            "top_gainer_early_momentum",
             "top_gainer_short",
             "activity_burst_pump",
         ],
@@ -516,10 +515,10 @@ class TestAutotradeConsumer:
         autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_same_early_momentum_strategy_does_not_conflict(self):
+    async def test_same_strategy_does_not_conflict(self):
         existing_bot = BotModel(
             pair="ETHUSDT",
-            name="top_gainer_early_momentum",
+            name="top_gainer_short",
             status=Status.active,
         )
         self.mock_binbot_api.get_bots_by_status.side_effect = (
@@ -532,7 +531,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDT",
-                name="top_gainer_early_momentum",
+                name="top_gainer_short",
                 market_type=MarketType.SPOT,
                 position=Position.long,
                 fiat="USDT",
@@ -556,7 +555,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDT",
-                name="top_gainer_early_momentum",
+                name="relative_strength_impulse_rider",
                 market_type=MarketType.SPOT,
                 position=Position.long,
                 fiat="USDT",
@@ -643,18 +642,26 @@ class TestAutotradeConsumer:
         autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_disabled_top_loser_early_momentum_cannot_activate_from_queued_signal(
+    @pytest.mark.parametrize(
+        "algorithm_name,position",
+        [
+            ("top_loser_early_momentum", Position.short),
+            ("top_gainer_early_momentum", Position.long),
+        ],
+    )
+    async def test_disabled_early_momentum_cannot_activate_from_queued_signal(
         self,
+        algorithm_name,
+        position,
     ):
-        """Disabled 2026-09-28: net-losing in live trading."""
         signal = SignalsConsumer(
             autotrade=True,
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDT",
-                name="top_loser_early_momentum",
+                name=algorithm_name,
                 market_type=MarketType.SPOT,
-                position=Position.short,
+                position=position,
                 fiat="USDT",
                 fiat_order_size=25,
             ),

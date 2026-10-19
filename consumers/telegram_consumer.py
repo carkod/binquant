@@ -17,7 +17,6 @@ class TelegramConsumer:
     _ALLOWED_SIGNAL_ALGORITHMS = frozenset(
         {
             "top_gainer_short",
-            "top_gainer_early_momentum",
             "top_loser_early_momentum",
         }
     )
