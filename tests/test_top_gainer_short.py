@@ -79,6 +79,23 @@ def make_btc_df(*, downtrend: bool = True) -> pd.DataFrame:
     return pd.DataFrame({"close": closes})
 
 
+def make_btc_higher_low_df(lows: list[float] | None = None) -> pd.DataFrame:
+    values = (
+        lows if lows is not None else [100 + value * 10 for value in HIGHER_LOW_BREADTH]
+    )
+    end = int(NOW.timestamp() * 1000) // BAR_MS * BAR_MS
+    open_times = [end - (len(values) - i) * BAR_MS for i in range(len(values))]
+    return pd.DataFrame(
+        {
+            "open_time": open_times,
+            "close_time": [timestamp + BAR_MS - 1 for timestamp in open_times],
+            "low": values,
+            "high": [value + 2 for value in values],
+            "close": [value + 1 for value in values],
+        }
+    )
+
+
 def make_lower_high_df(*, fresh: bool = True) -> pd.DataFrame:
     highs = [100.0 + index for index in range(30)]
     highs.extend([140.0, 132.0, 124.0, 120.0, 125.0, 130.0, 133.0, 136.0, 130.0, 124.0])
@@ -278,11 +295,12 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["breadth_higher_low_confirmed"] is True
     assert indicators["breadth_higher_low_first_trough"] == -0.5
     assert indicators["breadth_higher_low_second_trough"] == -0.3
-    assert not any(key.startswith("btc_") for key in indicators)
+    assert indicators["btc_higher_low_confirmed"] is False
+    assert "btc_higher_low_first_trough" not in indicators
     assert "breadth_falling_three_hours" not in indicators
     msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
     assert "Breadth higher low confirmed: -0.5 -> -0.3" in msg
-    assert "BTC" not in msg
+    assert "BTC higher low confirmed: No" in msg
     assert "Breadth falling" not in msg
     assert indicators["lower_high_first_peak"] == 140.0
     assert indicators["lower_high_second_peak"] == 136.0
@@ -510,10 +528,12 @@ async def test_signal_emits_without_top_gainer_bonus_when_ranking_is_unavailable
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("btc_state", ["falling", "rising", "missing"])
-async def test_btc_does_not_change_signal_or_score(btc_state: str) -> None:
+async def test_breadth_confirmation_passes_without_btc_higher_low_or_score_change(
+    btc_state: str,
+) -> None:
     context = make_context(btc_df=make_btc_df(downtrend=btc_state == "falling"))
     if btc_state == "missing":
-        del context.df_btc_15m
+        context.df_btc_15m = pd.DataFrame()
 
     await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
@@ -992,3 +1012,152 @@ async def test_emitted_leverage_uses_final_score_after_crossing_penalty(
     assert indicators["futures_leverage_score_max"] == 5.0
     message = context.telegram_consumer.dispatch_signal.await_args.args[0]
     assert f"Futures leverage: {expected_leverage}x" in message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "breadth_confirmed,btc_confirmed",
+    [(True, False), (False, True), (True, True), (False, False)],
+)
+async def test_signal_passes_if_either_btc_or_breadth_has_confirmed_higher_low(
+    breadth_confirmed, btc_confirmed
+):
+    context = make_context(
+        breadth=make_market_breadth()
+        if breadth_confirmed
+        else make_market_breadth(breadth=[i / 100 for i in range(40)]),
+        btc_df=make_btc_higher_low_df() if btc_confirmed else pd.DataFrame(),
+    )
+    await TopGainerShort(cast(Any, context)).signal(135, 95, 92, 87)
+    if not breadth_confirmed and not btc_confirmed:
+        context.dispatch_signal_record.assert_not_awaited()
+        context.telegram_consumer.dispatch_signal.assert_not_awaited()
+        context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+        return
+    context.dispatch_signal_record.assert_awaited_once()
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["breadth_higher_low_confirmed"] is breadth_confirmed
+    assert indicators["btc_higher_low_confirmed"] is btc_confirmed
+    assert context.dispatch_signal_record.await_args.kwargs["value"].score == 3
+    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    assert "BTC or the breadth index has a confirmed higher low" in msg
+    if btc_confirmed:
+        assert indicators["btc_higher_low_first_trough"] == 95
+        assert indicators["btc_higher_low_second_trough"] == 97
+        assert "BTC higher low confirmed: 95.0 -> 97.0" in msg
+    else:
+        assert "btc_higher_low_first_trough" not in indicators
+        assert "BTC higher low confirmed: No" in msg
+    if not breadth_confirmed:
+        assert "breadth_higher_low_first_trough" not in indicators
+        assert "Breadth higher low confirmed: No" in msg
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["missing", "stale", "nan", "invalid_timestamps"])
+async def test_valid_btc_higher_low_passes_when_breadth_is_unavailable_or_invalid(case):
+    breadth = make_market_breadth()
+    if case == "stale":
+        breadth = make_market_breadth(latest_at=NOW - timedelta(minutes=31))
+    elif case == "nan":
+        breadth.market_breadth[-1] = float("nan")
+    elif case == "invalid_timestamps":
+        breadth.timestamp[-1] = "invalid"
+    context = make_context(breadth=breadth, btc_df=make_btc_higher_low_df())
+    if case == "missing":
+        context.market_breadth_data = None
+    await TopGainerShort(cast(Any, context)).signal(135, 95, 92, 87)
+    context.dispatch_signal_record.assert_awaited_once()
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert indicators["btc_higher_low_confirmed"] is True
+    assert indicators["breadth_higher_low_confirmed"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("breadth_confirmed", [False, True])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing",
+        "stale",
+        "insufficient",
+        "gap",
+        "duplicate",
+        "nan",
+        "inf",
+        "nonpositive",
+        "invalid_timestamps",
+        "missing_columns",
+        "lower_low",
+        "equal_low",
+        "breached",
+        "unconfirmed",
+    ],
+)
+async def test_invalid_btc_higher_low_does_not_confirm_and_cannot_veto_valid_breadth(
+    case, breadth_confirmed
+):
+    values = [100 + value * 10 for value in HIGHER_LOW_BREADTH]
+    frame = make_btc_higher_low_df()
+    if case == "stale":
+        frame["close_time"] -= 31 * 60 * 1000
+    elif case == "insufficient":
+        frame = frame.iloc[1:]
+    elif case == "gap":
+        frame = make_btc_higher_low_df([103] + values).drop(index=10)
+    elif case == "duplicate":
+        frame.loc[10, "close_time"] = frame.loc[9, "close_time"]
+    elif case in {"nan", "inf", "nonpositive"}:
+        frame.loc[10, "low"] = 0 if case == "nonpositive" else float(case)
+    elif case == "invalid_timestamps":
+        frame.loc[10, "close_time"] = float("nan")
+    elif case == "missing_columns":
+        frame = frame.drop(columns=["low"])
+    elif case in {"lower_low", "equal_low"}:
+        frame.loc[37, "low"] = 94 if case == "lower_low" else 95
+    elif case == "breached":
+        frame = make_btc_higher_low_df(values + [96])
+    elif case == "unconfirmed":
+        frame = make_btc_higher_low_df(values[:-1])
+    context = make_context(
+        btc_df=frame,
+        breadth=make_market_breadth()
+        if breadth_confirmed
+        else make_market_breadth(breadth=[i / 100 for i in range(40)]),
+    )
+    if case == "missing":
+        context.df_btc_15m = None
+    strategy = TopGainerShort(cast(Any, context))
+    assert strategy._btc_higher_low() is None
+    await strategy.signal(135, 95, 92, 87)
+    if breadth_confirmed:
+        context.dispatch_signal_record.assert_awaited_once()
+        indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+        assert indicators["breadth_higher_low_confirmed"] is True
+        assert indicators["btc_higher_low_confirmed"] is False
+    else:
+        context.dispatch_signal_record.assert_not_awaited()
+
+
+def test_btc_higher_low_uses_completed_candles_and_remains_valid_after_confirmation():
+    values = [100 + value * 10 for value in HIGHER_LOW_BREADTH]
+    frame = make_btc_higher_low_df(values + [101, 102])
+    current_open = int(NOW.timestamp() * 1000) // BAR_MS * BAR_MS
+    # A forming wick below the trough cannot invalidate completed structure.
+    frame.loc[len(frame)] = [current_open, current_open + BAR_MS - 1, 90, 103, 91]
+    frame = frame.iloc[::-1]
+    strategy = TopGainerShort(cast(Any, make_context(btc_df=frame)))
+    pattern = strategy._btc_higher_low()
+    assert pattern is not None
+    assert pattern["btc_higher_low_first_trough"] == 95
+    assert pattern["btc_higher_low_second_trough"] == 97
+    assert pattern["btc_latest"] == 102
+
+
+@pytest.mark.asyncio
+async def test_btc_higher_low_does_not_bypass_the_symbol_lower_high_trigger():
+    context = make_context(
+        btc_df=make_btc_higher_low_df(), symbol_df=make_no_lower_high_df()
+    )
+    await TopGainerShort(cast(Any, context)).signal(135, 95, 92, 87)
+    context.dispatch_signal_record.assert_not_awaited()
