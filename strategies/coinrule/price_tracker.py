@@ -187,10 +187,10 @@ class PriceTracker:
         mfi_value = Indicators.mfi(self.df_5m)
 
         kucoin_link = build_links_msg(
-            self.config.env, self.exchange, self.market_type, self.symbol
+            self.config.frontend_domain, self.exchange, self.market_type, self.symbol
         )[0]
         terminal_link = build_links_msg(
-            self.config.env, self.exchange, self.market_type, self.symbol
+            self.config.frontend_domain, self.exchange, self.market_type, self.symbol
         )[1]
 
         if rsi_value < 30 and macd_value < 0 and mfi_value < 20:

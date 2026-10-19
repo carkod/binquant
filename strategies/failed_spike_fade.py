@@ -704,7 +704,7 @@ class FailedSpikeFade:
         base_asset = self.current_symbol_data.base_asset
         quote_asset = self.current_symbol_data.quote_asset
         kucoin_link, terminal_link = build_links_msg(
-            self.ti.config.env,
+            self.ti.config.frontend_domain,
             self.ti.exchange,
             self.market_type,
             self.symbol,

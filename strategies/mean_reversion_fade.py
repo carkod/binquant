@@ -302,7 +302,7 @@ class MeanReversionFade:
         score = self._score(rsi_value)
 
         kucoin_link, terminal_link = build_links_msg(
-            self.config.env,
+            self.config.frontend_domain,
             self.exchange,
             MarketType.FUTURES,
             self.symbol,

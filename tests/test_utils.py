@@ -2,11 +2,45 @@ from unittest.mock import MagicMock
 
 import pytest
 import requests
+from pybinbot import ExchangeId, MarketType
 
+from shared.config import Config
 from shared.utils import (
+    build_links_msg,
     handle_binance_errors,
     safe_format,
 )
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "https://terminal.binbot.in",
+        "http://staging-binbot",
+        "http://localhost:3000",
+        "https://custom-terminal.example.com/dashboard",
+    ],
+)
+@pytest.mark.parametrize("trailing_slash", ["", "/"])
+@pytest.mark.parametrize(
+    ("market_type", "path", "exchange_path", "symbol"),
+    [
+        (MarketType.FUTURES, "bots/futures/new", "trade/futures", "BTCUSDTM"),
+        (MarketType.SPOT, "bots/new", "trade", "BTC-USDT"),
+    ],
+)
+def test_dashboard_trade_links_use_configured_frontend_domain(
+    monkeypatch, host, trailing_slash, market_type, path, exchange_path, symbol
+):
+    monkeypatch.setenv("ENV", "CI")
+    monkeypatch.setenv("FRONTEND_DOMAIN", host + trailing_slash)
+    config = Config()
+    exchange_link, terminal_link = build_links_msg(
+        config.frontend_domain, ExchangeId.KUCOIN, market_type, symbol
+    )
+
+    assert terminal_link == f"{host}/{path}/{symbol}"
+    assert exchange_link == f"https://www.kucoin.com/{exchange_path}/{symbol}"
 
 
 # Helper to create a mock requests.Response

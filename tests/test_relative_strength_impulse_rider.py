@@ -80,7 +80,9 @@ def make_context(
         df_btc_15m if df_btc_15m is not None else make_btc_candles(symbol_candles)
     )
     return SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDTM",
         exchange=ExchangeId.KUCOIN,
         market_type=MarketType.FUTURES,

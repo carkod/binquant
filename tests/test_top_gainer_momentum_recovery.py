@@ -217,7 +217,9 @@ def make_strategy(
         process_autotrade_restrictions=AsyncMock(),
     )
     context = SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol=SYMBOL,
         exchange=ExchangeId.KUCOIN,
         market_type=MarketType.FUTURES,

@@ -197,7 +197,9 @@ def make_context(
         symbol_df.loc[symbol_df.index[-24:-3], "close"] = 134.0
 
     return SimpleNamespace(
-        config=SimpleNamespace(env=environment),
+        config=SimpleNamespace(
+            env=environment, frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDTM",
         exchange=ExchangeId.KUCOIN,
         market_type=market_type,
@@ -394,6 +396,11 @@ async def test_signal_requests_autotrade_in_staging_only() -> None:
             bb_high=95.0,
             bb_mid=92.0,
             bb_low=87.0,
+        )
+        message = context.telegram_consumer.dispatch_signal.call_args.args[0]
+        assert (
+            "<a href='https://terminal.example.com/bots/futures/new/TESTUSDTM'>Dashboard trade</a>"
+            in message
         )
 
     staging_signal = staging.dispatch_signal_record.await_args.kwargs["value"]

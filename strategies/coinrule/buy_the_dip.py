@@ -116,7 +116,7 @@ class BuyTheDip(StrategyMixin):
             return
 
         kucoin_link, terminal_link = build_links_msg(
-            self.config.env,
+            self.config.frontend_domain,
             self.exchange,
             self.market_type,
             self.symbol,

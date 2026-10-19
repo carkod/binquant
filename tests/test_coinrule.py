@@ -10,7 +10,9 @@ from strategies.coinrule.coinrule import Coinrule
 
 def make_coinrule() -> Coinrule:
     ti = SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         exchange=ExchangeId.KUCOIN,
         market_type=MarketType.SPOT,
         market_breadth_data=None,

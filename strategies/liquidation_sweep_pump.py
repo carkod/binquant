@@ -443,7 +443,7 @@ class LiquidationSweepPump:
         )
 
         kucoin_link, terminal_link = build_links_msg(
-            self.config.env, self.exchange, self.market_type, self.symbol
+            self.config.frontend_domain, self.exchange, self.market_type, self.symbol
         )
         bot_params = BotBase(
             pair=self.symbol,

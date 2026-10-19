@@ -15,7 +15,9 @@ from strategies.activity_burst.activity_burst_pump import ActivityBurstPump
 
 def make_context(df: DataFrame) -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDT",
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,

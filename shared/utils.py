@@ -136,11 +136,11 @@ def handle_binance_errors(response: Response):
 
 
 def build_links_msg(
-    env: str, exchange: ExchangeId, market_type: MarketType, symbol: str
+    terminal_host: str, exchange: ExchangeId, market_type: MarketType, symbol: str
 ) -> tuple[str, str]:
     """
-    Builds links for the teleagram message
-    - env: getenv("ENV"), check the .env file in different environments
+    Builds links for the Telegram message
+    - terminal_host: Config.frontend_domain, configured through FRONTEND_DOMAIN
     - exchange: ExchangeId, determined in the autotrade_settings
     - market_type: MarketType, FUTURES, SPOT, determined in the bot
     - symbol: can be Binance style or Kucoin style, up to the user of this function to pass the right symbol format. This function will try to handle both.
@@ -154,9 +154,8 @@ def build_links_msg(
     elif exchange == ExchangeId.KUCOIN and market_type == MarketType.SPOT:
         exchange_link = f"https://www.kucoin.com/trade/{symbol}"
 
-    terminal_host = (
-        "https://terminal.binbot.in" if env == "production" else "http://localhost:3000"
-    )
+    terminal_host = terminal_host.rstrip("/")
+
     terminal_link = (
         market_type == MarketType.FUTURES
         and f"{terminal_host}/bots/futures/new/{symbol}"
