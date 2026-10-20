@@ -162,7 +162,9 @@ def make_context(
     df_btc_15m: DataFrame | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDT",
         exchange=ExchangeId.KUCOIN,
         finalize_signal_bot_params=Mock(),

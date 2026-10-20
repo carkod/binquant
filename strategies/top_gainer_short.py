@@ -1,6 +1,6 @@
 import logging
 from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
-from math import isfinite
+from math import floor, isfinite
 from time import time
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +16,7 @@ from pybinbot import (
     timestamp_sort_key,
 )
 
+from shared.higher_low import confirmed_higher_low
 from shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
     CHOP_CROSSING_SCORE_PENALTY,
@@ -38,12 +39,14 @@ class TopGainerShort:
     Current top-ten membership adds a substantial conviction score bonus,
     regardless of watch duration. Missing or stale rankings do not block entry.
     Continuous top-ten watch duration remains notification context.
+    The final score, including crossing penalties, maps its possible 0.7–5.0
+    range to whole futures leverage levels from 1x to 5x.
 
-    Breadth must also have a confirmed higher low in its latest 40 samples
-    (about ten hours at the ingestion cadence). Compare the latest two strict
-    troughs, each confirmed by two readings on either side. The second must
-    be higher and remain unbroken. Breadth must be fresh and continuous.
-    This deliberately combines a failing symbol with recovering breadth.
+    BTC or market breadth must also have a confirmed higher low in its
+    latest 40 completed 15m candles or breadth samples (about ten hours).
+    Compare the latest two strict troughs, each confirmed by two readings on
+    either side. The second must be higher and remain unbroken. Each source
+    must be fresh and continuous; either source alone can confirm recovery.
 
     A 24h gain of at least 20% raises the notification's conviction score,
     as does a stretch score, which measures how far the move has run beyond
@@ -80,9 +83,9 @@ class TopGainerShort:
     TOP_GAINER_RANK_LIMIT = 10
     MAX_WATCH_SNAPSHOT_GAP_SECONDS = 90 * 60
     STRONG_GAIN_THRESHOLD_PCT = 20.0
-    BREADTH_LOOKBACK_SAMPLES = 40
-    BREADTH_FRACTAL_WING = 2
-    MAX_BREADTH_AGE_SECONDS = 30 * 60
+    HIGHER_LOW_LOOKBACK_SAMPLES = 40
+    HIGHER_LOW_FRACTAL_WING = 2
+    MAX_HIGHER_LOW_AGE_SECONDS = 30 * 60
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
     BASE_SCORE = 1.0
@@ -95,6 +98,29 @@ class TopGainerShort:
     RECORD_GAIN_SCORE_BONUS = 0.5
     NEW_HIGH_SCORE_BONUS = 0.5
     EXTENSION_SCORE_BONUS = 0.5
+
+    MIN_SCORE = BASE_SCORE - (CHOP_CROSSING_THRESHOLD - 1) * CHOP_CROSSING_SCORE_PENALTY
+    MAX_SCORE = (
+        BASE_SCORE
+        + TOP_GAINER_SCORE_BONUS
+        + STRONG_GAIN_SCORE_BONUS
+        + RECORD_GAIN_SCORE_BONUS
+        + NEW_HIGH_SCORE_BONUS
+        + EXTENSION_SCORE_BONUS
+    )
+    MIN_LEVERAGE = 1
+    MAX_LEVERAGE = 5
+
+    @classmethod
+    def futures_leverage_for_score(cls, score: float) -> int:
+        """Scale the attainable score range to whole leverage levels, ties up."""
+        bounded_score = min(cls.MAX_SCORE, max(cls.MIN_SCORE, score))
+        scaled = cls.MIN_LEVERAGE + (
+            (bounded_score - cls.MIN_SCORE)
+            / (cls.MAX_SCORE - cls.MIN_SCORE)
+            * (cls.MAX_LEVERAGE - cls.MIN_LEVERAGE)
+        )
+        return floor(scaled + 0.5)
 
     def __init__(self, cls: "ContextEvaluator") -> None:
         self.ti = cls
@@ -218,52 +244,45 @@ class TopGainerShort:
             if timestamp_seconds is None or not isfinite(timestamp_seconds):
                 return None
             samples.append((timestamp_seconds, value))
-        samples.sort(key=lambda sample: sample[0])
-        if len(samples) < self.BREADTH_LOOKBACK_SAMPLES:
+        pattern = confirmed_higher_low(
+            samples,
+            now_seconds=time(),
+            lookback_samples=self.HIGHER_LOW_LOOKBACK_SAMPLES,
+            fractal_wing=self.HIGHER_LOW_FRACTAL_WING,
+            max_age_seconds=self.MAX_HIGHER_LOW_AGE_SECONDS,
+            max_gap_seconds=self.MAX_HIGHER_LOW_AGE_SECONDS,
+        )
+        if pattern is None:
             return None
-        samples = samples[-self.BREADTH_LOOKBACK_SAMPLES :]
-        latest_timestamp, latest_breadth = samples[-1]
-        if not self._timestamp_is_fresh(latest_timestamp, self.MAX_BREADTH_AGE_SECONDS):
-            return None
-        if any(not isfinite(value) for _, value in samples):
-            return None
-        if any(
-            not 0 < later[0] - earlier[0] <= self.MAX_BREADTH_AGE_SECONDS
-            for earlier, later in zip(samples, samples[1:], strict=False)
-        ):
-            return None
+        return {f"breadth_{name}": value for name, value in pattern.items()}
 
-        wing = self.BREADTH_FRACTAL_WING
-        lows = [
-            i
-            for i in range(wing, len(samples) - wing)
-            if all(
-                samples[i][1] < samples[j][1]
-                for j in range(i - wing, i + wing + 1)
-                if i != j
-            )
-        ]
-        if len(lows) < 2:
+    def _btc_higher_low(self) -> dict[str, float] | None:
+        df = self.ti.df_btc_15m
+        if df is None or not {"low", "close_time"}.issubset(df.columns):
             return None
-        earlier_pos, later_pos = lows[-2:]
-        earlier_timestamp, earlier_low = samples[earlier_pos]
-        later_timestamp, later_low = samples[later_pos]
-        # Breadth crosses zero, so compare index values directly. Percentage
-        # ratios would invert negative troughs and fail at zero.
-        if later_low <= earlier_low or any(
-            value <= later_low for _, value in samples[later_pos + 1 :]
+        now_seconds = time()
+        close_times = to_numeric(df["close_time"], errors="coerce")
+        if not close_times.map(isfinite).all():
+            return None
+        completed = close_times < now_seconds * 1000
+        lows = to_numeric(df.loc[completed, "low"], errors="coerce")
+        samples = [
+            (float(timestamp) / 1000, float(low))
+            for timestamp, low in zip(close_times.loc[completed], lows, strict=True)
+        ]
+        pattern = confirmed_higher_low(
+            samples,
+            now_seconds=now_seconds,
+            lookback_samples=self.HIGHER_LOW_LOOKBACK_SAMPLES,
+            fractal_wing=self.HIGHER_LOW_FRACTAL_WING,
+            max_age_seconds=self.MAX_HIGHER_LOW_AGE_SECONDS,
+            max_gap_seconds=15 * 60,
+        )
+        if pattern is None or any(
+            low <= 0 for _, low in sorted(samples)[-self.HIGHER_LOW_LOOKBACK_SAMPLES :]
         ):
             return None
-        return {
-            "breadth_latest": latest_breadth,
-            "breadth_timestamp": latest_timestamp,
-            "breadth_higher_low_first_trough": earlier_low,
-            "breadth_higher_low_second_trough": later_low,
-            "breadth_higher_low_rise": later_low - earlier_low,
-            "breadth_higher_low_first_timestamp": earlier_timestamp,
-            "breadth_higher_low_second_timestamp": later_timestamp,
-            "breadth_higher_low_confirmation_timestamp": samples[later_pos + wing][0],
-        }
+        return {f"btc_{name}": value for name, value in pattern.items()}
 
     def _stretch_context(
         self, max_gain_24h_pct: float | None, weekly_resistance: float
@@ -369,8 +388,9 @@ class TopGainerShort:
             return
 
         breadth_context = self._breadth_higher_low()
-        if breadth_context is None:
-            logging.info("%s skipped: no_valid_breadth_higher_low", self.ALGO)
+        btc_context = self._btc_higher_low()
+        if breadth_context is None and btc_context is None:
+            logging.info("%s skipped: no_valid_btc_or_breadth_higher_low", self.ALGO)
             return
 
         crossings = price_crossings_six_hours(
@@ -443,6 +463,7 @@ class TopGainerShort:
         )
         chop_score_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
         score = round_numbers(score_before_chop_penalty - chop_score_penalty, 4)
+        futures_leverage = self.futures_leverage_for_score(score)
 
         fiat_order_size = round_numbers(
             self.at_consumer.autotrade_settings.base_order_size
@@ -453,7 +474,7 @@ class TopGainerShort:
         context = self.ti.latest_market_context
         autotrade_enabled = self.config.env.lower() == "staging"
         kucoin_link, terminal_link = build_links_msg(
-            self.config.env,
+            self.config.frontend_domain,
             self.exchange,
             self.market_type,
             self.symbol,
@@ -470,12 +491,16 @@ class TopGainerShort:
             "lower_high_second_peak": lower_high["later_high"],
             "lower_high_drop_pct": lower_high["drop_pct"],
             "lower_high_confirmation_open_time": confirmation_open_time,
-            "breadth_higher_low_confirmed": True,
+            "breadth_higher_low_confirmed": breadth_context is not None,
+            "btc_higher_low_confirmed": btc_context is not None,
             "price_crossings_six_hours": crossings,
             "chop_crossing_threshold": CHOP_CROSSING_THRESHOLD,
             "chop_score_penalty_per_crossing": CHOP_CROSSING_SCORE_PENALTY,
             "chop_score_penalty": chop_score_penalty,
             "score_before_chop_penalty": score_before_chop_penalty,
+            "futures_leverage": futures_leverage,
+            "futures_leverage_score_min": round_numbers(self.MIN_SCORE, 4),
+            "futures_leverage_score_max": self.MAX_SCORE,
             "chop_lookback_bars": (
                 CHOP_LOOKBACK_HOURS
                 * 60
@@ -491,7 +516,8 @@ class TopGainerShort:
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
             "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
             "protective_exit": "dynamic_position_sizing",
-            **breadth_context,
+            **(breadth_context if breadth_context is not None else {}),
+            **(btc_context if btc_context is not None else {}),
         }
 
         value = SignalsConsumer(
@@ -508,6 +534,7 @@ class TopGainerShort:
                 dynamic_trailing=False,
                 dynamic_position_sizing=True,
                 fiat_order_size=fiat_order_size,
+                futures_leverage=futures_leverage,
                 stop_loss=stop_loss_pct,
                 take_profit=self.TRAILING_PROFIT_PCT,
                 trailing=True,
@@ -557,16 +584,27 @@ class TopGainerShort:
             if top_gainer_watch is not None
             else "- Top-gainer context: no fresh top-10 membership"
         )
+        breadth_line = (
+            f"- Breadth higher low confirmed: {round_numbers(breadth_context['breadth_higher_low_first_trough'], 4)} -> {round_numbers(breadth_context['breadth_higher_low_second_trough'], 4)}; latest index: {round_numbers(breadth_context['breadth_latest'], 4)}"
+            if breadth_context is not None
+            else "- Breadth higher low confirmed: No"
+        )
+        btc_line = (
+            f"- BTC higher low confirmed: {round_numbers(btc_context['btc_higher_low_first_trough'], 4)} -> {round_numbers(btc_context['btc_higher_low_second_trough'], 4)}; latest low: {round_numbers(btc_context['btc_latest'], 4)}"
+            if btc_context is not None
+            else "- BTC higher low confirmed: No"
+        )
         msg = f"""
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT when price confirms a lower high and the breadth index has a confirmed higher low; current top-10 gainers receive a score bonus
+            - Rule intent: SHORT when price confirms a lower high and BTC or the breadth index has a confirmed higher low; current top-10 gainers receive a score bonus
             {top_gainer_lines}
             - Top-gainer score bonus: +{top_gainer_score}
             - Strong-gainer threshold (>= {self.STRONG_GAIN_THRESHOLD_PCT}%): {"Yes" if strong_gainer else "No"}
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
-            - Breadth higher low confirmed: {round_numbers(breadth_context["breadth_higher_low_first_trough"], 4)} -> {round_numbers(breadth_context["breadth_higher_low_second_trough"], 4)}; latest index: {round_numbers(breadth_context["breadth_latest"], 4)}
+            {breadth_line}
+            {btc_line}
             {self._stretch_telegram_line(stretch, stretch_score, max_gain_24h_pct)}
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
@@ -579,6 +617,7 @@ class TopGainerShort:
             - Trailing fallback: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
+            - Futures leverage: {futures_leverage}x (score range {round_numbers(self.MIN_SCORE, 4)}–{self.MAX_SCORE})
             - Autotrade: {"enabled for staging" if autotrade_enabled else "disabled; notification only"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>

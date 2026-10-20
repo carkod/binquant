@@ -153,7 +153,9 @@ def make_context(
     snapshots: list[GainersLosersSnapshot] | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         gainers_losers_series=snapshots or [],
         symbol="TESTUSDTM",
         market_type=MarketType.FUTURES,

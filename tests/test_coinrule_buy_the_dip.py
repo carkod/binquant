@@ -111,7 +111,9 @@ def make_algo(
     binbot_api = MagicMock()
     binbot_api.get_bots_by_name.return_value = []
     context = SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDT",
         exchange=ExchangeId.KUCOIN,
         market_type=MarketType.SPOT,

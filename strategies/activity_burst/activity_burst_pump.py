@@ -236,7 +236,7 @@ class ActivityBurstPump:
             else 0.0
         )
         kucoin_link, terminal_link = build_links_msg(
-            self.config.env, self.exchange, self.market_type, self.symbol
+            self.config.frontend_domain, self.exchange, self.market_type, self.symbol
         )
 
         msg = f"""

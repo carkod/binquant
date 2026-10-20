@@ -212,6 +212,7 @@ async def test_dispatch_signal_record_uses_json_mode_payloads_and_links_bot():
     assert payload["bot_params"]["position"] == "long"
     assert payload["bot_params"]["quote_asset"] == "USDC"
     assert payload["bot_params"]["fiat_order_size"] == 4.0
+    assert "futures_leverage" not in payload["bot_params"]
     assert payload["indicators"]["bb_spreads"] == {
         "bb_high": 0.019,
         "bb_mid": 0.018,

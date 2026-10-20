@@ -944,6 +944,87 @@ class TestAutotradeConsumer:
         assert signal.bot_params.fiat_order_size is not None
         assert signal.bot_params.fiat_order_size < 500
         assert signal.bot_params.fiat_order_size > 0
+        assert signal.bot_params.futures_leverage == 3
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("submitted,expected", [(None, 3), (1, 1), (4, 4), (5, 5)])
+    async def test_futures_margin_preflight_uses_signal_leverage_or_symbol_default(
+        self,
+        submitted,
+        expected,
+    ):
+        self.consumer.exchange = ExchangeId.KUCOIN
+        self.mock_binbot_api.get_available_fiat.return_value = 100
+        self.mock_binbot_api.get_single_symbol.return_value.futures_leverage = 3
+        cast(
+            Any, self.consumer.kucoin_futures_api.get_symbol_info
+        ).return_value = SimpleNamespace(
+            multiplier=1, lot_size=1, taker_fee_rate=0.0006
+        )
+        params = BotBase(
+            pair="BTCUSDTM",
+            name="top_gainer_short",
+            market_type=MarketType.FUTURES,
+            position=Position.short,
+            fiat="USDT",
+            fiat_order_size=100,
+            stop_loss=3,
+        )
+        if submitted is not None:
+            params.futures_leverage = submitted
+        signal = SignalsConsumer(autotrade=True, current_price=10, bot_params=params)
+        with (
+            patch.object(
+                self.consumer, "futures_reliable_candles_available", return_value=True
+            ),
+            patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls,
+        ):
+            autotrade_cls.return_value.activate_autotrade = AsyncMock()
+            await self.consumer.process_autotrade_restrictions(signal)
+        autotrade_cls.return_value.activate_autotrade.assert_awaited_once_with(signal)
+        assert params.futures_leverage == expected
+        # Same leverage must drive minimum lot margin and the actual bot payload.
+        assert params.fiat_order_size == pytest.approx(
+            100 - 1.4 - (10 / expected + 0.012)
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("submitted,expected", [(None, 3), (1, 1), (4, 4), (5, 5)])
+    async def test_autotrade_payload_preserves_signal_leverage_or_symbol_default(
+        self,
+        submitted,
+        expected,
+    ):
+        settings = make_autotrade_settings(exchange_id=ExchangeId.KUCOIN)
+        self.mock_binbot_api.get_single_symbol.return_value.futures_leverage = 3
+        params = BotBase(
+            pair="BTCUSDTM",
+            name="top_gainer_short",
+            market_type=MarketType.FUTURES,
+            position=Position.short,
+            fiat_order_size=10,
+            stop_loss=3,
+        )
+        if submitted is not None:
+            params.futures_leverage = submitted
+        signal = SignalsConsumer(autotrade=True, current_price=100, bot_params=params)
+        futures_api = MagicMock()
+        futures_api.get_mark_price.return_value = 100
+        with (
+            patch("shared.autotrade.KucoinApi", return_value=MagicMock()),
+            patch("shared.autotrade.KucoinFutures", return_value=futures_api),
+        ):
+            autotrade = Autotrade(
+                pair="BTCUSDTM",
+                settings=settings,
+                algorithm_name="top_gainer_short",
+                binbot_api=self.mock_binbot_api,
+            )
+            await autotrade.activate_autotrade(signal)
+        assert (
+            self.mock_binbot_api.create_bot.call_args.args[0]["futures_leverage"]
+            == expected
+        )
 
     @pytest.mark.asyncio
     async def test_activate_autotrade_merges_signal_bot_params_over_settings(self):

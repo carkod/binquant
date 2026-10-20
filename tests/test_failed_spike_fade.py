@@ -140,7 +140,9 @@ def make_last_spike(**overrides: Any) -> dict[str, Any]:
 def make_algo() -> FailedSpikeFade:
     df = source_candles()
     context = SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDT",
         market_type=MarketType.FUTURES,
         df_15m=df,

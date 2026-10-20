@@ -107,7 +107,9 @@ def make_ohlcv_df(n: int = 50, oversold: bool = False) -> DataFrame:
 
 def make_context(df: DataFrame, context: LiveMarketContext | None) -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDT",
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,

@@ -177,7 +177,9 @@ def make_context(
     microregime_directional: str = "UP",
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         gainers_losers_series=(
             gainers_losers_series if gainers_losers_series is not None else []
         ),

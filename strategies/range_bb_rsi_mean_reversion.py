@@ -245,7 +245,7 @@ class RangeBbRsiMeanReversion:
 
         direction = self._direction_for_position(bot_strategy)
         kucoin_link, terminal_link = build_links_msg(
-            self.config.env,
+            self.config.frontend_domain,
             self.exchange,
             self.market_type,
             self.symbol,

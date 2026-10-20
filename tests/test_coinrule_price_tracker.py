@@ -98,7 +98,9 @@ def make_context(
     binbot_api = MagicMock()
     binbot_api.get_bots_by_name.return_value = []
     return SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDT",
         kucoin_symbol="TEST-USDT",
         exchange=ExchangeId.KUCOIN,

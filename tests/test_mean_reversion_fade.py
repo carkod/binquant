@@ -119,7 +119,9 @@ def make_evaluator(
     latest_market_context: LiveMarketContext | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(env="test"),
+        config=SimpleNamespace(
+            env="test", frontend_domain="https://terminal.example.com/"
+        ),
         symbol="TESTUSDTM",
         exchange=ExchangeId.KUCOIN,
         market_type=MarketType.FUTURES,
