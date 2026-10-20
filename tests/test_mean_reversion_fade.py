@@ -224,7 +224,7 @@ async def test_mean_reversion_fade_never_requests_autotrade(
     assert value.bot_params.take_profit == MeanReversionFade.TAKE_PROFIT_PCT
     assert value.bot_params.cooldown == MeanReversionFade.ENTRY_COOLDOWN_MINUTES
     assert value.bot_params.stop_loss == pytest.approx(1.4)
-    assert value.bot_params.margin_short_reversal is False
+    assert value.bot_params.recovery_params is None
     assert indicators["entry_reason"] == "upper_band_outside_rsi_hook_red"
     assert indicators["max_holding_bars"] == MeanReversionFade.MAX_HOLDING_BARS
     assert indicators["trend_score"] == pytest.approx(0.0)

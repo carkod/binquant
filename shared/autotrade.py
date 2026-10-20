@@ -78,7 +78,7 @@ class Autotrade:
             trailing=settings.trailing,
             trailing_deviation=settings.trailing_deviation,
             trailing_profit=settings.trailing_profit,
-            margin_short_reversal=settings.autoswitch,
+            recovery_params=RecoveryParams() if settings.autoswitch else None,
             close_condition=CloseConditions.dynamic_trailing,
             dynamic_trailing=True,  # not added to settings yet
         )
@@ -184,7 +184,7 @@ class Autotrade:
             not self.symbol_data.is_margin_trading_allowed
             and self.exchange == ExchangeId.BINANCE
         ):
-            self.default_bot.margin_short_reversal = False
+            self.default_bot.recovery_params = None
 
         if data.bb_spreads:
             self._set_bollinguer_spreads(data)
@@ -221,15 +221,6 @@ class Autotrade:
             return
 
         self._apply_signal_bot_overrides(data)
-        if (
-            self.exchange == ExchangeId.KUCOIN
-            and self.default_bot.market_type == MarketType.FUTURES
-            and not self._is_field_overridden("recovery_params")
-        ):
-            self.default_bot.recovery_params = (
-                RecoveryParams() if self.default_bot.margin_short_reversal else None
-            )
-
         # Can't get balance qty, because balance = 0 if real bot is trading
         # Base order set to default 1 to avoid errors
         # and because there is no matching engine endpoint to get market qty

@@ -340,7 +340,7 @@ async def test_buy_the_dip_never_requests_autotrade() -> None:
     assert process_args is not None
     value = process_args.args[0]
     assert value.autotrade is False
-    assert value.bot_params.margin_short_reversal is True
+    assert value.bot_params.recovery_params is not None
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,5 @@
+from pybinbot import RecoveryParams
+
 # tests/test_autotrade_consumer.py
 import time as time_module
 from os import environ
@@ -1004,6 +1006,7 @@ class TestAutotradeConsumer:
             position=Position.short,
             fiat_order_size=10,
             stop_loss=3,
+            recovery_params=None,
         )
         if submitted is not None:
             params.futures_leverage = submitted
@@ -1025,6 +1028,9 @@ class TestAutotradeConsumer:
             self.mock_binbot_api.create_bot.call_args.args[0]["futures_leverage"]
             == expected
         )
+        assert (
+            self.mock_binbot_api.create_bot.call_args.args[0]["recovery_params"] is None
+        )
 
     @pytest.mark.asyncio
     async def test_activate_autotrade_merges_signal_bot_params_over_settings(self):
@@ -1039,7 +1045,7 @@ class TestAutotradeConsumer:
                 market_type=MarketType.SPOT,
                 position=Position.long,
                 fiat_order_size=25,
-                margin_short_reversal=False,
+                recovery_params=None,
             ),
         )
 
@@ -1060,7 +1066,7 @@ class TestAutotradeConsumer:
         assert create_payload["market_type"] == "SPOT"
         assert create_payload["position"] == "long"
         assert create_payload["fiat_order_size"] == 25
-        assert create_payload["margin_short_reversal"] is False
+        assert "margin_short_reversal" not in create_payload
         assert create_payload["recovery_params"] is None
         assert create_payload["stop_loss"] == settings.stop_loss
         assert create_payload["take_profit"] == settings.take_profit
@@ -1146,9 +1152,11 @@ class TestAutotradeConsumer:
         await autotrade.activate_autotrade(signal)
 
         create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
-        assert create_payload["margin_short_reversal"] is True
+        assert "margin_short_reversal" not in create_payload
         assert create_payload["recovery_params"] == {
             "reversal_path": "source",
+            "source_bot_id": None,
+            "source_close_order_id": None,
             "source_contracts": 0,
             "source_loss_fiat": 0,
             "stop_loss_pct": 0,
@@ -1171,7 +1179,7 @@ class TestAutotradeConsumer:
                 market_type=MarketType.FUTURES,
                 position=Position.short,
                 stop_loss=10,
-                margin_short_reversal=True,
+                recovery_params=RecoveryParams(),
             ),
         )
 
@@ -1191,9 +1199,11 @@ class TestAutotradeConsumer:
 
         create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
         assert create_payload["position"] == "short"
-        assert create_payload["margin_short_reversal"] is True
+        assert "margin_short_reversal" not in create_payload
         assert create_payload["recovery_params"] == {
             "reversal_path": "source",
+            "source_bot_id": None,
+            "source_close_order_id": None,
             "source_contracts": 0,
             "source_loss_fiat": 0,
             "stop_loss_pct": 0,
@@ -1225,7 +1235,7 @@ class TestAutotradeConsumer:
         await autotrade.activate_autotrade(signal)
 
         create_payload = self.mock_binbot_api.create_bot.call_args.args[0]
-        assert create_payload["margin_short_reversal"] is True
+        assert "margin_short_reversal" not in create_payload
         assert create_payload["recovery_params"] is None
 
     @pytest.mark.asyncio
