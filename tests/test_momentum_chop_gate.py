@@ -4,11 +4,12 @@ from unittest.mock import Mock
 from pandas import DataFrame
 import pytest
 
-from shared.price_crossings import (
+from pybinbot.shared.price_crossings import (
     CHOP_CROSSING_SCORE_PENALTY,
     CHOP_CROSSING_THRESHOLD,
     price_crossings_six_hours,
 )
+
 from strategies.top_gainer_early_momentum import TopGainerEarlyMomentum
 from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 from tests.test_top_gainer_early_momentum import (
@@ -35,6 +36,8 @@ def test_crossings_cover_six_hours_at_candle_interval(interval_ms: int) -> None:
                 "open_time": window_start + i * interval_ms,
                 "close_time": window_start + (i + 1) * interval_ms - 1,
                 "close": 100.0 if (i // segment_length) % 2 == 0 else 102.0,
+                "high": 100.0 if (i // segment_length) % 2 == 0 else 102.0,
+                "low": 100.0 if (i // segment_length) % 2 == 0 else 102.0,
             }
             for i in range(candle_count)
         ]
@@ -134,24 +137,25 @@ async def test_momentum_chop_gate_before_dispatch_and_cooldown(
         "zero_crossings",
         "one_crossing",
         "two_crossings",
-        "three_crossings",
         "forming",
     }:
         context.dispatch_signal_record.assert_awaited_once()
         context.telegram_consumer.dispatch_signal.assert_awaited_once()
         indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-        expected = crossing_counts.get(case, 0)
+        # The completed final candle already spans entry; the forming candle
+        # must not add a second crossing.
+        expected = crossing_counts.get(case, 1)
         value = context.dispatch_signal_record.await_args.kwargs["value"]
         base_score = strategy._score(values)
         score_penalty = expected * CHOP_CROSSING_SCORE_PENALTY
         assert indicators["price_crossings_six_hours"] == expected
-        assert indicators["chop_crossing_threshold"] == CHOP_CROSSING_THRESHOLD == 4
+        assert indicators["chop_crossing_threshold"] == CHOP_CROSSING_THRESHOLD == 3
         assert indicators["score_before_chop_penalty"] == base_score
         assert indicators["chop_score_penalty"] == score_penalty
         assert value.score == pytest.approx(base_score - score_penalty, abs=0.0005)
         assert indicators["chop_lookback_bars"] == 24
         message = context.telegram_consumer.dispatch_signal.await_args.args[0]
-        assert f"Current-price crossings over 6h: {expected}; rejected at 4+" in message
+        assert f"Current-price crossings over 6h: {expected}; rejected at 3+" in message
         context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
     else:
         context.dispatch_signal_record.assert_not_awaited()
