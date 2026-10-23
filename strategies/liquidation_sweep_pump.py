@@ -457,7 +457,7 @@ class LiquidationSweepPump:
             trailing=True,
             trailing_profit=self.LONG_TRAILING_PROFIT_PCT,
             trailing_deviation=self.LONG_TRAILING_DEVIATION_PCT,
-            margin_short_reversal=False,
+            recovery_params=None,
         )
 
         value = SignalsConsumer(

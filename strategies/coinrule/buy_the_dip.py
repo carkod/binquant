@@ -1,3 +1,4 @@
+from pybinbot import RecoveryParams
 import logging
 import os
 from datetime import UTC, datetime, timedelta
@@ -163,7 +164,7 @@ class BuyTheDip(StrategyMixin):
                 name=self.ALGO,
                 position=Position.long,
                 market_type=self.market_type,
-                margin_short_reversal=True,
+                recovery_params=RecoveryParams(),
             ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,

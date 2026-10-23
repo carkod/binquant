@@ -551,7 +551,7 @@ class TopLoserEarlyMomentum:
                 trailing=True,
                 trailing_deviation=self.TRAILING_DEVIATION_PCT,
                 trailing_profit=self.TRAILING_PROFIT_PCT,
-                margin_short_reversal=False,
+                recovery_params=None,
             ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,

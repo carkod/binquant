@@ -325,7 +325,7 @@ class MeanReversionFade:
                 stop_loss=stop_loss_pct,
                 take_profit=self.TAKE_PROFIT_PCT,
                 trailing=False,
-                margin_short_reversal=False,
+                recovery_params=None,
             ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,

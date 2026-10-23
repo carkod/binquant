@@ -286,7 +286,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.bot_params.trailing is True
     assert value.bot_params.trailing_profit == 4.5
     assert value.bot_params.trailing_deviation == 3.0
-    assert value.bot_params.margin_short_reversal is False
+    assert value.bot_params.recovery_params is None
     assert value.bot_params.recovery_params is None
     assert "recovery_params" in value.bot_params.model_fields_set
     assert indicators["entry_reason"] == "lower_high_breakdown"

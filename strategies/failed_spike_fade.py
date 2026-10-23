@@ -725,7 +725,7 @@ class FailedSpikeFade:
                 stop_loss=self.STOP_LOSS_PCT,
                 take_profit=self.TAKE_PROFIT_PCT,
                 trailing=False,
-                margin_short_reversal=False,
+                recovery_params=None,
             ),
             bb_spreads=HABollinguerSpread(
                 bb_high=bb_high,

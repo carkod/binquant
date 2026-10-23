@@ -306,7 +306,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     assert signal_value.bot_params.trailing_profit == 0.5
     assert signal_value.bot_params.trailing_deviation == 0.2
     assert signal_value.bot_params.cooldown == 60
-    assert signal_value.bot_params.margin_short_reversal is False
+    assert signal_value.bot_params.recovery_params is None
     assert "Action: LONG ENTRY" in telegram_msg
     assert "Signal route: market_breadth_recovering_btc_up_symbol_up" in telegram_msg
     assert "Autotrade is disabled; notification only" in telegram_msg
