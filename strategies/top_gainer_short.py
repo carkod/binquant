@@ -432,7 +432,7 @@ class TopGainerShort:
         )
         quote_asset = self.current_symbol_data.quote_asset
         context = self.ti.latest_market_context
-        autotrade_enabled = self.config.env.lower() in {"staging", "production"}
+        autotrade_enabled = False if self.config.env == "development" else True
         kucoin_link, terminal_link = build_links_msg(
             self.config.frontend_domain,
             self.exchange,
