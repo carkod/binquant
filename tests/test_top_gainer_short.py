@@ -17,13 +17,14 @@ from pybinbot import (
     SymbolModel,
 )
 
-from market_regime.models import DerivativesPositioningFeatures
-from market_regime.open_interest_order_sizing import apply_open_interest_sizing
-from shared.price_crossings import (
+from pybinbot.shared.price_crossings import (
     CHOP_CROSSING_SCORE_PENALTY,
     CHOP_CROSSING_THRESHOLD,
     price_crossings_six_hours,
 )
+
+from market_regime.models import DerivativesPositioningFeatures
+from market_regime.open_interest_order_sizing import apply_open_interest_sizing
 from strategies.top_gainer_short import TopGainerShort
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
@@ -192,9 +193,12 @@ def make_context(
 ) -> SimpleNamespace:
     if symbol_df is None:
         symbol_df = make_lower_high_df()
-        # Keep the confirmation candles intact but make the six-hour history
-        # one-sided around the default signal price of 135.
-        symbol_df.loc[symbol_df.index[-24:-3], "close"] = 134.0
+        # Keep both fractal peaks above a one-sided six-hour candle history.
+        # The preceding swing low sits outside that gate's lookback window.
+        symbol_df["high"] = symbol_df["high"].clip(lower=135.2)
+        symbol_df["close"] = symbol_df["close"].clip(lower=135.1)
+        symbol_df["low"] = symbol_df["low"].clip(lower=135.05)
+        symbol_df.loc[10, "low"] = 105.0
 
     return SimpleNamespace(
         config=SimpleNamespace(
@@ -275,7 +279,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert value.autotrade is False
+    assert value.autotrade is True
     assert value.direction == "SHORT"
     assert value.bot_params.name == "top_gainer_short"
     assert value.bot_params.position == "short"
@@ -385,38 +389,37 @@ async def test_wider_stop_preserves_prior_loss_budget_after_open_interest_sizing
 
 
 @pytest.mark.asyncio
-async def test_signal_requests_autotrade_in_staging_only() -> None:
-    staging = make_context(environment="staging")
-    production = make_context(environment="production")
-    development = make_context(environment="development")
+@pytest.mark.parametrize(
+    "environment,autotrade_enabled",
+    [
+        ("staging", True),
+        ("production", True),
+        ("PRODUCTION", True),
+        ("development", False),
+    ],
+)
+async def test_signal_requests_autotrade_in_staging_and_production(
+    environment: str, autotrade_enabled: bool
+) -> None:
+    context = make_context(environment=environment)
 
-    for context in (staging, production, development):
-        await TopGainerShort(cast(Any, context)).signal(
-            current_price=135.0,
-            bb_high=95.0,
-            bb_mid=92.0,
-            bb_low=87.0,
-        )
-        message = context.telegram_consumer.dispatch_signal.call_args.args[0]
-        assert (
-            "<a href='https://terminal.example.com/bots/futures/new/TESTUSDTM'>Dashboard trade</a>"
-            in message
-        )
+    await TopGainerShort(cast(Any, context)).signal(
+        current_price=135.0,
+        bb_high=95.0,
+        bb_mid=92.0,
+        bb_low=87.0,
+    )
 
-    staging_signal = staging.dispatch_signal_record.await_args.kwargs["value"]
-    production_signal = production.dispatch_signal_record.await_args.kwargs["value"]
-    development_signal = development.dispatch_signal_record.await_args.kwargs["value"]
-    assert staging_signal.autotrade is True
-    assert production_signal.autotrade is False
-    assert development_signal.autotrade is False
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    assert value.autotrade is autotrade_enabled
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
+    message = context.telegram_consumer.dispatch_signal.call_args.args[0]
     assert (
-        "Autotrade: enabled for staging"
-        in (staging.telegram_consumer.dispatch_signal.call_args.args[0])
+        "<a href='https://terminal.example.com/bots/futures/new/TESTUSDTM'>Dashboard trade</a>"
+        in message
     )
-    assert (
-        "Autotrade: disabled; notification only"
-        in (production.telegram_consumer.dispatch_signal.call_args.args[0])
-    )
+    expected_status = "enabled" if autotrade_enabled else "disabled; notification only"
+    assert f"Autotrade: {expected_status}" in message
 
 
 @pytest.mark.asyncio
@@ -441,7 +444,7 @@ async def test_signal_uses_lower_high_stop_without_hourly_candles() -> None:
         "Initial reduction threshold: 2.0% above lower high at 138.72 (2.7556%)" in msg
     )
     assert "Trailing fallback: arms after 4.5% profit with 3.0% deviation" in msg
-    assert "Autotrade: disabled; notification only" in msg
+    assert "Autotrade: enabled" in msg
 
 
 @pytest.mark.asyncio
@@ -464,8 +467,7 @@ async def test_signal_requires_fresh_confirmed_lower_high() -> None:
 
 @pytest.mark.asyncio
 async def test_signal_uses_latest_completed_candle_for_lower_high() -> None:
-    frame = make_lower_high_df()
-    frame.loc[frame.index[-24:-3], "close"] = 134.0
+    frame = make_context().df_15m.copy()
     live_open_time = int(frame["open_time"].iloc[-1]) + BAR_MS
     frame = pd.concat(
         [
@@ -798,9 +800,8 @@ async def test_signal_marks_emitted_even_when_autotrade_processing_raises() -> N
 def test_crossings_count_side_changes_and_ignore_exact_touches(closes, expected):
     frame = make_lower_high_df()
     frame.loc[frame.index[-24:], "close"] = closes
-    # Wicks straddle the reference on every bar; they are not close crossings.
-    frame.loc[:, "high"] = 140.0
-    frame.loc[:, "low"] = 130.0
+    frame["high"] = frame["close"]
+    frame["low"] = frame["close"]
     assert (
         price_crossings_six_hours(
             frame, 135.0, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
@@ -809,9 +810,96 @@ def test_crossings_count_side_changes_and_ignore_exact_touches(closes, expected)
     )
 
 
+@pytest.mark.parametrize(
+    ("current_price", "prices", "expected_crossings"),
+    [
+        pytest.param(
+            0.004248,
+            [
+                (0.004484, 0.004462, 0.004479),
+                (0.004485, 0.00446, 0.00446),
+                (0.004478, 0.004445, 0.004456),
+                (0.004488, 0.00446, 0.004475),
+                (0.004464, 0.004447, 0.004447),
+                (0.004453, 0.004421, 0.004451),
+                (0.004452, 0.004413, 0.004452),
+                (0.004453, 0.004416, 0.004442),
+                (0.004434, 0.004416, 0.004425),
+                (0.004425, 0.004407, 0.004407),
+                (0.004406, 0.004363, 0.004404),
+                (0.004395, 0.004379, 0.004395),
+                (0.004408, 0.004397, 0.004398),
+                (0.004408, 0.004388, 0.004388),
+                (0.004425, 0.004386, 0.004425),
+                (0.004455, 0.004408, 0.004408),
+                (0.004577, 0.004315, 0.004362),
+                (0.004385, 0.004342, 0.004344),
+                (0.004357, 0.004329, 0.004345),
+                (0.004347, 0.004329, 0.00433),
+                (0.00434, 0.004328, 0.004338),
+                (0.004362, 0.004338, 0.004338),
+                (0.004345, 0.004324, 0.004325),
+                (0.004335, 0.00397, 0.00427),
+            ],
+            1,
+            id="SOLVUSDTM-signal-195830",
+        ),
+        pytest.param(
+            0.06515,
+            [
+                (0.06494, 0.06339, 0.06356),
+                (0.06411, 0.06365, 0.06387),
+                (0.06415, 0.06378, 0.0639),
+                (0.06377, 0.06255, 0.06349),
+                (0.06424, 0.06349, 0.06413),
+                (0.06442, 0.06373, 0.06391),
+                (0.0654, 0.06372, 0.0652),
+                (0.06766, 0.06535, 0.06742),
+                (0.06774, 0.06643, 0.06691),
+                (0.06709, 0.06645, 0.0666),
+                (0.06688, 0.06643, 0.06647),
+                (0.06736, 0.06562, 0.06663),
+                (0.06619, 0.06489, 0.06579),
+                (0.06574, 0.06522, 0.06547),
+                (0.06667, 0.06546, 0.06638),
+                (0.06861, 0.06638, 0.06861),
+                (0.06883, 0.06638, 0.06713),
+                (0.06747, 0.06661, 0.06699),
+                (0.06725, 0.06635, 0.06677),
+                (0.06642, 0.06578, 0.06633),
+                (0.06609, 0.06555, 0.06592),
+                (0.06683, 0.06622, 0.06628),
+                (0.06653, 0.06613, 0.06615),
+                (0.06598, 0.06499, 0.06517),
+            ],
+            3,
+            id="PHAUSDTM-signal-195828",
+        ),
+    ],
+)
+def test_staging_candle_ranges_include_wicks_at_entry(
+    current_price, prices, expected_crossings
+):
+    # KuCoin's 24 completed 15m ranges and closes preceding the staging
+    # signals on 2026-10-23. Rebase timestamps; preserve high, low, close.
+    frame = make_lower_high_df().tail(24).copy()
+    frame[["high", "low", "close"]] = prices
+    moves = frame["close"].diff()
+    assert (moves * moves.shift(1) < 0).sum() == 11
+
+    crossings = price_crossings_six_hours(
+        frame, current_price, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
+    )
+
+    assert crossings is not None
+    assert crossings == expected_crossings
+    # PHA now rejects at three; SOLV's single excursion still passes.
+    assert (crossings >= CHOP_CROSSING_THRESHOLD) == (current_price == 0.06515)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("crossings", [0, 1, 2, 3, 4])
-async def test_chop_gate_penalizes_crossings_and_rejects_above_three(
+async def test_chop_gate_penalizes_crossings_and_rejects_at_three(
     monkeypatch, crossings
 ):
     context = make_context()
@@ -823,7 +911,7 @@ async def test_chop_gate_penalizes_crossings_and_rejects_above_three(
 
     await strategy.signal(135.0, 140.0, 132.0, 120.0)
 
-    if crossings > 3:
+    if crossings >= 3:
         context.dispatch_signal_record.assert_not_awaited()
         context.telegram_consumer.dispatch_signal.assert_not_awaited()
         context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
@@ -836,7 +924,7 @@ async def test_chop_gate_penalizes_crossings_and_rejects_above_three(
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     expected_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
     assert indicators["price_crossings_six_hours"] == crossings
-    assert indicators["chop_crossing_threshold"] == CHOP_CROSSING_THRESHOLD == 4
+    assert indicators["chop_crossing_threshold"] == CHOP_CROSSING_THRESHOLD == 3
     assert indicators["chop_score_penalty"] == expected_penalty
     assert value.score == round(3.0 - expected_penalty, 4)
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
@@ -852,7 +940,7 @@ async def test_repeated_crossings_reject_a_real_confirmed_lower_high():
         price_crossings_six_hours(
             context.df_15m, 124.0, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
         )
-        == 4
+        == 6
     )
 
     await strategy.signal(124.0, 140.0, 132.0, 120.0)
@@ -894,6 +982,8 @@ def test_chop_check_ignores_old_and_forming_candles():
     frame = make_lower_high_df()
     frame.loc[frame.index[:-24], "close"] = [134.0, 136.0] * 8
     frame.loc[frame.index[-24:], "close"] = 134.0
+    frame["high"] = frame["close"]
+    frame["low"] = frame["close"]
     live_open = int(NOW.timestamp() * 1000) // BAR_MS * BAR_MS
     frame = pd.concat(
         [
@@ -962,7 +1052,7 @@ async def test_rounded_stop_stays_above_lower_high():
 @pytest.mark.parametrize(
     "score,expected_leverage",
     [
-        (0.7, 1),
+        (0.8, 1),
         (1.0, 1),
         (1.5, 2),
         (2.0, 2),
@@ -977,7 +1067,7 @@ async def test_rounded_stop_stays_above_lower_high():
     ],
 )
 def test_score_maps_possible_range_to_whole_futures_leverage(score, expected_leverage):
-    assert TopGainerShort.MIN_SCORE == pytest.approx(0.7)
+    assert TopGainerShort.MIN_SCORE == pytest.approx(0.8)
     assert TopGainerShort.MAX_SCORE == 5.0
     assert TopGainerShort.futures_leverage_for_score(score) == expected_leverage
 
@@ -987,10 +1077,9 @@ def test_score_maps_possible_range_to_whole_futures_leverage(score, expected_lev
     "ranked,crossings,expected_score,expected_leverage",
     [
         (True, 0, 3.5, 4),
-        (True, 1, 3.4, 4),
+        (True, 1, 3.4, 3),
         (True, 2, 3.3, 3),
-        (True, 3, 3.2, 3),
-        (False, 3, 0.7, 1),
+        (False, 2, 0.8, 1),
     ],
 )
 async def test_emitted_leverage_uses_final_score_after_crossing_penalty(
@@ -1015,7 +1104,7 @@ async def test_emitted_leverage_uses_final_score_after_crossing_penalty(
     assert value.score == expected_score
     assert value.bot_params.futures_leverage == expected_leverage
     assert indicators["futures_leverage"] == expected_leverage
-    assert indicators["futures_leverage_score_min"] == 0.7
+    assert indicators["futures_leverage_score_min"] == 0.8
     assert indicators["futures_leverage_score_max"] == 5.0
     message = context.telegram_consumer.dispatch_signal.await_args.args[0]
     assert f"Futures leverage: {expected_leverage}x" in message

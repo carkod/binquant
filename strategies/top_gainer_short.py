@@ -15,14 +15,14 @@ from pybinbot import (
     round_numbers,
     timestamp_sort_key,
 )
-
-from shared.higher_low import confirmed_higher_low
-from shared.price_crossings import (
+from pybinbot.shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
     CHOP_CROSSING_SCORE_PENALTY,
     CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
+
+from shared.higher_low import confirmed_higher_low
 from shared.utils import build_links_msg, format_context_timestamp_line
 from strategies.lower_high_pattern import LowerHighPattern
 
@@ -31,44 +31,15 @@ if TYPE_CHECKING:
 
 
 class TopGainerShort:
-    """Short a symbol as bullish momentum fails, favoring current top gainers.
+    """Short a fresh 15m lower high when BTC or breadth confirms a higher low.
 
-    Entry requires the symbol's own 15m candles to have just confirmed a lower
-    high. This is the trigger: without it nothing else here matters.
+    Reject at three current-price crossings over six hours, including wicks.
+    Gainer rank, strong gains, and historical stretch boost the score; crossings
+    penalize it. The final score sets leverage from 1x to 5x.
 
-    Current top-ten membership adds a substantial conviction score bonus,
-    regardless of watch duration. Missing or stale rankings do not block entry.
-    Continuous top-ten watch duration remains notification context.
-    The final score, including crossing penalties, maps its possible 0.7–5.0
-    range to whole futures leverage levels from 1x to 5x.
-
-    BTC or market breadth must also have a confirmed higher low in its
-    latest 40 completed 15m candles or breadth samples (about ten hours).
-    Compare the latest two strict troughs, each confirmed by two readings on
-    either side. The second must be higher and remain unbroken. Each source
-    must be fresh and continuous; either source alone can confirm recovery.
-
-    A 24h gain of at least 20% raises the notification's conviction score,
-    as does a stretch score, which measures how far the move has run beyond
-    the coin's own daily history: a 24h gain larger than any prior daily gain, a weekly
-    high above every earlier daily high, and a weekly high far above the
-    earlier median close. These are context, not entry gates, and the stretch
-    score is intended as the groundwork for position sizing: the coin's lower
-    high remains the required failure signal.
-
-    More than three close-to-close crossings of the current price over the
-    last six hours of completed 15m candles block entry as chop. Each crossing
-    reduces the score by a fixed penalty. Exact touches are ignored.
-    The resulting futures short uses existing dynamic position sizing: reduce
-    at the lower-high threshold and increase at 4.5% profit. The backend's
-    default 25% adjustment repeats with thresholds reset after fills, replacing
-    the full stop while active. Static trailing remains the fallback.
-    The wider 2% buffer is paired with a smaller initial margin using the
-    original 0.25% buffer's stop-risk budget, before fees, slippage and contract
-    rounding. This sizes initial exposure; it does not cap total loss after
-    repeated adjustments. Reversal and recovery are explicitly disabled.
-    The strategy requests autotrade in
-    staging only; development and production remain notification-only.
+    Use dynamic position sizing with a stop above the lower high. Scale initial
+    margin to the original stop-risk budget; later adjustments change exposure.
+    Autotrade runs in staging and production, with recovery disabled.
     """
 
     ALGO = "top_gainer_short"
@@ -227,11 +198,7 @@ class TopGainerShort:
         return pattern
 
     def _breadth_higher_low(self) -> dict[str, float] | None:
-        """Confirm structure on the signed breadth index, not price percentages.
-
-        A higher low remains valid after confirmation until breached or replaced
-        by a newer pair of confirmed troughs within the lookback window.
-        """
+        """Confirm an unbroken higher low on the signed breadth index."""
         breadth = self.market_breadth_data
         if breadth is None or len(breadth.timestamp) != len(breadth.market_breadth):
             return None
@@ -287,13 +254,7 @@ class TopGainerShort:
     def _stretch_context(
         self, max_gain_24h_pct: float | None, weekly_resistance: float
     ) -> dict[str, float | bool] | None:
-        """Compare the current move with the coin's earlier daily history.
-
-        "Prior" candles are completed daily candles that closed before the
-        recent window, so this week's pump is not compared with itself.
-        Returns None when there are too few prior daily candles: a fresh
-        listing has no meaningful history to be stretched against.
-        """
+        """Compare the recent move with daily candles preceding that window."""
         df = self.ti.df_1d
         required_columns = {"open", "high", "close", "close_time"}
         if df is None or not required_columns.issubset(df.columns):
@@ -412,8 +373,7 @@ class TopGainerShort:
         if not isfinite(lower_high_price) or current_price >= lower_high_price:
             logging.info("%s skipped: lower_high_already_reclaimed", self.ALGO)
             return
-        # Round a short stop upward so price precision cannot move it back
-        # inside the pattern. Round its percentage upward for the same reason.
+        # Round upward to keep the short stop outside the pattern.
         stop_price = (
             Decimal(str(lower_high_price))
             * (1 + Decimal(str(self.LOWER_HIGH_STOP_BUFFER_PCT)) / 100)
@@ -472,7 +432,7 @@ class TopGainerShort:
         )
         quote_asset = self.current_symbol_data.quote_asset
         context = self.ti.latest_market_context
-        autotrade_enabled = self.config.env.lower() == "staging"
+        autotrade_enabled = self.config.env.lower() in {"staging", "production"}
         kucoin_link, terminal_link = build_links_msg(
             self.config.frontend_domain,
             self.exchange,
@@ -550,8 +510,7 @@ class TopGainerShort:
         )
         self.ti.finalize_signal_bot_params(value)
         assert value.bot_params is not None
-        # Apply after open-interest sizing so that it cannot overwrite the
-        # reduction. Reproduce the original rounded stop to retain its budget.
+        # Preserve the original stop-risk budget after open-interest sizing.
         reference_stop_price = (
             Decimal(str(lower_high_price))
             * (1 + Decimal(str(self.RISK_BUDGET_STOP_BUFFER_PCT)) / 100)
@@ -617,7 +576,7 @@ class TopGainerShort:
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Futures leverage: {futures_leverage}x (score range {round_numbers(self.MIN_SCORE, 4)}–{self.MAX_SCORE})
-            - Autotrade: {"enabled for staging" if autotrade_enabled else "disabled; notification only"}
+            - Autotrade: {"enabled" if autotrade_enabled else "disabled; notification only"}
             - <a href='{kucoin_link}'>KuCoin</a>
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
@@ -626,8 +585,5 @@ class TopGainerShort:
             await self.telegram_consumer.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
         finally:
-            # Mark emitted even if a later fallible step raises: the signal
-            # record may already be persisted by then, and leaving this
-            # unmarked would let the next tick see the same confirmation as
-            # new and reprocess/duplicate it.
+            # Prevent duplicate signals if persistence succeeds but dispatch fails.
             self._mark_emitted(confirmation_open_time)

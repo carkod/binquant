@@ -15,15 +15,15 @@ from pybinbot import (
     round_numbers,
     timestamp_sort_key,
 )
-
-from market_regime.models import LiveMarketContext, SymbolMarketFeatures
-from market_regime.regime_routing import resolve_symbol_features
-from shared.price_crossings import (
+from pybinbot.shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,
     CHOP_CROSSING_SCORE_PENALTY,
     CHOP_LOOKBACK_HOURS,
     price_crossings_six_hours,
 )
+
+from market_regime.models import LiveMarketContext, SymbolMarketFeatures
+from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
@@ -47,10 +47,11 @@ class TopGainerEarlyMomentum:
     established-mover/fade strategy and is excluded here. Eligible candidates
     must still pass the two-close breakout confirmation and the `_entry_allows`
     extension guards before this strategy emits a notification-only long.
-    More than three close-to-close crossings of the current price over six
-    hours of completed candles block entry. Each crossing reduces the score by
-    a fixed penalty. Exact touches and wicks do not count; missing or invalid
-    candle history also blocks entry.
+    Three or more crossings of the current price over six hours of completed
+    candles block entry. Candle ranges, including wicks, and gaps across the
+    price count at most once per candle. Each crossing reduces the score by a
+    fixed penalty. Exact touches do not count; missing or invalid candle
+    history also blocks entry.
     """
 
     ALGO = "top_gainer_early_momentum"
