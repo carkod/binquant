@@ -120,6 +120,7 @@ class TestTelegramConsumer:
         "algorithm",
         [
             "top_gainer_short",
+            "dark_knight",
             "top_loser_early_momentum",
         ],
     )
