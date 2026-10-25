@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -328,14 +327,14 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
 @pytest.mark.parametrize(
     "state,oi_change,original_margin,expected_margin",
     [
-        ("NEW_LEVERAGE_SHORT", 0.02, 8.0, 2.88169545),
-        ("NEW_LEVERAGE_SHORT", 0.005, 6.0, 2.16127159),
-        ("NEW_LEVERAGE_LONG", 0.005, 3.0, 1.08063579),
-        ("NEW_LEVERAGE_LONG", 0.02, 2.0, 0.72042386),
-        (None, None, 4.0, 1.44084772),
+        ("NEW_LEVERAGE_SHORT", 0.02, 8.0, 8.0),
+        ("NEW_LEVERAGE_SHORT", 0.005, 6.0, 6.0),
+        ("NEW_LEVERAGE_LONG", 0.005, 3.0, 3.0),
+        ("NEW_LEVERAGE_LONG", 0.02, 2.0, 2.0),
+        (None, None, 4.0, 4.0),
     ],
 )
-async def test_wider_stop_preserves_prior_loss_budget_after_open_interest_sizing(
+async def test_peak_based_stop_preserves_open_interest_margin_without_risk_clamp(
     state, oi_change, original_margin, expected_margin
 ):
     context = make_context(environment="staging")
@@ -367,19 +366,10 @@ async def test_wider_stop_preserves_prior_loss_budget_after_open_interest_sizing
     assert params.stop_loss == 2.7556
     assert params.dynamic_position_sizing is True
     assert params.take_profit == 4.5
-    # Same entry price, multiplier and symbol leverage cancel from the ratio.
-    old_budget = Decimal(str(original_margin)) * Decimal("0.9926")
-    new_budget = Decimal(str(params.fiat_order_size)) * Decimal(str(params.stop_loss))
-    assert new_budget <= old_budget
-    assert new_budget == pytest.approx(old_budget, abs=Decimal("0.0000001"))
-    sizing = context.dispatch_signal_record.await_args.kwargs["indicators"][
+    assert (
         "stop_risk_sizing"
-    ]
-    assert sizing["margin_before"] == original_margin
-    assert sizing["margin_after"] == expected_margin
-    assert sizing["reference_stop_pct"] == 0.9926
-    assert sizing["reference_stop_buffer_pct"] == 0.25
-    assert 0 < sizing["margin_multiplier"] < 1
+        not in context.dispatch_signal_record.await_args.kwargs["indicators"]
+    )
     if value.open_interest_sizing is not None:
         # OI evidence retains its intermediate sizing decision.
         assert value.open_interest_sizing.adjusted_margin == original_margin

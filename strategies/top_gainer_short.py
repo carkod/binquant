@@ -1,5 +1,5 @@
 import logging
-from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
+from decimal import ROUND_CEILING, Decimal
 from math import floor, isfinite
 from time import time
 from typing import TYPE_CHECKING, Any
@@ -37,8 +37,8 @@ class TopGainerShort:
     Top-10 gains above 20%, strong gains, and historical stretch boost the score; crossings
     penalize it. The final score sets leverage from 1x to 5x.
 
-    Use dynamic position sizing with a stop above the lower high. Scale initial
-    margin to the original stop-risk budget; later adjustments change exposure.
+    Use dynamic position sizing with a stop above the lower high.
+    Open-interest context sets initial margin without stop-distance scaling.
     Autotrade runs in staging and production, with recovery disabled.
     """
 
@@ -47,7 +47,6 @@ class TopGainerShort:
     FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
     LOWER_HIGH_STOP_BUFFER_PCT = 2.0
-    RISK_BUDGET_STOP_BUFFER_PCT = 0.25
     TRAILING_PROFIT_PCT = 4.5
 
     TOP_GAINER_RANK_LIMIT = 10
@@ -520,31 +519,7 @@ class TopGainerShort:
         )
         self.ti.finalize_signal_bot_params(value)
         assert value.bot_params is not None
-        # Preserve the original stop-risk budget after open-interest sizing.
-        reference_stop_price = (
-            Decimal(str(lower_high_price))
-            * (1 + Decimal(str(self.RISK_BUDGET_STOP_BUFFER_PCT)) / 100)
-        ).quantize(Decimal(1).scaleb(-self.price_precision), rounding=ROUND_CEILING)
-        reference_stop_pct = (
-            (reference_stop_price / Decimal(str(current_price)) - 1) * 100
-        ).quantize(Decimal("0.0001"), rounding=ROUND_CEILING)
-        margin_before_risk_sizing = value.bot_params.fiat_order_size
-        margin_multiplier = min(
-            Decimal(1), reference_stop_pct / Decimal(str(stop_loss_pct))
-        )
-        fiat_order_size = float(
-            (Decimal(str(margin_before_risk_sizing)) * margin_multiplier).quantize(
-                Decimal("0.00000001"), rounding=ROUND_DOWN
-            )
-        )
-        value.bot_params.fiat_order_size = fiat_order_size
-        indicators["stop_risk_sizing"] = {
-            "margin_before": margin_before_risk_sizing,
-            "margin_after": fiat_order_size,
-            "reference_stop_buffer_pct": self.RISK_BUDGET_STOP_BUFFER_PCT,
-            "reference_stop_pct": float(reference_stop_pct),
-            "margin_multiplier": float(margin_multiplier),
-        }
+        fiat_order_size = value.bot_params.fiat_order_size
 
         top_gainer_lines = (
             f"- Top-gainer rank / 24h move: {top_gainer_watch['top_gainer_rank']} / {round_numbers(top_gainer_watch['top_gainer_price_change_24h_pct'], 2)}%\n"
@@ -577,7 +552,6 @@ class TopGainerShort:
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
             - Initial margin: {fiat_order_size} {quote_asset}
-            - Initial risk sizing: margin reduced from {margin_before_risk_sizing} {quote_asset} using the prior {self.RISK_BUDGET_STOP_BUFFER_PCT}% buffer's stop-risk budget; subsequent adjustments change exposure
             - Current-price crossings over 6h: {crossings}; rejected at {CHOP_CROSSING_THRESHOLD}+; score penalty: {CHOP_CROSSING_SCORE_PENALTY} per crossing
             - Initial reduction threshold: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
             - Position sizing: default 25% reduction at stop threshold / increase at {self.TRAILING_PROFIT_PCT}% profit; repeats with thresholds reset after fills
