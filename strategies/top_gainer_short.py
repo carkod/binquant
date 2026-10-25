@@ -34,7 +34,7 @@ class TopGainerShort:
     """Short a fresh 15m lower high when BTC or breadth confirms a higher low.
 
     Reject at three current-price crossings over six hours, including wicks.
-    Gainer rank, strong gains, and historical stretch boost the score; crossings
+    Top-10 gains above 20%, strong gains, and historical stretch boost the score; crossings
     penalize it. The final score sets leverage from 1x to 5x.
 
     Use dynamic position sizing with a stop above the lower high. Scale initial
@@ -49,9 +49,9 @@ class TopGainerShort:
     LOWER_HIGH_STOP_BUFFER_PCT = 2.0
     RISK_BUDGET_STOP_BUFFER_PCT = 0.25
     TRAILING_PROFIT_PCT = 4.5
-    TRAILING_DEVIATION_PCT = 3.0
 
     TOP_GAINER_RANK_LIMIT = 10
+    MIN_TOP_GAINER_GAIN_PCT = 20.0
     MAX_WATCH_SNAPSHOT_GAP_SECONDS = 90 * 60
     STRONG_GAIN_THRESHOLD_PCT = 20.0
     HIGHER_LOW_LOOKBACK_SAMPLES = 40
@@ -133,7 +133,11 @@ class TopGainerShort:
             ),
             None,
         )
-        if current_entry is None:
+        if (
+            current_entry is None
+            or not isfinite(current_entry[1])
+            or current_entry[1] <= self.MIN_TOP_GAINER_GAIN_PCT
+        ):
             return None
 
         latest_timestamp = timestamp_sort_key(latest_snapshot.recorded_at)
@@ -373,6 +377,12 @@ class TopGainerShort:
         if not isfinite(lower_high_price) or current_price >= lower_high_price:
             logging.info("%s skipped: lower_high_already_reclaimed", self.ALGO)
             return
+        # Use the latest confirmed swing peak for the stop and half its entry-distance percentage for trailing deviation.
+        trailing_deviation_pct = float(
+            (
+                (Decimal(str(lower_high_price)) / Decimal(str(current_price)) - 1) * 50
+            ).quantize(Decimal("0.0001"), rounding=ROUND_CEILING)
+        )
         # Round upward to keep the short stop outside the pattern.
         stop_price = (
             Decimal(str(lower_high_price))
@@ -474,7 +484,7 @@ class TopGainerShort:
             "stop_loss_pct": stop_loss_pct,
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
-            "trailing_deviation_pct": self.TRAILING_DEVIATION_PCT,
+            "trailing_deviation_pct": trailing_deviation_pct,
             "protective_exit": "dynamic_position_sizing",
             **(breadth_context if breadth_context is not None else {}),
             **(btc_context if btc_context is not None else {}),
@@ -498,7 +508,7 @@ class TopGainerShort:
                 stop_loss=stop_loss_pct,
                 take_profit=self.TRAILING_PROFIT_PCT,
                 trailing=True,
-                trailing_deviation=self.TRAILING_DEVIATION_PCT,
+                trailing_deviation=trailing_deviation_pct,
                 trailing_profit=self.TRAILING_PROFIT_PCT,
                 recovery_params=None,
             ),
@@ -540,7 +550,7 @@ class TopGainerShort:
             f"- Top-gainer rank / 24h move: {top_gainer_watch['top_gainer_rank']} / {round_numbers(top_gainer_watch['top_gainer_price_change_24h_pct'], 2)}%\n"
             f"- Continuous top-10 watch: {round_numbers(top_gainer_watch['top_gainer_watch_hours'], 2)}h; maximum 24h gain: {round_numbers(top_gainer_watch['top_gainer_watch_max_gain_24h_pct'], 2)}%"
             if top_gainer_watch is not None
-            else "- Top-gainer context: no fresh top-10 membership"
+            else f"- Top-gainer context: no fresh top-10 membership above {self.MIN_TOP_GAINER_GAIN_PCT}%"
         )
         breadth_line = (
             f"- Breadth higher low confirmed: {round_numbers(breadth_context['breadth_higher_low_first_trough'], 4)} -> {round_numbers(breadth_context['breadth_higher_low_second_trough'], 4)}; latest index: {round_numbers(breadth_context['breadth_latest'], 4)}"
@@ -556,7 +566,7 @@ class TopGainerShort:
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
-            - Rule intent: SHORT when price confirms a lower high and BTC or the breadth index has a confirmed higher low; current top-10 gainers receive a score bonus
+            - Rule intent: SHORT when price confirms a lower high and BTC or the breadth index has a confirmed higher low; current top-10 gainers above {self.MIN_TOP_GAINER_GAIN_PCT}% receive a score bonus
             {top_gainer_lines}
             - Top-gainer score bonus: +{top_gainer_score}
             - Strong-gainer threshold (>= {self.STRONG_GAIN_THRESHOLD_PCT}%): {"Yes" if strong_gainer else "No"}
@@ -572,7 +582,7 @@ class TopGainerShort:
             - Initial reduction threshold: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
             - Position sizing: default 25% reduction at stop threshold / increase at {self.TRAILING_PROFIT_PCT}% profit; repeats with thresholds reset after fills
             - Stop behavior: dynamic sizing replaces full stop; no reversal position
-            - Trailing fallback: arms after {self.TRAILING_PROFIT_PCT}% profit with {self.TRAILING_DEVIATION_PCT}% deviation
+            - Trailing fallback: arms after {self.TRAILING_PROFIT_PCT}% profit with {trailing_deviation_pct}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}
             - Futures leverage: {futures_leverage}x (score range {round_numbers(self.MIN_SCORE, 4)}–{self.MAX_SCORE})
