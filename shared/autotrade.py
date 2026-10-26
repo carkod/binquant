@@ -226,7 +226,6 @@ class Autotrade:
         # and because there is no matching engine endpoint to get market qty
         # So deal base_order should update this to the correct amount
         create_func = self.binbot_api.create_bot
-        activate_func = self.binbot_api.activate_bot
         errors_func = self.binbot_api.submit_bot_event_logs
 
         if self.default_bot.position == Position.short:
@@ -262,7 +261,7 @@ class Autotrade:
         # Activate bot
         created_bot = self._response_bot(create_bot)
         bot_id = str(created_bot.id)
-        bot = BotResponse.model_validate(activate_func(bot_id))
+        bot = BotResponse.model_validate(self.binbot_api.activate_bot(bot_id))
 
         if bot.error > 0:
             message = bot.message
@@ -277,8 +276,6 @@ class Autotrade:
             )
             if not terminal_entry_rejection:
                 errors_func(bot_id, message)
-            if self.default_bot.position == Position.short:
-                self.binbot_api.clean_margin_short(self.default_bot.pair)
             if not terminal_entry_rejection:
                 try:
                     self.binbot_api.deactivate_bot(
