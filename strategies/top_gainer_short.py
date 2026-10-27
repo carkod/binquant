@@ -37,7 +37,7 @@ class TopGainerShort:
     Top-10 gains above 20%, strong gains, and historical stretch boost the score; crossings
     penalize it. The final score sets leverage from 1x to 5x.
 
-    Use dynamic position sizing with a stop above the lower high.
+    Use a full-position stop above the lower high without dynamic position sizing.
     Open-interest context sets initial margin without stop-distance scaling.
     Autotrade runs in staging and production, with recovery disabled.
     """
@@ -484,7 +484,7 @@ class TopGainerShort:
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
             "trailing_deviation_pct": trailing_deviation_pct,
-            "protective_exit": "dynamic_position_sizing",
+            "protective_exit": "full_stop_loss",
             **(breadth_context if breadth_context is not None else {}),
             **(btc_context if btc_context is not None else {}),
         }
@@ -501,7 +501,7 @@ class TopGainerShort:
                 market_type=MarketType.FUTURES,
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=False,
-                dynamic_position_sizing=True,
+                dynamic_position_sizing=False,
                 fiat_order_size=fiat_order_size,
                 futures_leverage=futures_leverage,
                 stop_loss=stop_loss_pct,
@@ -554,8 +554,8 @@ class TopGainerShort:
             - Initial margin: {fiat_order_size} {quote_asset}
             - Current-price crossings over 6h: {crossings}; rejected at {CHOP_CROSSING_THRESHOLD}+; score penalty: {CHOP_CROSSING_SCORE_PENALTY} per crossing
             - Initial reduction threshold: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
-            - Position sizing: default 25% reduction at stop threshold / increase at {self.TRAILING_PROFIT_PCT}% profit; repeats with thresholds reset after fills
-            - Stop behavior: dynamic sizing replaces full stop; no reversal position
+            - Position sizing: fixed after entry; no automatic reductions or increases
+            - Stop behavior: full-position stop above the lower high; no reversal position
             - Trailing fallback: arms after {self.TRAILING_PROFIT_PCT}% profit with {trailing_deviation_pct}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}

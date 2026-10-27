@@ -284,7 +284,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.bot_params.position == "short"
     assert value.bot_params.stop_loss == 2.7556
     assert value.bot_params.dynamic_trailing is False
-    assert value.bot_params.dynamic_position_sizing is True
+    assert value.bot_params.dynamic_position_sizing is False
     assert value.bot_params.take_profit == 4.5
     assert value.bot_params.trailing is True
     assert value.bot_params.trailing_profit == 4.5
@@ -314,10 +314,9 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["stop_loss_source"] == "lower_high"
     assert indicators["lower_high_stop_buffer_pct"] == 2.0
     assert indicators["stop_loss_price_at_signal"] == 138.72
-    assert indicators["protective_exit"] == "dynamic_position_sizing"
-    assert "default 25% reduction" in msg
-    assert "increase at 4.5% profit" in msg
-    assert "dynamic sizing replaces full stop" in msg
+    assert indicators["protective_exit"] == "full_stop_loss"
+    assert "no automatic reductions or increases" in msg
+    assert "full-position stop above the lower high" in msg
     assert value.score == 3.5
     context.regime_telegram_lines.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
@@ -364,7 +363,7 @@ async def test_peak_based_stop_preserves_open_interest_margin_without_risk_clamp
     params = value.bot_params
     assert params.fiat_order_size == expected_margin
     assert params.stop_loss == 2.7556
-    assert params.dynamic_position_sizing is True
+    assert params.dynamic_position_sizing is False
     assert params.take_profit == 4.5
     assert (
         "stop_risk_sizing"
