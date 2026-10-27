@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-SCORING_VERSION = "dark_knight_v1"
+SCORING_VERSION = "dark_knight_v2"
 # Lower bound, proposed leverage, descriptive quality tier.
 LEVERAGE_TIERS = (
     (80, 5, "exceptional"),
@@ -89,6 +89,39 @@ def swing_positions(values: list[float], *, high: bool) -> list[int]:
     ]
 
 
+def breadth_crossings_six_hours(
+    samples: list[tuple[float, float]], *, now_seconds: float
+) -> int | None:
+    """Count side changes around the latest breadth value over 24 prior samples."""
+    if len(samples) < 25:
+        return None
+    window = sorted(samples, key=lambda sample: sample[0])[-25:]
+    latest_timestamp, current_value = window[-1]
+    if (
+        not isfinite(current_value)
+        or not 0 <= now_seconds - latest_timestamp <= 30 * 60
+        or not 5 * 3600 + 45 * 60
+        <= latest_timestamp - window[0][0]
+        <= 6 * 3600 + 15 * 60
+        or any(not isfinite(stamp) or not isfinite(value) for stamp, value in window)
+        or any(
+            not 0 < later[0] - earlier[0] <= 30 * 60
+            for earlier, later in zip(window, window[1:], strict=False)
+        )
+    ):
+        return None
+
+    previous_side = 0
+    crossings = 0
+    for _, value in window[:-1]:
+        side = 1 if value > current_value else -1 if value < current_value else 0
+        if previous_side and side and side != previous_side:
+            crossings += 1
+        if side:
+            previous_side = side
+    return crossings
+
+
 def score_short_setup(
     frame: DataFrame,
     *,
@@ -98,7 +131,6 @@ def score_short_setup(
     btc: DataFrame | None,
     hourly: DataFrame | None,
     daily: DataFrame | None,
-    top_gainer_gain_pct: float | None,
     micro_direction: str | None,
     crossings: int,
 ) -> dict[str, Any]:
@@ -202,11 +234,9 @@ def score_short_setup(
         )
     timeframe = 10 * hourly_bearish + 5 * (micro_direction == "DOWN")
 
-    # Correlated extension evidence shares a single 15-point budget.
+    # Daily candles provide the extension evidence.
     extension = 0.0
     daily_extension = None
-    if top_gainer_gain_pct is not None:
-        extension += 5 + 5 * min(1.0, max(0.0, top_gainer_gain_pct) / 20)
     if daily is not None:
         # The last 7 days are excluded from the historical baseline.
         baseline = float(daily.close.iloc[:-7].median())
@@ -256,7 +286,6 @@ def score_short_setup(
         "underperformance_atr": underperformance_atr,
         "hourly_bearish_structure": hourly_bearish,
         "microregime_directional": micro_direction,
-        "top_gainer_gain_pct": top_gainer_gain_pct,
         "daily_extension_pct": daily_extension,
         "late_entry_atr": late_entry_atr,
         "next_support": next_support,
@@ -327,6 +356,7 @@ class DarkKnight:
             self.ti.df_btc_15m, now_ms=now * 1000, interval_ms=900_000, bars=40
         )
         btc_pattern = None
+        btc_crossings = None
         if btc is not None:
             btc_pattern = confirmed_higher_low(
                 [
@@ -339,8 +369,15 @@ class DarkKnight:
                 max_age_seconds=1800,
                 max_gap_seconds=900,
             )
+            btc_crossings = price_crossings_six_hours(
+                btc,
+                float(btc.close.iloc[-1]),
+                now_ms=now * 1000,
+                interval_ms=900_000,
+            )
         breadth = self.ti.market_breadth_data
         breadth_pattern = None
+        breadth_crossings = None
         if breadth is not None and len(breadth.timestamp) == len(
             breadth.market_breadth
         ):
@@ -351,15 +388,28 @@ class DarkKnight:
                 )
             ]
             if all(stamp is not None for stamp, _ in samples):
+                breadth_samples = [
+                    (stamp, value) for stamp, value in samples if stamp is not None
+                ]
                 breadth_pattern = confirmed_higher_low(
-                    [(stamp, value) for stamp, value in samples if stamp is not None],
+                    breadth_samples,
                     now_seconds=now,
                     lookback_samples=40,
                     fractal_wing=2,
                     max_age_seconds=1800,
                     max_gap_seconds=1800,
                 )
+                breadth_crossings = breadth_crossings_six_hours(
+                    breadth_samples, now_seconds=now
+                )
         if btc_pattern is None and breadth_pattern is None:
+            return
+        if (
+            btc_crossings is not None
+            and btc_crossings >= CHOP_CROSSING_THRESHOLD
+            and breadth_crossings is not None
+            and breadth_crossings >= CHOP_CROSSING_THRESHOLD
+        ):
             return
         crossings = price_crossings_six_hours(
             frame, current_price, now_ms=now * 1000, interval_ms=900_000
@@ -373,25 +423,6 @@ class DarkKnight:
         daily = completed_ohlcv(
             self.ti.df_1d, now_ms=now * 1000, interval_ms=86_400_000, bars=21
         )
-        top_gainer_gain = None
-        snapshots = self.ti.gainers_losers_series
-        if snapshots:
-            latest = max(
-                snapshots,
-                key=lambda snapshot: timestamp_sort_key(snapshot.recorded_at) or 0,
-            )
-            stamp = timestamp_sort_key(latest.recorded_at)
-            if stamp is not None and 0 <= now - stamp <= 75 * 60:
-                top_gainer_gain = next(
-                    (
-                        entry.price_change_percent
-                        for entry in latest.top_gainers[:10]
-                        if entry.symbol == self.ti.symbol
-                        and isfinite(entry.price_change_percent)
-                    ),
-                    None,
-                )
-
         peaks = swing_positions([float(value) for value in frame.high], high=True)
         earlier_peak, later_peak = peaks[-2:]
         indicators: dict[str, Any] = score_short_setup(
@@ -402,7 +433,6 @@ class DarkKnight:
             btc=btc,
             hourly=hourly,
             daily=daily,
-            top_gainer_gain_pct=top_gainer_gain,
             micro_direction=self.ti.microregime_directional,
             crossings=crossings,
         )
@@ -427,6 +457,8 @@ class DarkKnight:
                 "lower_high_second_peak": pattern["later_high"],
                 "lower_high_drop_pct": pattern["drop_pct"],
                 "breadth_higher_low": breadth_pattern,
+                "btc_crossings_six_hours": btc_crossings,
+                "breadth_crossings_six_hours": breadth_crossings,
                 "btc_higher_low": btc_pattern,
                 "price_crossings_six_hours": crossings,
                 "stop_loss_price_at_signal": float(stop),
@@ -484,6 +516,7 @@ class DarkKnight:
             - Quality score: {indicators["quality_score"]}/100 ({indicators["quality_tier"]}); heuristic, not probability
             - Components: {components}
             - Penalties: chop {indicators["score_penalties"]["chop"]:g}, late entry {indicators["score_penalties"]["late_entry"]:g}
+            - Six-hour crossings: coin {crossings}, BTC {btc_crossings if btc_crossings is not None else "unknown"}, breadth {breadth_crossings if breadth_crossings is not None else "unknown"}
             - Proposed futures leverage: {leverage}x
             - Entry evidence: {indicators["entry_reason"]}
             - Downside room to support: {room_text}; not a return forecast

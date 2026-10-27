@@ -6,10 +6,12 @@ Telegram observations. **It never calls autotrading**, in any environment;
 `bot_params.futures_leverage` is a proposal for calibration, not an executed trade.
 The existing Top Gainer Short score and execution logic are not reused or changed.
 
-The initial `dark_knight_v1` score is a heuristic quality measure from 0 to 100,
+The `dark_knight_v2` score is a heuristic quality measure from 0 to 100,
 not a probability or a score directly comparable to other strategies. It retains
 the fresh confirmed lower-high trigger, BTC-or-breadth higher-low confirmation,
-and rejection at three six-hour price crossings. It does not wait for a later
+and rejection at three six-hour coin-price crossings. BTC and market breadth
+also have six-hour crossing counts; their chop gate rejects only when both
+counts reach three. It does not wait for a later
 retest or revisit a pattern on subsequent candles. More confirmation can earn
 points when already present in the two candles after the second peak.
 
@@ -19,7 +21,7 @@ points when already present in the two candles after the second peak.
 | Selling pressure | 20 | Bearish body / ATR, capped at 1, times close location gives up to 10; bearish volume relative to the prior 20-bar median gives another 10 at 2x volume. |
 | Relative weakness | 20 | Aligned one-hour coin return is negative while BTC is positive; 20 points at 2 ATR-equivalents of underperformance. |
 | Timeframe agreement | 15 | 10 for hourly lower highs and lower lows; 5 for `ContextEvaluator.microregime_directional == DOWN`. |
-| Prior extension | 15 | 5 for fresh top-10 membership, up to 5 for a 20% gain, up to 5 for a second peak 100% above the median of 14 daily closes preceding the last 7 completed days. |
+| Prior extension | 5 | Up to 5 for a second peak 100% above the median of 14 daily closes preceding the last 7 completed days. Top-gainer rank is not used. |
 
 ATR is the simple mean of the last 14 completed true ranges. Each six-hour
 crossing subtracts 5 points. Entry more than 2 ATR below the intervening support

@@ -1,4 +1,3 @@
-from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
@@ -9,6 +8,7 @@ import pytest
 
 from strategies.dark_knight import (
     DarkKnight,
+    breadth_crossings_six_hours,
     completed_ohlcv,
     leverage_tier,
     score_short_setup,
@@ -56,7 +56,6 @@ def evidence(frame=None, **kwargs):
         "btc": None,
         "hourly": None,
         "daily": None,
-        "top_gainer_gain_pct": None,
         "micro_direction": None,
         "crossings": 0,
     }
@@ -163,10 +162,10 @@ def test_absent_lower_support_is_unknown_not_invented_target():
 
 
 def test_chop_and_late_entry_reduce_quality_without_exceeding_bounds():
-    base = evidence(top_gainer_gain_pct=25)
-    chopped = evidence(top_gainer_gain_pct=25, crossings=2)
+    base = evidence()
+    chopped = evidence(crossings=2)
     assert chopped["quality_score"] == pytest.approx(base["quality_score"] - 10)
-    late = evidence(current_price=100, top_gainer_gain_pct=25)
+    late = evidence(current_price=100)
     assert late["score_penalties"]["late_entry"] == 15
     assert 0 <= late["quality_score"] < base["quality_score"] <= 100
 
@@ -181,15 +180,25 @@ def test_missing_optional_evidence_is_zero_points_not_rescaled():
     )
 
 
-def test_extension_signals_share_fifteen_point_cap():
+def test_daily_extension_has_five_point_cap():
     daily = frame_with_volume().tail(21).copy()
     daily["close"] = 50.0
-    result = evidence(daily=daily, top_gainer_gain_pct=500)
-    assert result["score_components"]["prior_extension"] == 15
+    result = evidence(daily=daily)
+    assert result["score_components"]["prior_extension"] == 5
     daily.loc[daily.index[-7:], "close"] = 10000.0
+    assert evidence(daily=daily)["daily_extension_pct"] == result["daily_extension_pct"]
+
+
+def test_breadth_crossings_count_signed_values_over_six_hours():
+    latest = NOW.timestamp() - 5 * 60
+    samples = [
+        (latest - (24 - index) * 15 * 60, -1.0 if index % 2 == 0 else 1.0)
+        for index in range(24)
+    ] + [(latest, 0.0)]
+
+    assert breadth_crossings_six_hours(samples, now_seconds=NOW.timestamp()) == 23
     assert (
-        evidence(daily=daily, top_gainer_gain_pct=500)["daily_extension_pct"]
-        == result["daily_extension_pct"]
+        breadth_crossings_six_hours(samples[:23], now_seconds=NOW.timestamp()) is None
     )
 
 
@@ -267,6 +276,7 @@ async def test_persists_proposed_leverage_and_never_requests_autotrade(environme
     message = ctx.telegram_consumer.dispatch_signal.await_args.args[0]
     assert "#dark_knight algorithm" in message
     assert "Proposed futures leverage" in message
+    assert "Six-hour crossings: coin" in message
     assert "calibration observations only" in message
 
 
@@ -322,12 +332,44 @@ async def test_no_btc_or_breadth_higher_low_blocks_observation():
 
 
 @pytest.mark.asyncio
-async def test_stale_gainer_snapshot_cannot_add_extension_points():
+async def test_fresh_top_gainer_rank_does_not_change_dark_knight_quality():
     ctx = context()
-    ctx.gainers_losers_series = make_top_gainers(recorded_at=NOW - timedelta(hours=2))
+    ctx.gainers_losers_series = make_top_gainers(recorded_at=NOW)
     await DarkKnight(cast(Any, ctx)).signal(135, 140, 132, 120)
     result = ctx.dispatch_signal_record.await_args.kwargs["indicators"]
     assert result["score_components"]["prior_extension"] == 0
+    assert "top_gainer_gain_pct" not in result
+    assert result["scoring_version"] == "dark_knight_v2"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "btc_crossings,breadth_crossings,emits",
+    [(3, 3, False), (2, 3, True), (3, 2, True), (None, 3, True), (3, None, True)],
+)
+async def test_only_joint_btc_and_breadth_chop_blocks_observation(
+    monkeypatch, btc_crossings, breadth_crossings, emits
+):
+    ctx = context()
+    ctx.df_btc_15m = frame_with_volume()
+    monkeypatch.setattr(
+        "strategies.dark_knight.price_crossings_six_hours",
+        lambda df, price, **kwargs: 0 if price == 135 else btc_crossings,
+    )
+    monkeypatch.setattr(
+        "strategies.dark_knight.breadth_crossings_six_hours",
+        lambda samples, **kwargs: breadth_crossings,
+    )
+
+    await DarkKnight(cast(Any, ctx)).signal(135, 140, 132, 120)
+
+    if emits:
+        ctx.dispatch_signal_record.assert_awaited_once()
+        indicators = ctx.dispatch_signal_record.await_args.kwargs["indicators"]
+        assert indicators["btc_crossings_six_hours"] == btc_crossings
+        assert indicators["breadth_crossings_six_hours"] == breadth_crossings
+    else:
+        ctx.dispatch_signal_record.assert_not_awaited()
 
 
 def test_hourly_lower_highs_and_lower_lows_add_timeframe_agreement():
