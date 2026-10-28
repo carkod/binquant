@@ -1128,6 +1128,54 @@ class TestAutotradeConsumer:
         self.mock_binbot_api.delete_bot.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("terminal_rejection", [False, True])
+    async def test_failed_futures_short_entry_never_calls_margin_cleanup(
+        self, terminal_rejection
+    ):
+        settings = make_autotrade_settings(
+            exchange_id=ExchangeId.KUCOIN, autoswitch=False
+        )
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM", position=Position.short, market_type=MarketType.FUTURES
+            ),
+        )
+        message = (
+            "Entry rejected: market data unavailable."
+            if terminal_rejection
+            else "activation failed"
+        )
+        self.mock_binbot_api.activate_bot.return_value = BotResponse(
+            error=1,
+            message=message,
+            data=BotModel(id=BOT_ID, pair="BTCUSDTM", status=Status.error),
+        )
+        self.mock_binbot_api.clean_margin_short.side_effect = RuntimeError(
+            "cleanup must not run"
+        )
+        with patch("shared.autotrade.KucoinApi", return_value=MagicMock()):
+            autotrade = Autotrade(
+                pair="BTCUSDTM",
+                settings=settings,
+                algorithm_name="top_gainer_short",
+                binbot_api=self.mock_binbot_api,
+            )
+        with (
+            patch.object(Autotrade, "_get_initial_price", return_value=100),
+            pytest.raises(AutotradeError, match=message),
+        ):
+            await autotrade.activate_autotrade(signal)
+        self.mock_binbot_api.clean_margin_short.assert_not_called()
+        if terminal_rejection:
+            self.mock_binbot_api.deactivate_bot.assert_not_called()
+        else:
+            self.mock_binbot_api.deactivate_bot.assert_called_once_with(
+                BOT_ID, algorithmic_close=True
+            )
+
+    @pytest.mark.asyncio
     async def test_activate_autotrade_enables_bounded_recovery_for_autoswitch(self):
         settings = make_autotrade_settings(exchange_id=ExchangeId.KUCOIN)
         signal = SignalsConsumer(

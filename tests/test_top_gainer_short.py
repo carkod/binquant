@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -153,7 +152,7 @@ def make_top_gainers(
     symbol_rank: int | None = 4,
     recorded_at: datetime | None = None,
     snapshot_count: int = 7,
-    price_change_percent: float = 18.5,
+    price_change_percent: float = 23.0,
 ) -> list[GainersLosersSnapshot]:
     latest_at = recorded_at or NOW - timedelta(minutes=5)
     snapshots = []
@@ -285,11 +284,11 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.bot_params.position == "short"
     assert value.bot_params.stop_loss == 2.7556
     assert value.bot_params.dynamic_trailing is False
-    assert value.bot_params.dynamic_position_sizing is True
+    assert value.bot_params.dynamic_position_sizing is False
     assert value.bot_params.take_profit == 4.5
     assert value.bot_params.trailing is True
     assert value.bot_params.trailing_profit == 4.5
-    assert value.bot_params.trailing_deviation == 3.0
+    assert value.bot_params.trailing_deviation == 0.3704
     assert value.bot_params.recovery_params is None
     assert value.bot_params.recovery_params is None
     assert "recovery_params" in value.bot_params.model_fields_set
@@ -297,7 +296,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["top_gainer_watch_hours"] == 6.0
     assert indicators["current_top_gainer"] is True
     assert indicators["top_gainer_score_bonus"] == 2.0
-    assert indicators["strong_gainer"] is False
+    assert indicators["strong_gainer"] is True
     assert indicators["breadth_higher_low_confirmed"] is True
     assert indicators["breadth_higher_low_first_trough"] == -0.5
     assert indicators["breadth_higher_low_second_trough"] == -0.3
@@ -315,11 +314,10 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["stop_loss_source"] == "lower_high"
     assert indicators["lower_high_stop_buffer_pct"] == 2.0
     assert indicators["stop_loss_price_at_signal"] == 138.72
-    assert indicators["protective_exit"] == "dynamic_position_sizing"
-    assert "default 25% reduction" in msg
-    assert "increase at 4.5% profit" in msg
-    assert "dynamic sizing replaces full stop" in msg
-    assert value.score == 3.0
+    assert indicators["protective_exit"] == "full_stop_loss"
+    assert "no automatic reductions or increases" in msg
+    assert "full-position stop above the lower high" in msg
+    assert value.score == 3.5
     context.regime_telegram_lines.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
@@ -328,14 +326,14 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
 @pytest.mark.parametrize(
     "state,oi_change,original_margin,expected_margin",
     [
-        ("NEW_LEVERAGE_SHORT", 0.02, 8.0, 2.88169545),
-        ("NEW_LEVERAGE_SHORT", 0.005, 6.0, 2.16127159),
-        ("NEW_LEVERAGE_LONG", 0.005, 3.0, 1.08063579),
-        ("NEW_LEVERAGE_LONG", 0.02, 2.0, 0.72042386),
-        (None, None, 4.0, 1.44084772),
+        ("NEW_LEVERAGE_SHORT", 0.02, 8.0, 8.0),
+        ("NEW_LEVERAGE_SHORT", 0.005, 6.0, 6.0),
+        ("NEW_LEVERAGE_LONG", 0.005, 3.0, 3.0),
+        ("NEW_LEVERAGE_LONG", 0.02, 2.0, 2.0),
+        (None, None, 4.0, 4.0),
     ],
 )
-async def test_wider_stop_preserves_prior_loss_budget_after_open_interest_sizing(
+async def test_peak_based_stop_preserves_open_interest_margin_without_risk_clamp(
     state, oi_change, original_margin, expected_margin
 ):
     context = make_context(environment="staging")
@@ -365,21 +363,12 @@ async def test_wider_stop_preserves_prior_loss_budget_after_open_interest_sizing
     params = value.bot_params
     assert params.fiat_order_size == expected_margin
     assert params.stop_loss == 2.7556
-    assert params.dynamic_position_sizing is True
+    assert params.dynamic_position_sizing is False
     assert params.take_profit == 4.5
-    # Same entry price, multiplier and symbol leverage cancel from the ratio.
-    old_budget = Decimal(str(original_margin)) * Decimal("0.9926")
-    new_budget = Decimal(str(params.fiat_order_size)) * Decimal(str(params.stop_loss))
-    assert new_budget <= old_budget
-    assert new_budget == pytest.approx(old_budget, abs=Decimal("0.0000001"))
-    sizing = context.dispatch_signal_record.await_args.kwargs["indicators"][
+    assert (
         "stop_risk_sizing"
-    ]
-    assert sizing["margin_before"] == original_margin
-    assert sizing["margin_after"] == expected_margin
-    assert sizing["reference_stop_pct"] == 0.9926
-    assert sizing["reference_stop_buffer_pct"] == 0.25
-    assert 0 < sizing["margin_multiplier"] < 1
+        not in context.dispatch_signal_record.await_args.kwargs["indicators"]
+    )
     if value.open_interest_sizing is not None:
         # OI evidence retains its intermediate sizing decision.
         assert value.open_interest_sizing.adjusted_margin == original_margin
@@ -443,7 +432,7 @@ async def test_signal_uses_lower_high_stop_without_hourly_candles() -> None:
     assert (
         "Initial reduction threshold: 2.0% above lower high at 138.72 (2.7556%)" in msg
     )
-    assert "Trailing fallback: arms after 4.5% profit with 3.0% deviation" in msg
+    assert "Trailing fallback: arms after 4.5% profit with 0.3704% deviation" in msg
     assert "Autotrade: enabled" in msg
 
 
@@ -547,7 +536,7 @@ async def test_breadth_confirmation_passes_without_btc_higher_low_or_score_chang
     await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
-    assert value.score == 3.0
+    assert value.score == 3.5
 
 
 @pytest.mark.parametrize("offset", [0.0, 0.5, 0.6])
@@ -671,7 +660,7 @@ async def test_current_top_gainer_scores_considerably_above_same_unranked_setup(
 
     ranked_signal = ranked.dispatch_signal_record.await_args.kwargs["value"]
     unranked_signal = unranked.dispatch_signal_record.await_args.kwargs["value"]
-    assert ranked_signal.score - unranked_signal.score == 2.0
+    assert ranked_signal.score - unranked_signal.score == 2.5
 
 
 @pytest.mark.asyncio
@@ -688,7 +677,7 @@ async def test_top_gainer_bonus_does_not_require_six_hour_watch(
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert value.score == 3.0
+    assert value.score == 3.5
     assert indicators["top_gainer_watch_hours"] == snapshot_count - 1
     assert indicators["top_gainer_score_bonus"] == 2.0
     msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
@@ -926,7 +915,7 @@ async def test_chop_gate_penalizes_crossings_and_rejects_at_three(
     assert indicators["price_crossings_six_hours"] == crossings
     assert indicators["chop_crossing_threshold"] == CHOP_CROSSING_THRESHOLD == 3
     assert indicators["chop_score_penalty"] == expected_penalty
-    assert value.score == round(3.0 - expected_penalty, 4)
+    assert value.score == round(3.5 - expected_penalty, 4)
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
 
 
@@ -1134,7 +1123,7 @@ async def test_signal_passes_if_either_btc_or_breadth_has_confirmed_higher_low(
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert indicators["breadth_higher_low_confirmed"] is breadth_confirmed
     assert indicators["btc_higher_low_confirmed"] is btc_confirmed
-    assert context.dispatch_signal_record.await_args.kwargs["value"].score == 3
+    assert context.dispatch_signal_record.await_args.kwargs["value"].score == 3.5
     msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
     assert "BTC or the breadth index has a confirmed higher low" in msg
     if btc_confirmed:
@@ -1257,3 +1246,45 @@ async def test_btc_higher_low_does_not_bypass_the_symbol_lower_high_trigger():
     )
     await TopGainerShort(cast(Any, context)).signal(135, 95, 92, 87)
     context.dispatch_signal_record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "gain,qualifies", [(18.5, False), (20.0, False), (20.0001, True)]
+)
+async def test_top_gainer_bonus_requires_latest_gain_strictly_above_twenty_percent(
+    gain, qualifies
+):
+    gainers = make_top_gainers(price_change_percent=30.0)
+    gainers[0].top_gainers[3].price_change_percent = gain
+    context = make_context(gainers=gainers)
+    await TopGainerShort(cast(Any, context)).signal(135.0, 140.0, 132.0, 120.0)
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    assert indicators["current_top_gainer"] is qualifies
+    assert indicators["top_gainer_score_bonus"] == (2.0 if qualifies else 0.0)
+    assert value.score == (3.5 if qualifies else 1.0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("peak,expected", [(136.0, 0.3704), (137.0, 0.7408)])
+async def test_trailing_deviation_is_half_the_unbuffered_latest_swing_peak_distance(
+    monkeypatch, peak, expected
+):
+    context = make_context()
+    strategy = TopGainerShort(cast(Any, context))
+    pattern = strategy._fresh_lower_high()
+    assert pattern is not None
+    pattern["later_high"] = peak
+    monkeypatch.setattr(strategy, "_fresh_lower_high", lambda: pattern)
+    await strategy.signal(135.0, 140.0, 132.0, 120.0)
+    value = context.dispatch_signal_record.await_args.kwargs["value"]
+    indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
+    assert value.bot_params.trailing_deviation == expected
+    assert indicators["trailing_deviation_pct"] == expected
+    assert indicators["stop_loss_price_at_signal"] == pytest.approx(peak * 1.02)
+    assert value.bot_params.stop_loss == indicators["stop_loss_pct"]
+    assert (
+        f"with {expected}% deviation"
+        in context.telegram_consumer.dispatch_signal.await_args.args[0]
+    )
