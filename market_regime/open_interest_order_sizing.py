@@ -25,7 +25,6 @@ OI_SIZED_STRATEGIES = frozenset(
         "coinrule_price_tracker",
         "failed_spike_fade",
         "liquidation_sweep_pump",
-        "relative_strength_impulse_rider",
         "top_gainer_short",
         "top_gainer_early_momentum",
         "top_loser_early_momentum",
