@@ -24,6 +24,7 @@ from pybinbot.shared.price_crossings import (
 
 from market_regime.models import DerivativesPositioningFeatures
 from market_regime.open_interest_order_sizing import apply_open_interest_sizing
+from shared.order_book_liquidity import LiquidityAssessment
 from strategies.top_gainer_short import TopGainerShort
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
@@ -236,6 +237,9 @@ def make_context(
         latest_market_context=None,
         regime_telegram_lines=Mock(return_value="- Regime measures: test"),
         finalize_signal_bot_params=Mock(),
+        assess_futures_liquidity=AsyncMock(
+            return_value=LiquidityAssessment(True, "sufficient_depth")
+        ),
         dispatch_signal_record=AsyncMock(),
     )
 

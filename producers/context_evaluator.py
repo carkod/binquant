@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import logging
-from asyncio import timeout
+from asyncio import timeout, to_thread
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from time import time
+from time import monotonic, time
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from numpy import isnan
 from numpy import log as logarithm
 from numpy import nan
 from pandas import DataFrame, Series, to_numeric
+from kucoin_universal_sdk.generate.futures.market import (
+    GetPartOrderBookReqBuilder,
+    GetPartOrderBookResp,
+)
 from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
     BinanceApi,
@@ -39,13 +43,10 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import LiveMarketContext
-from market_regime.open_interest_order_sizing import (
-    OI_SIZED_STRATEGIES,
-    apply_open_interest_sizing,
-)
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.macroregime_directional_notifier import MacroregimeDirectionalNotifier
+from shared.order_book_liquidity import LiquidityAssessment, assess_futures_order_book
 from shared.utils import format_context_timestamp_line
 from strategies.higher_low_pattern import HigherLowPattern
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
@@ -62,6 +63,8 @@ if TYPE_CHECKING:
 
 class ContextEvaluator:
     SIGNAL_PERSISTENCE_TIMEOUT_SECONDS = 2.0
+    ORDER_BOOK_TIMEOUT_SECONDS = 3.0
+    ORDER_BOOK_CACHE_SECONDS = 2.0
     REGIME_WINDOW_BARS = 96
     REGIME_MINIMUM_BARS = 96
     DIRECTIONAL_EFFICIENCY_THRESHOLD = 0.35
@@ -165,6 +168,50 @@ class ContextEvaluator:
         )
         self._breadth_cross_tolerance = 0.05
         self._autotrade_stress_threshold = 0.35
+        self._liquidity_book: GetPartOrderBookResp | None = None
+        self._liquidity_checked_at = float("-inf")
+
+    async def assess_futures_liquidity(
+        self, position_notional: float
+    ) -> LiquidityAssessment:
+        """Fetch only for viable entries; share a brief snapshot across strategies."""
+        if (
+            self.exchange != ExchangeId.KUCOIN
+            or self.market_type != MarketType.FUTURES
+            or self.current_symbol_data.quote_asset != "USDT"
+            or not isinstance(self.api, KucoinFutures)
+        ):
+            return LiquidityAssessment(False, "unsupported_liquidity_market")
+        if monotonic() - self._liquidity_checked_at >= self.ORDER_BOOK_CACHE_SECONDS:
+            self._liquidity_book = None
+            request = (
+                GetPartOrderBookReqBuilder()
+                .set_symbol(self.symbol)
+                .set_size("100")
+                .build()
+            )
+            try:
+                async with timeout(self.ORDER_BOOK_TIMEOUT_SECONDS):
+                    self._liquidity_book = await to_thread(
+                        self.api.futures_market_api.get_part_order_book, request
+                    )
+            except Exception:
+                logging.warning(
+                    "Order book unavailable for %s; entry liquidity gate closed",
+                    self.symbol,
+                    exc_info=True,
+                )
+            finally:
+                self._liquidity_checked_at = monotonic()
+        if self._liquidity_book is None:
+            return LiquidityAssessment(False, "order_book_unavailable")
+        return assess_futures_order_book(
+            self._liquidity_book,
+            symbol=self.symbol,
+            multiplier=self.current_symbol_data.multiplier,
+            position_notional=position_notional,
+            now_seconds=time(),
+        )
 
     def refresh_grid_only_policy(self) -> GridOnlyPolicy:
         if not self.at_consumer.autotrade_settings.enable_grid_ladders:
@@ -417,28 +464,6 @@ class ContextEvaluator:
                 self.symbol,
             )
 
-    def finalize_signal_bot_params(self, value: SignalsConsumer) -> None:
-        """Finalize context-derived bot parameters before persistence or execution."""
-        bot_params = value.bot_params
-        if (
-            bot_params is None
-            or bot_params.market_type != MarketType.FUTURES
-            or bot_params.name not in OI_SIZED_STRATEGIES
-        ):
-            return
-
-        context = self.latest_market_context
-        symbol_features = (
-            context.get_symbol_features(self.symbol) if context is not None else None
-        )
-        value.open_interest_sizing = apply_open_interest_sizing(
-            bot_params=bot_params,
-            positioning=(
-                symbol_features.derivatives if symbol_features is not None else None
-            ),
-            signal_timestamp=int(datetime.now(UTC).timestamp() * 1000),
-        )
-
     async def dispatch_signal_record(
         self,
         value: SignalsConsumer,
@@ -482,11 +507,6 @@ class ContextEvaluator:
                 merged_indicators.setdefault(
                     "estimated_initial_margin",
                     bot_params.fiat_order_size,
-                )
-            if value.open_interest_sizing is not None:
-                merged_indicators.setdefault(
-                    "open_interest_sizing",
-                    value.open_interest_sizing.model_dump(mode="json"),
                 )
             if symbol_features is not None and symbol_features.derivatives is not None:
                 merged_indicators.setdefault(

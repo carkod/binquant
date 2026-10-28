@@ -1,5 +1,7 @@
 """Dark Knight: an independent, observation-only short/leverage experiment."""
 
+import logging
+from dataclasses import asdict
 from decimal import ROUND_CEILING, Decimal
 from math import isfinite
 from time import time
@@ -310,6 +312,7 @@ class DarkKnight:
 
     Retain the fresh lower-high and BTC/breadth gates for comparison with
     TopGainerShort. Quality (0–100) and downside room are separate measurements.
+    Apply the same entry order-book liquidity limits as TopGainerShort.
     No probability claim, outcome model, or symbol-specific fitting is made.
     """
 
@@ -498,6 +501,19 @@ class DarkKnight:
                 bb_high=bb_high, bb_mid=bb_mid, bb_low=bb_low
             ),
         )
+        assert value.bot_params is not None
+        liquidity = await self.ti.assess_futures_liquidity(
+            value.bot_params.fiat_order_size * value.bot_params.futures_leverage
+        )
+        if not liquidity.allowed:
+            logging.info(
+                "%s %s skipped: order_book_liquidity=%s",
+                self.ALGO,
+                self.ti.symbol,
+                asdict(liquidity),
+            )
+            return
+        indicators["order_book_liquidity"] = asdict(liquidity)
         room = indicators["downside_room_pct"]
         room_text = (
             "unknown"

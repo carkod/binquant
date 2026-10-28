@@ -1,4 +1,5 @@
 import logging
+from dataclasses import asdict
 from decimal import ROUND_CEILING, Decimal
 from math import floor, isfinite
 from time import time
@@ -38,7 +39,8 @@ class TopGainerShort:
     penalize it. The final score sets leverage from 1x to 5x.
 
     Use a full-position stop above the lower high without dynamic position sizing.
-    Open-interest context sets initial margin without stop-distance scaling.
+    The strategy sets initial margin from autotrade settings.
+    Require a fresh, tight order book with sufficient depth on both sides.
     Autotrade runs in staging and production, with recovery disabled.
     """
 
@@ -517,9 +519,20 @@ class TopGainerShort:
                 bb_low=bb_low,
             ),
         )
-        self.ti.finalize_signal_bot_params(value)
         assert value.bot_params is not None
         fiat_order_size = value.bot_params.fiat_order_size
+        liquidity = await self.ti.assess_futures_liquidity(
+            fiat_order_size * value.bot_params.futures_leverage
+        )
+        if not liquidity.allowed:
+            logging.info(
+                "%s %s skipped: order_book_liquidity=%s",
+                self.ALGO,
+                self.symbol,
+                asdict(liquidity),
+            )
+            return
+        indicators["order_book_liquidity"] = asdict(liquidity)
 
         top_gainer_lines = (
             f"- Top-gainer rank / 24h move: {top_gainer_watch['top_gainer_rank']} / {round_numbers(top_gainer_watch['top_gainer_price_change_24h_pct'], 2)}%\n"

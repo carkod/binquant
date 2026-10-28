@@ -301,7 +301,6 @@ class PriceTracker:
                     bb_low=bb_low,
                 ),
             )
-            self.ti.finalize_signal_bot_params(value)
 
             indicators = {
                 "rsi": rsi_value,
