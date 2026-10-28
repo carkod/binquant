@@ -43,6 +43,10 @@ from consumers.autotrade_consumer import AutotradeConsumer
 from consumers.telegram_consumer import TelegramConsumer
 from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import LiveMarketContext
+from market_regime.open_interest_order_sizing import (
+    OI_SIZED_STRATEGIES,
+    apply_open_interest_sizing,
+)
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.macroregime_directional_notifier import MacroregimeDirectionalNotifier
@@ -464,6 +468,28 @@ class ContextEvaluator:
                 self.symbol,
             )
 
+    def finalize_signal_bot_params(self, value: SignalsConsumer) -> None:
+        """Finalize context-derived bot parameters before persistence or execution."""
+        bot_params = value.bot_params
+        if (
+            bot_params is None
+            or bot_params.market_type != MarketType.FUTURES
+            or bot_params.name not in OI_SIZED_STRATEGIES
+        ):
+            return
+
+        context = self.latest_market_context
+        symbol_features = (
+            context.get_symbol_features(self.symbol) if context is not None else None
+        )
+        value.open_interest_sizing = apply_open_interest_sizing(
+            bot_params=bot_params,
+            positioning=(
+                symbol_features.derivatives if symbol_features is not None else None
+            ),
+            signal_timestamp=int(datetime.now(UTC).timestamp() * 1000),
+        )
+
     async def dispatch_signal_record(
         self,
         value: SignalsConsumer,
@@ -507,6 +533,11 @@ class ContextEvaluator:
                 merged_indicators.setdefault(
                     "estimated_initial_margin",
                     bot_params.fiat_order_size,
+                )
+            if value.open_interest_sizing is not None:
+                merged_indicators.setdefault(
+                    "open_interest_sizing",
+                    value.open_interest_sizing.model_dump(mode="json"),
                 )
             if symbol_features is not None and symbol_features.derivatives is not None:
                 merged_indicators.setdefault(

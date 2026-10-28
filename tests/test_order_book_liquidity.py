@@ -239,14 +239,10 @@ async def test_gate_uses_final_margin_times_proposed_leverage(
         monkeypatch.setattr(f"strategies.{module}.time", lambda: NOW.timestamp())
     context = dark_knight_context()
 
-    def finalize(value):
-        value.bot_params.fiat_order_size = 8.0
-
-    context.finalize_signal_bot_params.side_effect = finalize
     await strategy_type(cast(Any, context)).signal(135.0, 140, 132, 120)
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     context.assess_futures_liquidity.assert_awaited_once_with(
         value.bot_params.fiat_order_size * value.bot_params.futures_leverage
     )
     if strategy_type is TopGainerShort:
-        assert value.bot_params.fiat_order_size == 8.0
+        assert value.bot_params.fiat_order_size == 6.0

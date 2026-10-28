@@ -22,8 +22,6 @@ from pybinbot.shared.price_crossings import (
     price_crossings_six_hours,
 )
 
-from market_regime.models import DerivativesPositioningFeatures
-from market_regime.open_interest_order_sizing import apply_open_interest_sizing
 from shared.order_book_liquidity import LiquidityAssessment
 from strategies.top_gainer_short import TopGainerShort
 
@@ -327,45 +325,14 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "state,oi_change,original_margin,expected_margin",
-    [
-        ("NEW_LEVERAGE_SHORT", 0.02, 8.0, 8.0),
-        ("NEW_LEVERAGE_SHORT", 0.005, 6.0, 6.0),
-        ("NEW_LEVERAGE_LONG", 0.005, 3.0, 3.0),
-        ("NEW_LEVERAGE_LONG", 0.02, 2.0, 2.0),
-        (None, None, 4.0, 4.0),
-    ],
-)
-async def test_peak_based_stop_preserves_open_interest_margin_without_risk_clamp(
-    state, oi_change, original_margin, expected_margin
-):
+async def test_top_gainer_short_uses_full_autotrade_margin_without_risk_clamp():
     context = make_context(environment="staging")
-    positioning = (
-        DerivativesPositioningFeatures(
-            timestamp=1_000_000,
-            open_interest=1000.0,
-            open_interest_notional=135000.0,
-            positioning_state=state,
-            oi_change_15m=oi_change,
-        )
-        if state is not None
-        else None
-    )
-
-    def finalize(value):
-        value.open_interest_sizing = apply_open_interest_sizing(
-            bot_params=value.bot_params,
-            positioning=positioning,
-            signal_timestamp=1_000_000,
-        )
-
-    context.finalize_signal_bot_params = Mock(side_effect=finalize)
+    context.at_consumer.autotrade_settings.base_order_size = 10.0
     await TopGainerShort(cast(Any, context)).signal(135.0, 140.0, 132.0, 120.0)
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     params = value.bot_params
-    assert params.fiat_order_size == expected_margin
+    assert params.fiat_order_size == 10.0
     assert params.stop_loss == 2.7556
     assert params.dynamic_position_sizing is False
     assert params.take_profit == 4.5
@@ -373,11 +340,9 @@ async def test_peak_based_stop_preserves_open_interest_margin_without_risk_clamp
         "stop_risk_sizing"
         not in context.dispatch_signal_record.await_args.kwargs["indicators"]
     )
-    if value.open_interest_sizing is not None:
-        # OI evidence retains its intermediate sizing decision.
-        assert value.open_interest_sizing.adjusted_margin == original_margin
     msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
-    assert f"Initial margin: {expected_margin} USDT" in msg
+    assert "Initial margin: 10.0 USDT" in msg
+    context.finalize_signal_bot_params.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
 
 

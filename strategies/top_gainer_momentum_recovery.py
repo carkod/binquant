@@ -531,6 +531,7 @@ class TopGainerMomentumRecovery:
                 bb_low=bb_low,
             ),
         )
+        self.ti.finalize_signal_bot_params(value)
         assert value.bot_params is not None
 
         msg = f"""

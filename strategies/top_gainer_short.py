@@ -46,7 +46,6 @@ class TopGainerShort:
 
     ALGO = "top_gainer_short"
 
-    FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
     LOWER_HIGH_STOP_BUFFER_PCT = 2.0
     TRAILING_PROFIT_PCT = 4.5
@@ -436,11 +435,7 @@ class TopGainerShort:
         score = round_numbers(score_before_chop_penalty - chop_score_penalty, 4)
         futures_leverage = self.futures_leverage_for_score(score)
 
-        fiat_order_size = round_numbers(
-            self.at_consumer.autotrade_settings.base_order_size
-            * self.FIAT_ORDER_SIZE_FRACTION,
-            8,
-        )
+        fiat_order_size = self.at_consumer.autotrade_settings.base_order_size
         quote_asset = self.current_symbol_data.quote_asset
         context = self.ti.latest_market_context
         autotrade_enabled = False if self.config.env == "development" else True

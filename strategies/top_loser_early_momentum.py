@@ -560,6 +560,7 @@ class TopLoserEarlyMomentum:
                 bb_low=bb_low,
             ),
         )
+        self.ti.finalize_signal_bot_params(value)
         assert value.bot_params is not None
         fiat_order_size = value.bot_params.fiat_order_size
 

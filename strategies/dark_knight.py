@@ -485,8 +485,7 @@ class DarkKnight:
                 position=Position.short,
                 market_type=MarketType.FUTURES,
                 futures_leverage=leverage,
-                fiat_order_size=self.ti.at_consumer.autotrade_settings.base_order_size
-                / 3,
+                fiat_order_size=self.ti.at_consumer.autotrade_settings.base_order_size,
                 cooldown=60,
                 stop_loss=stop_pct,
                 dynamic_position_sizing=True,

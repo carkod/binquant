@@ -15,7 +15,7 @@ from pybinbot import (
     round_numbers,
 )
 
-from market_regime.derivatives_risk import (
+from market_regime.open_interest_order_sizing import (
     activity_burst_derivatives_block_reason,
 )
 from market_regime.regime_routing import allows_long_autotrade, resolve_symbol_features

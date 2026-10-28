@@ -189,15 +189,16 @@ async def test_dispatch_signal_record_uses_json_mode_payloads_and_links_bot():
         bot_params=BotBase(
             pair="MOVEUSDTM",
             fiat="USDT",
-            fiat_order_size=10.0,
             name="coinrule_price_tracker",
             position=Position.long,
             market_type=MarketType.FUTURES,
         ),
     )
 
+    evaluator.finalize_signal_bot_params(value)
+
     assert value.bot_params is not None
-    assert value.bot_params.fiat_order_size == 10.0
+    assert value.bot_params.fiat_order_size == 4.0
     assert "fiat_order_size" in value.bot_params.model_fields_set
     assert value.open_interest_sizing is None
     await evaluator.dispatch_signal_record(value=value)
@@ -210,7 +211,7 @@ async def test_dispatch_signal_record_uses_json_mode_payloads_and_links_bot():
     assert payload["bot_params"]["market_type"] == "FUTURES"
     assert payload["bot_params"]["position"] == "long"
     assert payload["bot_params"]["quote_asset"] == "USDC"
-    assert payload["bot_params"]["fiat_order_size"] == 10.0
+    assert payload["bot_params"]["fiat_order_size"] == 4.0
     assert "futures_leverage" not in payload["bot_params"]
     assert payload["indicators"]["bb_spreads"] == {
         "bb_high": 0.019,
@@ -294,7 +295,7 @@ async def test_dispatch_signal_record_timeout_does_not_block_trade_path(caplog):
 
 
 @pytest.mark.asyncio
-async def test_dispatch_signal_record_keeps_margin_with_supportive_open_interest():
+async def test_dispatch_signal_record_snapshots_derivatives_in_indicators():
     evaluator = object.__new__(ContextEvaluator)
     evaluator.symbol = "MOVEUSDTM"
     initialize_regime_measures(evaluator)
@@ -322,23 +323,62 @@ async def test_dispatch_signal_record_keeps_margin_with_supportive_open_interest
             name="liquidation_sweep_pump",
             position=Position.long,
             market_type=MarketType.FUTURES,
-            fiat_order_size=10.0,
         ),
     )
 
+    evaluator.finalize_signal_bot_params(value)
+
     assert value.bot_params is not None
-    assert value.bot_params.fiat_order_size == 10.0
+    assert value.bot_params.fiat_order_size == 8.0
     assert "fiat_order_size" in value.bot_params.model_fields_set
+    assert value.open_interest_sizing is not None
+    assert value.open_interest_sizing.evidence == "STRONGLY_SUPPORTIVE"
     await evaluator.dispatch_signal_record(value=value)
 
     payload = evaluator.binbot_api.create_signal.call_args.kwargs
     assert payload["indicators"]["derivatives_positioning"] == derivatives.model_dump(
         mode="json"
     )
-    assert payload["bot_params"]["fiat_order_size"] == 10.0
+    assert payload["bot_params"]["fiat_order_size"] == 8.0
     assert payload["bot_params"]["logs"] == []
-    assert payload["indicators"]["estimated_initial_margin"] == 10.0
-    assert "open_interest_sizing" not in payload["indicators"]
+    assert payload["indicators"]["estimated_initial_margin"] == 8.0
+    assert payload["indicators"]["open_interest_sizing"]["evidence"] == (
+        "STRONGLY_SUPPORTIVE"
+    )
+
+
+def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
+    evaluator = object.__new__(ContextEvaluator)
+    evaluator.symbol = "MOVEUSDTM"
+    stale_timestamp = int(datetime.now(UTC).timestamp() * 1000) - 16 * 60 * 1000
+    derivatives = DerivativesPositioningFeatures(
+        timestamp=stale_timestamp,
+        open_interest=1_000.0,
+        open_interest_notional=100_000.0,
+        oi_change_15m=-0.02,
+        short_liquidation_notional=25_000.0,
+        positioning_state="SHORT_SQUEEZE",
+    )
+    context = Mock()
+    context.timestamp = stale_timestamp
+    context.get_symbol_features.return_value = SimpleNamespace(derivatives=derivatives)
+    evaluator.latest_market_context = context
+    value = SignalsConsumer(
+        direction="LONG",
+        bot_params=BotBase(
+            pair="MOVEUSDTM",
+            name="liquidation_sweep_pump",
+            position=Position.long,
+            market_type=MarketType.FUTURES,
+            fiat_order_size=2.0,
+        ),
+    )
+
+    evaluator.finalize_signal_bot_params(value)
+
+    assert value.bot_params is not None
+    assert value.bot_params.fiat_order_size == 4.0
+    assert value.open_interest_sizing is None
 
 
 @pytest.mark.asyncio
