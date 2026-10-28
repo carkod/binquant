@@ -402,7 +402,6 @@ class TestAutotradeConsumer:
             "failed_spike_fade",
             "mean_reversion_fade",
             "liquidation_sweep_pump",
-            "relative_strength_impulse_rider",
             "top_gainer_short",
             "activity_burst_pump",
         ],
@@ -557,7 +556,7 @@ class TestAutotradeConsumer:
             current_price=100,
             bot_params=BotBase(
                 pair="BTCUSDT",
-                name="relative_strength_impulse_rider",
+                name="top_loser_early_momentum",
                 market_type=MarketType.SPOT,
                 position=Position.long,
                 fiat="USDT",

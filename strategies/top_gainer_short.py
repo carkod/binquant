@@ -1,4 +1,5 @@
 import logging
+from dataclasses import asdict
 from decimal import ROUND_CEILING, Decimal
 from math import floor, isfinite
 from time import time
@@ -38,13 +39,13 @@ class TopGainerShort:
     penalize it. The final score sets leverage from 1x to 5x.
 
     Use a full-position stop above the lower high without dynamic position sizing.
-    Open-interest context sets initial margin without stop-distance scaling.
+    The strategy sets initial margin from autotrade settings.
+    Require a fresh, tight order book with sufficient depth on both sides.
     Autotrade runs in staging and production, with recovery disabled.
     """
 
     ALGO = "top_gainer_short"
 
-    FIAT_ORDER_SIZE_FRACTION = 1 / 3
     ENTRY_COOLDOWN_MINUTES = 60
     LOWER_HIGH_STOP_BUFFER_PCT = 2.0
     TRAILING_PROFIT_PCT = 4.5
@@ -434,11 +435,7 @@ class TopGainerShort:
         score = round_numbers(score_before_chop_penalty - chop_score_penalty, 4)
         futures_leverage = self.futures_leverage_for_score(score)
 
-        fiat_order_size = round_numbers(
-            self.at_consumer.autotrade_settings.base_order_size
-            * self.FIAT_ORDER_SIZE_FRACTION,
-            8,
-        )
+        fiat_order_size = self.at_consumer.autotrade_settings.base_order_size
         quote_asset = self.current_symbol_data.quote_asset
         context = self.ti.latest_market_context
         autotrade_enabled = False if self.config.env == "development" else True
@@ -517,9 +514,20 @@ class TopGainerShort:
                 bb_low=bb_low,
             ),
         )
-        self.ti.finalize_signal_bot_params(value)
         assert value.bot_params is not None
         fiat_order_size = value.bot_params.fiat_order_size
+        liquidity = await self.ti.assess_futures_liquidity(
+            fiat_order_size * value.bot_params.futures_leverage
+        )
+        if not liquidity.allowed:
+            logging.info(
+                "%s %s skipped: order_book_liquidity=%s",
+                self.ALGO,
+                self.symbol,
+                asdict(liquidity),
+            )
+            return
+        indicators["order_book_liquidity"] = asdict(liquidity)
 
         top_gainer_lines = (
             f"- Top-gainer rank / 24h move: {top_gainer_watch['top_gainer_rank']} / {round_numbers(top_gainer_watch['top_gainer_price_change_24h_pct'], 2)}%\n"

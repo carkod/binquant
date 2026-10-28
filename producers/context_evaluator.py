@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import logging
-from asyncio import timeout
+from asyncio import timeout, to_thread
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from time import time
+from time import monotonic, time
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from numpy import isnan
 from numpy import log as logarithm
 from numpy import nan
 from pandas import DataFrame, Series, to_numeric
+from kucoin_universal_sdk.generate.futures.market import (
+    GetPartOrderBookReqBuilder,
+    GetPartOrderBookResp,
+)
 from pandera.typing import DataFrame as TypedDataFrame
 from pybinbot import (
     BinanceApi,
@@ -46,6 +50,7 @@ from market_regime.open_interest_order_sizing import (
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.macroregime_directional_notifier import MacroregimeDirectionalNotifier
+from shared.order_book_liquidity import LiquidityAssessment, assess_futures_order_book
 from shared.utils import format_context_timestamp_line
 from strategies.higher_low_pattern import HigherLowPattern
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
@@ -62,6 +67,8 @@ if TYPE_CHECKING:
 
 class ContextEvaluator:
     SIGNAL_PERSISTENCE_TIMEOUT_SECONDS = 2.0
+    ORDER_BOOK_TIMEOUT_SECONDS = 3.0
+    ORDER_BOOK_CACHE_SECONDS = 2.0
     REGIME_WINDOW_BARS = 96
     REGIME_MINIMUM_BARS = 96
     DIRECTIONAL_EFFICIENCY_THRESHOLD = 0.35
@@ -165,6 +172,50 @@ class ContextEvaluator:
         )
         self._breadth_cross_tolerance = 0.05
         self._autotrade_stress_threshold = 0.35
+        self._liquidity_book: GetPartOrderBookResp | None = None
+        self._liquidity_checked_at = float("-inf")
+
+    async def assess_futures_liquidity(
+        self, position_notional: float
+    ) -> LiquidityAssessment:
+        """Fetch only for viable entries; share a brief snapshot across strategies."""
+        if (
+            self.exchange != ExchangeId.KUCOIN
+            or self.market_type != MarketType.FUTURES
+            or self.current_symbol_data.quote_asset != "USDT"
+            or not isinstance(self.api, KucoinFutures)
+        ):
+            return LiquidityAssessment(False, "unsupported_liquidity_market")
+        if monotonic() - self._liquidity_checked_at >= self.ORDER_BOOK_CACHE_SECONDS:
+            self._liquidity_book = None
+            request = (
+                GetPartOrderBookReqBuilder()
+                .set_symbol(self.symbol)
+                .set_size("100")
+                .build()
+            )
+            try:
+                async with timeout(self.ORDER_BOOK_TIMEOUT_SECONDS):
+                    self._liquidity_book = await to_thread(
+                        self.api.futures_market_api.get_part_order_book, request
+                    )
+            except Exception:
+                logging.warning(
+                    "Order book unavailable for %s; entry liquidity gate closed",
+                    self.symbol,
+                    exc_info=True,
+                )
+            finally:
+                self._liquidity_checked_at = monotonic()
+        if self._liquidity_book is None:
+            return LiquidityAssessment(False, "order_book_unavailable")
+        return assess_futures_order_book(
+            self._liquidity_book,
+            symbol=self.symbol,
+            multiplier=self.current_symbol_data.multiplier,
+            position_notional=position_notional,
+            now_seconds=time(),
+        )
 
     def refresh_grid_only_policy(self) -> GridOnlyPolicy:
         if not self.at_consumer.autotrade_settings.enable_grid_ladders:
