@@ -480,7 +480,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
         name: AsyncMock()
         for name in (
             "ActivityBurstPump",
-            "RelativeStrengthImpulseRider",
             "TopGainerEarlyMomentum",
             "TopGainerMomentumRecovery",
             "FailedSpikeFade",
@@ -514,9 +513,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
         evaluator.abp = SimpleNamespace(signal=strategy_signals["ActivityBurstPump"])
 
     def load_15m_algorithms():
-        evaluator.relative_strength_impulse_rider = SimpleNamespace(
-            signal=strategy_signals["RelativeStrengthImpulseRider"]
-        )
         evaluator.top_gainer_early_momentum = SimpleNamespace(
             signal=strategy_signals["TopGainerEarlyMomentum"]
         )

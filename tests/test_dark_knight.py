@@ -266,6 +266,10 @@ async def test_persists_proposed_leverage_and_never_requests_autotrade(environme
     assert value.autotrade is False
     assert value.bot_params.name == "dark_knight"
     assert value.bot_params.futures_leverage == indicators["proposed_futures_leverage"]
+    assert (
+        value.bot_params.fiat_order_size
+        == ctx.at_consumer.autotrade_settings.base_order_size
+    )
     assert 1 <= value.bot_params.futures_leverage <= 5
     assert value.score == indicators["quality_score"]
     assert indicators["observation_only"] is True
