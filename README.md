@@ -4,6 +4,11 @@ The [Binbot](https://github.com/carkod/binbot) quantitative analyses tool.
 
 Performs technical, statistical, AI analysis and feeds it to the signal and telegram systems to eventually create autotrades for Binbot.
 
+Telegram signal policy lives in `shared/telegram_signal_notifier.py`.
+Delivery and credential loading are provided by `TelegramDelivery` in pybinbot;
+the Telegram library is installed transitively. Deploy pybinbot 1.13.7 with this
+change and refresh this application's lockfile after publishing that release.
+
 Potential replacement of binbot-research, now running as a single-process websocket ingest and strategy pipeline connected by an in-memory `asyncio.Queue`.
 
 <img width="2067" height="1885" alt="Binbot architecture-2025-10-26-144727" src="https://github.com/user-attachments/assets/cd3b76a4-0653-421c-b8e0-24685b7d6dd8" />

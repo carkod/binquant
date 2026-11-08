@@ -219,7 +219,7 @@ async def test_rejected_liquidity_prevents_all_emissions_and_can_retry_same_setu
     await strategy.signal(135.0, 140, 132, 120)
     context.assess_futures_liquidity.assert_awaited_once()
     context.dispatch_signal_record.assert_not_awaited()
-    context.telegram_consumer.dispatch_signal.assert_not_awaited()
+    context.telegram_notifier.dispatch_signal.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
     assert not context.strategy_cooldowns
 

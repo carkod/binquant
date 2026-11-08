@@ -48,7 +48,7 @@ class RelativeStrengthReversalRange:
         self.exchange = cls.exchange
         self.market_type = cls.market_type
         self.binbot_api = cls.binbot_api
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
@@ -155,7 +155,7 @@ class RelativeStrengthReversalRange:
             """
 
         await self.ti.dispatch_signal_record(value=value)
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         logging.info(
             "[%s] long signal emitted for %s (notification only, route=%s)",
             algo,

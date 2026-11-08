@@ -31,7 +31,7 @@ class Coinrule:
         self.exchange = cls.exchange
         self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
         self.symbol = cls.symbol
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.bot_strategy = cls.bot_strategy
         self.current_market_dominance = cls.current_market_dominance
@@ -120,7 +120,7 @@ class Coinrule:
             )
 
             await self.ti.dispatch_signal_record(value=value)
-            await self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_notifier.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         pass
@@ -218,7 +218,7 @@ class Coinrule:
             )
 
             await self.ti.dispatch_signal_record(value=value)
-            await self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_notifier.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         pass
@@ -287,7 +287,7 @@ class Coinrule:
             )
 
             await self.ti.dispatch_signal_record(value=value)
-            await self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_notifier.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
 
         pass

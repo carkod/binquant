@@ -23,7 +23,7 @@ def make_context(df: DataFrame) -> SimpleNamespace:
         exchange=ExchangeId.KUCOIN,
         dispatch_signal_record=AsyncMock(),
         binbot_api=MagicMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data=SymbolModel(
@@ -99,7 +99,7 @@ async def test_signal_generator_dispatches_on_volume_and_price_burst(monkeypatch
     algo = make_algo(df)
     send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(
+    algo.telegram_notifier = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
     algo.at_consumer = cast(
@@ -140,7 +140,7 @@ async def test_signal_generator_skips_when_price_jump_is_too_small():
     algo = make_algo(df)
     send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(
+    algo.telegram_notifier = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
     algo.at_consumer = cast(
@@ -191,7 +191,7 @@ async def test_signal_generator_records_but_does_not_trade_cascade_risk(
     assert dispatched["indicators"]["activity_burst_entry_block_reason"] == (
         "derivatives_cascade_risk"
     )
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -245,7 +245,7 @@ async def test_activity_burst_never_requests_autotrade(
     assert dispatched["value"].autotrade is False
     assert dispatched["indicators"]["activity_burst_anomaly_gate_passed"] is confirmed
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
-    message = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    message = context.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "Autotrade is disabled; notification only" in message
     assert "Autotrade is enabled" not in message
 

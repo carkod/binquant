@@ -11,10 +11,9 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.2.0",
     "passlib",
-    "pybinbot>=1.12.19",
+    "pybinbot>=1.13.8",
     "pydantic-settings>=2.14.1",
     "python-jose",
-    "python-telegram-bot>=22.1",
     "requests-cache>=1.2.0",
     "requests-html>=0.10.0",
     "scikit-learn>=1.6.1,<2",

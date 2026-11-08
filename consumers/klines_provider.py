@@ -22,7 +22,7 @@ from pybinbot import (
 )
 from calibrators.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer
-from consumers.telegram_consumer import TelegramConsumer
+from shared.telegram_signal_notifier import TelegramSignalNotifier
 from market_regime.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
 )
@@ -99,9 +99,7 @@ class KlinesProvider:
             binance_api=self.binance_api,
             liquidation_store=self.liquidation_store,
         )
-        self.telegram_consumer = TelegramConsumer(
-            token=self.config.telegram_bot_key,
-            chat_id=self.config.telegram_user_id,
+        self.telegram_notifier = TelegramSignalNotifier(
             is_enabled=self.autotrade_settings.telegram_signals,
         )
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
@@ -501,7 +499,7 @@ class KlinesProvider:
             latest_market_context=self.latest_market_context,
             binbot_api=self.binbot_api,
             last_macroregime_directional=self.last_macroregime_directional,
-            telegram_consumer=self.telegram_consumer,
+            telegram_notifier=self.telegram_notifier,
             strategy_cooldowns=self.strategy_cooldowns,
             strategy_states=self.strategy_states,
             activity_burst_anomaly_gates=self.activity_burst_anomaly_gates,

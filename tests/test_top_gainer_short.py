@@ -213,7 +213,7 @@ def make_context(
             price_precision=4,
         ),
         price_precision=4,
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT",
@@ -305,7 +305,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert indicators["btc_higher_low_confirmed"] is False
     assert "btc_higher_low_first_trough" not in indicators
     assert "breadth_falling_three_hours" not in indicators
-    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    msg = context.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "Breadth higher low confirmed: -0.5 -> -0.3" in msg
     assert "BTC higher low confirmed: No" in msg
     assert "Breadth falling" not in msg
@@ -340,7 +340,7 @@ async def test_top_gainer_short_uses_full_autotrade_margin_without_risk_clamp():
         "stop_risk_sizing"
         not in context.dispatch_signal_record.await_args.kwargs["indicators"]
     )
-    msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    msg = context.telegram_notifier.dispatch_signal.await_args.args[0]
     assert "Initial margin: 10.0 USDT" in msg
     context.finalize_signal_bot_params.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
@@ -371,7 +371,7 @@ async def test_signal_requests_autotrade_in_staging_and_production(
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     assert value.autotrade is autotrade_enabled
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
-    message = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    message = context.telegram_notifier.dispatch_signal.call_args.args[0]
     assert (
         "<a href='https://terminal.example.com/bots/futures/new/TESTUSDTM'>Dashboard trade</a>"
         in message
@@ -397,7 +397,7 @@ async def test_signal_uses_lower_high_stop_without_hourly_candles() -> None:
     assert indicators["stop_loss_source"] == "lower_high"
     assert indicators["stop_loss_price_at_signal"] == 138.72
 
-    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    msg = context.telegram_notifier.dispatch_signal.call_args.args[0]
     assert (
         "Initial reduction threshold: 2.0% above lower high at 138.72 (2.7556%)" in msg
     )
@@ -486,7 +486,7 @@ async def test_signal_emits_without_top_gainer_bonus_when_ranking_is_unavailable
     assert indicators["top_gainer_score_bonus"] == 0.0
     assert indicators["strong_gainer"] is False
     assert "top_gainer_rank" not in indicators
-    msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    msg = context.telegram_notifier.dispatch_signal.await_args.args[0]
     assert "Top-gainer context: no fresh top-10 membership" in msg
     assert "Top-gainer score bonus: +0.0" in msg
     assert "SHORT when price confirms a lower high" in msg
@@ -583,7 +583,7 @@ async def test_signal_blocks_without_valid_breadth_higher_low(case: str) -> None
     await TopGainerShort(cast(Any, context)).signal(135.0, 95.0, 92.0, 87.0)
 
     context.dispatch_signal_record.assert_not_awaited()
-    context.telegram_consumer.dispatch_signal.assert_not_awaited()
+    context.telegram_notifier.dispatch_signal.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -649,7 +649,7 @@ async def test_top_gainer_bonus_does_not_require_six_hour_watch(
     assert value.score == 3.5
     assert indicators["top_gainer_watch_hours"] == snapshot_count - 1
     assert indicators["top_gainer_score_bonus"] == 2.0
-    msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    msg = context.telegram_notifier.dispatch_signal.await_args.args[0]
     assert "Top-gainer score bonus: +2.0" in msg
 
 
@@ -705,7 +705,7 @@ async def test_stretch_scores_price_history_without_inventing_missing_gainer_dat
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     # New high and extension still score without a ranking; record gain needs data.
     assert value.score == (5.0 if ranked else 2.0)
-    msg = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    msg = context.telegram_notifier.dispatch_signal.await_args.args[0]
     assert f"Stretch score: +{1.5 if ranked else 1.0}" in msg
     assert "weekly high above all prior daily highs: Yes" in msg
     assert (
@@ -871,13 +871,13 @@ async def test_chop_gate_penalizes_crossings_and_rejects_at_three(
 
     if crossings >= 3:
         context.dispatch_signal_record.assert_not_awaited()
-        context.telegram_consumer.dispatch_signal.assert_not_awaited()
+        context.telegram_notifier.dispatch_signal.assert_not_awaited()
         context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
         assert context.strategy_cooldowns == {}
         return
 
     context.dispatch_signal_record.assert_awaited_once()
-    context.telegram_consumer.dispatch_signal.assert_awaited_once()
+    context.telegram_notifier.dispatch_signal.assert_awaited_once()
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     expected_penalty = crossings * CHOP_CROSSING_SCORE_PENALTY
@@ -904,7 +904,7 @@ async def test_repeated_crossings_reject_a_real_confirmed_lower_high():
     await strategy.signal(124.0, 140.0, 132.0, 120.0)
 
     context.dispatch_signal_record.assert_not_awaited()
-    context.telegram_consumer.dispatch_signal.assert_not_awaited()
+    context.telegram_notifier.dispatch_signal.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -1064,7 +1064,7 @@ async def test_emitted_leverage_uses_final_score_after_crossing_penalty(
     assert indicators["futures_leverage"] == expected_leverage
     assert indicators["futures_leverage_score_min"] == 0.8
     assert indicators["futures_leverage_score_max"] == 5.0
-    message = context.telegram_consumer.dispatch_signal.await_args.args[0]
+    message = context.telegram_notifier.dispatch_signal.await_args.args[0]
     assert f"Futures leverage: {expected_leverage}x" in message
 
 
@@ -1085,7 +1085,7 @@ async def test_signal_passes_if_either_btc_or_breadth_has_confirmed_higher_low(
     await TopGainerShort(cast(Any, context)).signal(135, 95, 92, 87)
     if not breadth_confirmed and not btc_confirmed:
         context.dispatch_signal_record.assert_not_awaited()
-        context.telegram_consumer.dispatch_signal.assert_not_awaited()
+        context.telegram_notifier.dispatch_signal.assert_not_awaited()
         context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
         return
     context.dispatch_signal_record.assert_awaited_once()
@@ -1093,7 +1093,7 @@ async def test_signal_passes_if_either_btc_or_breadth_has_confirmed_higher_low(
     assert indicators["breadth_higher_low_confirmed"] is breadth_confirmed
     assert indicators["btc_higher_low_confirmed"] is btc_confirmed
     assert context.dispatch_signal_record.await_args.kwargs["value"].score == 3.5
-    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    msg = context.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "BTC or the breadth index has a confirmed higher low" in msg
     if btc_confirmed:
         assert indicators["btc_higher_low_first_trough"] == 95
@@ -1160,7 +1160,7 @@ async def test_invalid_btc_higher_low_does_not_confirm_and_cannot_veto_valid_bre
     elif case == "gap":
         frame = make_btc_higher_low_df([103] + values).drop(index=10)
     elif case == "duplicate":
-        frame.loc[10, "close_time"] = frame.loc[9, "close_time"]
+        frame.at[10, "close_time"] = frame["close_time"].iloc[9]
     elif case in {"nan", "inf", "nonpositive"}:
         frame.loc[10, "low"] = 0 if case == "nonpositive" else float(case)
     elif case == "invalid_timestamps":
@@ -1255,5 +1255,5 @@ async def test_trailing_deviation_is_half_the_unbuffered_latest_swing_peak_dista
     assert value.bot_params.stop_loss == indicators["stop_loss_pct"]
     assert (
         f"with {expected}% deviation"
-        in context.telegram_consumer.dispatch_signal.await_args.args[0]
+        in context.telegram_notifier.dispatch_signal.await_args.args[0]
     )

@@ -133,7 +133,7 @@ def make_evaluator(
             price_precision=6,
         ),
         price_precision=6,
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         strategy_cooldowns={},
         df_15m=df if df is not None else make_df(),
@@ -215,7 +215,7 @@ async def test_mean_reversion_fade_never_requests_autotrade(
     indicators = call.kwargs["indicators"]
     assert value.direction == "SHORT"
     assert value.autotrade is False
-    message = evaluator.telegram_consumer.dispatch_signal.call_args.args[0]
+    message = evaluator.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "Autotrade is disabled; notification only" in message
     assert "Autotrade is enabled" not in message
     assert value.bot_params.position == Position.short

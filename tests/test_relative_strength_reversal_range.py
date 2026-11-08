@@ -124,7 +124,7 @@ def make_evaluator(
         df_15m=df,
         dispatch_signal_record=AsyncMock(),
         binbot_api=MagicMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
         current_symbol_data=SymbolModel(
@@ -155,11 +155,11 @@ async def test_relative_strength_reversal_range_never_requests_autotrade():
         bb_low=99.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_called_once()
+    evaluator.telegram_notifier.dispatch_signal.assert_called_once()
     evaluator.dispatch_signal_record.assert_called_once()
     evaluator.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
-    telegram_msg = evaluator.telegram_consumer.dispatch_signal.call_args.args[0]
+    telegram_msg = evaluator.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "Regime route: range_rs_reversal" in telegram_msg
     assert "Autotrade is disabled; notification only" in telegram_msg
     assert "LONG ENTRY" in telegram_msg
@@ -184,7 +184,7 @@ async def test_no_signal_when_market_regime_not_range():
         bb_low=99.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -202,7 +202,7 @@ async def test_no_signal_when_market_sell_off_too_shallow():
         bb_low=99.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -221,7 +221,7 @@ async def test_no_signal_when_relative_strength_below_threshold():
         bb_low=99.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -242,7 +242,7 @@ async def test_no_signal_when_volume_below_20th_percentile():
         bb_low=99.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -260,7 +260,7 @@ async def test_no_signal_when_df_too_short_for_volume_window():
         bb_low=99.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -276,7 +276,7 @@ async def test_no_signal_when_context_missing():
         bb_low=99.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -293,4 +293,4 @@ async def test_no_signal_when_symbol_features_missing():
         bb_low=99.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()

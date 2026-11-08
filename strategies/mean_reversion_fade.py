@@ -80,7 +80,7 @@ class MeanReversionFade:
         self.market_type = cls.market_type
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_candle: int | None = None
@@ -391,5 +391,5 @@ class MeanReversionFade:
                 "candidate_open_time": candidate_open_time,
             },
         )
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

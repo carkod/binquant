@@ -34,7 +34,7 @@ class LadderDeployer:
     def __init__(self, cls: "ContextEvaluator"):
         self.ti = cls
         self.symbol = cls.symbol
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
 
     def _bb_stable(self, n: int, max_change_pct: float) -> bool:

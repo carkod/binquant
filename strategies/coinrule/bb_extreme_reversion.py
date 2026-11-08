@@ -64,7 +64,7 @@ class BBExtremeReversion(StrategyMixin):
         self.market_type = cls.market_type
         self.symbol = cls.symbol
         self.kucoin_symbol = cls.kucoin_symbol
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.rsi_window = self.DEFAULT_RSI_WINDOW
         self.oversold_rsi = self.DEFAULT_OVERSOLD_RSI
@@ -291,5 +291,5 @@ class BBExtremeReversion(StrategyMixin):
                 "bb_extreme_distance_from_mid_pct": decision.distance_from_mid_pct,
             },
         )
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

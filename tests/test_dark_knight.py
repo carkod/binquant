@@ -220,7 +220,7 @@ def test_invalid_candle_history_cannot_be_scored(case):
     if case == "gap":
         frame.loc[10, "open_time"] = 0
     elif case == "duplicate":
-        frame.loc[10, "open_time"] = frame.loc[9, "open_time"]
+        frame.at[10, "open_time"] = frame["open_time"].iloc[9]
     elif case == "stale":
         frame[["open_time", "close_time"]] -= BAR_MS
     elif case == "nan":
@@ -277,7 +277,7 @@ async def test_persists_proposed_leverage_and_never_requests_autotrade(environme
     assert value.bot_params.stop_loss == pytest.approx(2.7556)
     ctx.at_consumer.process_autotrade_restrictions.assert_not_awaited()
     ctx.finalize_signal_bot_params.assert_not_called()
-    message = ctx.telegram_consumer.dispatch_signal.await_args.args[0]
+    message = ctx.telegram_notifier.dispatch_signal.await_args.args[0]
     assert "#dark_knight algorithm" in message
     assert "Proposed futures leverage" in message
     assert "Six-hour crossings: coin" in message
@@ -305,13 +305,13 @@ async def test_persistence_failure_allows_retry_without_unrecorded_alert():
     await strategy.signal(135, 140, 132, 120)
     assert ctx.dispatch_signal_record.await_count == 2
     assert ctx.strategy_cooldowns == {}
-    ctx.telegram_consumer.dispatch_signal.assert_not_awaited()
+    ctx.telegram_notifier.dispatch_signal.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_telegram_failure_does_not_duplicate_persisted_observation():
     ctx = context()
-    ctx.telegram_consumer.dispatch_signal.side_effect = RuntimeError("unavailable")
+    ctx.telegram_notifier.dispatch_signal.side_effect = RuntimeError("unavailable")
     strategy = DarkKnight(cast(Any, ctx))
     with pytest.raises(RuntimeError):
         await strategy.signal(135, 140, 132, 120)

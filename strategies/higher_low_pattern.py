@@ -49,7 +49,7 @@ class HigherLowPattern:
         self.ti = cls
         self.symbol = cls.symbol
         self.config = cls.config
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.price_precision = cls.price_precision
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_open_time: int | None = None
@@ -188,4 +188,4 @@ class HigherLowPattern:
             - Autotrade: disabled, notification only
             """
 
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)

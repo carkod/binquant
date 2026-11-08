@@ -68,7 +68,7 @@ def make_algo(
     cls = SimpleNamespace(
         symbol="TESTUSDT",
         config=SimpleNamespace(env="test"),
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         price_precision=price_precision,
         strategy_cooldowns=strategy_cooldowns,
         df_15m=df,
@@ -83,8 +83,8 @@ async def test_lower_high_pattern_emits_on_confirmed_lower_high():
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-    msg = algo.telegram_consumer.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    msg = algo.telegram_notifier.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
     assert "lower high" in msg
     assert "140" in msg
     assert "136" in msg
@@ -98,7 +98,7 @@ async def test_lower_high_pattern_skips_when_second_peak_is_higher():
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_lower_high_pattern_skips_sub_two_and_half_percent_drop():
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 def test_lower_high_pattern_accepts_two_and_half_percent_drop_boundary():
@@ -123,7 +123,7 @@ async def test_lower_high_pattern_skips_when_fewer_than_two_swing_highs():
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -133,11 +133,11 @@ async def test_lower_high_pattern_deduplicates_same_swing_high_across_instances(
 
     first = make_algo(df, strategy_cooldowns=shared_cooldowns)
     await first.signal()
-    first.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    first.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
 
     second = make_algo(df, strategy_cooldowns=shared_cooldowns)
     await second.signal()
-    second.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    second.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 def test_lower_high_pattern_uses_nearest_preceding_fractal_low():
@@ -172,7 +172,7 @@ async def test_lower_high_pattern_rounds_prices_and_includes_evaluation_time(
 
     await algo.signal()
 
-    msg = algo.telegram_consumer.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
+    msg = algo.telegram_notifier.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
     assert "First peak: 140.1235" in msg
     assert "Second peak: 136.1235" in msg
     assert "swing low 95.1235" in msg
@@ -199,7 +199,7 @@ async def test_lower_high_pattern_applies_four_hour_symbol_cooldown(
 
     await first.signal()
 
-    first.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    first.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
 
     shifted_frame = make_lower_high_df()
     shifted_frame["open_time"] += BAR_MS
@@ -212,7 +212,7 @@ async def test_lower_high_pattern_applies_four_hour_symbol_cooldown(
 
     await still_cooling_down.signal()
 
-    still_cooling_down.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    still_cooling_down.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
     FrozenDateTime.current = first_evaluation + timedelta(hours=4)
     cooldown_elapsed = make_algo(
@@ -222,7 +222,7 @@ async def test_lower_high_pattern_applies_four_hour_symbol_cooldown(
 
     await cooldown_elapsed.signal()
 
-    cooldown_elapsed.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    cooldown_elapsed.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -246,4 +246,4 @@ async def test_lower_high_pattern_waits_for_confirmation_candle_to_close():
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]

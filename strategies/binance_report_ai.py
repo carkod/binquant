@@ -22,7 +22,7 @@ class BinanceAIReport:
         self.binbot_api = cls.binbot_api
         self.price_precision = cls.price_precision
         self.current_symbol_data = cls.current_symbol_data
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
 
     @staticmethod

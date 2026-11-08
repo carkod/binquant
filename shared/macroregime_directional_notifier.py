@@ -11,7 +11,7 @@ class MacroregimeDirectionalNotifier:
         self.context_evaluator = cls
         self.config = cls.config
         self.symbol = cls.symbol
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.last_macroregime_directional = cls.last_macroregime_directional
 
     @staticmethod
@@ -46,4 +46,4 @@ class MacroregimeDirectionalNotifier:
             {self.context_evaluator.regime_telegram_lines()}
         """
 
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)

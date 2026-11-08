@@ -17,7 +17,7 @@ def make_coinrule() -> Coinrule:
         market_type=MarketType.SPOT,
         market_breadth_data=None,
         symbol="TESTUSDT",
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         bot_strategy=Position.long,
         current_market_dominance=None,
@@ -41,7 +41,7 @@ async def test_buy_low_sell_high_never_requests_autotrade():
 
     value = algo.ti.dispatch_signal_record.call_args.kwargs["value"]  # type: ignore[attr-defined]
     assert value.autotrade is False
-    msg = algo.telegram_consumer.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
+    msg = algo.telegram_notifier.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
     assert "Autotrade is disabled; notification only" in msg
 
 

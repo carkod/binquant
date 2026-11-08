@@ -140,7 +140,7 @@ async def test_momentum_chop_gate_before_dispatch_and_cooldown(
         "forming",
     }:
         context.dispatch_signal_record.assert_awaited_once()
-        context.telegram_consumer.dispatch_signal.assert_awaited_once()
+        context.telegram_notifier.dispatch_signal.assert_awaited_once()
         indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
         # The completed final candle already spans entry; the forming candle
         # must not add a second crossing.
@@ -154,11 +154,11 @@ async def test_momentum_chop_gate_before_dispatch_and_cooldown(
         assert indicators["chop_score_penalty"] == score_penalty
         assert value.score == pytest.approx(base_score - score_penalty, abs=0.0005)
         assert indicators["chop_lookback_bars"] == 24
-        message = context.telegram_consumer.dispatch_signal.await_args.args[0]
+        message = context.telegram_notifier.dispatch_signal.await_args.args[0]
         assert f"Current-price crossings over 6h: {expected}; rejected at 3+" in message
         context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
     else:
         context.dispatch_signal_record.assert_not_awaited()
-        context.telegram_consumer.dispatch_signal.assert_not_awaited()
+        context.telegram_notifier.dispatch_signal.assert_not_awaited()
         context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
         assert context.strategy_cooldowns == {}
