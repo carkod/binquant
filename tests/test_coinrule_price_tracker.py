@@ -18,7 +18,7 @@ from pybinbot import (
 from strategies.coinrule.bb_extreme_reversion import BBExtremeReversion
 from strategies.coinrule.price_tracker import PriceTracker
 from consumers.autotrade_consumer import AutotradeConsumer
-from consumers.telegram_consumer import TelegramConsumer
+from shared.telegram_signal_notifier import TelegramSignalNotifier
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 
 
@@ -107,7 +107,7 @@ def make_context(
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
         binbot_api=binbot_api,
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.SPOT,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data={"base_asset": "TEST"},
@@ -305,8 +305,8 @@ async def test_price_tracker_no_signal_on_uptrend():
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=AsyncMock())
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=AsyncMock())
     )
 
     await algo.signal(
@@ -333,8 +333,8 @@ async def test_price_tracker_emits_signal_when_all_conditions_met(monkeypatch):
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context()
     monkeypatch.setenv("ENV", "production")
@@ -515,7 +515,7 @@ async def test_price_tracker_times_top_loser_entries_from_tape_recovery(
     assert indicators["route_reason"] == expected_route
     assert indicators["top_loser_snapshots_in_a_row"] == len(losers_by_snapshot)
     assert indicators["top_loser_recovery_confirmed"] is expected_recovery
-    telegram_mock = cast(Mock, algo.telegram_consumer.dispatch_signal)
+    telegram_mock = cast(Mock, algo.telegram_notifier.dispatch_signal)
     assert f"Routing reason: {expected_route}" in telegram_mock.call_args.args[0]
     assert (
         f"Top-loser recovery confirmed: {'Yes' if expected_recovery else 'No'}"
@@ -532,8 +532,8 @@ async def test_price_tracker_keeps_eligible_staging_signal_shadow_only(monkeypat
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context()
     monkeypatch.setenv("ENV", "staging")
@@ -613,8 +613,8 @@ async def test_price_tracker_disables_autotrade_without_relative_strength(
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context(
         symbol_features={
@@ -671,7 +671,7 @@ async def test_price_tracker_cools_down_repeated_symbol_entries(monkeypatch):
     at_mock = AsyncMock()
     tg_mock = AsyncMock()
     context.at_consumer = SimpleNamespace(process_autotrade_restrictions=at_mock)
-    context.telegram_consumer = SimpleNamespace(dispatch_signal=tg_mock)
+    context.telegram_notifier = SimpleNamespace(dispatch_signal=tg_mock)
     context.latest_market_context = make_market_context()
     algo = PriceTracker(cast(Any, context))
 
@@ -724,7 +724,7 @@ async def test_price_tracker_allows_entry_after_cooldown_window(monkeypatch):
     at_mock = AsyncMock()
     tg_mock = AsyncMock()
     context.at_consumer = SimpleNamespace(process_autotrade_restrictions=at_mock)
-    context.telegram_consumer = SimpleNamespace(dispatch_signal=tg_mock)
+    context.telegram_notifier = SimpleNamespace(dispatch_signal=tg_mock)
     context.latest_market_context = make_market_context()
     algo = PriceTracker(cast(Any, context))
 
@@ -780,8 +780,8 @@ async def test_price_tracker_uses_context_market_type(monkeypatch):
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context()
 
@@ -830,8 +830,8 @@ async def test_price_tracker_disables_autotrade_in_transitioning_market(monkeypa
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context(
         market_regime="TRANSITIONAL",
@@ -885,8 +885,8 @@ async def test_price_tracker_disables_autotrade_during_regime_transition_even_if
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     context = make_market_context(
         market_regime="TREND_UP",
@@ -946,8 +946,8 @@ async def test_price_tracker_reads_latest_context_from_evaluator(monkeypatch):
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     algo.ti.latest_market_context = make_market_context(market_regime="RANGE")
@@ -1008,8 +1008,8 @@ async def test_price_tracker_disables_autotrade_when_market_is_trend_up(monkeypa
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context(
         market_regime="TREND_UP",
@@ -1067,8 +1067,8 @@ async def test_price_tracker_disables_autotrade_for_transitional_micro_regime(
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context(
         symbol_features={
@@ -1128,8 +1128,8 @@ async def test_price_tracker_disables_autotrade_when_breadth_is_unstable(monkeyp
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
     algo.ti.latest_market_context = make_market_context(
         advancers_ratio=0.74,
@@ -1222,8 +1222,8 @@ async def test_bb_extreme_skips_signal_generation_when_disabled():
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -1249,8 +1249,8 @@ async def test_bb_extreme_emits_buy_signal_at_oversold_and_below_band():
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -1281,8 +1281,8 @@ async def test_bb_extreme_never_requests_autotrade():
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=AsyncMock())
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=AsyncMock())
     )
 
     await algo.signal(current_price=90.0, bb_high=105.0, bb_low=95.0, bb_mid=100.0)
@@ -1305,8 +1305,8 @@ async def test_bb_extreme_emits_sell_signal_at_overbought_and_above_band():
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -1339,8 +1339,8 @@ async def test_bb_extreme_skips_when_rsi_not_oversold():
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(
@@ -1365,8 +1365,8 @@ async def test_bb_extreme_skips_when_price_inside_band():
     algo.at_consumer = cast(
         AutotradeConsumer, SimpleNamespace(process_autotrade_restrictions=at_mock)
     )
-    algo.telegram_consumer = cast(
-        TelegramConsumer, SimpleNamespace(dispatch_signal=tg_mock)
+    algo.telegram_notifier = cast(
+        TelegramSignalNotifier, SimpleNamespace(dispatch_signal=tg_mock)
     )
 
     await algo.signal(

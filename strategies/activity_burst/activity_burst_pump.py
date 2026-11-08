@@ -36,7 +36,7 @@ class ActivityBurstPump:
         self.kucoin_symbol = cls.kucoin_symbol
         self.exchange = cls.exchange
         self.binbot_api = cls.binbot_api
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.market_type = cls.market_type
         self.at_consumer = cls.at_consumer
         self._breadth_cross_tolerance = cls._breadth_cross_tolerance
@@ -289,5 +289,5 @@ class ActivityBurstPump:
                 **anomaly_indicators,
             },
         )
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

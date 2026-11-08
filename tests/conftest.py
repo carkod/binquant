@@ -51,12 +51,7 @@ def mock_binbot_api():
 
 @pytest.fixture(autouse=True)
 def mock_telegram_bot():
-    """
-    python-telegram-bot's Bot() rejects an empty token with InvalidToken, so
-    any test that instantiates KlinesProvider (which builds a TelegramConsumer)
-    blows up in CI where TELEGRAM_BOT_KEY is unset. Stub Bot at the consumer
-    import site so construction is safe regardless of env state.
-    """
-    telegram_consumer = import_module("consumers.telegram_consumer")
-    with patch.object(telegram_consumer, "Bot"):
+    """Keep shared Telegram client construction isolated from credentials/network."""
+    telegram_delivery = import_module("pybinbot.shared.telegram_delivery")
+    with patch.object(telegram_delivery, "Bot"):
         yield

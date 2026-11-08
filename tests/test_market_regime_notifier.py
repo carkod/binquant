@@ -17,7 +17,7 @@ def make_algo(
     evaluator = SimpleNamespace(
         config=SimpleNamespace(env="test"),
         symbol="TESTUSDT",
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         macroregime_directional=current,
         macroregime_oscillation_intensity=0.73,
         microregime_directional="NONE",
@@ -44,7 +44,7 @@ async def test_macroregime_notifier_bootstraps_without_emitting_transition() -> 
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
     assert algo.last_macroregime_directional == "UP"
     assert algo.context_evaluator.last_macroregime_directional == "UP"
 
@@ -55,8 +55,8 @@ async def test_macroregime_notifier_emits_directional_transition() -> None:
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-    message = algo.telegram_consumer.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
+    message = algo.telegram_notifier.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
     assert "#macroregime_directional_transition" in message
     assert "Macro directional transition: UP -> DOWN" in message
     assert "Macro oscillation intensity (BTC): 0.73" in message
@@ -71,7 +71,7 @@ async def test_macroregime_notifier_skips_unchanged_direction() -> None:
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -80,4 +80,4 @@ async def test_macroregime_notifier_skips_unavailable_btc_measure() -> None:
 
     await algo.signal()
 
-    algo.telegram_consumer.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]

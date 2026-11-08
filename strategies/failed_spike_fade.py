@@ -61,7 +61,7 @@ class FailedSpikeFade:
         self.symbol = cls.symbol
         self.market_type = cls.market_type
         self.df_15m = cls.df_15m.copy()
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
@@ -762,5 +762,5 @@ class FailedSpikeFade:
             - <a href='{terminal_link}'>Dashboard trade</a>
             """
         await self.ti.dispatch_signal_record(value=value)
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

@@ -117,7 +117,7 @@ def make_algo(
         symbol="TESTUSDT",
         exchange=ExchangeId.KUCOIN,
         market_type=MarketType.SPOT,
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
         df_15m=df_15m,
@@ -139,10 +139,10 @@ async def test_buy_the_dip_enters_on_valid_six_hour_dip() -> None:
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_called_once()
+    context.telegram_notifier.dispatch_signal.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
 
-    telegram_msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    telegram_msg = context.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "coinrule_buy_the_dip" in telegram_msg
     assert "Action: LONG ENTRY" in telegram_msg
     assert "Market regime: UNAVAILABLE" in telegram_msg
@@ -162,7 +162,7 @@ async def test_buy_the_dip_skips_before_start_time() -> None:
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -178,7 +178,7 @@ async def test_buy_the_dip_skips_when_dip_is_too_small() -> None:
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -194,7 +194,7 @@ async def test_buy_the_dip_skips_when_dip_is_too_deep() -> None:
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -216,7 +216,7 @@ async def test_buy_the_dip_can_emit_repeated_signals_without_local_cooldown() ->
         bb_low=98.0,
     )
 
-    assert context.telegram_consumer.dispatch_signal.call_count == 2
+    assert context.telegram_notifier.dispatch_signal.call_count == 2
     assert context.at_consumer.process_autotrade_restrictions.await_count == 2
 
 
@@ -236,7 +236,7 @@ async def test_buy_the_dip_skips_when_symbol_micro_regime_is_trend_down() -> Non
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -265,7 +265,7 @@ async def test_buy_the_dip_skips_when_market_regime_is_trend_up() -> None:
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -287,7 +287,7 @@ async def test_buy_the_dip_skips_when_symbol_micro_regime_is_trend_up() -> None:
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -309,7 +309,7 @@ async def test_buy_the_dip_requires_reclaim_above_prior_close_and_ema20() -> Non
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -362,7 +362,7 @@ async def test_buy_the_dip_skips_when_market_regime_is_trend_down() -> None:
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
     context.binbot_api.get_bots_by_name.assert_not_called()
     context.binbot_api.deactivate_bot.assert_not_called()
@@ -406,7 +406,7 @@ async def test_buy_the_dip_does_not_deactivate_active_bot_when_market_regime_tur
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
     context.binbot_api.get_bots_by_name.assert_not_called()
     context.binbot_api.deactivate_bot.assert_not_called()
@@ -433,7 +433,7 @@ async def test_buy_the_dip_does_not_deactivate_active_bot_when_reclaim_is_lost()
         bb_low=98.0,
     )
 
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
     context.binbot_api.get_bots_by_name.assert_not_called()
     context.binbot_api.deactivate_bot.assert_not_called()

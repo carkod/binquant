@@ -58,7 +58,7 @@ class RangeBbRsiMeanReversion:
         self.exchange = cls.exchange
         self.market_type = cls.market_type
         self.binbot_api = cls.binbot_api
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
@@ -327,7 +327,7 @@ class RangeBbRsiMeanReversion:
                 "range_bb_rsi_regime_route": route_reason,
             },
         )
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)
         logging.info(
             "[%s] %s signal emitted for %s (notification only, route=%s)",

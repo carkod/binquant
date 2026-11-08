@@ -40,7 +40,7 @@ class BuyTheDip(StrategyMixin):
         self.exchange = cls.exchange
         self.market_type = cls.market_type
         self.symbol = cls.symbol
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
 
     def _find_reference_price(self, target_time: datetime) -> float | None:
@@ -174,5 +174,5 @@ class BuyTheDip(StrategyMixin):
         )
 
         await self.ti.dispatch_signal_record(value=value)
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

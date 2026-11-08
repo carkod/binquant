@@ -102,7 +102,7 @@ class TopGainerShort:
         self.market_type = cls.market_type
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.market_breadth_data: MarketBreadthSeries | None = cls.market_breadth_data
         self.gainers_losers_series = cls.gainers_losers_series
@@ -574,7 +574,7 @@ class TopGainerShort:
         """
         try:
             await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-            await self.telegram_consumer.dispatch_signal(msg)
+            await self.telegram_notifier.dispatch_signal(msg)
             await self.at_consumer.process_autotrade_restrictions(value)
         finally:
             # Prevent duplicate signals if persistence succeeds but dispatch fails.

@@ -177,7 +177,7 @@ def make_context(
         binbot_api=SimpleNamespace(dispatch_create_signal=Mock()),
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT",
@@ -285,7 +285,7 @@ async def test_signal_dispatches_confirmed_short_in_every_environment(
     assert value.bot_params.trailing_profit == 6.0
     assert value.bot_params.trailing_deviation == 2.5
     assert indicators["route_reason"] == "confirmed_top_loser_short"
-    msg = context.telegram_consumer.dispatch_signal.call_args.args[0]
+    msg = context.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "Regime measures: test" in msg
     assert "Signal route: confirmed_top_loser_short" in msg
     assert "Autotrade is disabled; notification only" in msg
@@ -321,7 +321,7 @@ async def test_signal_rejects_rebounded_live_candle_after_completed_confirmation
 
     context.dispatch_signal_record.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     assert context.strategy_cooldowns == {}
 
 
@@ -341,7 +341,7 @@ async def test_signal_rejects_live_price_outside_candidate_entry_window(
 
     context.dispatch_signal_record.assert_not_awaited()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     assert context.strategy_cooldowns == {}
 
 
@@ -359,7 +359,7 @@ async def test_signal_rejects_symbol_already_on_top_loser_list(monkeypatch) -> N
     )
 
     context.dispatch_signal_record.assert_not_awaited()
-    context.telegram_consumer.dispatch_signal.assert_not_called()
+    context.telegram_notifier.dispatch_signal.assert_not_called()
     context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
 
 
@@ -380,5 +380,5 @@ async def test_stale_top_loser_snapshot_does_not_suppress_signal(monkeypatch) ->
     )
 
     context.dispatch_signal_record.assert_awaited_once()
-    context.telegram_consumer.dispatch_signal.assert_called_once()
+    context.telegram_notifier.dispatch_signal.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()

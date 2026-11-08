@@ -169,7 +169,7 @@ def make_context(
         exchange=ExchangeId.KUCOIN,
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         market_type=MarketType.FUTURES,
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         current_symbol_data=SymbolModel(
@@ -231,7 +231,7 @@ async def test_signal_does_not_emit_short_when_hot_breadth_fades(
     )
     send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(
+    algo.telegram_notifier = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
     algo.at_consumer = cast(
@@ -265,7 +265,7 @@ async def test_signal_emits_long_when_washed_out_breadth_recovers_with_btc(
     )
     send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(
+    algo.telegram_notifier = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
     algo.at_consumer = cast(
@@ -345,7 +345,7 @@ async def test_signal_skips_long_when_symbol_trend_is_not_up(monkeypatch):
     )
     send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(
+    algo.telegram_notifier = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
     algo.at_consumer = cast(
@@ -377,7 +377,7 @@ async def test_signal_skips_long_when_btc_is_not_increasing(monkeypatch):
     )
     send_signal_mock = AsyncMock()
     process_mock = AsyncMock()
-    algo.telegram_consumer = cast(
+    algo.telegram_notifier = cast(
         Any, SimpleNamespace(dispatch_signal=send_signal_mock)
     )
     algo.at_consumer = cast(

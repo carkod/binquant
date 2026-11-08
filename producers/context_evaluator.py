@@ -40,7 +40,7 @@ from pybinbot import (
 )
 
 from consumers.autotrade_consumer import AutotradeConsumer
-from consumers.telegram_consumer import TelegramConsumer
+from shared.telegram_signal_notifier import TelegramSignalNotifier
 from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import LiveMarketContext
 from market_regime.open_interest_order_sizing import (
@@ -88,7 +88,7 @@ class ContextEvaluator:
         feed_interval: BinanceKlineIntervals | KucoinKlineIntervals,
         candlestick_interval: BinanceKlineIntervals | KucoinKlineIntervals,
         binbot_api: BinbotApi,
-        telegram_consumer: TelegramConsumer,
+        telegram_notifier: TelegramSignalNotifier,
         strategy_cooldowns: dict[tuple[str, str], int] | None = None,
         strategy_states: dict[tuple[str, str], dict[str, float | int]] | None = None,
         activity_burst_anomaly_gates: dict[str, ActivityBurstAnomalyGate] | None = None,
@@ -139,7 +139,7 @@ class ContextEvaluator:
         # if it's not defined, then it wouldn't subscribe with websockets
         self.current_symbol_data = current_symbol_data
         self.price_precision = self.current_symbol_data.price_precision
-        self.telegram_consumer = telegram_consumer
+        self.telegram_notifier = telegram_notifier
         self.strategy_cooldowns = strategy_cooldowns
         self.strategy_states = strategy_states if strategy_states is not None else {}
         self.activity_burst_anomaly_gates = (

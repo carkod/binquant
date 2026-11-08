@@ -148,7 +148,7 @@ def make_algo() -> FailedSpikeFade:
         df_15m=df,
         finalize_signal_bot_params=Mock(),
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(
             autotrade_settings=AutotradeSettingsSchema(
                 fiat="USDT", base_order_size=6.0
@@ -306,7 +306,7 @@ async def test_failed_spike_fade_never_requests_autotrade_in_staging(monkeypatch
     assert signal.bot_params.cooldown == 120
     assert signal.bot_params.dynamic_trailing is False
     assert signal.bot_params.trailing is False
-    telegram_msg = cast(Mock, algo.telegram_consumer.dispatch_signal).call_args.args[0]
+    telegram_msg = cast(Mock, algo.telegram_notifier.dispatch_signal).call_args.args[0]
     assert "Max margin: 8.0 USDT" in telegram_msg
     assert "Autotrade is disabled; notification only" in telegram_msg
     assert "Autotrade is enabled" not in telegram_msg

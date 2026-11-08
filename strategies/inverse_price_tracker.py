@@ -36,7 +36,7 @@ class InversePriceTracker:
         self.exchange = cls.exchange
         self.market_type = cls.market_type
         self.symbol = cls.symbol
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.signal_context_scorer = SignalContextScorer(
             context_weight=0.35,
@@ -230,5 +230,5 @@ class InversePriceTracker:
             """
 
         await self.ti.dispatch_signal_record(value=value)
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)

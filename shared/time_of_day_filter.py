@@ -17,7 +17,7 @@ late-day continuation moves are reliable enough to overcome the spread).
 
 When the filter blocks, callers should:
   1. Force the SignalsConsumer to `autotrade=False` (keep the alert; skip the bot)
-  2. Send a `#time_of_day_block` notification via TelegramConsumer
+  2. Send a `#time_of_day_block` notification via TelegramSignalNotifier
 
 The notification format mirrors macroregime_directional_notifier.py — leading metadata, structured
 key/value lines — so existing Telegram parsing and dashboards can ingest it.

@@ -27,7 +27,7 @@ class FakeAutotradeConsumer:
 class FakeContextEvaluator:
     def __init__(self) -> None:
         self.symbol = "ADAUSDTM"
-        self.telegram_consumer = None
+        self.telegram_notifier = None
         self.at_consumer = FakeAutotradeConsumer()
         self.exchange = "kucoin"
         self.market_type = MarketType.FUTURES

@@ -548,4 +548,4 @@ class DarkKnight:
         self._last_emitted = confirmation
         if cooldowns is not None:
             cooldowns[key] = confirmation
-        await self.ti.telegram_consumer.dispatch_signal(message)
+        await self.ti.telegram_notifier.dispatch_signal(message)

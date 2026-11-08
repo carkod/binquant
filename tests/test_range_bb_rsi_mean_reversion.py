@@ -134,7 +134,7 @@ def make_evaluator(
         binbot_api=MagicMock(),
         df_15m=df,
         dispatch_signal_record=AsyncMock(),
-        telegram_consumer=SimpleNamespace(dispatch_signal=AsyncMock()),
+        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
         at_consumer=SimpleNamespace(process_autotrade_restrictions=AsyncMock()),
         latest_market_context=latest_market_context,
         current_symbol_data=SymbolModel(
@@ -162,11 +162,11 @@ async def test_range_bb_rsi_never_requests_autotrade_on_lower_band_rejection() -
         bb_low=95.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_called_once()
+    evaluator.telegram_notifier.dispatch_signal.assert_called_once()
     evaluator.dispatch_signal_record.assert_called_once()
     evaluator.at_consumer.process_autotrade_restrictions.assert_awaited_once()
 
-    telegram_msg = evaluator.telegram_consumer.dispatch_signal.call_args.args[0]
+    telegram_msg = evaluator.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "range_bb_rsi_mean_reversion" in telegram_msg
     assert "Action: LONG ENTRY" in telegram_msg
     assert "lower_band_rsi_zscore_rejection" in telegram_msg
@@ -197,12 +197,12 @@ async def test_emits_short_on_upper_band_rsi_zscore_rejection() -> None:
         bb_low=95.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_called_once()
+    evaluator.telegram_notifier.dispatch_signal.assert_called_once()
     signal_value = evaluator.dispatch_signal_record.call_args.kwargs["value"]
     assert signal_value.direction == "SHORT"
     assert signal_value.bot_params.position == "short"
 
-    telegram_msg = evaluator.telegram_consumer.dispatch_signal.call_args.args[0]
+    telegram_msg = evaluator.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "Action: SHORT ENTRY" in telegram_msg
     assert "upper_band_rsi_zscore_rejection" in telegram_msg
 
@@ -221,7 +221,7 @@ async def test_no_signal_when_market_regime_is_not_range() -> None:
         bb_low=95.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
     evaluator.dispatch_signal_record.assert_not_called()
 
 
@@ -242,7 +242,7 @@ async def test_no_signal_when_symbol_is_breaking_down() -> None:
         bb_low=95.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -259,7 +259,7 @@ async def test_no_signal_when_adx_is_too_high(monkeypatch: pytest.MonkeyPatch) -
         bb_low=95.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -284,4 +284,4 @@ async def test_no_signal_without_rejection_candle() -> None:
         bb_low=95.0,
     )
 
-    evaluator.telegram_consumer.dispatch_signal.assert_not_called()
+    evaluator.telegram_notifier.dispatch_signal.assert_not_called()

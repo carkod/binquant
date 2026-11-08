@@ -82,7 +82,7 @@ class TopGainerMomentumRecovery:
         self.market_type = cls.market_type
         self.current_symbol_data = cls.current_symbol_data
         self.price_precision = cls.price_precision
-        self.telegram_consumer = cls.telegram_consumer
+        self.telegram_notifier = cls.telegram_notifier
         self.at_consumer = cls.at_consumer
         self.recent_bots = cls.top_gainer_recovery_bots
         self.attempted_source_ids = cls.top_gainer_recovery_attempted_source_ids
@@ -554,5 +554,5 @@ class TopGainerMomentumRecovery:
             - <a href='{terminal_link}'>Dashboard trade</a>
         """
         await self.ti.dispatch_signal_record(value=value, indicators=indicators)
-        await self.telegram_consumer.dispatch_signal(msg)
+        await self.telegram_notifier.dispatch_signal(msg)
         await self.at_consumer.process_autotrade_restrictions(value)
