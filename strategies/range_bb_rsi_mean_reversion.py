@@ -50,7 +50,7 @@ class RangeBbRsiMeanReversion:
     LONG_CLOSE_POSITION_MIN = 0.55
     SHORT_CLOSE_POSITION_MAX = 0.45
 
-    def __init__(self, cls: "ContextEvaluator"):
+    def __init__(self, cls: ContextEvaluator):
         self.ti = cls
         self.config = cls.config
         self.symbol = cls.symbol

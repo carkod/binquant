@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 class MacroregimeDirectionalNotifier:
     """Notify Telegram when the shared BTC directional regime changes."""
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.context_evaluator = cls
         self.config = cls.config
         self.symbol = cls.symbol

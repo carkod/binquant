@@ -29,7 +29,7 @@ class InversePriceTracker:
     TELEMETRY_FOLLOWTHROUGH_MIN = -0.1
     TELEMETRY_ADVERSE_RISK_MAX = 0.65
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.df_5m = cls.df_5m
         self.config = cls.config

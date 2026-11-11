@@ -58,7 +58,7 @@ class GridOnlyPolicy:
     def _coerce_breadth_value(value: Any) -> float | None:
         try:
             parsed = float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         if not isfinite(parsed):
             return None

@@ -55,7 +55,7 @@ class BBExtremeReversion(StrategyMixin):
 
     LOOKBACK_CANDLES = 30  # plenty for RSI(2); BB spreads arrive from the caller
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.df_15m = cls.df_15m
         self.config = cls.config

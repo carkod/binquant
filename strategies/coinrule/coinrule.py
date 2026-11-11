@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 class Coinrule:
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.config = cls.config
         self.exchange = cls.exchange

@@ -31,7 +31,7 @@ class LadderDeployer:
         "ENTERED_TREND_DOWN",
     )
 
-    def __init__(self, cls: "ContextEvaluator"):
+    def __init__(self, cls: ContextEvaluator):
         self.ti = cls
         self.symbol = cls.symbol
         self.telegram_notifier = cls.telegram_notifier

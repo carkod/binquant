@@ -38,7 +38,7 @@ class LowerHighPattern:
     MIN_DROP_PCT = 2.5
     ALERT_COOLDOWN_MINUTES = 240
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.symbol = cls.symbol
         self.config = cls.config

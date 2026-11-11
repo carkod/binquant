@@ -32,7 +32,7 @@ class BuyTheDip(StrategyMixin):
     LOOKBACK_HOURS = 6
     LOOKBACK_CANDLES = 24
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.df_15m = cls.df_15m
         self.config = cls.config

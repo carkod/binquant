@@ -94,7 +94,7 @@ def safe_format(value, spec: str = ".2f") -> str:
     """
     try:
         return format(float(value), spec)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return str(value)
 
 
