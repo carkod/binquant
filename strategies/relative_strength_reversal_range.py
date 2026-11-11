@@ -40,7 +40,7 @@ class RelativeStrengthReversalRange:
     VOLUME_PERCENTILE = 0.20
     VOLUME_WINDOW = 96  # 24h on 15m bars
 
-    def __init__(self, cls: "ContextEvaluator"):
+    def __init__(self, cls: ContextEvaluator):
         self.ti = cls
         self.config = cls.config
         self.symbol = cls.symbol

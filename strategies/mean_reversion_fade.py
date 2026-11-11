@@ -72,7 +72,7 @@ class MeanReversionFade:
     MAX_SYMBOL_ATR_PCT = 0.03
     MIN_REJECTION_WICK_RATIO = 0.0
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.config = cls.config
         self.symbol = cls.symbol

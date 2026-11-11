@@ -96,7 +96,7 @@ class TopGainerShort:
         )
         return floor(scaled + 0.5)
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.candlestick_interval = cls.candlestick_interval
         self.config = cls.config

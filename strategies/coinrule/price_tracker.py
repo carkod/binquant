@@ -41,7 +41,7 @@ class PriceTracker:
     MAX_HOLDING_BARS = 8
     MAX_TOP_LOSER_SNAPSHOTS_FOR_AUTOTRADE = 1
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.df_5m = cls.df_5m
         self.config = cls.config
@@ -69,7 +69,7 @@ class PriceTracker:
             return None
         try:
             return int(self.df_5m["close_time"].iloc[-1])
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     def _cooldown_window_ms(self) -> int:
@@ -78,7 +78,7 @@ class PriceTracker:
         if callable(get_ms):
             try:
                 return int(get_ms()) * self.ENTRY_COOLDOWN_BARS
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 pass
         return self.DEFAULT_INTERVAL_MS * self.ENTRY_COOLDOWN_BARS
 

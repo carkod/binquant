@@ -87,7 +87,7 @@ class TopGainerEarlyMomentum:
     RISK_REJECTION_ALGO = f"{ALGO}:risk_rejection"
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self.candlestick_interval = cls.candlestick_interval
         self.config = cls.config
@@ -121,7 +121,7 @@ class TopGainerEarlyMomentum:
         return any(entry.symbol == self.symbol for entry in latest_snapshot.top_gainers)
 
     @classmethod
-    def _features(cls, df: "DataFrame") -> tuple[dict[str, float] | None, str]:
+    def _features(cls, df: DataFrame) -> tuple[dict[str, float] | None, str]:
         if len(df) < cls.MIN_HISTORY:
             return None, "history_too_short"
         for column in ("open", "high", "low", "close", "volume", "open_time"):
@@ -220,7 +220,7 @@ class TopGainerEarlyMomentum:
         return True, "top_gainer_breakout_ignition"
 
     @staticmethod
-    def _completed_candles(df: "DataFrame", now_ms: int) -> "DataFrame":
+    def _completed_candles(df: DataFrame, now_ms: int) -> DataFrame:
         if "close_time" not in df.columns:
             return df.iloc[0:0]
         return df.loc[df["close_time"] < now_ms]

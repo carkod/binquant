@@ -321,7 +321,7 @@ class DarkKnight:
     TRAILING_PROFIT_PCT = 4.5
     TRAILING_DEVIATION_PCT = 3.0
 
-    def __init__(self, cls: "ContextEvaluator") -> None:
+    def __init__(self, cls: ContextEvaluator) -> None:
         self.ti = cls
         self._last_emitted: int | None = None
 

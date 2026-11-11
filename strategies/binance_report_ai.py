@@ -15,7 +15,7 @@ class BinanceAIReport:
 
     def __init__(
         self,
-        cls: "ContextEvaluator",
+        cls: ContextEvaluator,
     ) -> None:
         self.symbol = cls.symbol.replace("-", "")
         self.config = Config()

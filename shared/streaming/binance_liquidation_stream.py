@@ -60,7 +60,7 @@ class BinanceLiquidationStream:
                     async for raw in websocket:
                         try:
                             self.process_message(raw)
-                        except (TypeError, ValueError, json.JSONDecodeError):
+                        except TypeError, ValueError, json.JSONDecodeError:
                             logging.exception("Invalid Binance liquidation event")
             except asyncio.CancelledError:
                 raise

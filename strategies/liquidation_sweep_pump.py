@@ -109,7 +109,7 @@ class LiquidationSweepPump:
     FULL_NEGATIVE_BASIS_BPS = 25.0
     MAX_POSITIONING_RANK_BONUS = 0.20
 
-    def __init__(self, cls: "ContextEvaluator"):
+    def __init__(self, cls: ContextEvaluator):
         self.ti = cls
         self.config = cls.config
         # Symbol / context
@@ -133,7 +133,7 @@ class LiquidationSweepPump:
     def _coerce_market_breadth(value: Any) -> float | None:
         try:
             parsed = float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         return parsed if isfinite(parsed) else None
 
