@@ -1,4 +1,3 @@
-from pybinbot import RecoveryParams
 import logging
 import os
 from datetime import UTC, datetime, timedelta
@@ -8,6 +7,7 @@ from pybinbot import (
     BotBase,
     HABollinguerSpread,
     Position,
+    RecoveryParams,
     SignalsConsumer,
     round_numbers,
 )

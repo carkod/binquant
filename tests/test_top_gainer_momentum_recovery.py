@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
-from pybinbot import DataFrame
 from pybinbot import (
     BotModel,
+    DataFrame,
     DealType,
     ExchangeId,
     MarketType,

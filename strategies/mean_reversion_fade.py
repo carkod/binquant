@@ -4,12 +4,12 @@ from math import isfinite
 from os import getenv
 from typing import TYPE_CHECKING
 
-from pybinbot import Series
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
     MarketType,
     Position,
+    Series,
     SignalsConsumer,
     round_numbers,
 )

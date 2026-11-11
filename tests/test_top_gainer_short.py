@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
-from pybinbot import pandas as pd
 import pytest
 from pybinbot import (
     AutotradeSettingsSchema,
@@ -14,6 +13,7 @@ from pybinbot import (
     MarketBreadthSeries,
     MarketType,
     SymbolModel,
+    pandas as pd,
 )
 
 from pybinbot.shared.price_crossings import (

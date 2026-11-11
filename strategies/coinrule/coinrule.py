@@ -2,7 +2,6 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from pybinbot import to_datetime
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
@@ -12,6 +11,7 @@ from pybinbot import (
     Position,
     SignalsConsumer,
     round_numbers,
+    to_datetime,
 )
 
 from market_regime.regime_routing import resolve_symbol_features

@@ -3,8 +3,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
-from pybinbot import DataFrame, Series
-from pybinbot import ExchangeId, MarketType, Position, SymbolModel
+from pybinbot import DataFrame, ExchangeId, MarketType, Position, Series, SymbolModel
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 from strategies.mean_reversion_fade import MeanReversionFade

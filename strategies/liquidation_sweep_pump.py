@@ -5,16 +5,17 @@ from math import isfinite
 from os import getenv
 from typing import TYPE_CHECKING, Any
 
-from pybinbot import numpy as np
-from pybinbot import DataFrame, concat
 from pybinbot import (
     BotBase,
+    DataFrame,
     HABollinguerSpread,
     KlineSchema,
     MarketBreadthSeries,
     MarketType,
     Position,
     SignalsConsumer,
+    concat,
+    numpy as np,
     round_numbers,
     timestamp_sort_key,
 )

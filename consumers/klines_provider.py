@@ -2,22 +2,22 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from pybinbot import DataFrame
 from pybinbot import (
-    BinanceKlineIntervals,
-    BotModel,
-    ExchangeId,
-    KucoinKlineIntervals,
-    BinbotApi,
-    KucoinApi,
     BinanceApi,
-    KlineProduceModel,
-    MarketType,
-    KucoinFutures,
-    SymbolModel,
-    MarketBreadthSeries,
+    BinanceKlineIntervals,
+    BinbotApi,
+    BotModel,
+    DataFrame,
+    ExchangeId,
     GainersLosersSnapshot,
+    KlineProduceModel,
+    KucoinApi,
+    KucoinFutures,
+    KucoinKlineIntervals,
+    MarketBreadthSeries,
+    MarketType,
     Status,
+    SymbolModel,
 )
 from calibrators.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer

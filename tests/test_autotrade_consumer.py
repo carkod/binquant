@@ -1,5 +1,3 @@
-from pybinbot import RecoveryParams
-
 # tests/test_autotrade_consumer.py
 import time as time_module
 from os import environ
@@ -23,6 +21,7 @@ from pybinbot import (
     GridLadderStatus,
     MarketType,
     Position,
+    RecoveryParams,
     SignalsConsumer,
     Status,
     SymbolModel,

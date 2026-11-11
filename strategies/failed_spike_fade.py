@@ -4,15 +4,16 @@ from math import isfinite
 from os import getenv
 from typing import TYPE_CHECKING, Any
 
-from pybinbot import numpy as np
-from pybinbot import DataFrame, Series
 from pybinbot import (
     BotBase,
+    DataFrame,
     HABollinguerSpread,
     MarketBreadthSeries,
     MarketType,
     Position,
+    Series,
     SignalsConsumer,
+    numpy as np,
     round_numbers,
     timestamp_sort_key,
     timestamp_to_datetime,

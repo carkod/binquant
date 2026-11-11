@@ -4,9 +4,9 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from pybinbot import DataFrame
 from pybinbot import (
     AutotradeSettingsSchema,
+    DataFrame,
     ExchangeId,
     GainerLoserEntry,
     GainersLosersSnapshot,

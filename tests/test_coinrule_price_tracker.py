@@ -3,8 +3,8 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
-from pybinbot import DataFrame
 from pybinbot import (
+    DataFrame,
     ExchangeId,
     GainerLoserEntry,
     GainersLosersSnapshot,
