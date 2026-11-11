@@ -1,6 +1,6 @@
 from typing import Any
 from collections.abc import Mapping
-from pybinbot import DataFrame, Series, concat, to_numeric
+from pandas import DataFrame, Series, concat, to_numeric
 
 
 class MarketStateStore:

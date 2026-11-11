@@ -1,5 +1,8 @@
-from pybinbot import BotBase, DealBase, DealType, OrderBase
+from pybinbot import (
+    DealType,
+)
 from pydantic import BaseModel, field_validator, Field
+from pybinbot import BotBase, OrderBase, DealBase
 from uuid import UUID, uuid4
 
 

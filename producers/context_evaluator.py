@@ -7,6 +7,10 @@ from datetime import UTC, datetime
 from time import monotonic, time
 from typing import Any, Literal, cast
 
+from numpy import isnan
+from numpy import log as logarithm
+from numpy import nan
+from pandas import DataFrame, Series, to_numeric
 from kucoin_universal_sdk.generate.futures.market import (
     GetPartOrderBookReqBuilder,
     GetPartOrderBookResp,
@@ -18,27 +22,21 @@ from pybinbot import (
     BinbotApi,
     BotModel,
     Candles,
-    DataFrame,
     ExchangeId,
-    GainersLosersSnapshot,
     HABollinguerSpread,
     Indicators,
     KlineSchema,
     KucoinApi,
     KucoinFutures,
     KucoinKlineIntervals,
+    GainersLosersSnapshot,
     MarketBreadthSeries,
     MarketDominance,
     MarketType,
     Position,
-    Series,
     SignalsConsumer,
     SymbolModel,
-    isnan,
-    log as logarithm,
-    nan,
     round_numbers,
-    to_numeric,
 )
 
 from consumers.autotrade_consumer import AutotradeConsumer

@@ -299,6 +299,8 @@ name = "binquant"
 version = "0.2.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
     { name = "passlib" },
     { name = "pybinbot" },
     { name = "pydantic-settings" },
@@ -324,6 +326,8 @@ requires-dist = [
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
+    { name = "numpy", specifier = "==2.5.4" },
+    { name = "pandas", specifier = "==3.1.1" },
     { name = "passlib" },
     { name = "pybinbot", specifier = "==2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },

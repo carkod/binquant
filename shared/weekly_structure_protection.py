@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from math import isfinite
 
-from pybinbot import DataFrame, Position, round_numbers, to_numeric
+from pandas import DataFrame, to_numeric
+from pybinbot import Position, round_numbers
 
 
 @dataclass(frozen=True)

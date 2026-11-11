@@ -5,6 +5,7 @@ from math import floor, isfinite
 from time import time
 from typing import TYPE_CHECKING, Any
 
+from pandas import to_numeric
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
@@ -14,7 +15,6 @@ from pybinbot import (
     SignalsConsumer,
     round_numbers,
     timestamp_sort_key,
-    to_numeric,
 )
 from pybinbot.shared.price_crossings import (
     CHOP_CROSSING_THRESHOLD,

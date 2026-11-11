@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from time import time
 from typing import TYPE_CHECKING
 
-from pybinbot import DataFrame, to_numeric
+from pandas import DataFrame, to_numeric
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator

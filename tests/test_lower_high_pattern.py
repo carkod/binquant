@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
-from pybinbot import pandas as pd
+import pandas as pd
 import pytest
 
 from strategies.lower_high_pattern import LowerHighPattern

@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from time import sleep
 from typing import Any
 
-from pybinbot import ExchangeId, MarketType, Series, concat, to_numeric
+from pandas import Series, concat, to_numeric
+from pybinbot import ExchangeId, MarketType
 from requests import Response
 
 from shared.exceptions import BinbotError, InvalidSymbol

@@ -6,12 +6,12 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pandas import DataFrame
 from producers.context_evaluator import ContextEvaluator
 from producers.klines_connector import KlinesConnector
 from pybinbot import (
     AutotradeSettingsSchema,
     BotBase,
-    DataFrame,
     ExchangeId,
     GridDeploymentRequest,
     HABollinguerSpread,

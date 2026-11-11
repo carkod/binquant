@@ -1,5 +1,7 @@
-from pybinbot import Candles, DataFrame, ExchangeId, is_numeric_dtype
+from pandas import DataFrame
+from pandas.api.types import is_numeric_dtype
 import pytest
+from pybinbot import Candles, ExchangeId
 
 
 def make_base_df():

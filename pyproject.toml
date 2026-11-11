@@ -9,6 +9,8 @@ description = "Analytics tool for Binbot"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "numpy==2.5.4",
+    "pandas==3.1.1",
     "passlib",
     "pybinbot==2.0.0",
     "pydantic-settings>=2.14.1",

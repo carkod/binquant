@@ -3,7 +3,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-from pybinbot import pandas as pd
+import pandas as pd
 import pytest
 
 from strategies.dark_knight import (

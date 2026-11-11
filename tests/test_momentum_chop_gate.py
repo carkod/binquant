@@ -1,7 +1,7 @@
 from typing import Any, cast
 from unittest.mock import Mock
 
-from pybinbot import DataFrame
+from pandas import DataFrame
 import pytest
 
 from pybinbot.shared.price_crossings import (
