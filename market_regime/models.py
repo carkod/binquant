@@ -1,10 +1,10 @@
 from __future__ import annotations
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-MarketRegime: TypeAlias = Literal[
+type MarketRegime = Literal[
     "TREND_UP",
     "TREND_DOWN",
     "RANGE",
@@ -12,7 +12,7 @@ MarketRegime: TypeAlias = Literal[
     "TRANSITIONAL",
 ]
 
-MicroRegime: TypeAlias = Literal[
+type MicroRegime = Literal[
     "TREND_UP",
     "TREND_DOWN",
     "RANGE",
@@ -20,7 +20,7 @@ MicroRegime: TypeAlias = Literal[
     "TRANSITIONAL",
 ]
 
-MarketRegimeTransition: TypeAlias = Literal[
+type MarketRegimeTransition = Literal[
     "STRESS_SPIKE",
     "STRESS_RELIEF",
     "ENTERED_TREND_UP",
@@ -29,7 +29,7 @@ MarketRegimeTransition: TypeAlias = Literal[
     "LOST_REGIME_EDGE",
 ]
 
-MicroRegimeTransition: TypeAlias = Literal[
+type MicroRegimeTransition = Literal[
     "VOLATILITY_EXPANSION",
     "BREAKOUT_UP",
     "BREAKDOWN",
@@ -41,7 +41,7 @@ MicroRegimeTransition: TypeAlias = Literal[
     "ENTERED_TRANSITIONAL",
 ]
 
-PositioningState: TypeAlias = Literal[
+type PositioningState = Literal[
     "NEUTRAL",
     "NEW_LEVERAGE_LONG",
     "NEW_LEVERAGE_SHORT",

@@ -381,62 +381,6 @@ def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
     assert value.open_interest_sizing is None
 
 
-@pytest.mark.asyncio
-async def test_process_data_keeps_removed_5m_strategies_disabled(
-    monkeypatch,
-):
-    rows = 100
-    df_5m = DataFrame(
-        {
-            "close": [100.0] * rows,
-            "ma_7": [100.0] * rows,
-            "ma_25": [100.0] * rows,
-            "ma_100": [100.0] * rows,
-        }
-    )
-
-    class FakeCandles:
-        def __init__(self, exchange, candles):  # noqa: ARG002
-            self.candles = candles
-
-        def pre_process(self):
-            return df_5m.copy() if self.candles == "5m" else DataFrame()
-
-        def post_process(self, df):
-            return df
-
-        def resample(self, df, interval):  # noqa: ARG002
-            return DataFrame()
-
-    activity_signal = AsyncMock()
-    evaluator: Any = object.__new__(ContextEvaluator)
-    evaluator.config = SimpleNamespace(env="production")
-    evaluator.exchange = Mock()
-    evaluator.symbol = "TESTUSDT"
-    evaluator.latest_market_context = None
-    evaluator.market_breadth_data = None
-    evaluator.at_consumer = SimpleNamespace(
-        autotrade_settings=AutotradeSettingsSchema(enable_grid_ladders=False)
-    )
-    evaluator.symbol_dependent_data = Mock()
-    evaluator.indicators_enrichment = lambda df: df
-    evaluator.bb_spreads = lambda df: HABollinguerSpread(
-        bb_high=101.0,
-        bb_mid=100.0,
-        bb_low=99.0,
-    )
-
-    def load_5m_algorithms():
-        evaluator.abp = SimpleNamespace(signal=activity_signal)
-
-    evaluator.load_5m_algorithms = load_5m_algorithms
-    monkeypatch.setattr("producers.context_evaluator.Candles", FakeCandles)
-
-    await evaluator.process_data(candles="5m", candles_15m="15m")
-
-    activity_signal.assert_not_awaited()
-
-
 ALL_NOTIFICATION_STRATEGIES = {
     "MacroregimeDirectionalNotifier",
     "LowerHighPattern",
@@ -479,7 +423,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
     strategy_signals = {
         name: AsyncMock()
         for name in (
-            "ActivityBurstPump",
             "TopGainerEarlyMomentum",
             "TopGainerMomentumRecovery",
             "FailedSpikeFade",
@@ -509,9 +452,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
         bb_low=99.0,
     )
 
-    def load_5m_algorithms():
-        evaluator.abp = SimpleNamespace(signal=strategy_signals["ActivityBurstPump"])
-
     def load_15m_algorithms():
         evaluator.top_gainer_early_momentum = SimpleNamespace(
             signal=strategy_signals["TopGainerEarlyMomentum"]
@@ -540,7 +480,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
             signal=strategy_signals["TopLoserEarlyMomentum"]
         )
 
-    evaluator.load_5m_algorithms = load_5m_algorithms
     evaluator.load_15m_algorithms = load_15m_algorithms
     monkeypatch.setattr("producers.context_evaluator.Candles", FakeCandles)
 
