@@ -403,7 +403,6 @@ class TestAutotradeConsumer:
             "mean_reversion_fade",
             "liquidation_sweep_pump",
             "top_gainer_short",
-            "activity_burst_pump",
         ],
     )
     async def test_standard_strategies_autotrade(self, algorithm_name):

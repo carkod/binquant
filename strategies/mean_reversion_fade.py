@@ -4,7 +4,7 @@ from math import isfinite
 from os import getenv
 from typing import TYPE_CHECKING
 
-from pandas import Series
+from pybinbot import Series
 from pybinbot import (
     BotBase,
     HABollinguerSpread,

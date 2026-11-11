@@ -3,7 +3,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from pandas import DataFrame
+from pybinbot import DataFrame
 from pybinbot import ExchangeId, MarketBreadthSeries, MarketType, Position, SymbolModel
 from strategies.liquidation_sweep_pump import (
     LiquidationSweepCandidate,

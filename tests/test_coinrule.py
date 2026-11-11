@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from pandas import DataFrame
+from pybinbot import DataFrame
 from pybinbot import ExchangeId, MarketType, Position
 
 from strategies.coinrule.coinrule import Coinrule

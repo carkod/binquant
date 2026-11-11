@@ -3,7 +3,7 @@ from math import ceil
 from collections.abc import Mapping
 from typing import Any
 
-from pandas import DataFrame, Series, concat
+from pybinbot import DataFrame, Series, concat
 
 from market_regime.market_state_store import MarketStateStore
 from market_regime.models import (

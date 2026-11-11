@@ -1,6 +1,6 @@
 from typing import Any
 
-from pandas import DataFrame
+from pybinbot import DataFrame
 import pytest
 
 from producers.context_evaluator import ContextEvaluator

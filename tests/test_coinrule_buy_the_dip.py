@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from pandas import DataFrame
+from pybinbot import DataFrame
 from pybinbot import ExchangeId, MarketType
 from unittest.mock import AsyncMock, MagicMock
 

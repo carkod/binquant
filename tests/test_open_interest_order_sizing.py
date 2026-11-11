@@ -4,7 +4,6 @@ from pybinbot import BotBase, Position
 from market_regime.models import DerivativesPositioningFeatures
 from market_regime.open_interest_order_sizing import (
     BASELINE_MARGIN,
-    activity_burst_derivatives_block_reason,
     apply_open_interest_sizing,
     calculate_open_interest_sizing,
 )
@@ -157,36 +156,3 @@ def test_cascade_risk_uses_two_usdt_even_without_oi_change() -> None:
     assert decision is not None
     assert decision.adjusted_margin == 2.0
     assert decision.evidence == "STRONGLY_ADVERSE"
-
-
-def test_activity_burst_blocks_only_cascade_or_crowded_strong_expansion() -> None:
-    assert (
-        activity_burst_derivatives_block_reason(
-            positioning(
-                state="CASCADE_RISK",
-                oi_change_15m=None,
-                stress=0.8,
-            )
-        )
-        == "derivatives_cascade_risk"
-    )
-    assert (
-        activity_burst_derivatives_block_reason(
-            positioning(
-                state="NEW_LEVERAGE_LONG",
-                oi_change_15m=0.015,
-                oi_zscore=2.1,
-            )
-        )
-        == "crowded_oi_expansion"
-    )
-    assert (
-        activity_burst_derivatives_block_reason(
-            positioning(
-                state="SHORT_SQUEEZE",
-                oi_change_15m=-0.02,
-                oi_zscore=2.1,
-            )
-        )
-        is None
-    )

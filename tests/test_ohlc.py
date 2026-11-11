@@ -1,5 +1,5 @@
-from pandas import DataFrame
-from pandas.api.types import is_numeric_dtype
+from pybinbot import DataFrame
+from pybinbot import is_numeric_dtype
 import pytest
 from pybinbot import Candles, ExchangeId
 

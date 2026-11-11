@@ -2,7 +2,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-import pandas as pd
+from pybinbot import pandas as pd
 from pybinbot import (
     BotBase,
     HABollinguerSpread,

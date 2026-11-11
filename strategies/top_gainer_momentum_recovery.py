@@ -26,7 +26,7 @@ from market_regime.regime_routing import resolve_symbol_features
 from shared.utils import build_links_msg, format_context_timestamp_line
 
 if TYPE_CHECKING:
-    from pandas import DataFrame
+    from pybinbot import DataFrame
 
     from producers.context_evaluator import ContextEvaluator
 

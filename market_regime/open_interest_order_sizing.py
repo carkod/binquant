@@ -115,32 +115,3 @@ def apply_open_interest_sizing(
     if decision is not None:
         bot_params.fiat_order_size = decision.adjusted_margin
     return decision
-
-
-def activity_burst_derivatives_block_reason(
-    positioning: DerivativesPositioningFeatures | None,
-) -> str | None:
-    if positioning is None:
-        return None
-    if (
-        positioning.positioning_state == "CASCADE_RISK"
-        or positioning.derivatives_stress_score >= 0.7
-    ):
-        return "derivatives_cascade_risk"
-
-    oi_change = positioning.oi_change_15m
-    if oi_change is None or oi_change < STRONG_OI_CHANGE:
-        return None
-
-    crowded_oi = positioning.oi_zscore is not None and positioning.oi_zscore >= 2.0
-    crowded_funding = (
-        positioning.annualized_funding_rate is not None
-        and positioning.annualized_funding_rate >= 0.50
-    )
-    crowded_percentile = (
-        positioning.funding_percentile is not None
-        and positioning.funding_percentile >= 0.90
-    )
-    if crowded_oi or crowded_funding or crowded_percentile:
-        return "crowded_oi_expansion"
-    return None

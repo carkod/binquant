@@ -7,7 +7,7 @@ from math import isfinite
 from time import time
 from typing import TYPE_CHECKING, Any
 
-from pandas import DataFrame, concat, to_numeric
+from pybinbot import DataFrame, concat, to_numeric
 from pybinbot import (
     BotBase,
     HABollinguerSpread,

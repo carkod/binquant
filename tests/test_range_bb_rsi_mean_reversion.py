@@ -3,7 +3,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pandas import DataFrame
+from pybinbot import DataFrame
 from pybinbot import ExchangeId, MarketType, SymbolModel
 
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures

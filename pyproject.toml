@@ -7,16 +7,14 @@ name = "binquant"
 version = "0.2.0"
 description = "Analytics tool for Binbot"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
-    "numpy>=2.2.0",
     "passlib",
-    "pybinbot>=1.13.8",
+    "pybinbot==2.0.0",
     "pydantic-settings>=2.14.1",
     "python-jose",
     "requests-cache>=1.2.0",
     "requests-html>=0.10.0",
-    "scikit-learn>=1.6.1,<2",
     "uvicorn>=0.37.0",
     "websockets>=15.0",
 ]

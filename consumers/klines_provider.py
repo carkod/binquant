@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
-from pandas import DataFrame
+from pybinbot import DataFrame
 from pybinbot import (
     BinanceKlineIntervals,
     BotModel,
@@ -35,11 +34,6 @@ from shared.config import Config
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 from time import time
-
-if TYPE_CHECKING:
-    from strategies.activity_burst.activity_burst_anomaly_gate import (
-        ActivityBurstAnomalyGate,
-    )
 
 
 class KlinesProvider:
@@ -104,7 +98,6 @@ class KlinesProvider:
         )
         self.strategy_cooldowns: dict[tuple[str, str], int] = {}
         self.strategy_states: dict[tuple[str, str], dict[str, float | int]] = {}
-        self.activity_burst_anomaly_gates: dict[str, ActivityBurstAnomalyGate] = {}
         self.top_gainer_recovery_bots: list[BotModel] = []
         self.top_gainer_recovery_attempted_source_ids: set[str] = set()
         self._last_top_gainer_recovery_bucket: int | None = None
@@ -502,7 +495,6 @@ class KlinesProvider:
             telegram_notifier=self.telegram_notifier,
             strategy_cooldowns=self.strategy_cooldowns,
             strategy_states=self.strategy_states,
-            activity_burst_anomaly_gates=self.activity_burst_anomaly_gates,
             liquidation_sweep_portfolio_selector=(
                 self.liquidation_sweep_portfolio_selector
             ),

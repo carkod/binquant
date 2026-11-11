@@ -2,7 +2,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from pandas import to_datetime
+from pybinbot import to_datetime
 from pybinbot import (
     BotBase,
     HABollinguerSpread,

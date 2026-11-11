@@ -5,8 +5,8 @@ from math import isfinite
 from os import getenv
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-from pandas import DataFrame, concat
+from pybinbot import numpy as np
+from pybinbot import DataFrame, concat
 from pybinbot import (
     BotBase,
     HABollinguerSpread,
