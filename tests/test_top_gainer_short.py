@@ -290,7 +290,9 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.bot_params.take_profit == 4.5
     assert value.bot_params.trailing is True
     assert value.bot_params.trailing_profit == 4.5
-    assert value.bot_params.trailing_deviation == 0.3704
+    assert (
+        value.bot_params.trailing_deviation == TopGainerShort.MIN_TRAILING_DEVIATION_PCT
+    )
     assert value.bot_params.recovery_params is None
     assert value.bot_params.recovery_params is None
     assert "recovery_params" in value.bot_params.model_fields_set
@@ -401,7 +403,7 @@ async def test_signal_uses_lower_high_stop_without_hourly_candles() -> None:
     assert (
         "Initial reduction threshold: 2.0% above lower high at 138.72 (2.7556%)" in msg
     )
-    assert "Trailing fallback: arms after 4.5% profit with 0.3704% deviation" in msg
+    assert "Trailing fallback: arms after 4.5% profit with 0.5% deviation" in msg
     assert "Autotrade: enabled" in msg
 
 
@@ -1236,21 +1238,27 @@ async def test_top_gainer_bonus_requires_latest_gain_strictly_above_twenty_perce
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("peak,expected", [(136.0, 0.3704), (137.0, 0.7408)])
-async def test_trailing_deviation_is_half_the_unbuffered_latest_swing_peak_distance(
-    monkeypatch, peak, expected
+@pytest.mark.parametrize(
+    "rise_pct,expected",
+    [(3.0, 1.5), (4.2, 0.5), (12.0, 0.5)],
+)
+async def test_trailing_gap_equals_candle_swing_range_with_floor(
+    monkeypatch, rise_pct, expected
 ):
+    peak = 136.0
     context = make_context()
     strategy = TopGainerShort(cast(Any, context))
     pattern = strategy._fresh_lower_high()
     assert pattern is not None
     pattern["later_high"] = peak
+    pattern["rise_pct"] = rise_pct
     monkeypatch.setattr(strategy, "_fresh_lower_high", lambda: pattern)
     await strategy.signal(135.0, 140.0, 132.0, 120.0)
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
     assert value.bot_params.trailing_deviation == expected
     assert indicators["trailing_deviation_pct"] == expected
+    assert indicators["trailing_swing_range_pct"] == rise_pct
     assert indicators["stop_loss_price_at_signal"] == pytest.approx(peak * 1.02)
     assert value.bot_params.stop_loss == indicators["stop_loss_pct"]
     assert (

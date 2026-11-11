@@ -49,6 +49,9 @@ class TopGainerShort:
     ENTRY_COOLDOWN_MINUTES = 60
     LOWER_HIGH_STOP_BUFFER_PCT = 2.0
     TRAILING_PROFIT_PCT = 4.5
+    # trailing_profit - trailing_deviation equals the candle swing range, so the
+    # deviation never drops below this floor on very large swings.
+    MIN_TRAILING_DEVIATION_PCT = 0.5
 
     TOP_GAINER_RANK_LIMIT = 10
     MIN_TOP_GAINER_GAIN_PCT = 20.0
@@ -377,10 +380,13 @@ class TopGainerShort:
         if not isfinite(lower_high_price) or current_price >= lower_high_price:
             logging.info("%s skipped: lower_high_already_reclaimed", self.ALGO)
             return
-        # Use the latest confirmed swing peak for the stop and half its entry-distance percentage for trailing deviation.
+        # Trailing deviation sits below trailing profit by the 15m candle swing
+        # range (swing low to first peak), so the trail locks in that range.
         trailing_deviation_pct = float(
-            (
-                (Decimal(str(lower_high_price)) / Decimal(str(current_price)) - 1) * 50
+            max(
+                Decimal(str(self.TRAILING_PROFIT_PCT))
+                - Decimal(str(lower_high["rise_pct"])),
+                Decimal(str(self.MIN_TRAILING_DEVIATION_PCT)),
             ).quantize(Decimal("0.0001"), rounding=ROUND_CEILING)
         )
         # Round upward to keep the short stop outside the pattern.
@@ -481,6 +487,7 @@ class TopGainerShort:
             "entry_cooldown_minutes": self.ENTRY_COOLDOWN_MINUTES,
             "trailing_profit_pct": self.TRAILING_PROFIT_PCT,
             "trailing_deviation_pct": trailing_deviation_pct,
+            "trailing_swing_range_pct": lower_high["rise_pct"],
             "protective_exit": "full_stop_loss",
             **(breadth_context if breadth_context is not None else {}),
             **(btc_context if btc_context is not None else {}),
