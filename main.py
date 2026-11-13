@@ -59,6 +59,11 @@ async def consume_loop(klines_provider: KlinesProvider, queue: asyncio.Queue) ->
 
 
 async def main() -> None:
+    if sys._is_gil_enabled():
+        raise RuntimeError(
+            "Binquant requires free-threaded Python with the GIL disabled. "
+            "Install the project runtime with uv sync and start with uv run python main.py."
+        )
     queue: asyncio.Queue = asyncio.Queue()
     liquidation_store = LiquidationStateStore()
 

@@ -44,23 +44,24 @@ selection and trading decisions remain on the main asyncio loop, preserving
 their ordering. The websocket input queue is separate and retains its existing
 behaviour.
 
-Standard Python 3.15 remains the default. To run the calculations across CPU
-cores, use a recent uv release with free-threaded Python in a separate environment:
+Binquant requires free-threaded Python 3.15. The `.python-version` file selects
+`3.15t` for local development, CI and the Docker dependency build. Use a recent uv
+release to install the runtime and dependencies:
 
 ```sh
-UV_PROJECT_ENVIRONMENT=.venv-freethreaded uv sync --python 3.15t --locked --all-extras
-UV_PROJECT_ENVIRONMENT=.venv-freethreaded uv run --python 3.15t --locked python main.py
+uv sync --locked --all-extras --dev
+uv run --locked python main.py
 ```
 
-Startup logs show the worker count and whether the GIL is enabled. A native
-dependency can re-enable it later; do not force incompatible extensions to run
-with `PYTHON_GIL=0`. CI runs the tests with both interpreters and checks that the
-free-threaded suite leaves the GIL disabled.
+Startup checks that the GIL is disabled before connecting to the services, then
+logs the worker count and GIL state. A native dependency can re-enable it later;
+do not force incompatible extensions to run with `PYTHON_GIL=0`. CI runs the tests
+with free-threaded Python and checks that the suite leaves the GIL disabled.
 
-Build an optional free-threaded container locally with:
+The default Docker build also uses free-threaded Python:
 
 ```sh
-docker build --build-arg PYTHON_VERSION=3.15t -t binquant:freethreaded .
+docker build -t binquant:local .
 ```
 
 Measure queue lag and peak memory before deploying this variant. The calculation

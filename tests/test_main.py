@@ -8,6 +8,20 @@ import main as binquant_main
 
 
 @pytest.mark.asyncio
+async def test_main_requires_the_gil_disabled_before_connecting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factory = Mock()
+    monkeypatch.setattr(binquant_main, "WebsocketClientFactory", factory)
+    monkeypatch.setattr(binquant_main.sys, "_is_gil_enabled", lambda: True)
+
+    with pytest.raises(RuntimeError, match="requires free-threaded Python"):
+        await binquant_main.main()
+
+    factory.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_main_bootstraps_websocket_subscriptions_before_consuming(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
