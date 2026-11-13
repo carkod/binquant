@@ -30,3 +30,38 @@ liquidity will remain available when a bot executes or later exits.
 1. Use the [docker-compose.yml](https://github.com/carkod/binbot/blob/master/docker-compose.yml) from [Binbot project](https://github.com/carkod/binbot).
 2. Use the settings provided in the .vscode folder and run the debugger for Binbot: Api
 3. Run Binquant as a single process through `main.py`, which starts websocket ingestion and consumes klines from the shared in-memory queue in the same event loop.
+
+### Parallel candle calculations
+
+The worker keeps two persistent calculation threads. Each incoming message's
+5-minute and 15-minute candle frames are built and enriched independently. At
+most two snapshots are submitted at once; additional submissions wait before
+copying candles. Cancellation retains capacity until the running calculation
+finishes. The pool is shut down when the application exits.
+
+Messages are still processed one at a time. Strategy state, cooldowns, portfolio
+selection and trading decisions remain on the main asyncio loop, preserving
+their ordering. The websocket input queue is separate and retains its existing
+behaviour.
+
+Standard Python 3.15 remains the default. To run the calculations across CPU
+cores, use a recent uv release with free-threaded Python in a separate environment:
+
+```sh
+UV_PROJECT_ENVIRONMENT=.venv-freethreaded uv sync --python 3.15t --locked --all-extras
+UV_PROJECT_ENVIRONMENT=.venv-freethreaded uv run --python 3.15t --locked python main.py
+```
+
+Startup logs show the worker count and whether the GIL is enabled. A native
+dependency can re-enable it later; do not force incompatible extensions to run
+with `PYTHON_GIL=0`. CI runs the tests with both interpreters and checks that the
+free-threaded suite leaves the GIL disabled.
+
+Build an optional free-threaded container locally with:
+
+```sh
+docker build --build-arg PYTHON_VERSION=3.15t -t binquant:freethreaded .
+```
+
+Measure queue lag and peak memory before deploying this variant. The calculation
+benchmark does not represent the throughput of the entire trading pipeline.

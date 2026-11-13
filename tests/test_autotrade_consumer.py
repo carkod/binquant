@@ -349,7 +349,7 @@ class TestAutotradeConsumer:
 
     # --- KlinesProvider test ---
     def test_klines_provider_init(self):
-        provider = KlinesProvider()
+        provider = KlinesProvider(calculation_pool=MagicMock())
         assert provider is not None
 
     @pytest.mark.asyncio

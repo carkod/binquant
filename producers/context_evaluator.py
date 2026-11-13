@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from asyncio import timeout, to_thread
+from asyncio import TaskGroup, timeout, to_thread
 from collections.abc import Awaitable
 from datetime import UTC, datetime
 from time import monotonic, time
@@ -24,7 +24,6 @@ from pybinbot import (
     Candles,
     ExchangeId,
     HABollinguerSpread,
-    Indicators,
     KlineSchema,
     KucoinApi,
     KucoinFutures,
@@ -49,6 +48,7 @@ from market_regime.open_interest_order_sizing import (
 )
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
+from shared.candle_calculations import CandleCalculationPool
 from shared.macroregime_directional_notifier import MacroregimeDirectionalNotifier
 from shared.order_book_liquidity import LiquidityAssessment, assess_futures_order_book
 from shared.utils import format_context_timestamp_line
@@ -84,6 +84,7 @@ class ContextEvaluator:
         candlestick_interval: BinanceKlineIntervals | KucoinKlineIntervals,
         binbot_api: BinbotApi,
         telegram_notifier: TelegramSignalNotifier,
+        calculation_pool: CandleCalculationPool,
         strategy_cooldowns: dict[tuple[str, str], int] | None = None,
         strategy_states: dict[tuple[str, str], dict[str, float | int]] | None = None,
         liquidation_sweep_portfolio_selector: (
@@ -104,6 +105,7 @@ class ContextEvaluator:
         should be on klines_provider instance
         """
         self.api = api
+        self.calculation_pool = calculation_pool
         self.config = Config()
         self.market_type = market_type
         self.binbot_api = binbot_api
@@ -417,31 +419,6 @@ class ContextEvaluator:
         self.lower_high_pattern = LowerHighPattern(cls=self)
         self.higher_low_pattern = HigherLowPattern(cls=self)
 
-    def indicators_enrichment(
-        self, df: TypedDataFrame[KlineSchema]
-    ) -> TypedDataFrame[KlineSchema]:
-        """
-        Enrich dataframe with technical indicators
-
-        This would be an ideal process to spark.parallelize
-        not sure what's the best way with pandas-on-spark dataframe
-        """
-        df = Indicators.moving_averages(df, 7)
-        df = Indicators.moving_averages(df, 25)
-        df = Indicators.moving_averages(df, 100)
-
-        # Oscillators
-        df = Indicators.macd(df=df)
-        df = Indicators.rsi(df=df)
-
-        # Advanced technicals
-        df = Indicators.ma_spreads(df)
-        df = Indicators.bollinguer_spreads(df)
-        df = Indicators.set_twap(df)
-        df = Indicators.atr(df=df, window=14)
-
-        return df
-
     async def _safe_signal(self, name: str, coro: Awaitable[None]) -> None:
         """
         Run a single strategy's signal coroutine with crash isolation: any
@@ -612,7 +589,16 @@ class ContextEvaluator:
         """
         self.symbol_dependent_data()
         self.refresh_grid_only_policy()
-        raw_candles_5m = Candles(exchange=self.exchange, candles=candles)
+        # Only independent calculations enter the pool. Strategy instances,
+        # shared state and signal dispatch remain on this event-loop thread.
+        async with TaskGroup() as calculations:
+            frame_5m = calculations.create_task(
+                self.calculation_pool.calculate(self.exchange, candles)
+            )
+            frame_15m = calculations.create_task(
+                self.calculation_pool.calculate(self.exchange, candles_15m)
+            )
+
         raw_candles_15m = Candles(exchange=self.exchange, candles=candles_15m)
         raw_candles_1h = (
             Candles(exchange=self.exchange, candles=candles_1h)
@@ -620,10 +606,9 @@ class ContextEvaluator:
             else None
         )
 
-        self.df_5m = raw_candles_5m.pre_process()
+        self.df_5m = frame_5m.result()
         if not self.df_5m.empty and self.df_5m.close.size > 0:
-            self.df_5m = self.indicators_enrichment(self.df_5m)
-            self.df_5m = raw_candles_5m.post_process(self.df_5m)
+            self.df_5m = Candles.post_process(self.df_5m)
 
         self.df_1d = (
             Candles(exchange=self.exchange, candles=candles_1d).pre_process()
@@ -631,7 +616,7 @@ class ContextEvaluator:
             else cast(TypedDataFrame[KlineSchema], DataFrame())
         )
 
-        self.df_15m = raw_candles_15m.pre_process()
+        self.df_15m = frame_15m.result()
         self.df_1h = cast(
             TypedDataFrame[KlineSchema],
             (
@@ -648,8 +633,6 @@ class ContextEvaluator:
                 if btc_candles_15m
                 else cast(TypedDataFrame[KlineSchema], DataFrame())
             )
-            self.df_15m = self.indicators_enrichment(self.df_15m)
-
             # Default BTC-derived metrics let downstream algorithms run even
             # when benchmark candle preprocessing yields no usable rows.
             self.btc_beta = 0.0
