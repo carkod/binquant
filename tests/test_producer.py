@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from os import environ
 from types import SimpleNamespace
 from typing import Any
+from threading import get_ident
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -22,6 +23,7 @@ from pybinbot import (
 )
 from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import DerivativesPositioningFeatures
+from shared.candle_calculations import CandleCalculationPool
 
 
 def initialize_regime_measures(evaluator: ContextEvaluator) -> None:
@@ -414,14 +416,24 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
         def pre_process(self):
             return dataframe.copy()
 
-        def post_process(self, df):
+        @staticmethod
+        def post_process(df):
             return df
 
         def resample(self, df, interval):  # noqa: ARG002
             return dataframe.copy()
 
+    calculation_threads: list[int] = []
+    signal_threads: list[int] = []
+
+    def calculate_frame(exchange, candles):  # noqa: ARG001
+        calculation_threads.append(get_ident())
+        return dataframe.copy()
+
     strategy_signals = {
-        name: AsyncMock()
+        name: AsyncMock(
+            side_effect=lambda **_kwargs: signal_threads.append(get_ident())
+        )
         for name in (
             "TopGainerEarlyMomentum",
             "TopGainerMomentumRecovery",
@@ -445,7 +457,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
     evaluator.last_macroregime_directional = None
     evaluator.symbol_dependent_data = Mock()
     evaluator.refresh_grid_only_policy = Mock()
-    evaluator.indicators_enrichment = lambda df: df
     evaluator.bb_spreads = lambda df: HABollinguerSpread(
         bb_high=101.0,
         bb_mid=100.0,
@@ -482,11 +493,19 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
 
     evaluator.load_15m_algorithms = load_15m_algorithms
     monkeypatch.setattr("producers.context_evaluator.Candles", FakeCandles)
+    monkeypatch.setattr("shared.candle_calculations.calculate_candles", calculate_frame)
 
-    await evaluator.process_data(candles="5m", candles_15m="15m")
+    evaluator.calculation_pool = CandleCalculationPool()
+    try:
+        await evaluator.process_data(candles=[[1]], candles_15m=[[2]])
+    finally:
+        evaluator.calculation_pool.close()
 
     for name, signal in strategy_signals.items():
         assert signal.await_count == (1 if name in ALL_NOTIFICATION_STRATEGIES else 0)
+    assert len(calculation_threads) == 2
+    assert all(thread != get_ident() for thread in calculation_threads)
+    assert signal_threads == [get_ident()] * len(ALL_NOTIFICATION_STRATEGIES)
 
 
 def test_grid_only_policy_is_disabled_with_grid_ladder_switch() -> None:

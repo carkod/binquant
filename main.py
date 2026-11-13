@@ -8,6 +8,7 @@ event loop, connected by an in-memory `asyncio.Queue`.
 
 import asyncio
 import logging
+import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -17,10 +18,12 @@ from pybinbot import configure_logging
 from consumers.klines_provider import KlinesProvider
 from market_regime.liquidation_state_store import LiquidationStateStore
 from shared.streaming.websocket_factory import WebsocketClientFactory
+from shared.candle_calculations import CandleCalculationPool
 
 configure_logging(force=True)
 
 HEARTBEAT_PATH = Path("/tmp/binquant.heartbeat")
+CALCULATION_WORKERS = 2
 
 
 class WebsocketClient(Protocol):
@@ -56,6 +59,11 @@ async def consume_loop(klines_provider: KlinesProvider, queue: asyncio.Queue) ->
 
 
 async def main() -> None:
+    if sys._is_gil_enabled():
+        raise RuntimeError(
+            "Binquant requires free-threaded Python with the GIL disabled. "
+            "Install the project runtime with uv sync and start with uv run python main.py."
+        )
     queue: asyncio.Queue = asyncio.Queue()
     liquidation_store = LiquidationStateStore()
 
@@ -63,13 +71,23 @@ async def main() -> None:
         queue=queue,
         liquidation_store=liquidation_store,
     )
-    klines_provider = KlinesProvider(liquidation_store=liquidation_store)
-    clients = await factory.create_connector()
-
-    await asyncio.gather(
-        ingest_loop(clients),
-        consume_loop(klines_provider, queue),
+    calculation_pool = CandleCalculationPool(workers=CALCULATION_WORKERS)
+    logging.info(
+        "Candle calculation workers=%s; GIL enabled=%s",
+        CALCULATION_WORKERS,
+        sys._is_gil_enabled(),
     )
+    try:
+        klines_provider = KlinesProvider(
+            calculation_pool=calculation_pool, liquidation_store=liquidation_store
+        )
+        clients = await factory.create_connector()
+
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(ingest_loop(clients))
+            tasks.create_task(consume_loop(klines_provider, queue))
+    finally:
+        calculation_pool.close()
 
 
 if __name__ == "__main__":

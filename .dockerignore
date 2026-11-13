@@ -1,4 +1,6 @@
 node_modules
+.venv*
+.git
 __pycache__
 jsconfig.json
 ^\.*
@@ -18,3 +20,4 @@ tests/
 *.md
 !.dockerignore
 !.gitignore
+!.python-version

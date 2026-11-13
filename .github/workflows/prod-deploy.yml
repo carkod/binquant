@@ -92,7 +92,7 @@ jobs:
           docker pull "$BINQUANT_IMAGE:$IMAGE_TAG"
 
       - name: SSH deploy
-        uses: appleboy/ssh-action@v1.2.4
+        uses: appleboy/ssh-action@v1.2.5
         env:
           IMAGE_TAG: ${{ steps.deploy_tags.outputs.image_tag }}
         with:

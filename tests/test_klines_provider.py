@@ -32,7 +32,7 @@ class TestKlinesProvider:
         mock_get_symbols,
         mock_get_settings,
     ):
-        provider = KlinesProvider()
+        provider = KlinesProvider(calculation_pool=Mock())
         assert hasattr(provider, "binbot_api")
         assert hasattr(provider, "api")
         assert hasattr(provider, "market_state_store")
@@ -41,7 +41,7 @@ class TestKlinesProvider:
     @patch("consumers.klines_provider.BinbotApi")
     @patch("consumers.klines_provider.BinanceApi")
     async def test_load_data_on_start(self, MockBinanceApi, MockBinbotApi):
-        provider = KlinesProvider()
+        provider = KlinesProvider(calculation_pool=Mock())
         api_instance = MagicMock()
         api_instance.get_symbols.return_value = []
         api_instance.get_active_pairs.return_value = set()
@@ -60,7 +60,7 @@ class TestKlinesProvider:
     async def test_load_data_on_start_survives_gainers_losers_failure(
         self, MockBinanceApi, MockBinbotApi
     ):
-        provider = KlinesProvider()
+        provider = KlinesProvider(calculation_pool=Mock())
         api_instance = MagicMock()
         api_instance.get_active_pairs.return_value = set()
         api_instance.get_market_breadth = AsyncMock(return_value={})
@@ -86,7 +86,7 @@ class TestKlinesProvider:
         mock_get_symbols,
         mock_get_settings,
     ):
-        provider = KlinesProvider()
+        provider = KlinesProvider(calculation_pool=Mock())
         provider.candles_15m = [
             [1000, "1.0", "1.2", "0.9", "1.1", "100", 1999],
             [2000, "1.1", "1.3", "1.0", "1.2", "120", 2999],
@@ -113,7 +113,7 @@ class TestKlinesProvider:
         mock_get_settings,
         mock_time,
     ):
-        provider = KlinesProvider()
+        provider = KlinesProvider(calculation_pool=Mock())
         provider.candles_15m = [
             [1000, "1.0", "1.2", "0.9", "1.1", "100", 2999],
             [3000, "1.1", "1.3", "1.0", "1.2", "120", 3999],

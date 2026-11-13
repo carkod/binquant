@@ -31,6 +31,7 @@ from market_regime.models import LiveMarketContext
 from market_regime.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
+from shared.candle_calculations import CandleCalculationPool
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 from time import time
@@ -52,8 +53,10 @@ class KlinesProvider:
 
     def __init__(
         self,
+        calculation_pool: CandleCalculationPool,
         liquidation_store: LiquidationStateStore | None = None,
     ) -> None:
+        self.calculation_pool = calculation_pool
         self.config = Config()
         self.binbot_api = BinbotApi(
             base_url=self.config.backend_domain,
@@ -493,6 +496,7 @@ class KlinesProvider:
             binbot_api=self.binbot_api,
             last_macroregime_directional=self.last_macroregime_directional,
             telegram_notifier=self.telegram_notifier,
+            calculation_pool=self.calculation_pool,
             strategy_cooldowns=self.strategy_cooldowns,
             strategy_states=self.strategy_states,
             liquidation_sweep_portfolio_selector=(
