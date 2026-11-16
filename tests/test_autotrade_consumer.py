@@ -1031,6 +1031,71 @@ class TestAutotradeConsumer:
         )
 
     @pytest.mark.asyncio
+    async def test_conditional_entry_defers_balance_and_capacity_checks_until_trigger(
+        self,
+    ):
+        self.consumer.exchange = ExchangeId.KUCOIN
+        self.mock_binbot_api.get_available_fiat.return_value = 0
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="coinrule_buy_the_dip",
+                market_type=MarketType.FUTURES,
+                entry_mode="conditional_limit",
+                entry_price=90,
+                fiat_order_size=100,
+            ),
+        )
+        with (
+            patch.object(
+                self.consumer, "reached_max_active_autobots", return_value=True
+            ) as capacity,
+            patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls,
+        ):
+            autotrade_cls.return_value.activate_autotrade = AsyncMock()
+            await self.consumer.process_autotrade_restrictions(signal)
+        autotrade_cls.return_value.activate_autotrade.assert_awaited_once_with(signal)
+        capacity.assert_not_called()
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
+        assert signal.bot_params is not None
+        assert signal.bot_params.fiat_order_size == 100
+
+    @pytest.mark.asyncio
+    async def test_conditional_signal_creates_pending_bot_without_activating(self):
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="coinrule_buy_the_dip",
+                market_type=MarketType.FUTURES,
+                position=Position.short,
+                entry_mode="conditional_limit",
+                entry_price=110,
+                entry_expires_at=999999,
+                fiat_order_size=100,
+                recovery_params=None,
+            ),
+        )
+        with patch("shared.autotrade.KucoinApi", return_value=MagicMock()):
+            autotrade = Autotrade(
+                pair="BTCUSDTM",
+                settings=make_autotrade_settings(exchange_id=ExchangeId.KUCOIN),
+                algorithm_name="coinrule_buy_the_dip",
+                binbot_api=self.mock_binbot_api,
+            )
+            await autotrade.activate_autotrade(signal)
+        payload = self.mock_binbot_api.create_bot.call_args.args[0]
+        assert payload["status"] == "pending"
+        assert payload["entry_mode"] == "conditional_limit"
+        assert payload["entry_price"] == 110
+        assert payload["entry_expires_at"] == 999999
+        self.mock_binbot_api.activate_bot.assert_not_called()
+        self.mock_binbot_api.get_available_fiat.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_activate_autotrade_merges_signal_bot_params_over_settings(self):
         settings = make_autotrade_settings()
         signal = SignalsConsumer(

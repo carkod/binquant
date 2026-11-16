@@ -1,6 +1,7 @@
 import logging
 from pybinbot import (
     BotBase,
+    EntryMode,
     BotModel,
     BotResponse,
     CloseConditions,
@@ -228,7 +229,11 @@ class Autotrade:
         create_func = self.binbot_api.create_bot
         errors_func = self.binbot_api.submit_bot_event_logs
 
-        if self.default_bot.position == Position.short:
+        conditional_entry = self.default_bot.entry_mode == EntryMode.conditional_limit
+        if conditional_entry:
+            self.default_bot.status = Status.pending
+            self.set_bot_values(data)
+        elif self.default_bot.position == Position.short:
             initial_price = self._get_initial_price()
 
             estimate_qty = float(self.default_bot.fiat_order_size) / initial_price
@@ -257,6 +262,10 @@ class Autotrade:
 
         if create_bot.error == 1:
             raise AutotradeError(create_bot.message)
+
+        if conditional_entry:
+            logging.info("Conditional entry registered for %s", self.pair)
+            return
 
         # Activate bot
         created_bot = self._response_bot(create_bot)

@@ -9,6 +9,7 @@ from pybinbot import (
     BinbotApi,
     BinbotErrors,
     BotBase,
+    EntryMode,
     BotModel,
     Candles,
     ExchangeId,
@@ -574,56 +575,58 @@ class AutotradeConsumer:
                 )
                 return
 
-        # Check balance to avoid failed autotrades
-        balance_check = self.binbot_api.get_available_fiat(
-            exchange=self.exchange, fiat=fiat
-        )
-        if market_type != MarketType.FUTURES and balance_check < float(
-            requested_fiat_order_size
-        ):
-            logging.info("Not enough funds to autotrade [bots].")
-            return
-
-        if (
-            ExchangeId(self.exchange) == ExchangeId.KUCOIN
-            and market_type == MarketType.FUTURES
-        ):
-            candlestick_interval = self._signal_value(
-                bot_params,
-                "candlestick_interval",
-                self.autotrade_settings.candlestick_interval,
+        conditional_entry = bot_params.entry_mode == EntryMode.conditional_limit
+        if not conditional_entry:
+            # Check balance to avoid failed autotrades
+            balance_check = self.binbot_api.get_available_fiat(
+                exchange=self.exchange, fiat=fiat
             )
-            if (
-                not futures_entry_candles_validated
-                and not self.futures_reliable_candles_available(
-                    symbol, candlestick_interval
-                )
+            if market_type != MarketType.FUTURES and balance_check < float(
+                requested_fiat_order_size
             ):
+                logging.info("Not enough funds to autotrade [bots].")
                 return
 
-            if "futures_leverage" not in bot_params.model_fields_set:
-                bot_params.futures_leverage = self.binbot_api.get_single_symbol(
-                    symbol
-                ).futures_leverage
-            effective_fiat_order_size = self._resolve_futures_order_size(
-                symbol=symbol,
-                price=float(result.current_price),
-                stop_loss=float(stop_loss),
-                fiat_order_size=float(requested_fiat_order_size),
-                available_balance=float(balance_check),
-                futures_leverage=bot_params.futures_leverage,
-            )
-            if effective_fiat_order_size is None:
-                return
-            # Propagate the (possibly scaled) margin to the bot via signal
-            # overrides so downstream sizing matches what the gate approved.
-            bot_params.fiat_order_size = effective_fiat_order_size
+            if (
+                ExchangeId(self.exchange) == ExchangeId.KUCOIN
+                and market_type == MarketType.FUTURES
+            ):
+                candlestick_interval = self._signal_value(
+                    bot_params,
+                    "candlestick_interval",
+                    self.autotrade_settings.candlestick_interval,
+                )
+                if (
+                    not futures_entry_candles_validated
+                    and not self.futures_reliable_candles_available(
+                        symbol, candlestick_interval
+                    )
+                ):
+                    return
+
+                if "futures_leverage" not in bot_params.model_fields_set:
+                    bot_params.futures_leverage = self.binbot_api.get_single_symbol(
+                        symbol
+                    ).futures_leverage
+                effective_fiat_order_size = self._resolve_futures_order_size(
+                    symbol=symbol,
+                    price=float(result.current_price),
+                    stop_loss=float(stop_loss),
+                    fiat_order_size=float(requested_fiat_order_size),
+                    available_balance=float(balance_check),
+                    futures_leverage=bot_params.futures_leverage,
+                )
+                if effective_fiat_order_size is None:
+                    return
+                # Propagate the (possibly scaled) margin to the bot via signal
+                # overrides so downstream sizing matches what the gate approved.
+                bot_params.fiat_order_size = effective_fiat_order_size
 
         """
         Real autotrade starts
         """
         if self.autotrade_settings.autotrade and result.autotrade:
-            if self.reached_max_active_autobots():
+            if not conditional_entry and self.reached_max_active_autobots():
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
                 )
