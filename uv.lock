@@ -219,7 +219,7 @@ requires-dist = [
     { name = "numpy", specifier = "==2.5.4" },
     { name = "pandas", specifier = "==3.1.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=2.1.1" },
+    { name = "pybinbot", specifier = ">=2.1.4" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "python-jose" },
@@ -416,15 +416,15 @@ wheels = [
 
 [[package]]
 name = "email-validator"
-version = "2.3.0"
+version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dnspython" },
     { name = "idna" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/22/900cb125c76b7aaa450ce02fd727f452243f2e91a61af068b40adba60ea9/email_validator-2.3.0.tar.gz", hash = "sha256:9fc05c37f2f6cf439ff414f8fc46d917929974a82244c20eb10231ba60c54426", size = 51238, upload-time = "2025-08-26T13:09:06.831Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/4d/f5e9d9de19f4b8f9e33d802fe3efb0ef96e88d4d6d45d604f335bef2f1ef/email_validator-2.4.0.tar.gz", hash = "sha256:be487bc50bc3bd832a98515a55a15649d9bec06d954fa178663190714b6c4ee1", size = 55168, upload-time = "2026-11-14T20:21:28.125Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/15/545e2b6cf2e3be84bc1ed85613edd75b8aea69807a71c26f4ca6a9258e82/email_validator-2.3.0-py3-none-any.whl", hash = "sha256:80f13f623413e6b197ae73bb10bf4eb0908faf509ad8362c5edeb0be7fd450b4", size = 35604, upload-time = "2025-08-26T13:09:05.858Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/8b/99e715c59560afa0bf68f21ed16eec794d94293945f57934b70c5255d741/email_validator-2.4.0-py3-none-any.whl", hash = "sha256:4454e41c4e1c6b6caee34a1dc71d5e736791562be8fd179b02e298f796522684", size = 36810, upload-time = "2026-11-14T20:21:27.14Z" },
 ]
 
 [[package]]
@@ -904,7 +904,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "2.1.1"
+version = "2.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -919,9 +919,9 @@ dependencies = [
     { name = "requests" },
     { name = "websocket-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/91/5935694e0ba0c9109ed9a12088c7089b413ce33bc0f869b1858ae78afe09/pybinbot-2.1.1.tar.gz", hash = "sha256:b8d9a7e54b556d6ee331c2a818f85b88bf5e8e6a2df065379c5ee35acf380bd9", size = 95798, upload-time = "2026-11-13T18:06:24.542Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/43/5a6b2f99d3e6d3afb57f9b03c453163c84a3a4aad56e74e1ec7395733fd7/pybinbot-2.1.4.tar.gz", hash = "sha256:c79ada6d491dc2f7b1be8e29e81dd1d186cada0e2ecc70162f5a354e4db10786", size = 100365, upload-time = "2026-11-16T19:55:40.042Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/49/85/5366109d8fd482456018e2e082af1cd2c4ab2cd8379de69d6cbcf3be394d/pybinbot-2.1.1-py3-none-any.whl", hash = "sha256:3a3ff5bf73f62802a0132da1034ba52250fa8707d167acfde29fe00394cb0774", size = 83551, upload-time = "2026-11-13T18:06:22.87Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/24/8cff8aa99b3e23e5c454e26ab48e6d972afcd05c997fb2cb863888ffa988/pybinbot-2.1.4-py3-none-any.whl", hash = "sha256:5ea035649c884e6cb8c487640adc2975217d6ee09f8541a09ee8844079670f35", size = 85459, upload-time = "2026-11-16T19:55:38.353Z" },
 ]
 
 [[package]]
@@ -1002,14 +1002,14 @@ wheels = [
 
 [[package]]
 name = "pyee"
-version = "16.0.2"
+version = "16.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/50/34/69e6daeca6b9f7417c3d67bd419215aa76cae56f317e479df7cbff8de882/pyee-16.0.2.tar.gz", hash = "sha256:31cb31131df7757f2a54fbd98ea5d37e736dc8a9f41ec4bdce40892a32474ec8", size = 144274, upload-time = "2026-11-11T19:54:53.934Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/bc/8d7e802a90112ce62c6cbcdeb519c79b966c528956054fa43b6c2e5e5993/pyee-16.1.0.tar.gz", hash = "sha256:fe092d3a2a66f0f6a277fb227b078d3d849318da9a9d5d2f6576143236e84e48", size = 138156, upload-time = "2026-11-14T18:06:23.782Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/6e/0d01bf187ea2abc1659d2d4c4049b722fbfe25e2ba5bac37aacc427c4791/pyee-16.0.2-py3-none-any.whl", hash = "sha256:b3221f531a85818fbcf4d5ba7d8620680036381e79ca312334a512077870ba60", size = 17694, upload-time = "2026-11-11T19:54:52.399Z" },
+    { url = "https://files.pythonhosted.org/packages/92/59/21807600b85ab28826c5096772d7ec3cca74c767ef07dc33df5ef3906098/pyee-16.1.0-py3-none-any.whl", hash = "sha256:45aaa35313906a780c539bd640ffba106d86dd63d3fd46b76d718bd611682995", size = 17220, upload-time = "2026-11-14T18:06:22.417Z" },
 ]
 
 [[package]]
@@ -1221,11 +1221,11 @@ wheels = [
 
 [[package]]
 name = "soupsieve"
-version = "4.1"
+version = "4.1.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/95/48/21a393ff731b8f928fa4f8176f9a7ceba2252ee60a5149f25b45c292aa5c/soupsieve-4.1.tar.gz", hash = "sha256:ca9abf7126667010d8f6e9b39bfc1bc3b23c8aed9bcb0f54a754dde969bb8aab", size = 161955, upload-time = "2026-11-10T01:59:50.399Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1f/52/ee5646b65d98a252e807ccc37725363942372a4113072e0bce7ed22f8b84/soupsieve-4.1.1.tar.gz", hash = "sha256:b296bd2d2f65b1a78149f3d7bf6736a147d2c9e2dfbde0e4404639d748a02e03", size = 169784, upload-time = "2026-11-14T17:23:32.467Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/73/6a2087c72975cfc07394623bca8d17654342ea4055ae368deafe5a81a542/soupsieve-4.1-py3-none-any.whl", hash = "sha256:e4d667b3974ce6e038e7390486b8093369854a1d345ffdd4c121dfc4a782e809", size = 52302, upload-time = "2026-11-10T01:59:48.571Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/65/7fae69a095696195334a934eab23aeb12e2715e6c3f08025d2f91942750e/soupsieve-4.1.1-py3-none-any.whl", hash = "sha256:8ff3422dab0b720fb667ee79864d80531a0e57994a13eb701697719ffcb751f6", size = 55089, upload-time = "2026-11-14T17:23:31.001Z" },
 ]
 
 [[package]]

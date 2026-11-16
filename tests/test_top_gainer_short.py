@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from asyncio import CancelledError
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -24,6 +25,7 @@ from pybinbot.shared.price_crossings import (
 
 from shared.order_book_liquidity import LiquidityAssessment
 from strategies.top_gainer_short import TopGainerShort
+from tests.cvd_fixtures import cvd_snapshot
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
 HIGHER_LOW_BREADTH = [0.3] * 30 + [
@@ -239,6 +241,16 @@ def make_context(
             return_value=LiquidityAssessment(True, "sufficient_depth")
         ),
         dispatch_signal_record=AsyncMock(),
+        binbot_api=SimpleNamespace(
+            get_cvd_symbol=AsyncMock(
+                return_value=cvd_snapshot([5, 4, 3, 2, 1, 0], now=NOW)
+            ),
+            get_cvd_aggregate=AsyncMock(
+                return_value=cvd_snapshot(
+                    [5, 4, 3, 2, 1, 0], now=NOW, interval_seconds=900
+                )
+            ),
+        ),
     )
 
 
@@ -284,7 +296,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.direction == "SHORT"
     assert value.bot_params.name == "top_gainer_short"
     assert value.bot_params.position == "short"
-    assert value.bot_params.stop_loss == 2.7556
+    assert value.bot_params.stop_loss == 2.5
     assert value.bot_params.dynamic_trailing is False
     assert value.bot_params.dynamic_position_sizing is False
     assert value.bot_params.take_profit == 4.5
@@ -297,6 +309,8 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.bot_params.recovery_params is None
     assert "recovery_params" in value.bot_params.model_fields_set
     assert indicators["entry_reason"] == "lower_high_breakdown"
+    assert indicators["cvd_symbol"]["direction"] == "falling"
+    assert indicators["cvd_aggregate"]["direction"] == "falling"
     assert indicators["top_gainer_watch_hours"] == 6.0
     assert indicators["current_top_gainer"] is True
     assert indicators["top_gainer_score_bonus"] == 2.0
@@ -317,10 +331,12 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert not any(key.startswith("weekly_") for key in indicators)
     assert indicators["stop_loss_source"] == "lower_high"
     assert indicators["lower_high_stop_buffer_pct"] == 2.0
-    assert indicators["stop_loss_price_at_signal"] == 138.72
+    assert indicators["stop_loss_price_at_signal"] == 138.375
     assert indicators["protective_exit"] == "full_stop_loss"
     assert "no automatic reductions or increases" in msg
-    assert "full-position stop above the lower high" in msg
+    assert (
+        "full-position stop based on the lower high, capped at 2.5% from entry" in msg
+    )
     assert value.score == 3.5
     context.regime_telegram_lines.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(value)
@@ -335,7 +351,7 @@ async def test_top_gainer_short_uses_full_autotrade_margin_without_risk_clamp():
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     params = value.bot_params
     assert params.fiat_order_size == 10.0
-    assert params.stop_loss == 2.7556
+    assert params.stop_loss == 2.5
     assert params.dynamic_position_sizing is False
     assert params.take_profit == 4.5
     assert (
@@ -395,14 +411,12 @@ async def test_signal_uses_lower_high_stop_without_hourly_candles() -> None:
 
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert value.bot_params.stop_loss == 2.7556
+    assert value.bot_params.stop_loss == 2.5
     assert indicators["stop_loss_source"] == "lower_high"
-    assert indicators["stop_loss_price_at_signal"] == 138.72
+    assert indicators["stop_loss_price_at_signal"] == 138.375
 
     msg = context.telegram_notifier.dispatch_signal.call_args.args[0]
-    assert (
-        "Initial reduction threshold: 2.0% above lower high at 138.72 (2.7556%)" in msg
-    )
+    assert "Initial stop: 138.375 (2.5%; 2.5% maximum)" in msg
     assert "Trailing fallback: arms after 4.5% profit with 0.5% deviation" in msg
     assert "Autotrade: enabled" in msg
 
@@ -998,15 +1012,40 @@ async def test_signal_rejects_stop_distance_outside_dynamic_sizing_range(
 
 
 @pytest.mark.asyncio
-async def test_rounded_stop_stays_above_lower_high():
+async def test_rounded_pattern_stop_cannot_exceed_maximum_loss():
     context = make_context()
     context.price_precision = 0
 
     await TopGainerShort(cast(Any, context)).signal(135.0, 140.0, 132.0, 120.0)
 
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
-    assert indicators["stop_loss_price_at_signal"] == 139.0
-    assert indicators["stop_loss_pct"] == 2.963
+    assert indicators["stop_loss_price_at_signal"] == 138.375
+    assert indicators["stop_loss_pct"] == 2.5
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "current_price,expected_loss,expected_stop",
+    [(135.0, 2.5, 138.375), (135.5, 2.3764, 138.72)],
+)
+async def test_stop_loss_caps_wide_stops_and_preserves_tighter_stops(
+    monkeypatch, current_price, expected_loss, expected_stop
+):
+    context = make_context()
+    monkeypatch.setattr(
+        "strategies.top_gainer_short.price_crossings_six_hours",
+        lambda *args, **kwargs: 0,
+    )
+
+    await TopGainerShort(cast(Any, context)).signal(current_price, 140.0, 132.0, 120.0)
+
+    signal = context.dispatch_signal_record.await_args.kwargs
+    assert signal["value"].bot_params.stop_loss == expected_loss
+    assert signal["indicators"]["stop_loss_pct"] == expected_loss
+    assert signal["indicators"]["stop_loss_price_at_signal"] == expected_stop
+    assert expected_loss <= TopGainerShort.MAX_STOP_LOSS_PCT
+    message = context.telegram_notifier.dispatch_signal.await_args.args[0]
+    assert f"Initial stop: {expected_stop} ({expected_loss}%; 2.5% maximum)" in message
 
 
 @pytest.mark.parametrize(
@@ -1259,9 +1298,166 @@ async def test_trailing_gap_equals_candle_swing_range_with_floor(
     assert value.bot_params.trailing_deviation == expected
     assert indicators["trailing_deviation_pct"] == expected
     assert indicators["trailing_swing_range_pct"] == rise_pct
-    assert indicators["stop_loss_price_at_signal"] == pytest.approx(peak * 1.02)
+    assert indicators["stop_loss_price_at_signal"] == 138.375
     assert value.bot_params.stop_loss == indicators["stop_loss_pct"]
     assert (
         f"with {expected}% deviation"
         in context.telegram_notifier.dispatch_signal.await_args.args[0]
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "symbol_values,market_values",
+    [
+        ([5, 4, 3, 2, 1, 0], [5, 4, 3, 2, 1, 0]),
+        ([1000, 850, 900, 700, 600, 500], [500, 400, 450, 300, 200, 100]),
+    ],
+)
+async def test_falling_symbol_and_market_cvd_allow_signal_with_evidence(
+    symbol_values, market_values
+):
+    baseline_context = make_context()
+    await TopGainerShort(cast(Any, baseline_context)).signal(135, 140, 132, 120)
+    baseline = baseline_context.dispatch_signal_record.await_args.kwargs["value"]
+    context = make_context()
+    context.binbot_api.get_cvd_symbol.return_value = cvd_snapshot(
+        symbol_values, now=NOW
+    )
+    context.binbot_api.get_cvd_aggregate.return_value = cvd_snapshot(
+        market_values, now=NOW, interval_seconds=900
+    )
+    strategy = TopGainerShort(cast(Any, context))
+
+    await strategy.signal(135, 140, 132, 120)
+
+    signal = context.dispatch_signal_record.await_args.kwargs
+    symbol, market = (
+        signal["indicators"]["cvd_symbol"],
+        signal["indicators"]["cvd_aggregate"],
+    )
+    assert symbol["direction"] == "falling"
+    assert market["direction"] == "falling"
+    assert symbol["slope_usdt_per_minute"] < 0
+    assert market["slope_usdt_per_minute"] < 0
+    assert symbol["pearson_r"] <= -0.70
+    assert market["pearson_r"] <= -0.70
+    assert symbol["interval_seconds"] == 60
+    assert market["interval_seconds"] == 900
+    assert signal["value"].score == baseline.score
+    assert signal["value"].autotrade == baseline.autotrade
+    generated_defaults = {"created_at", "updated_at", "entry_expires_at"}
+    assert signal["value"].bot_params.model_dump(
+        exclude=generated_defaults
+    ) == baseline.bot_params.model_dump(exclude=generated_defaults)
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once_with(
+        signal["value"]
+    )
+    context.binbot_api.get_cvd_symbol.assert_awaited_once_with("TESTUSDTM", limit=15)
+    context.binbot_api.get_cvd_aggregate.assert_awaited_once_with(limit=15)
+    message = context.telegram_notifier.dispatch_signal.await_args.args[0]
+    assert "Symbol CVD: falling" in message
+    assert "Market CVD: falling" in message
+    assert f"slope {symbol['slope_usdt_per_minute']:+.2f} USDT/min" in message
+    assert f"Pearson r {market['pearson_r']:+.3f}" in message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["get_cvd_symbol", "get_cvd_aggregate"])
+async def test_either_failed_cvd_endpoint_blocks_all_signal_delivery(
+    endpoint,
+):
+    context = make_context()
+    getattr(context.binbot_api, endpoint).side_effect = RuntimeError("API unavailable")
+
+    await TopGainerShort(cast(Any, context)).signal(135, 140, 132, 120)
+
+    context.dispatch_signal_record.assert_not_awaited()
+    context.telegram_notifier.dispatch_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    assert context.strategy_cooldowns == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("aggregate", [False, True], ids=["symbol", "market"])
+@pytest.mark.parametrize(
+    "values",
+    [
+        pytest.param([0, 1, 2, 3, 4, 5], id="rising"),
+        pytest.param([0] * 6, id="flat"),
+        pytest.param([0, 0, 0, 0, 0, -1], id="negative_slope_weak_pearson"),
+        pytest.param([], id="missing"),
+        pytest.param([3, 2, 1, 0], id="insufficient_coverage"),
+    ],
+)
+async def test_either_cvd_must_confirm_falling_before_any_signal_is_emitted(
+    aggregate, values
+):
+    context = make_context()
+    snapshot = cvd_snapshot(values, now=NOW, interval_seconds=900 if aggregate else 60)
+    endpoint = "get_cvd_aggregate" if aggregate else "get_cvd_symbol"
+    getattr(context.binbot_api, endpoint).return_value = snapshot
+
+    await TopGainerShort(cast(Any, context)).signal(135, 140, 132, 120)
+
+    context.dispatch_signal_record.assert_not_awaited()
+    context.telegram_notifier.dispatch_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    assert context.strategy_cooldowns == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["get_cvd_symbol", "get_cvd_aggregate"])
+async def test_stale_cvd_blocks_signal_until_the_same_setup_has_valid_falling_cvd(
+    endpoint,
+):
+    context = make_context()
+    snapshot = getattr(context.binbot_api, endpoint).return_value
+    snapshot.stale = True
+    strategy = TopGainerShort(cast(Any, context))
+
+    await strategy.signal(135, 140, 132, 120)
+
+    context.dispatch_signal_record.assert_not_awaited()
+    context.telegram_notifier.dispatch_signal.assert_not_awaited()
+    context.at_consumer.process_autotrade_restrictions.assert_not_awaited()
+    assert context.strategy_cooldowns == {}
+
+    snapshot.stale = False
+    await strategy.signal(135, 140, 132, 120)
+
+    context.dispatch_signal_record.assert_awaited_once()
+    context.telegram_notifier.dispatch_signal.assert_awaited_once()
+    context.at_consumer.process_autotrade_restrictions.assert_awaited_once()
+    assert (TopGainerShort.ALGO, context.symbol) in context.strategy_cooldowns
+
+
+@pytest.mark.asyncio
+async def test_cvd_rejects_a_response_for_another_contract():
+    context = make_context()
+    context.binbot_api.get_cvd_symbol.return_value.symbol = "OTHERUSDTM"
+    result = await TopGainerShort(cast(Any, context)).assess_cvd_direction()
+    assert result.direction == "unavailable"
+    assert result.reason == "symbol_mismatch"
+
+
+@pytest.mark.asyncio
+async def test_cvd_does_not_swallow_strategy_cancellation():
+    context = make_context()
+    context.binbot_api.get_cvd_symbol.side_effect = CancelledError
+    with pytest.raises(CancelledError):
+        await TopGainerShort(cast(Any, context)).assess_cvd_direction()
+
+
+@pytest.mark.asyncio
+async def test_cvd_is_only_requested_after_entry_liquidity_passes():
+    context = make_context()
+    context.assess_futures_liquidity.return_value = LiquidityAssessment(
+        False, "insufficient_bid_depth"
+    )
+
+    await TopGainerShort(cast(Any, context)).signal(135, 140, 132, 120)
+
+    context.binbot_api.get_cvd_symbol.assert_not_awaited()
+    context.binbot_api.get_cvd_aggregate.assert_not_awaited()
+    context.dispatch_signal_record.assert_not_awaited()
