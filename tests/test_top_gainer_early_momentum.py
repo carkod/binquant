@@ -7,6 +7,7 @@ import pytest
 from pandas import DataFrame
 from pybinbot import (
     AutotradeSettingsSchema,
+    BinanceKlineIntervals,
     ExchangeId,
     GainerLoserEntry,
     GainersLosersSnapshot,
@@ -320,6 +321,9 @@ async def test_unreliable_entry_candles_retry_before_signal_is_marked_emitted(
     await algo.signal(**signal_args)
 
     assert reliability_check.call_count == 2
+    reliability_check.assert_called_with(
+        context.symbol, BinanceKlineIntervals.fifteen_minutes
+    )
     context.dispatch_signal_record.assert_awaited_once()
     context.telegram_notifier.dispatch_signal.assert_called_once()
     context.at_consumer.process_autotrade_restrictions.assert_awaited_once()

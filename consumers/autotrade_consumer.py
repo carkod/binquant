@@ -594,7 +594,7 @@ class AutotradeConsumer:
                 candlestick_interval = self._signal_value(
                     bot_params,
                     "candlestick_interval",
-                    self.autotrade_settings.candlestick_interval,
+                    BinanceKlineIntervals.fifteen_minutes,
                 )
                 if (
                     not futures_entry_candles_validated

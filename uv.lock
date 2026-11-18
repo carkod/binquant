@@ -219,7 +219,7 @@ requires-dist = [
     { name = "numpy", specifier = "==2.5.4" },
     { name = "pandas", specifier = "==3.1.1" },
     { name = "passlib" },
-    { name = "pybinbot", specifier = ">=2.1.4" },
+    { name = "pybinbot", specifier = ">=2.1.5" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "python-jose" },
@@ -834,11 +834,11 @@ wheels = [
 
 [[package]]
 name = "platformdirs"
-version = "4.14.5"
+version = "4.14.7"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d7/9a/8475be631fb33ca1466915e70fd594c42a4e84b512db650eaa14f90fe75d/platformdirs-4.14.5.tar.gz", hash = "sha256:32e9921db7385aa8169bee4fe9501923e5715ba9fb7ea3b9c69b0d8e0639f7a1", size = 71464, upload-time = "2026-11-04T16:54:50.358Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/2c/ec57eede0db493e61443c76ac7b4d24e94a24050afb3d598bf3678487f75/platformdirs-4.14.7.tar.gz", hash = "sha256:5472257c1cf97a14658af52997011c7e59e4aebf3a24950b973c11b579e1b074", size = 75132, upload-time = "2026-11-17T20:03:32.656Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/ae/ecbbbfd0e4343a6a521d49b3c8656fb4643dee2a4f6eaf941cf3280391a8/platformdirs-4.14.5-py3-none-any.whl", hash = "sha256:8e778c6fa421516f4d3369449f8df3b0e1b72c0e0005fe88e3ec772d0a14e750", size = 35402, upload-time = "2026-11-04T16:54:48.875Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/46/3737af9f971f3934794103256d7f1ed6200a62be0c7b7ff09ac4cf6b3422/platformdirs-4.14.7-py3-none-any.whl", hash = "sha256:391513b74707c42335fff3ea17eaac657a7ee9ffcadd809634d34ea594d0122c", size = 89658, upload-time = "2026-11-17T20:03:31.16Z" },
 ]
 
 [[package]]
@@ -904,7 +904,7 @@ wheels = [
 
 [[package]]
 name = "pybinbot"
-version = "2.1.4"
+version = "2.1.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -919,9 +919,9 @@ dependencies = [
     { name = "requests" },
     { name = "websocket-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/43/5a6b2f99d3e6d3afb57f9b03c453163c84a3a4aad56e74e1ec7395733fd7/pybinbot-2.1.4.tar.gz", hash = "sha256:c79ada6d491dc2f7b1be8e29e81dd1d186cada0e2ecc70162f5a354e4db10786", size = 100365, upload-time = "2026-11-16T19:55:40.042Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/dc/69469e7c7d12205e96c8c1ed29e4adc785f0fe748548e4cbed6b34db60cc/pybinbot-2.1.5.tar.gz", hash = "sha256:f50b105d9be31c3b9b25438c72a1f3e41076b6bc9e284ddcf0019f0f14bb10b0", size = 100361, upload-time = "2026-11-18T23:40:54.761Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/24/8cff8aa99b3e23e5c454e26ab48e6d972afcd05c997fb2cb863888ffa988/pybinbot-2.1.4-py3-none-any.whl", hash = "sha256:5ea035649c884e6cb8c487640adc2975217d6ee09f8541a09ee8844079670f35", size = 85459, upload-time = "2026-11-16T19:55:38.353Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/6f/d083ebcfe6be8dabf3cf6a6f2c40a3e5c502e24fe501b283c7ed6b15554e/pybinbot-2.1.5-py3-none-any.whl", hash = "sha256:1bb743ca4fa25cd85fd50853272f7ba111e6807ff0a06c247d29ef36489e23ed", size = 85414, upload-time = "2026-11-18T23:40:53.117Z" },
 ]
 
 [[package]]
@@ -1221,11 +1221,11 @@ wheels = [
 
 [[package]]
 name = "soupsieve"
-version = "4.1.1"
+version = "4.1.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1f/52/ee5646b65d98a252e807ccc37725363942372a4113072e0bce7ed22f8b84/soupsieve-4.1.1.tar.gz", hash = "sha256:b296bd2d2f65b1a78149f3d7bf6736a147d2c9e2dfbde0e4404639d748a02e03", size = 169784, upload-time = "2026-11-14T17:23:32.467Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/17/35/bf779c1cc376bc216a2d94e3b3d9ee48347296af29bedfc6caaf96bc132f/soupsieve-4.1.2.tar.gz", hash = "sha256:c6539a2638f26991463527337e39d630e3cbb86d024f52282a510535b8a7e09f", size = 178884, upload-time = "2026-11-18T17:21:03.858Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/65/7fae69a095696195334a934eab23aeb12e2715e6c3f08025d2f91942750e/soupsieve-4.1.1-py3-none-any.whl", hash = "sha256:8ff3422dab0b720fb667ee79864d80531a0e57994a13eb701697719ffcb751f6", size = 55089, upload-time = "2026-11-14T17:23:31.001Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/33/f5082b3c480db024453077592057200955aed2a376327b8921d553404ca7/soupsieve-4.1.2-py3-none-any.whl", hash = "sha256:96b4115212a3abee1f572d62da706cca090b088cb5effa278db5702122e63a2c", size = 59295, upload-time = "2026-11-18T17:21:02.593Z" },
 ]
 
 [[package]]

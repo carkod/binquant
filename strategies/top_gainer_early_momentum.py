@@ -6,6 +6,7 @@ from time import time
 from typing import TYPE_CHECKING
 
 from pybinbot import (
+    BinanceKlineIntervals,
     BotBase,
     ExchangeId,
     HABollinguerSpread,
@@ -491,9 +492,7 @@ class TopGainerEarlyMomentum:
 
         futures_entry_candles_validated = False
         if self.exchange == ExchangeId.KUCOIN:
-            candlestick_interval = (
-                self.at_consumer.autotrade_settings.candlestick_interval
-            )
+            candlestick_interval = BinanceKlineIntervals.fifteen_minutes
             if not self.at_consumer.futures_reliable_candles_available(
                 self.symbol,
                 candlestick_interval,
