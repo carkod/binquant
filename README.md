@@ -25,6 +25,32 @@ Limits live in `shared/order_book_liquidity.py`; accepted measurements are saved
 in signal indicators and rejected checks are logged. A snapshot cannot guarantee
 liquidity will remain available when a bot executes or later exits.
 
+`top_gainer_short` requires falling CVD for both the contract and the aggregate
+KuCoin futures market: each linear regression must have a negative slope and
+Pearson r <= -0.70. It reads `/charts/cvd-symbol` and `/charts/cvd-aggregate`
+concurrently after the existing entry and liquidity checks pass. If either
+assessment fails this condition or is unavailable, the strategy returns without
+persisting a signal, sending Telegram, or triggering autotrade. Rejected CVD
+checks do not consume the setup, so it can be retried later. Accepted assessments
+are saved as `indicators.cvd_symbol` and `indicators.cvd_aggregate` and displayed
+in Telegram. CVD does not change confidence score, leverage or margin.
+
+Each assessment fits a line to the latest continuous segment of 5–12 completed
+observations in a 15-bucket request. Contract buckets are one minute; aggregate
+buckets are 15 minutes. Slopes use USDT/minute for both. A positive slope with
+Pearson r >= 0.70 is `rising`, a negative slope with r <= -0.70 is `falling`,
+and other valid results are `no_direction`. The threshold measures consistency,
+not movement size or trading confidence. Constant series have slope and r zero.
+Stale checkpoints, insufficient coverage and request failures produce
+`unavailable`, preserving the reason rather than inventing a flat reading.
+Trailing unfinished buckets are excluded; fits never cross gaps, multiplier or
+universe changes, or a CVD reset. Thresholds and calculation rules live in
+`shared/cvd.py`.
+
+The CVD clients and response models require published pybinbot >= 2.1.4;
+Binquant's minimum dependency and lockfile include that release. `make format`
+and `make test` use the published package from the project environment.
+
 ## Development
 
 1. Use the [docker-compose.yml](https://github.com/carkod/binbot/blob/master/docker-compose.yml) from [Binbot project](https://github.com/carkod/binbot).

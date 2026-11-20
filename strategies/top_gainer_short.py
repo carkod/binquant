@@ -1,4 +1,5 @@
 import logging
+from asyncio import gather
 from dataclasses import asdict
 from decimal import ROUND_CEILING, Decimal
 from math import floor, isfinite
@@ -8,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from pandas import to_numeric
 from pybinbot import (
     BotBase,
+    EntryMode,
     HABollinguerSpread,
     MarketBreadthSeries,
     MarketType,
@@ -24,6 +26,7 @@ from pybinbot.shared.price_crossings import (
 )
 
 from shared.higher_low import confirmed_higher_low
+from shared.cvd import CvdDirection, calculate_cvd_direction, cvd_telegram_line
 from shared.utils import build_links_msg, format_context_timestamp_line
 from strategies.lower_high_pattern import LowerHighPattern
 
@@ -38,9 +41,12 @@ class TopGainerShort:
     Top-10 gains above 20%, strong gains, and historical stretch boost the score; crossings
     penalize it. The final score sets leverage from 1x to 5x.
 
-    Use a full-position stop above the lower high without dynamic position sizing.
+    Use a full-position stop based on the lower high, capped at 2.5% from entry,
+    without dynamic position sizing.
     The strategy sets initial margin from autotrade settings.
+    Enter through a conditional limit at the signal price with the default six-hour expiry.
     Require a fresh, tight order book with sufficient depth on both sides.
+    Require falling symbol and aggregate CVD (negative slopes, Pearson r <= -0.70).
     Autotrade runs in staging and production, with recovery disabled.
     """
 
@@ -48,6 +54,7 @@ class TopGainerShort:
 
     ENTRY_COOLDOWN_MINUTES = 60
     LOWER_HIGH_STOP_BUFFER_PCT = 2.0
+    MAX_STOP_LOSS_PCT = 2.5
     TRAILING_PROFIT_PCT = 4.5
     # trailing_profit - trailing_deviation equals the candle swing range, so the
     # deviation never drops below this floor on very large swings.
@@ -61,6 +68,7 @@ class TopGainerShort:
     HIGHER_LOW_FRACTAL_WING = 2
     MAX_HIGHER_LOW_AGE_SECONDS = 30 * 60
     MAX_GAINERS_SNAPSHOT_AGE_SECONDS = 75 * 60
+    CVD_REQUEST_LIMIT = 15
 
     BASE_SCORE = 1.0
     TOP_GAINER_SCORE_BONUS = 2.0
@@ -111,6 +119,36 @@ class TopGainerShort:
         self.gainers_losers_series = cls.gainers_losers_series
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_confirmation_open_time: int | None = None
+
+    async def assess_cvd_direction(self, *, aggregate: bool = False) -> CvdDirection:
+        """Fetch recorded CVD direction, returning unavailable evidence on failure."""
+        interval_seconds = 15 * 60 if aggregate else 60
+        try:
+            if aggregate:
+                snapshot = await self.ti.binbot_api.get_cvd_aggregate(
+                    limit=self.CVD_REQUEST_LIMIT
+                )
+            else:
+                symbol_snapshot = await self.ti.binbot_api.get_cvd_symbol(
+                    self.symbol, limit=self.CVD_REQUEST_LIMIT
+                )
+                if symbol_snapshot.symbol != self.symbol:
+                    return CvdDirection(
+                        "unavailable", "symbol_mismatch", interval_seconds
+                    )
+                snapshot = symbol_snapshot
+            return calculate_cvd_direction(
+                snapshot, interval_seconds=interval_seconds, now_seconds=time()
+            )
+        except Exception as error:
+            logging.warning(
+                "%s %s %s CVD unavailable (%s)",
+                self.ALGO,
+                self.symbol,
+                "aggregate" if aggregate else "symbol",
+                type(error).__name__,
+            )
+            return CvdDirection("unavailable", "request_failed", interval_seconds)
 
     def _top_gainer_watch(self) -> dict[str, float | int] | None:
         if not self.gainers_losers_series:
@@ -403,6 +441,11 @@ class TopGainerShort:
         if not 0 < stop_loss_pct < 100:
             logging.info("%s skipped: lower_high_stop_invalid", self.ALGO)
             return
+        if stop_loss_pct > self.MAX_STOP_LOSS_PCT:
+            stop_loss_pct = self.MAX_STOP_LOSS_PCT
+            stop_loss_price = float(
+                Decimal(str(current_price)) * (1 + Decimal(str(stop_loss_pct)) / 100)
+            )
 
         confirmation_open_time = int(lower_high["confirmation_open_time"])
         if self._already_emitted(confirmation_open_time):
@@ -503,6 +546,8 @@ class TopGainerShort:
                 name=self.ALGO,
                 position=Position.short,
                 market_type=MarketType.FUTURES,
+                entry_mode=EntryMode.conditional_limit,
+                entry_price=current_price,
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=False,
                 dynamic_position_sizing=False,
@@ -535,6 +580,20 @@ class TopGainerShort:
             )
             return
         indicators["order_book_liquidity"] = asdict(liquidity)
+        cvd_symbol, cvd_aggregate = await gather(
+            self.assess_cvd_direction(), self.assess_cvd_direction(aggregate=True)
+        )
+        if cvd_symbol.direction != "falling" or cvd_aggregate.direction != "falling":
+            logging.info(
+                "%s %s skipped: cvd_gate symbol=%s aggregate=%s",
+                self.ALGO,
+                self.symbol,
+                asdict(cvd_symbol),
+                asdict(cvd_aggregate),
+            )
+            return
+        indicators["cvd_symbol"] = asdict(cvd_symbol)
+        indicators["cvd_aggregate"] = asdict(cvd_aggregate)
 
         top_gainer_lines = (
             f"- Top-gainer rank / 24h move: {top_gainer_watch['top_gainer_rank']} / {round_numbers(top_gainer_watch['top_gainer_price_change_24h_pct'], 2)}%\n"
@@ -556,6 +615,7 @@ class TopGainerShort:
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
+            - Entry: conditional limit at {round_numbers(current_price, self.price_precision)}; expires six hours after signal creation
             - Rule intent: SHORT when price confirms a lower high and BTC or the breadth index has a confirmed higher low; current top-10 gainers above {self.MIN_TOP_GAINER_GAIN_PCT}% receive a score bonus
             {top_gainer_lines}
             - Top-gainer score bonus: +{top_gainer_score}
@@ -563,14 +623,16 @@ class TopGainerShort:
             - Lower high first / second peak: {round_numbers(lower_high["earlier_high"], self.price_precision)} / {round_numbers(lower_high["later_high"], self.price_precision)}
             {breadth_line}
             {btc_line}
+            {cvd_telegram_line("Symbol CVD", cvd_symbol)}
+            {cvd_telegram_line("Market CVD", cvd_aggregate)}
             {self._stretch_telegram_line(stretch, stretch_score, max_gain_24h_pct)}
             {format_context_timestamp_line(context)}
             {self.ti.regime_telegram_lines()}
             - Initial margin: {fiat_order_size} {quote_asset}
             - Current-price crossings over 6h: {crossings}; rejected at {CHOP_CROSSING_THRESHOLD}+; score penalty: {CHOP_CROSSING_SCORE_PENALTY} per crossing
-            - Initial reduction threshold: {self.LOWER_HIGH_STOP_BUFFER_PCT}% above lower high at {stop_loss_price} ({stop_loss_pct}%)
+            - Initial stop: {stop_loss_price} ({stop_loss_pct}%; {self.MAX_STOP_LOSS_PCT}% maximum)
             - Position sizing: fixed after entry; no automatic reductions or increases
-            - Stop behavior: full-position stop above the lower high; no reversal position
+            - Stop behavior: full-position stop based on the lower high, capped at {self.MAX_STOP_LOSS_PCT}% from entry; no reversal position
             - Trailing fallback: arms after {self.TRAILING_PROFIT_PCT}% profit with {trailing_deviation_pct}% deviation
             - Pair cooldown: {self.ENTRY_COOLDOWN_MINUTES} minutes
             - Confidence score: {score}

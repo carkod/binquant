@@ -6,15 +6,6 @@ ifneq (,$(wildcard ./.env))
 endif
 
 VENV=./.venv
-PYBINBOT_REPO ?= ../pybinbot
-
-ifneq (,$(wildcard $(PYBINBOT_REPO)/pyproject.toml))
-PYBINBOT_PYTHONPATH := PYTHONPATH=$(abspath $(PYBINBOT_REPO))
-PYBINBOT_MYPYPATH := MYPYPATH=$(abspath $(PYBINBOT_REPO))
-else
-PYBINBOT_PYTHONPATH :=
-PYBINBOT_MYPYPATH :=
-endif
 
 cmd-exists-%:
 	@hash $(*) > /dev/null 2>&1 || \
@@ -27,7 +18,7 @@ down:  ## Shutdown Docker Compose services
 	docker compose down --volumes --remove-orphans
 
 test:  ## Run tests
-	$(PYBINBOT_PYTHONPATH) uv run pytest -v --tb=short --disable-warnings --maxfail=1
+	uv run pytest -v --tb=short --disable-warnings --maxfail=1
 
 migrate:  ## Apply latest alembic migrations
 	uv run alembic upgrade head
@@ -36,7 +27,7 @@ migrate:  ## Apply latest alembic migrations
 format: 
 	@uv run ruff format .
 	@uv run ruff check .  --fix
-	@$(PYBINBOT_MYPYPATH) uv run mypy .
+	@uv run mypy .
 
 upgrade-pybinbot:
 	source ./.venv/bin/activate;

@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 from pybinbot import (
     AutotradeSettingsSchema,
+    BinanceKlineIntervals,
     BinbotErrors,
     BotBase,
     BotModel,
@@ -945,6 +946,36 @@ class TestAutotradeConsumer:
         assert signal.bot_params.fiat_order_size < 500
         assert signal.bot_params.fiat_order_size > 0
         assert signal.bot_params.futures_leverage == 3
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "submitted, expected",
+        [
+            (None, BinanceKlineIntervals.fifteen_minutes),
+            (BinanceKlineIntervals.one_hour, BinanceKlineIntervals.one_hour),
+        ],
+    )
+    async def test_futures_candle_preflight_uses_signal_interval_or_fifteen_minutes(
+        self, submitted, expected
+    ):
+        self.consumer.exchange = ExchangeId.KUCOIN
+        params = BotBase(
+            pair="BTCUSDTM",
+            name="top_gainer_short",
+            market_type=MarketType.FUTURES,
+            position=Position.short,
+            fiat="USDT",
+            fiat_order_size=10,
+            stop_loss=2,
+        )
+        if submitted is not None:
+            params.candlestick_interval = submitted
+        signal = SignalsConsumer(autotrade=True, current_price=10, bot_params=params)
+        with patch.object(
+            self.consumer, "futures_reliable_candles_available", return_value=False
+        ) as reliability_check:
+            await self.consumer.process_autotrade_restrictions(signal)
+        reliability_check.assert_called_once_with("BTCUSDTM", expected)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("submitted,expected", [(None, 3), (1, 1), (4, 4), (5, 5)])
