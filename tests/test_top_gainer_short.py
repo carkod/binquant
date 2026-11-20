@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 from pybinbot import (
     AutotradeSettingsSchema,
+    EntryMode,
     ExchangeId,
     GainerLoserEntry,
     GainersLosersSnapshot,
@@ -296,6 +297,12 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert value.direction == "SHORT"
     assert value.bot_params.name == "top_gainer_short"
     assert value.bot_params.position == "short"
+    assert value.bot_params.entry_mode == EntryMode.conditional_limit
+    assert value.bot_params.entry_price == 135.0
+    assert value.bot_params.entry_expires_at == (
+        value.bot_params.created_at + 6 * 60 * 60 * 1000
+    )
+    assert {"entry_mode", "entry_price"} <= value.bot_params.model_fields_set
     assert value.bot_params.stop_loss == 2.5
     assert value.bot_params.dynamic_trailing is False
     assert value.bot_params.dynamic_position_sizing is False
@@ -322,6 +329,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert "btc_higher_low_first_trough" not in indicators
     assert "breadth_falling_three_hours" not in indicators
     msg = context.telegram_notifier.dispatch_signal.call_args.args[0]
+    assert "Entry: conditional limit at 135.0; expires six hours" in msg
     assert "Breadth higher low confirmed: -0.5 -> -0.3" in msg
     assert "BTC higher low confirmed: No" in msg
     assert "Breadth falling" not in msg

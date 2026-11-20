@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from pandas import to_numeric
 from pybinbot import (
     BotBase,
+    EntryMode,
     HABollinguerSpread,
     MarketBreadthSeries,
     MarketType,
@@ -43,6 +44,7 @@ class TopGainerShort:
     Use a full-position stop based on the lower high, capped at 2.5% from entry,
     without dynamic position sizing.
     The strategy sets initial margin from autotrade settings.
+    Enter through a conditional limit at the signal price with the default six-hour expiry.
     Require a fresh, tight order book with sufficient depth on both sides.
     Require falling symbol and aggregate CVD (negative slopes, Pearson r <= -0.70).
     Autotrade runs in staging and production, with recovery disabled.
@@ -544,6 +546,8 @@ class TopGainerShort:
                 name=self.ALGO,
                 position=Position.short,
                 market_type=MarketType.FUTURES,
+                entry_mode=EntryMode.conditional_limit,
+                entry_price=current_price,
                 cooldown=self.ENTRY_COOLDOWN_MINUTES,
                 dynamic_trailing=False,
                 dynamic_position_sizing=False,
@@ -611,6 +615,7 @@ class TopGainerShort:
             - [{self.config.env}] <strong>#{self.ALGO} algorithm</strong> #{self.symbol}
             - Action: SHORT ENTRY
             - Current price: {round_numbers(current_price, self.price_precision)}
+            - Entry: conditional limit at {round_numbers(current_price, self.price_precision)}; expires six hours after signal creation
             - Rule intent: SHORT when price confirms a lower high and BTC or the breadth index has a confirmed higher low; current top-10 gainers above {self.MIN_TOP_GAINER_GAIN_PCT}% receive a score bonus
             {top_gainer_lines}
             - Top-gainer score bonus: +{top_gainer_score}
