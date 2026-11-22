@@ -1,12 +1,12 @@
 import logging
-from asyncio import gather
+from asyncio import TaskGroup, gather
 from dataclasses import asdict
 from decimal import ROUND_CEILING, Decimal
 from math import floor, isfinite
 from time import time
 from typing import TYPE_CHECKING, Any
 
-from pandas import to_numeric
+from pandas import DataFrame, to_numeric
 from pybinbot import (
     BotBase,
     EntryMode,
@@ -226,13 +226,15 @@ class TopGainerShort:
         age_seconds = time() - timestamp_seconds
         return 0 <= age_seconds <= max_age_seconds
 
-    def _fresh_lower_high(self) -> dict[str, float | int] | None:
-        df = self.ti.df_15m
+    @staticmethod
+    def _fresh_lower_high(
+        df: DataFrame | None, *, now_seconds: float
+    ) -> dict[str, float | int] | None:
         if df is None or "close_time" not in df.columns:
             return None
 
         close_times = to_numeric(df["close_time"], errors="coerce")
-        completed_candles = df.loc[close_times < time() * 1000]
+        completed_candles = df.loc[close_times < now_seconds * 1000]
         pattern = LowerHighPattern.detect(completed_candles)
         if pattern is None:
             return None
@@ -242,9 +244,11 @@ class TopGainerShort:
             return None
         return pattern
 
-    def _breadth_higher_low(self) -> dict[str, float] | None:
+    @classmethod
+    def _breadth_higher_low(
+        cls, breadth: MarketBreadthSeries | None, *, now_seconds: float
+    ) -> dict[str, float] | None:
         """Confirm an unbroken higher low on the signed breadth index."""
-        breadth = self.market_breadth_data
         if breadth is None or len(breadth.timestamp) != len(breadth.market_breadth):
             return None
 
@@ -258,21 +262,22 @@ class TopGainerShort:
             samples.append((timestamp_seconds, value))
         pattern = confirmed_higher_low(
             samples,
-            now_seconds=time(),
-            lookback_samples=self.HIGHER_LOW_LOOKBACK_SAMPLES,
-            fractal_wing=self.HIGHER_LOW_FRACTAL_WING,
-            max_age_seconds=self.MAX_HIGHER_LOW_AGE_SECONDS,
-            max_gap_seconds=self.MAX_HIGHER_LOW_AGE_SECONDS,
+            now_seconds=now_seconds,
+            lookback_samples=cls.HIGHER_LOW_LOOKBACK_SAMPLES,
+            fractal_wing=cls.HIGHER_LOW_FRACTAL_WING,
+            max_age_seconds=cls.MAX_HIGHER_LOW_AGE_SECONDS,
+            max_gap_seconds=cls.MAX_HIGHER_LOW_AGE_SECONDS,
         )
         if pattern is None:
             return None
         return {f"breadth_{name}": value for name, value in pattern.items()}
 
-    def _btc_higher_low(self) -> dict[str, float] | None:
-        df = self.ti.df_btc_15m
+    @classmethod
+    def _btc_higher_low(
+        cls, df: DataFrame | None, *, now_seconds: float
+    ) -> dict[str, float] | None:
         if df is None or not {"low", "close_time"}.issubset(df.columns):
             return None
-        now_seconds = time()
         close_times = to_numeric(df["close_time"], errors="coerce")
         if not close_times.map(isfinite).all():
             return None
@@ -285,31 +290,36 @@ class TopGainerShort:
         pattern = confirmed_higher_low(
             samples,
             now_seconds=now_seconds,
-            lookback_samples=self.HIGHER_LOW_LOOKBACK_SAMPLES,
-            fractal_wing=self.HIGHER_LOW_FRACTAL_WING,
-            max_age_seconds=self.MAX_HIGHER_LOW_AGE_SECONDS,
+            lookback_samples=cls.HIGHER_LOW_LOOKBACK_SAMPLES,
+            fractal_wing=cls.HIGHER_LOW_FRACTAL_WING,
+            max_age_seconds=cls.MAX_HIGHER_LOW_AGE_SECONDS,
             max_gap_seconds=15 * 60,
         )
         if pattern is None or any(
-            low <= 0 for _, low in sorted(samples)[-self.HIGHER_LOW_LOOKBACK_SAMPLES :]
+            low <= 0 for _, low in sorted(samples)[-cls.HIGHER_LOW_LOOKBACK_SAMPLES :]
         ):
             return None
         return {f"btc_{name}": value for name, value in pattern.items()}
 
+    @classmethod
     def _stretch_context(
-        self, max_gain_24h_pct: float | None, weekly_resistance: float
+        cls,
+        df: DataFrame | None,
+        max_gain_24h_pct: float | None,
+        weekly_resistance: float,
+        *,
+        now_seconds: float,
     ) -> dict[str, float | bool] | None:
         """Compare the recent move with daily candles preceding that window."""
-        df = self.ti.df_1d
         required_columns = {"open", "high", "close", "close_time"}
         if df is None or not required_columns.issubset(df.columns):
             return None
 
-        now_ms = time() * 1000
-        recent_cutoff_ms = now_ms - self.STRETCH_RECENT_DAYS * 24 * 3600 * 1000
+        now_ms = now_seconds * 1000
+        recent_cutoff_ms = now_ms - cls.STRETCH_RECENT_DAYS * 24 * 3600 * 1000
         close_times = to_numeric(df["close_time"], errors="coerce")
         prior = df.loc[close_times < recent_cutoff_ms]
-        if len(prior) < self.STRETCH_MIN_PRIOR_DAILY_CANDLES:
+        if len(prior) < cls.STRETCH_MIN_PRIOR_DAILY_CANDLES:
             return None
 
         opens = to_numeric(prior["open"], errors="coerce")
@@ -338,7 +348,7 @@ class TopGainerShort:
                 and max_gain_24h_pct > prior_best_daily_gain_pct
             ),
             "stretch_new_high": weekly_resistance > prior_high,
-            "stretch_extended": extension_pct >= self.STRETCH_EXTENSION_THRESHOLD_PCT,
+            "stretch_extended": extension_pct >= cls.STRETCH_EXTENSION_THRESHOLD_PCT,
         }
 
     def _stretch_telegram_line(
@@ -388,23 +398,48 @@ class TopGainerShort:
 
         top_gainer_watch = self._top_gainer_watch()
 
-        lower_high = self._fresh_lower_high()
+        # Workers receive private snapshots and one evaluation timestamp. They
+        # never read the evaluator, clients, cooldowns or other strategy state.
+        now_seconds = time()
+        pool = self.ti.calculation_pool
+        lower_high = await pool.calculate(
+            self._fresh_lower_high, self.ti.df_15m, now_seconds=now_seconds
+        )
         if lower_high is None:
             logging.info("%s skipped: no_fresh_confirmed_lower_high", self.ALGO)
             return
 
-        breadth_context = self._breadth_higher_low()
-        btc_context = self._btc_higher_low()
+        async with TaskGroup() as calculations:
+            breadth_task = calculations.create_task(
+                pool.calculate(
+                    self._breadth_higher_low,
+                    self.market_breadth_data,
+                    now_seconds=now_seconds,
+                )
+            )
+            btc_task = calculations.create_task(
+                pool.calculate(
+                    self._btc_higher_low,
+                    self.ti.df_btc_15m,
+                    now_seconds=now_seconds,
+                )
+            )
+            crossings_task = calculations.create_task(
+                pool.calculate(
+                    price_crossings_six_hours,
+                    self.ti.df_15m,
+                    current_price,
+                    now_ms=now_seconds * 1000,
+                    interval_ms=self.candlestick_interval.get_ms(),
+                )
+            )
+        breadth_context = breadth_task.result()
+        btc_context = btc_task.result()
         if breadth_context is None and btc_context is None:
             logging.info("%s skipped: no_valid_btc_or_breadth_higher_low", self.ALGO)
             return
 
-        crossings = price_crossings_six_hours(
-            self.ti.df_15m,
-            current_price,
-            now_ms=time() * 1000,
-            interval_ms=self.candlestick_interval.get_ms(),
-        )
+        crossings = crossings_task.result()
         if crossings is None:
             logging.info("%s skipped: six_hour_candle_history_invalid", self.ALGO)
             return
@@ -464,7 +499,13 @@ class TopGainerShort:
             max_gain_24h_pct is not None
             and max_gain_24h_pct >= self.STRONG_GAIN_THRESHOLD_PCT
         )
-        stretch = self._stretch_context(max_gain_24h_pct, lower_high_price)
+        stretch = await pool.calculate(
+            self._stretch_context,
+            self.ti.df_1d,
+            max_gain_24h_pct,
+            lower_high_price,
+            now_seconds=now_seconds,
+        )
         stretch_score = (
             (self.RECORD_GAIN_SCORE_BONUS if stretch["stretch_record_gain"] else 0.0)
             + (self.NEW_HIGH_SCORE_BONUS if stretch["stretch_new_high"] else 0.0)

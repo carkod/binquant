@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from asyncio import CancelledError
+from threading import Barrier, get_ident
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -25,6 +26,7 @@ from pybinbot.shared.price_crossings import (
 )
 
 from shared.order_book_liquidity import LiquidityAssessment
+from shared.calculation_pool import CalculationPool
 from strategies.top_gainer_short import TopGainerShort
 from tests.cvd_fixtures import cvd_snapshot
 
@@ -202,6 +204,13 @@ def make_context(
         symbol_df.loc[10, "low"] = 105.0
 
     return SimpleNamespace(
+        calculation_pool=SimpleNamespace(
+            calculate=AsyncMock(
+                side_effect=lambda operation, *args, **kwargs: operation(
+                    *args, **kwargs
+                )
+            )
+        ),
         config=SimpleNamespace(
             env=environment, frontend_domain="https://terminal.example.com/"
         ),
@@ -267,7 +276,9 @@ def test_strategy_tracks_watch_duration_and_confirmed_breadth_higher_low() -> No
     strategy = TopGainerShort(cast(Any, make_context()))
 
     watch = strategy._top_gainer_watch()
-    breadth = strategy._breadth_higher_low()
+    breadth = strategy._breadth_higher_low(
+        strategy.market_breadth_data, now_seconds=NOW.timestamp()
+    )
 
     assert watch is not None
     assert watch["top_gainer_watch_hours"] == 6.0
@@ -538,7 +549,9 @@ def test_breadth_higher_low_handles_negative_zero_and_positive_troughs(offset):
         breadth=make_market_breadth(breadth=[v + offset for v in HIGHER_LOW_BREADTH])
     )
 
-    pattern = TopGainerShort(cast(Any, context))._breadth_higher_low()
+    pattern = TopGainerShort(cast(Any, context))._breadth_higher_low(
+        context.market_breadth_data, now_seconds=NOW.timestamp()
+    )
 
     assert pattern is not None
     assert pattern["breadth_higher_low_rise"] == pytest.approx(0.2)
@@ -618,7 +631,7 @@ def test_breadth_pattern_remains_valid_after_confirmation_until_breached():
     breadth.market_breadth.reverse()
     pattern = TopGainerShort(
         cast(Any, make_context(breadth=breadth))
-    )._breadth_higher_low()
+    )._breadth_higher_low(breadth, now_seconds=NOW.timestamp())
 
     assert pattern is not None
     assert (
@@ -917,7 +930,10 @@ async def test_repeated_crossings_reject_a_real_confirmed_lower_high():
     context = make_context()
     context.df_15m = make_lower_high_df()
     strategy = TopGainerShort(cast(Any, context))
-    assert strategy._fresh_lower_high() is not None
+    assert (
+        strategy._fresh_lower_high(strategy.ti.df_15m, now_seconds=NOW.timestamp())
+        is not None
+    )
     assert (
         price_crossings_six_hours(
             context.df_15m, 124.0, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
@@ -1231,7 +1247,10 @@ async def test_invalid_btc_higher_low_does_not_confirm_and_cannot_veto_valid_bre
     if case == "missing":
         context.df_btc_15m = None
     strategy = TopGainerShort(cast(Any, context))
-    assert strategy._btc_higher_low() is None
+    assert (
+        strategy._btc_higher_low(strategy.ti.df_btc_15m, now_seconds=NOW.timestamp())
+        is None
+    )
     await strategy.signal(135, 95, 92, 87)
     if breadth_confirmed:
         context.dispatch_signal_record.assert_awaited_once()
@@ -1250,7 +1269,9 @@ def test_btc_higher_low_uses_completed_candles_and_remains_valid_after_confirmat
     frame.loc[len(frame)] = [current_open, current_open + BAR_MS - 1, 90, 103, 91]
     frame = frame.iloc[::-1]
     strategy = TopGainerShort(cast(Any, make_context(btc_df=frame)))
-    pattern = strategy._btc_higher_low()
+    pattern = strategy._btc_higher_low(
+        strategy.ti.df_btc_15m, now_seconds=NOW.timestamp()
+    )
     assert pattern is not None
     assert pattern["btc_higher_low_first_trough"] == 95
     assert pattern["btc_higher_low_second_trough"] == 97
@@ -1295,11 +1316,13 @@ async def test_trailing_gap_equals_candle_swing_range_with_floor(
     peak = 136.0
     context = make_context()
     strategy = TopGainerShort(cast(Any, context))
-    pattern = strategy._fresh_lower_high()
+    pattern = strategy._fresh_lower_high(
+        strategy.ti.df_15m, now_seconds=NOW.timestamp()
+    )
     assert pattern is not None
     pattern["later_high"] = peak
     pattern["rise_pct"] = rise_pct
-    monkeypatch.setattr(strategy, "_fresh_lower_high", lambda: pattern)
+    monkeypatch.setattr(strategy, "_fresh_lower_high", lambda *args, **kwargs: pattern)
     await strategy.signal(135.0, 140.0, 132.0, 120.0)
     value = context.dispatch_signal_record.await_args.kwargs["value"]
     indicators = context.dispatch_signal_record.await_args.kwargs["indicators"]
@@ -1469,3 +1492,104 @@ async def test_cvd_is_only_requested_after_entry_liquidity_passes():
     context.binbot_api.get_cvd_symbol.assert_not_awaited()
     context.binbot_api.get_cvd_aggregate.assert_not_awaited()
     context.dispatch_signal_record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_parallel_pattern_checks_preserve_signal_and_keep_dispatch_on_event_loop(
+    monkeypatch,
+):
+    baseline_context = make_context(btc_df=make_btc_higher_low_df())
+    await TopGainerShort(cast(Any, baseline_context)).signal(135, 140, 132, 120)
+    baseline = baseline_context.dispatch_signal_record.await_args.kwargs
+
+    context = make_context(btc_df=make_btc_higher_low_df())
+    pool = CalculationPool(workers=2)
+    context.calculation_pool = pool
+    strategy = TopGainerShort(cast(Any, context))
+    breadth_calculation = strategy._breadth_higher_low
+    btc_calculation = strategy._btc_higher_low
+    lower_high_calculation = strategy._fresh_lower_high
+    stretch_calculation = strategy._stretch_context
+    barrier = Barrier(2)
+    worker_threads: list[int] = []
+    dispatch_threads: list[int] = []
+    frames: list[pd.DataFrame] = []
+    evaluation_times: list[float] = []
+
+    def calculate_breadth(breadth, *, now_seconds):
+        worker_threads.append(get_ident())
+        evaluation_times.append(now_seconds)
+        assert breadth is not context.market_breadth_data
+        barrier.wait(timeout=5)
+        return breadth_calculation(breadth, now_seconds=now_seconds)
+
+    def calculate_btc(frame, *, now_seconds):
+        worker_threads.append(get_ident())
+        evaluation_times.append(now_seconds)
+        assert frame is not context.df_btc_15m
+        barrier.wait(timeout=5)
+        return btc_calculation(frame, now_seconds=now_seconds)
+
+    def calculate_lower_high(frame, *, now_seconds):
+        worker_threads.append(get_ident())
+        evaluation_times.append(now_seconds)
+        assert frame is not context.df_15m
+        frames.append(frame)
+        return lower_high_calculation(frame, now_seconds=now_seconds)
+
+    def calculate_crossings(frame, current_price, *, now_ms, interval_ms):
+        worker_threads.append(get_ident())
+        evaluation_times.append(now_ms / 1000)
+        assert frame is not context.df_15m
+        assert frame is not frames[0]
+        return price_crossings_six_hours(
+            frame, current_price, now_ms=now_ms, interval_ms=interval_ms
+        )
+
+    def calculate_stretch(frame, max_gain, resistance, *, now_seconds):
+        worker_threads.append(get_ident())
+        evaluation_times.append(now_seconds)
+        return stretch_calculation(frame, max_gain, resistance, now_seconds=now_seconds)
+
+    def dispatch(*args, **kwargs):  # noqa: ARG001
+        dispatch_threads.append(get_ident())
+
+    monkeypatch.setattr(strategy, "_breadth_higher_low", calculate_breadth)
+    monkeypatch.setattr(strategy, "_btc_higher_low", calculate_btc)
+    monkeypatch.setattr(strategy, "_fresh_lower_high", calculate_lower_high)
+    monkeypatch.setattr(strategy, "_stretch_context", calculate_stretch)
+    monkeypatch.setattr(
+        "strategies.top_gainer_short.price_crossings_six_hours", calculate_crossings
+    )
+    context.dispatch_signal_record.side_effect = dispatch
+    context.telegram_notifier.dispatch_signal.side_effect = dispatch
+    context.at_consumer.process_autotrade_restrictions.side_effect = dispatch
+    try:
+        await strategy.signal(135, 140, 132, 120)
+    finally:
+        pool.close()
+
+    assert len(worker_threads) == 5
+    assert len(set(worker_threads)) == 2
+    assert get_ident() not in worker_threads
+    assert dispatch_threads == [get_ident()] * 3
+    assert evaluation_times == [NOW.timestamp()] * 5
+    actual = context.dispatch_signal_record.await_args.kwargs
+    generated_fields = {
+        "date": True,
+        "bot_params": {"created_at", "updated_at", "entry_expires_at"},
+    }
+    assert actual["value"].model_dump(exclude=generated_fields) == baseline[
+        "value"
+    ].model_dump(exclude=generated_fields)
+    for value in (actual["value"], baseline["value"]):
+        assert (
+            value.bot_params.entry_expires_at - value.bot_params.created_at
+            == 6 * 60 * 60 * 1000
+        )
+    assert actual["indicators"] == baseline["indicators"]
+    assert context.strategy_cooldowns == baseline_context.strategy_cooldowns
+    assert (
+        context.telegram_notifier.dispatch_signal.await_args
+        == baseline_context.telegram_notifier.dispatch_signal.await_args
+    )

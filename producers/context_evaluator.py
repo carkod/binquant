@@ -48,7 +48,8 @@ from market_regime.open_interest_order_sizing import (
 )
 from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
-from shared.candle_calculations import CandleCalculationPool
+from shared.calculation_pool import CalculationPool
+from shared.candle_calculations import calculate_candles
 from shared.macroregime_directional_notifier import MacroregimeDirectionalNotifier
 from shared.order_book_liquidity import LiquidityAssessment, assess_futures_order_book
 from shared.utils import format_context_timestamp_line
@@ -84,7 +85,7 @@ class ContextEvaluator:
         candlestick_interval: BinanceKlineIntervals | KucoinKlineIntervals,
         binbot_api: BinbotApi,
         telegram_notifier: TelegramSignalNotifier,
-        calculation_pool: CandleCalculationPool,
+        calculation_pool: CalculationPool,
         strategy_cooldowns: dict[tuple[str, str], int] | None = None,
         strategy_states: dict[tuple[str, str], dict[str, float | int]] | None = None,
         liquidation_sweep_portfolio_selector: (
@@ -590,13 +591,18 @@ class ContextEvaluator:
         self.symbol_dependent_data()
         self.refresh_grid_only_policy()
         # Only independent calculations enter the pool. Strategy instances,
-        # shared state and signal dispatch remain on this event-loop thread.
+        # shared state and signal dispatch remain on this event-loop thread;
+        # top_gainer_short also submits its stateless calculations to this pool.
         async with TaskGroup() as calculations:
             frame_5m = calculations.create_task(
-                self.calculation_pool.calculate(self.exchange, candles)
+                self.calculation_pool.calculate(
+                    calculate_candles, self.exchange, candles
+                )
             )
             frame_15m = calculations.create_task(
-                self.calculation_pool.calculate(self.exchange, candles_15m)
+                self.calculation_pool.calculate(
+                    calculate_candles, self.exchange, candles_15m
+                )
             )
 
         raw_candles_15m = Candles(exchange=self.exchange, candles=candles_15m)

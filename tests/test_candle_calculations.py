@@ -1,5 +1,5 @@
 import asyncio
-from threading import Event, get_ident
+from threading import Barrier, Event, get_ident
 from typing import Any
 from unittest.mock import Mock
 
@@ -10,7 +10,8 @@ from pybinbot import Candles, ExchangeId
 
 from producers.context_evaluator import ContextEvaluator
 
-from shared.candle_calculations import CandleCalculationPool, calculate_candles
+from shared.calculation_pool import CalculationPool
+from shared.candle_calculations import calculate_candles
 
 
 def linear_candles(count: int, interval: int = 300_000) -> list[list[Any]]:
@@ -56,7 +57,7 @@ async def test_regime_assessment_keeps_warmup_rows_and_hourly_resampling() -> No
     expected_hourly = (
         raw.resample(raw.pre_process(), "1h").dropna().reset_index(drop=True)
     )
-    pool = CandleCalculationPool()
+    pool = CalculationPool()
     evaluator: Any = object.__new__(ContextEvaluator)
     evaluator.calculation_pool = pool
     evaluator.exchange = ExchangeId.BINANCE
@@ -80,18 +81,16 @@ async def test_regime_assessment_keeps_warmup_rows_and_hourly_resampling() -> No
 
 
 @pytest.mark.asyncio
-async def test_capacity_is_retained_when_a_running_calculation_is_cancelled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_capacity_is_retained_when_a_running_calculation_is_cancelled() -> None:
     loop = asyncio.get_running_loop()
     started: asyncio.Queue[int] = asyncio.Queue()
     release = Event()
     snapshots: list[int] = []
 
     class CandleRow(list[Any]):
-        def copy(self) -> list[Any]:
+        def __deepcopy__(self, memo) -> list[Any]:  # noqa: ARG002
             snapshots.append(self[0])
-            return super().copy()
+            return list(self)
 
     def blocking_calculation(exchange, candles):  # noqa: ARG001
         loop.call_soon_threadsafe(started.put_nowait, get_ident())
@@ -99,14 +98,17 @@ async def test_capacity_is_retained_when_a_running_calculation_is_cancelled(
             raise TimeoutError("Test did not release calculation")
         return DataFrame({"close": [candles[0][0]]})
 
-    monkeypatch.setattr(
-        "shared.candle_calculations.calculate_candles", blocking_calculation
+    pool = CalculationPool(workers=2)
+    first = asyncio.create_task(
+        pool.calculate(blocking_calculation, ExchangeId.BINANCE, [CandleRow([1])])
     )
-    pool = CandleCalculationPool(workers=2)
-    first = asyncio.create_task(pool.calculate(ExchangeId.BINANCE, [CandleRow([1])]))
     second_input: list[list[Any]] = [CandleRow([2])]
-    second = asyncio.create_task(pool.calculate(ExchangeId.BINANCE, second_input))
-    pending = asyncio.create_task(pool.calculate(ExchangeId.BINANCE, [CandleRow([3])]))
+    second = asyncio.create_task(
+        pool.calculate(blocking_calculation, ExchangeId.BINANCE, second_input)
+    )
+    pending = asyncio.create_task(
+        pool.calculate(blocking_calculation, ExchangeId.BINANCE, [CandleRow([3])])
+    )
     try:
         first_worker = await asyncio.wait_for(started.get(), timeout=5)
         second_worker = await asyncio.wait_for(started.get(), timeout=5)
@@ -140,25 +142,52 @@ async def test_capacity_is_retained_when_a_running_calculation_is_cancelled(
 
 
 @pytest.mark.asyncio
-async def test_failed_calculation_releases_capacity_and_closed_pool_rejects_work(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_failed_calculation_releases_capacity_and_closed_pool_rejects_work() -> (
+    None
+):
     def calculation(exchange, candles):  # noqa: ARG001
         if candles[0][0] < 0:
             raise ValueError("Invalid candle")
         return DataFrame({"close": [candles[0][0]]})
 
-    monkeypatch.setattr("shared.candle_calculations.calculate_candles", calculation)
-    pool = CandleCalculationPool(workers=1)
+    pool = CalculationPool(workers=1)
     try:
         with pytest.raises(ValueError, match="Invalid candle"):
-            await pool.calculate(ExchangeId.BINANCE, [[-1]])
+            await pool.calculate(calculation, ExchangeId.BINANCE, [[-1]])
         result = await asyncio.wait_for(
-            pool.calculate(ExchangeId.BINANCE, [[42]]), timeout=5
+            pool.calculate(calculation, ExchangeId.BINANCE, [[42]]), timeout=5
         )
         assert_frame_equal(result, DataFrame({"close": [42]}))
     finally:
         pool.close()
 
     with pytest.raises(RuntimeError, match="pool is closed"):
-        await pool.calculate(ExchangeId.BINANCE, [[42]])
+        await pool.calculate(calculation, ExchangeId.BINANCE, [[42]])
+
+
+@pytest.mark.asyncio
+async def test_parallel_jobs_own_separate_dataframe_snapshots() -> None:
+    frame = DataFrame({"close": [100.0]})
+    original = frame.copy(deep=True)
+    barrier = Barrier(2)
+
+    def change_snapshot(snapshot, close):
+        barrier.wait(timeout=5)
+        snapshot.loc[0, "close"] = close
+        return snapshot
+
+    pool = CalculationPool(workers=2)
+    try:
+        first, second = await asyncio.wait_for(
+            asyncio.gather(
+                pool.calculate(change_snapshot, frame, 200.0),
+                pool.calculate(change_snapshot, frame, 300.0),
+            ),
+            timeout=5,
+        )
+    finally:
+        pool.close()
+
+    assert_frame_equal(frame, original)
+    assert_frame_equal(first, DataFrame({"close": [200.0]}))
+    assert_frame_equal(second, DataFrame({"close": [300.0]}))

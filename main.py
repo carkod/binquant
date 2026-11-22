@@ -18,7 +18,7 @@ from pybinbot import configure_logging
 from consumers.klines_provider import KlinesProvider
 from market_regime.liquidation_state_store import LiquidationStateStore
 from shared.streaming.websocket_factory import WebsocketClientFactory
-from shared.candle_calculations import CandleCalculationPool
+from shared.calculation_pool import CalculationPool
 
 configure_logging(force=True)
 
@@ -71,9 +71,9 @@ async def main() -> None:
         queue=queue,
         liquidation_store=liquidation_store,
     )
-    calculation_pool = CandleCalculationPool(workers=CALCULATION_WORKERS)
+    calculation_pool = CalculationPool(workers=CALCULATION_WORKERS)
     logging.info(
-        "Candle calculation workers=%s; GIL enabled=%s",
+        "Candle and strategy calculation workers=%s; GIL enabled=%s",
         CALCULATION_WORKERS,
         sys._is_gil_enabled(),
     )

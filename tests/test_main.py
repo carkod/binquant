@@ -86,7 +86,7 @@ async def test_main_closes_calculation_workers_when_subscription_setup_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pool = Mock()
-    monkeypatch.setattr(binquant_main, "CandleCalculationPool", Mock(return_value=pool))
+    monkeypatch.setattr(binquant_main, "CalculationPool", Mock(return_value=pool))
     monkeypatch.setattr(binquant_main, "KlinesProvider", Mock())
     factory = Mock()
     factory.create_connector = AsyncMock(
