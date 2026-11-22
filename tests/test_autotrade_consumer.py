@@ -185,12 +185,19 @@ class TestAutotradeConsumer:
 
     # --- Original AutotradeConsumer tests ---
 
-    def test_reached_max_active_autobots_bots(self):
-        self.mock_binbot_api.get_active_pairs.return_value = [1, 2]
-        assert not self.consumer.reached_max_active_autobots()
+    @pytest.mark.parametrize(
+        ("bot_count", "limit", "expected"),
+        [(0, 2, False), (1, 2, False), (2, 2, True), (3, 2, True), (0, 0, True)],
+    )
+    def test_bot_limit_is_reached_at_configured_capacity(
+        self, bot_count, limit, expected
+    ):
+        self.settings.max_active_autotrade_bots = limit
+        self.mock_binbot_api.get_active_pairs.return_value = [
+            f"COIN{i}USDTM" for i in range(bot_count)
+        ]
 
-        self.mock_binbot_api.get_active_pairs.return_value = [1, 2, 3]
-        assert self.consumer.reached_max_active_autobots()
+        assert self.consumer.reached_max_active_autobots() is expected
 
     def _closed_bot(
         self,
@@ -1062,7 +1069,7 @@ class TestAutotradeConsumer:
         )
 
     @pytest.mark.asyncio
-    async def test_conditional_entry_defers_balance_and_capacity_checks_until_trigger(
+    async def test_conditional_entry_defers_balance_check_when_bot_slot_available(
         self,
     ):
         self.consumer.exchange = ExchangeId.KUCOIN
@@ -1079,19 +1086,53 @@ class TestAutotradeConsumer:
                 fiat_order_size=100,
             ),
         )
-        with (
-            patch.object(
-                self.consumer, "reached_max_active_autobots", return_value=True
-            ) as capacity,
-            patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls,
-        ):
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
             autotrade_cls.return_value.activate_autotrade = AsyncMock()
             await self.consumer.process_autotrade_restrictions(signal)
         autotrade_cls.return_value.activate_autotrade.assert_awaited_once_with(signal)
-        capacity.assert_not_called()
+        self.mock_binbot_api.get_active_pairs.assert_called_once_with()
         self.mock_binbot_api.get_available_fiat.assert_not_called()
         assert signal.bot_params is not None
         assert signal.bot_params.fiat_order_size == 100
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("entry_mode", ["immediate", "conditional_limit"])
+    @pytest.mark.parametrize(("bot_count", "limit"), [(1, 2), (2, 2), (3, 2), (0, 0)])
+    async def test_bot_creation_respects_capacity_for_each_entry_mode(
+        self, entry_mode, bot_count, limit
+    ):
+        self.consumer.exchange = ExchangeId.KUCOIN
+        self.settings.max_active_autotrade_bots = limit
+        self.mock_binbot_api.get_active_pairs.return_value = [
+            f"COIN{i}USDTM" for i in range(bot_count)
+        ]
+        signal = SignalsConsumer(
+            autotrade=True,
+            current_price=100,
+            bot_params=BotBase(
+                pair="BTCUSDTM",
+                name="top_gainer_short",
+                position=Position.short,
+                market_type=MarketType.FUTURES,
+                entry_mode=entry_mode,
+                entry_price=110,
+                fiat_order_size=100,
+            ),
+        )
+
+        with patch("consumers.autotrade_consumer.Autotrade") as autotrade_cls:
+            autotrade_cls.return_value.activate_autotrade = AsyncMock()
+            await self.consumer.process_autotrade_restrictions(
+                signal, futures_entry_candles_validated=True
+            )
+
+        self.mock_binbot_api.get_active_pairs.assert_called_once_with()
+        if bot_count < limit:
+            autotrade_cls.return_value.activate_autotrade.assert_awaited_once_with(
+                signal
+            )
+        else:
+            autotrade_cls.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_conditional_signal_creates_pending_bot_without_activating(self):
