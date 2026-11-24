@@ -31,7 +31,7 @@ from market_regime.models import LiveMarketContext
 from market_regime.market_state_store import MarketStateStore
 from producers.context_evaluator import ContextEvaluator
 from shared.config import Config
-from shared.candle_calculations import CandleCalculationPool
+from shared.calculation_pool import CalculationPool
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.top_gainer_momentum_recovery import TopGainerMomentumRecovery
 from time import time
@@ -53,7 +53,7 @@ class KlinesProvider:
 
     def __init__(
         self,
-        calculation_pool: CandleCalculationPool,
+        calculation_pool: CalculationPool,
         liquidation_store: LiquidationStateStore | None = None,
     ) -> None:
         self.calculation_pool = calculation_pool

@@ -244,7 +244,9 @@ class AutotradeConsumer:
     def reached_max_active_autobots(self) -> bool:
         """Keep the configured limit on concurrently active autotrade bots."""
         self.active_bots = self.binbot_api.get_active_pairs()
-        return len(self.active_bots) > self.autotrade_settings.max_active_autotrade_bots
+        return (
+            len(self.active_bots) >= self.autotrade_settings.max_active_autotrade_bots
+        )
 
     def conflicting_momentum_bot(
         self, algorithm_name: str, collection_name: str
@@ -626,7 +628,7 @@ class AutotradeConsumer:
         Real autotrade starts
         """
         if self.autotrade_settings.autotrade and result.autotrade:
-            if not conditional_entry and self.reached_max_active_autobots():
+            if self.reached_max_active_autobots():
                 logging.info(
                     "Reached maximum number of active bots set in controller settings"
                 )

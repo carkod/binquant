@@ -57,12 +57,18 @@ and `make test` use the published package from the project environment.
 2. Use the settings provided in the .vscode folder and run the debugger for Binbot: Api
 3. Run Binquant as a single process through `main.py`, which starts websocket ingestion and consumes klines from the shared in-memory queue in the same event loop.
 
-### Parallel candle calculations
+### Parallel calculations
 
-The worker keeps two persistent calculation threads. Each incoming message's
-5-minute and 15-minute candle frames are built and enriched independently. At
-most two snapshots are submitted at once; additional submissions wait before
-copying candles. Cancellation retains capacity until the running calculation
+The worker keeps two persistent calculation threads shared by candle indicators
+and `top_gainer_short`. Each incoming message's 5-minute and 15-minute candle
+frames are built and enriched independently. The strategy then checks its fresh
+lower high in a worker and, if present, calculates breadth and BTC higher lows
+and six-hour price crossings concurrently. Daily stretch context also runs in a
+worker after the entry checks pass. These calculations use one evaluation time
+and private input snapshots, including separate DataFrames for each job.
+
+At most two snapshots are submitted at once; additional submissions wait before
+copying inputs. Cancellation retains capacity until the running calculation
 finishes. The pool is shut down when the application exits.
 
 Messages are still processed one at a time. Strategy state, cooldowns, portfolio

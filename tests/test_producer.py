@@ -23,7 +23,7 @@ from pybinbot import (
 )
 from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import DerivativesPositioningFeatures
-from shared.candle_calculations import CandleCalculationPool
+from shared.calculation_pool import CalculationPool
 
 
 def initialize_regime_measures(evaluator: ContextEvaluator) -> None:
@@ -493,9 +493,11 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
 
     evaluator.load_15m_algorithms = load_15m_algorithms
     monkeypatch.setattr("producers.context_evaluator.Candles", FakeCandles)
-    monkeypatch.setattr("shared.candle_calculations.calculate_candles", calculate_frame)
+    monkeypatch.setattr(
+        "producers.context_evaluator.calculate_candles", calculate_frame
+    )
 
-    evaluator.calculation_pool = CandleCalculationPool()
+    evaluator.calculation_pool = CalculationPool()
     try:
         await evaluator.process_data(candles=[[1]], candles_15m=[[2]])
     finally:
