@@ -16,7 +16,7 @@ class HigherLowPattern:
     signal that downward momentum is fading, often preceding a reversal or
     a consolidation range.
 
-    Exact sign-mirror of LowerHighPattern (strategies/lower_high_pattern.py):
+    Exact sign-mirror of LowerHighPattern (notifiers/lower_high_pattern.py):
     swing highs become swing lows, "rise into the peak" becomes "drop into
     the trough", and "drop below the first peak" becomes "rise above the
     first trough".

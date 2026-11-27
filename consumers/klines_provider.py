@@ -19,9 +19,9 @@ from pybinbot import (
     GainersLosersSnapshot,
     Status,
 )
-from calibrators.leverage_calibrator import LeverageCalibrator
+from consumers.leverage_calibrator import LeverageCalibrator
 from consumers.autotrade_consumer import AutotradeConsumer
-from shared.telegram_signal_notifier import TelegramSignalNotifier
+from notifiers.telegram_signal_notifier import TelegramSignalNotifier
 from market_regime.live_market_context_accumulator import (
     LiveMarketContextAccumulator,
 )

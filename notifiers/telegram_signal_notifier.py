@@ -2,7 +2,6 @@ import hashlib
 import logging
 import re
 import time
-from datetime import UTC, datetime
 
 from pybinbot.shared.telegram_delivery import TelegramDelivery
 
@@ -82,13 +81,9 @@ class TelegramSignalNotifier:
         self._pending_signal_keys.add(signal_key)
         return False
 
-    async def dispatch_signal(
-        self, message: str, *, expires_at: datetime | None = None
-    ) -> bool:
+    async def dispatch_signal(self, message: str) -> bool:
         """Attempt any signal once, without pacing or rate-limit retries."""
         if not self.is_enabled:
-            return False
-        if expires_at is not None and datetime.now(UTC) >= expires_at:
             return False
         cleaned_message = self._clean_signal_message(message)
         if not cleaned_message:
@@ -97,9 +92,7 @@ class TelegramSignalNotifier:
         if self._drop_duplicate_signal(signal_key):
             return False
         try:
-            sent = await self.delivery.send(
-                cleaned_message, expires_at=expires_at, retry_on_rate_limit=False
-            )
+            sent = await self.delivery.send(cleaned_message, retry_on_rate_limit=False)
             if sent:
                 self._recent_signal_keys[signal_key] = time.monotonic()
                 logging.info(

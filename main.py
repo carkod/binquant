@@ -19,7 +19,6 @@ from consumers.klines_provider import KlinesProvider
 from market_regime.liquidation_state_store import LiquidationStateStore
 from shared.streaming.websocket_factory import WebsocketClientFactory
 from shared.calculation_pool import CalculationPool
-from shared.fastest_movers import FastestMoversSignal
 
 configure_logging(force=True)
 
@@ -83,17 +82,10 @@ async def main() -> None:
             calculation_pool=calculation_pool, liquidation_store=liquidation_store
         )
         clients = await factory.create_connector()
-        fastest_movers = FastestMoversSignal(
-            binbot_api=klines_provider.binbot_api,
-            telegram_notifier=klines_provider.telegram_notifier,
-            config=klines_provider.config,
-            state_path=klines_provider.config.fastest_movers_state_path,
-        )
 
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(ingest_loop(clients))
             tasks.create_task(consume_loop(klines_provider, queue))
-            tasks.create_task(fastest_movers.run_forever())
     finally:
         calculation_pool.close()
 

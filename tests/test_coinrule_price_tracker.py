@@ -18,7 +18,7 @@ from pybinbot import (
 from strategies.coinrule.bb_extreme_reversion import BBExtremeReversion
 from strategies.coinrule.price_tracker import PriceTracker
 from consumers.autotrade_consumer import AutotradeConsumer
-from shared.telegram_signal_notifier import TelegramSignalNotifier
+from notifiers.telegram_signal_notifier import TelegramSignalNotifier
 from market_regime.models import LiveMarketContext, SymbolMarketFeatures
 
 

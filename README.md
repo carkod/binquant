@@ -4,34 +4,9 @@ The [Binbot](https://github.com/carkod/binbot) quantitative analyses tool.
 
 Performs technical, statistical, AI analysis and feeds it to the signal and telegram systems to eventually create autotrades for Binbot.
 
-Telegram delivery and duplicate suppression live in `shared/telegram_signal_notifier.py`.
-Every dispatched signal is eligible for delivery when the global `telegram_signals`
-setting is enabled. There is no strategy allowlist or denylist. Binquant attempts
-sends without pacing delays or rate-limit retries. Credential loading and transport
-are provided by `TelegramDelivery` in pybinbot using `TELEGRAM_BOT_KEY` and
-`TELEGRAM_USER_ID`; the Telegram library is installed transitively.
-
-Fastest-mover alerts use published **pybinbot >= 2.1.7** and
-`/charts/fastest_movers?limit=10`, the same ranking as the Terminal dashboard.
-Symbols are ranked by one-hour price change; three-hour and 24-hour changes
-provide context. Binbot ingests snapshots at **:00/:30 UTC**, and Binquant checks
-at **:02/:32 UTC**, independently of candle processing. First startup establishes
-a quiet baseline. Only entry into Rising or Falling sends an alert; reordering
-or leaving a list does not. Re-entry and switching sides count as new membership.
-Missing comparison history is ignored, and a gap exceeding 45 minutes establishes
-a new quiet baseline rather than catching up missed entries.
-
-Each snapshot is checkpointed before sending so failed attempts are not retried
-after restart. Alerts expire **15 minutes after the snapshot**, including time
-spent waiting on transport. Checkpoints default to `.runtime/fastest-movers.json`;
-`FASTEST_MOVERS_STATE_PATH` can override the path. Keep this directory on persistent
-storage in deployment; Compose mounts `binquant_state` at `/app/.runtime`.
-
-`LowerHighPattern` and `HigherLowPattern` are notification-only signals. Each
-suppresses repeated alerts for the same confirmed swing and applies an independent
-four-hour cooldown per symbol. Telegram duplicate identities include the pattern
-name, symbol, and swing timestamp. Macroregime measures remain signal context;
-the separate macroregime transition notifier has been removed.
+`notifiers/` handles Telegram delivery and price-pattern notifications.
+Notifications respect `telegram_signals` and suppress duplicates.
+Telegram transport is provided by the published pybinbot package.
 
 Potential replacement of binbot-research, now running as a single-process websocket ingest and strategy pipeline connected by an in-memory `asyncio.Queue`.
 

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pandas as pd
 import pytest
 
-from strategies.lower_high_pattern import LowerHighPattern
+from notifiers.lower_high_pattern import LowerHighPattern
 
 BASE_OPEN_TIME_MS = 1_700_000_000_000
 BAR_MS = 15 * 60 * 1000
@@ -163,7 +163,7 @@ async def test_lower_high_pattern_rounds_prices_and_includes_evaluation_time(
         def now(cls, tz=None):
             return evaluation_time
 
-    monkeypatch.setattr("strategies.lower_high_pattern.datetime", FrozenDateTime)
+    monkeypatch.setattr("notifiers.lower_high_pattern.datetime", FrozenDateTime)
     frame = make_lower_high_df(second_peak_high=136.12346)
     frame.loc[14, "high"] = 140.12346
     frame.loc[8, "low"] = 95.12346
@@ -193,7 +193,7 @@ async def test_lower_high_pattern_applies_four_hour_symbol_cooldown(
         def now(cls, tz=None):
             return cls.current
 
-    monkeypatch.setattr("strategies.lower_high_pattern.datetime", FrozenDateTime)
+    monkeypatch.setattr("notifiers.lower_high_pattern.datetime", FrozenDateTime)
     shared_cooldowns: dict = {}
     first = make_algo(make_lower_high_df(), strategy_cooldowns=shared_cooldowns)
 

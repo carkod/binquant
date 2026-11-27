@@ -1,6 +1,5 @@
 node_modules
 .venv*
-.runtime/
 .git
 __pycache__
 jsconfig.json

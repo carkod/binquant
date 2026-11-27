@@ -40,9 +40,6 @@ async def test_main_bootstraps_websocket_subscriptions_before_consuming(
         def __init__(self, calculation_pool: Any, liquidation_store: Any) -> None:
             self.calculation_pool = calculation_pool
             self.liquidation_store = liquidation_store
-            self.binbot_api = Mock()
-            self.telegram_notifier = Mock()
-            self.config = Mock()
 
     async def fake_ingest_loop(clients: list[str]) -> None:
         assert clients == ["client"]
@@ -58,13 +55,6 @@ async def test_main_bootstraps_websocket_subscriptions_before_consuming(
     monkeypatch.setattr(binquant_main, "KlinesProvider", FakeKlinesProvider)
     monkeypatch.setattr(binquant_main, "ingest_loop", fake_ingest_loop)
     monkeypatch.setattr(binquant_main, "consume_loop", fake_consume_loop)
-    watcher = Mock()
-    watcher.run_forever = AsyncMock(
-        side_effect=lambda: events.append("notifications_started")
-    )
-    monkeypatch.setattr(
-        binquant_main, "FastestMoversSignal", Mock(return_value=watcher)
-    )
 
     await binquant_main.main()
 
@@ -72,7 +62,6 @@ async def test_main_bootstraps_websocket_subscriptions_before_consuming(
         "subscriptions_ready",
         "ingest_started",
         "consumer_started",
-        "notifications_started",
     ]
 
 

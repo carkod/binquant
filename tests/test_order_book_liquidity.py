@@ -209,8 +209,12 @@ async def test_unsupported_contract_market_cannot_bypass_gate(evaluator):
 async def test_rejected_liquidity_prevents_all_emissions_and_can_retry_same_setup(
     strategy_type, monkeypatch
 ):
-    for module in ("top_gainer_short", "dark_knight", "lower_high_pattern"):
-        monkeypatch.setattr(f"strategies.{module}.time", lambda: NOW.timestamp())
+    for module in (
+        "strategies.top_gainer_short",
+        "strategies.dark_knight",
+        "notifiers.lower_high_pattern",
+    ):
+        monkeypatch.setattr(f"{module}.time", lambda: NOW.timestamp())
     context = dark_knight_context()
     context.assess_futures_liquidity.return_value = LiquidityAssessment(
         False, "insufficient_ask_depth"
@@ -235,8 +239,12 @@ async def test_rejected_liquidity_prevents_all_emissions_and_can_retry_same_setu
 async def test_gate_uses_final_margin_times_proposed_leverage(
     strategy_type, monkeypatch
 ):
-    for module in ("top_gainer_short", "dark_knight", "lower_high_pattern"):
-        monkeypatch.setattr(f"strategies.{module}.time", lambda: NOW.timestamp())
+    for module in (
+        "strategies.top_gainer_short",
+        "strategies.dark_knight",
+        "notifiers.lower_high_pattern",
+    ):
+        monkeypatch.setattr(f"{module}.time", lambda: NOW.timestamp())
     context = dark_knight_context()
 
     await strategy_type(cast(Any, context)).signal(135.0, 140, 132, 120)

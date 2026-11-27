@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from shared.telegram_signal_notifier import TelegramSignalNotifier
+from notifiers.telegram_signal_notifier import TelegramSignalNotifier
 from tests.test_higher_low_pattern import make_algo as make_higher_low
 from tests.test_higher_low_pattern import make_higher_low_df
 from tests.test_lower_high_pattern import make_algo as make_lower_high

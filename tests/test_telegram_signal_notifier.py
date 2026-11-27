@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from shared.telegram_signal_notifier import TelegramSignalNotifier
+from notifiers.telegram_signal_notifier import TelegramSignalNotifier
 
 
 def notifier() -> Any:
@@ -41,7 +41,6 @@ async def test_matching_signals_are_deduplicated_despite_price_changes():
         "top_loser_early_momentum algorithm",
         "lower_high_pattern pattern",
         "higher_low_pattern pattern",
-        "fastest_movers algorithm",
         "another_strategy algorithm",
     ],
 )
@@ -49,9 +48,7 @@ async def test_signal_messages_are_delivered_without_pacing_or_retries(heading):
     sender = notifier()
     message = f"<strong>#{heading}</strong> #TAUSDTM"
     assert await sender.dispatch_signal(message) is True
-    sender.delivery.send.assert_awaited_once_with(
-        message, expires_at=None, retry_on_rate_limit=False
-    )
+    sender.delivery.send.assert_awaited_once_with(message, retry_on_rate_limit=False)
 
 
 @pytest.mark.asyncio

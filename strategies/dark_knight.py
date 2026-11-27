@@ -22,7 +22,7 @@ from pybinbot.shared.price_crossings import (
 )
 
 from shared.higher_low import confirmed_higher_low
-from strategies.lower_high_pattern import LowerHighPattern
+from notifiers.lower_high_pattern import LowerHighPattern
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator

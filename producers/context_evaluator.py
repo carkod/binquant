@@ -39,7 +39,7 @@ from pybinbot import (
 )
 
 from consumers.autotrade_consumer import AutotradeConsumer
-from shared.telegram_signal_notifier import TelegramSignalNotifier
+from notifiers.telegram_signal_notifier import TelegramSignalNotifier
 from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import LiveMarketContext
 from market_regime.open_interest_order_sizing import (
@@ -52,10 +52,10 @@ from shared.calculation_pool import CalculationPool
 from shared.candle_calculations import calculate_candles
 from shared.order_book_liquidity import LiquidityAssessment, assess_futures_order_book
 from shared.utils import format_context_timestamp_line
-from strategies.higher_low_pattern import HigherLowPattern
+from notifiers.higher_low_pattern import HigherLowPattern
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.dark_knight import DarkKnight
-from strategies.lower_high_pattern import LowerHighPattern
+from notifiers.lower_high_pattern import LowerHighPattern
 from strategies.top_gainer_short import TopGainerShort
 from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
