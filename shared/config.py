@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
 load_dotenv()
 
@@ -159,6 +160,14 @@ class Config:
         return self._get_required("KUCOIN_PASSPHRASE")
 
     # Telegram settings
+    @property
+    def fastest_movers_state_path(self) -> Path:
+        return Path(
+            self._get_optional(
+                "FASTEST_MOVERS_STATE_PATH", ".runtime/fastest-movers.json"
+            )
+        )
+
     @property
     def telegram_bot_key(self) -> str:
         return self._get_required("TELEGRAM_BOT_KEY")

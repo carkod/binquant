@@ -19,8 +19,8 @@ When the filter blocks, callers should:
   1. Force the SignalsConsumer to `autotrade=False` (keep the alert; skip the bot)
   2. Send a `#time_of_day_block` notification via TelegramSignalNotifier
 
-The notification format mirrors macroregime_directional_notifier.py — leading metadata, structured
-key/value lines — so existing Telegram parsing and dashboards can ingest it.
+Notifications use leading metadata and structured key/value lines so existing
+Telegram parsing and dashboards can ingest them.
 """
 
 from __future__ import annotations
@@ -84,8 +84,8 @@ def build_quiet_hours_signal_msg(
     now: datetime | None = None,
 ) -> str:
     """
-    Render the Telegram alert for a suppressed activation. Keeps the
-    line/key shape used by macroregime_directional_notifier.py so downstream parsers stay uniform.
+    Render the Telegram alert for a suppressed activation with structured
+    key/value lines so downstream parsers stay uniform.
     """
     london_now = _now_london(now)
     regime = context.market_regime if context is not None else "UNAVAILABLE"

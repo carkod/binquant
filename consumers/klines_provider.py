@@ -135,7 +135,6 @@ class KlinesProvider:
             btc_symbol=self.futures_benchmark_symbol,
         )
         self.latest_market_context: LiveMarketContext | None = None
-        self.last_macroregime_directional: str | None = None
 
         self.all_symbols: list[SymbolModel] = self.binbot_api.get_symbols()
 
@@ -356,8 +355,8 @@ class KlinesProvider:
         """
         Reload the market-wide tape feeds once per 15m bucket.
 
-        The gainers/losers snapshots are only ingested hourly upstream, so a
-        15m cadence re-reads the same snapshot a few times rather than missing
+        Gainers/losers snapshots are ingested every 30 minutes upstream, so a
+        15m cadence re-reads the same snapshot rather than missing
         one, which is the cheaper failure of the two.
         """
         bucket = int(
@@ -494,7 +493,6 @@ class KlinesProvider:
             market_type=market_type,
             latest_market_context=self.latest_market_context,
             binbot_api=self.binbot_api,
-            last_macroregime_directional=self.last_macroregime_directional,
             telegram_notifier=self.telegram_notifier,
             calculation_pool=self.calculation_pool,
             strategy_cooldowns=self.strategy_cooldowns,
@@ -513,7 +511,4 @@ class KlinesProvider:
             candles_1h=self.candles_1h,
             candles_1d=self.candles_1d,
             btc_candles_15m=self.btc_candles_15m,
-        )
-        self.last_macroregime_directional = (
-            crypto_analytics.last_macroregime_directional
         )

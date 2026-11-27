@@ -36,6 +36,8 @@ services:
       - .env
     environment:
       - BACKEND_DOMAIN=http://api:8000
+    volumes:
+      - binquant_state:/app/.runtime
     command: ["python3", "main.py"]
 
   api:
@@ -63,3 +65,4 @@ services:
 
 volumes:
   pg_data:
+  binquant_state:

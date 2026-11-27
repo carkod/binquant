@@ -169,6 +169,7 @@ class LowerHighPattern:
         msg = f"""
             - 📉 [{self.config.env}] <strong>#{self.ALGO} pattern</strong> #{self.symbol}
             - Event: lower high
+            - Event ID: {later_open_time}
             - First peak: {round(pattern["earlier_high"], self.price_precision)}
             - Second peak: {round(pattern["later_high"], self.price_precision)} ({round(pattern["drop_pct"], 2)}% below first peak)
             - Rise into first peak: {round(pattern["rise_pct"], 2)}% from swing low {round(pattern["swing_low"], self.price_precision)}
