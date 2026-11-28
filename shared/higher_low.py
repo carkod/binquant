@@ -1,5 +1,7 @@
 from math import isfinite
 
+from shared.trend import regression_slope
+
 
 def confirmed_higher_low(
     samples: list[tuple[float, float]],
@@ -13,7 +15,9 @@ def confirmed_higher_low(
     """Compare the latest two strict, confirmed troughs in fresh continuous data.
 
     Values may be signed (market breadth) or positive (price lows). The newer
-    trough must be higher and remain unbroken after its confirmation.
+    trough must rise by strictly more than 5% of the first trough's absolute
+    magnitude and remain unbroken after confirmation. A zero first trough
+    requires a positive rise. The full completed window must slope upward.
     """
     if len(samples) < lookback_samples or any(
         not isfinite(timestamp) for timestamp, _ in samples
@@ -45,9 +49,12 @@ def confirmed_higher_low(
     earlier_pos, later_pos = lows[-2:]
     earlier_timestamp, earlier_low = window[earlier_pos]
     later_timestamp, later_low = window[later_pos]
-    if later_low <= earlier_low or any(
+    if later_low <= earlier_low + abs(earlier_low) * 0.05 or any(
         value <= later_low for _, value in window[later_pos + 1 :]
     ):
+        return None
+    slope = regression_slope(window)
+    if slope is None or slope <= 0:
         return None
     return {
         "latest": latest,
@@ -55,6 +62,7 @@ def confirmed_higher_low(
         "higher_low_first_trough": earlier_low,
         "higher_low_second_trough": later_low,
         "higher_low_rise": later_low - earlier_low,
+        "trend_slope_per_hour": slope,
         "higher_low_first_timestamp": earlier_timestamp,
         "higher_low_second_timestamp": later_timestamp,
         "higher_low_confirmation_timestamp": window[later_pos + fractal_wing][0],

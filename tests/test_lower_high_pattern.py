@@ -1,28 +1,23 @@
-from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
-from typing import Any, cast
-from unittest.mock import AsyncMock, Mock
-
 import pandas as pd
 import pytest
 
-from notifiers.lower_high_pattern import LowerHighPattern
+from shared.lower_high_pattern import LowerHighPattern
 
 BASE_OPEN_TIME_MS = 1_700_000_000_000
 BAR_MS = 15 * 60 * 1000
 
 
-def make_lower_high_df(*, second_peak_high: float = 136) -> pd.DataFrame:
+def make_lower_high_df(*, second_peak_high: float = 132) -> pd.DataFrame:
     """
     40 x 15m bars shaping a lower high: a clean uptrend into a first swing
     high (bar 14, high=140), a pullback to a trough (bar 17), a second rally
-    into a swing high at bar 21 (default 136, i.e. below 140), then a clean
+    into a swing high at bar 21 (default 132, i.e. below 140), then a clean
     decline. Passing a higher `second_peak_high` turns bar 21 into a higher
     high instead.
     """
     highs: list[float] = [100 + i * 2 for i in range(14)]  # bars 0-13: 100 -> 126
     highs.append(140)  # bar 14: first swing high
-    highs.extend([132, 124, 116, 122, 128, 133])  # bars 15-20: pullback + rally
+    highs.extend([132, 124, 116, 122, 128, 131])  # bars 15-20: pullback + rally
     highs.append(second_peak_high)  # bar 21: second swing high
     highs.extend(130 - i * 6 for i in range(18))  # bars 22-39: decline
 
@@ -59,85 +54,48 @@ def make_flat_uptrend_df() -> pd.DataFrame:
     )
 
 
-def make_algo(
-    df: pd.DataFrame,
-    *,
-    strategy_cooldowns: dict | None = None,
-    price_precision: int = 4,
-) -> LowerHighPattern:
-    cls = SimpleNamespace(
-        symbol="TESTUSDT",
-        config=SimpleNamespace(env="test"),
-        telegram_notifier=SimpleNamespace(dispatch_signal=AsyncMock()),
-        price_precision=price_precision,
-        strategy_cooldowns=strategy_cooldowns,
-        df_15m=df,
-        regime_telegram_lines=Mock(return_value="- Regime measures: test"),
-    )
-    return LowerHighPattern(cast(Any, cls))
-
-
-@pytest.mark.asyncio
-async def test_lower_high_pattern_emits_on_confirmed_lower_high():
-    algo = make_algo(make_lower_high_df(), strategy_cooldowns={})
-
-    await algo.signal()
-
-    algo.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-    msg = algo.telegram_notifier.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
-    assert "lower high" in msg
-    assert "140" in msg
-    assert "136" in msg
-    assert "Regime measures: test" in msg
-    assert "Autotrade: disabled" in msg
-
-
-@pytest.mark.asyncio
-async def test_lower_high_pattern_skips_when_second_peak_is_higher():
-    algo = make_algo(make_lower_high_df(second_peak_high=150), strategy_cooldowns={})
-
-    await algo.signal()
-
-    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
-
-
-@pytest.mark.asyncio
-async def test_lower_high_pattern_skips_sub_two_and_half_percent_drop():
-    algo = make_algo(make_lower_high_df(second_peak_high=136.6), strategy_cooldowns={})
-
-    await algo.signal()
-
-    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
-
-
-def test_lower_high_pattern_accepts_two_and_half_percent_drop_boundary():
-    pattern = LowerHighPattern.detect(make_lower_high_df(second_peak_high=136.5))
+def test_lower_high_pattern_detects_confirmed_lower_high():
+    pattern = LowerHighPattern.detect(make_lower_high_df())
 
     assert pattern is not None
-    assert pattern["drop_pct"] == pytest.approx(2.5)
+    assert pattern["earlier_high"] == 140
+    assert pattern["later_high"] == 132
+    assert pattern["later_open_time"] == BASE_OPEN_TIME_MS + 21 * BAR_MS
+    assert pattern["confirmation_open_time"] == BASE_OPEN_TIME_MS + 23 * BAR_MS
 
 
-@pytest.mark.asyncio
-async def test_lower_high_pattern_skips_when_fewer_than_two_swing_highs():
-    algo = make_algo(make_flat_uptrend_df(), strategy_cooldowns={})
-
-    await algo.signal()
-
-    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+def test_lower_high_pattern_skips_when_second_peak_is_higher():
+    assert LowerHighPattern.detect(make_lower_high_df(second_peak_high=150)) is None
 
 
-@pytest.mark.asyncio
-async def test_lower_high_pattern_deduplicates_same_swing_high_across_instances():
-    df = make_lower_high_df()
-    shared_cooldowns: dict = {}
+def test_lower_high_pattern_skips_drop_below_five_percent():
+    assert LowerHighPattern.detect(make_lower_high_df(second_peak_high=136.6)) is None
 
-    first = make_algo(df, strategy_cooldowns=shared_cooldowns)
-    await first.signal()
-    first.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
 
-    second = make_algo(df, strategy_cooldowns=shared_cooldowns)
-    await second.signal()
-    second.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+@pytest.mark.parametrize(
+    "second_peak,passes", [(133.01, False), (133, False), (132.99, True)]
+)
+def test_lower_high_pattern_requires_drop_strictly_above_five_percent(
+    second_peak, passes
+):
+    pattern = LowerHighPattern.detect(make_lower_high_df(second_peak_high=second_peak))
+
+    assert (pattern is not None) is passes
+    if pattern is not None:
+        assert pattern["drop_pct"] > 5
+        assert pattern["trend_slope_per_hour"] < 0
+
+
+@pytest.mark.parametrize("slope", [0, 1])
+def test_lower_high_pattern_rejects_flat_or_rising_full_window(slope):
+    frame = make_lower_high_df()
+    frame["close"] = [50 + slope * i for i in range(len(frame))]
+
+    assert LowerHighPattern.detect(frame) is None
+
+
+def test_lower_high_pattern_skips_when_fewer_than_two_swing_highs():
+    assert LowerHighPattern.detect(make_flat_uptrend_df()) is None
 
 
 def test_lower_high_pattern_uses_nearest_preceding_fractal_low():
@@ -152,81 +110,7 @@ def test_lower_high_pattern_uses_nearest_preceding_fractal_low():
     assert pattern["swing_low_open_time"] == BASE_OPEN_TIME_MS + 8 * BAR_MS
 
 
-@pytest.mark.asyncio
-async def test_lower_high_pattern_rounds_prices_and_includes_evaluation_time(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    evaluation_time = datetime(2026, 9, 27, 14, 5, 6, tzinfo=UTC)
-
-    class FrozenDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return evaluation_time
-
-    monkeypatch.setattr("notifiers.lower_high_pattern.datetime", FrozenDateTime)
-    frame = make_lower_high_df(second_peak_high=136.12346)
-    frame.loc[14, "high"] = 140.12346
-    frame.loc[8, "low"] = 95.12346
-    frame.loc[frame.index[-1], "close"] = 24.12346
-    algo = make_algo(frame, strategy_cooldowns={}, price_precision=4)
-
-    await algo.signal()
-
-    msg = algo.telegram_notifier.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
-    assert "First peak: 140.1235" in msg
-    assert "Second peak: 136.1235" in msg
-    assert "swing low 95.1235" in msg
-    assert "Current price: 24.1235" in msg
-    assert "Evaluation time: 2026-09-27 14:05:06 UTC" in msg
-
-
-@pytest.mark.asyncio
-async def test_lower_high_pattern_applies_four_hour_symbol_cooldown(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    first_evaluation = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
-
-    class FrozenDateTime(datetime):
-        current = first_evaluation
-
-        @classmethod
-        def now(cls, tz=None):
-            return cls.current
-
-    monkeypatch.setattr("notifiers.lower_high_pattern.datetime", FrozenDateTime)
-    shared_cooldowns: dict = {}
-    first = make_algo(make_lower_high_df(), strategy_cooldowns=shared_cooldowns)
-
-    await first.signal()
-
-    first.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-
-    shifted_frame = make_lower_high_df()
-    shifted_frame["open_time"] += BAR_MS
-    shifted_frame["close_time"] += BAR_MS
-    FrozenDateTime.current = first_evaluation + timedelta(hours=3, minutes=59)
-    still_cooling_down = make_algo(
-        shifted_frame,
-        strategy_cooldowns=shared_cooldowns,
-    )
-
-    await still_cooling_down.signal()
-
-    still_cooling_down.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
-
-    FrozenDateTime.current = first_evaluation + timedelta(hours=4)
-    cooldown_elapsed = make_algo(
-        shifted_frame,
-        strategy_cooldowns=shared_cooldowns,
-    )
-
-    await cooldown_elapsed.signal()
-
-    cooldown_elapsed.telegram_notifier.dispatch_signal.assert_called_once()  # type: ignore[attr-defined]
-
-
-@pytest.mark.asyncio
-async def test_lower_high_pattern_waits_for_confirmation_candle_to_close():
+def test_lower_high_pattern_waits_for_confirmation_candle_to_close():
     highs = [99.0] + [100.0 + index for index in range(30)]
     highs.extend([140.0, 132.0, 124.0, 120.0, 125.0, 130.0, 133.0, 136.0, 130.0, 124.0])
     lows = [high - 2 for high in highs]
@@ -242,8 +126,4 @@ async def test_lower_high_pattern_waits_for_confirmation_candle_to_close():
         }
     )
     frame.loc[frame.index[-1], "close_time"] = 10**15
-    algo = make_algo(frame, strategy_cooldowns={})
-
-    await algo.signal()
-
-    algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+    assert LowerHighPattern.detect(frame) is None

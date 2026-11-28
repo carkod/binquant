@@ -55,7 +55,6 @@ from shared.utils import format_context_timestamp_line
 from notifiers.higher_low_pattern import HigherLowPattern
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.dark_knight import DarkKnight
-from notifiers.lower_high_pattern import LowerHighPattern
 from strategies.top_gainer_short import TopGainerShort
 from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
@@ -413,7 +412,6 @@ class ContextEvaluator:
         self.dark_knight = DarkKnight(cls=self)
         # TopGainerEarlyMomentum signals disabled after inconsistent opportunities.
         self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
-        self.lower_high_pattern = LowerHighPattern(cls=self)
         self.higher_low_pattern = HigherLowPattern(cls=self)
 
     async def _safe_signal(self, name: str, coro: Awaitable[None]) -> None:
@@ -697,11 +695,6 @@ class ContextEvaluator:
                     bb_mid=spreads.bb_mid,
                     bb_low=spreads.bb_low,
                 ),
-            )
-
-            await self._safe_signal(
-                "LowerHighPattern",
-                self.lower_high_pattern.signal(),
             )
 
             await self._safe_signal(

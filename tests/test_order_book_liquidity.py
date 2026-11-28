@@ -212,7 +212,7 @@ async def test_rejected_liquidity_prevents_all_emissions_and_can_retry_same_setu
     for module in (
         "strategies.top_gainer_short",
         "strategies.dark_knight",
-        "notifiers.lower_high_pattern",
+        "shared.lower_high_pattern",
     ):
         monkeypatch.setattr(f"{module}.time", lambda: NOW.timestamp())
     context = dark_knight_context()
@@ -242,7 +242,7 @@ async def test_gate_uses_final_margin_times_proposed_leverage(
     for module in (
         "strategies.top_gainer_short",
         "strategies.dark_knight",
-        "notifiers.lower_high_pattern",
+        "shared.lower_high_pattern",
     ):
         monkeypatch.setattr(f"{module}.time", lambda: NOW.timestamp())
     context = dark_knight_context()

@@ -28,7 +28,7 @@ from pybinbot.shared.price_crossings import (
 from shared.higher_low import confirmed_higher_low
 from shared.cvd import CvdDirection, calculate_cvd_direction, cvd_telegram_line
 from shared.utils import build_links_msg, format_context_timestamp_line
-from notifiers.lower_high_pattern import LowerHighPattern
+from shared.lower_high_pattern import LowerHighPattern
 
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator

@@ -45,7 +45,7 @@ def context() -> SimpleNamespace:
 @pytest.fixture(autouse=True)
 def clock(monkeypatch):
     monkeypatch.setattr("strategies.dark_knight.time", lambda: NOW.timestamp())
-    monkeypatch.setattr("notifiers.lower_high_pattern.time", lambda: NOW.timestamp())
+    monkeypatch.setattr("shared.lower_high_pattern.time", lambda: NOW.timestamp())
 
 
 def evidence(frame=None, **kwargs):

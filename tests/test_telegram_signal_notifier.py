@@ -39,7 +39,6 @@ async def test_matching_signals_are_deduplicated_despite_price_changes():
         "top_gainer_short algorithm",
         "dark_knight algorithm",
         "top_loser_early_momentum algorithm",
-        "lower_high_pattern pattern",
         "higher_low_pattern pattern",
         "another_strategy algorithm",
     ],
@@ -54,13 +53,13 @@ async def test_signal_messages_are_delivered_without_pacing_or_retries(heading):
 @pytest.mark.asyncio
 async def test_different_patterns_on_the_same_symbol_have_independent_duplicates():
     sender = notifier()
-    lower = "<strong>#lower_high_pattern pattern</strong> #TAUSDTM\n- Event ID: 100"
+    other = "<strong>#another_pattern pattern</strong> #TAUSDTM\n- Event ID: 100"
     higher = "<strong>#higher_low_pattern pattern</strong> #TAUSDTM\n- Event ID: 100"
-    assert await sender.dispatch_signal(lower) is True
+    assert await sender.dispatch_signal(other) is True
     assert await sender.dispatch_signal(higher) is True
-    assert await sender.dispatch_signal(lower) is False
+    assert await sender.dispatch_signal(other) is False
     assert await sender.dispatch_signal(higher) is False
-    assert await sender.dispatch_signal(lower.replace("100", "200")) is True
+    assert await sender.dispatch_signal(other.replace("100", "200")) is True
     assert sender.delivery.send.await_count == 3
 
 

@@ -75,6 +75,18 @@ selection and trading decisions remain on the main asyncio loop, preserving
 their ordering. The websocket input queue is separate and retains its existing
 behaviour.
 
+### Swing-pattern gates
+
+Lower highs require the second peak to be strictly more than 5% below the first
+and a negative least-squares slope across all 40 completed candle closes. Higher
+lows require a rise strictly greater than 5% and a positive slope. The shared
+higher-low helper applies the same rule to its full completed sample window
+(BTC lows or market breadth). For signed breadth, the rise is measured against
+the absolute first trough; a zero trough requires a positive rise. Flat slopes
+fail. Existing fractal confirmation, freshness and unbroken-trough checks remain.
+Lower-high detection feeds trading strategies; only the standalone higher-low
+pattern sends pattern notifications.
+
 Binquant requires free-threaded Python 3.15. The `.python-version` file selects
 `3.15t` for local development, CI and the Docker dependency build. Use a recent uv
 release to install the runtime and dependencies:

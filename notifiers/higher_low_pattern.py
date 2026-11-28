@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 from pandas import DataFrame, to_numeric
 
+from shared.trend import regression_slope
+
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
@@ -16,7 +18,7 @@ class HigherLowPattern:
     signal that downward momentum is fading, often preceding a reversal or
     a consolidation range.
 
-    Exact sign-mirror of LowerHighPattern (notifiers/lower_high_pattern.py):
+    Exact sign-mirror of LowerHighPattern (shared/lower_high_pattern.py):
     swing highs become swing lows, "rise into the peak" becomes "drop into
     the trough", and "drop below the first peak" becomes "rise above the
     first trough".
@@ -39,10 +41,9 @@ class HigherLowPattern:
     # the first trough actually capped a genuine downtrend leg, not just
     # noise.
     MIN_DROP_PCT = 2.0
-    # Minimum rise (%) of the second trough above the first: filters out
-    # troughs that are equal within noise (which would just be a double
-    # bottom).
-    MIN_RISE_PCT = 0.5
+    # Require strictly more than 5% separation and an upward regression
+    # across the full completed lookback, so two wicks cannot define a trend.
+    MIN_RISE_PCT = 5.0
     ALERT_COOLDOWN_MINUTES = 240
 
     def __init__(self, cls: ContextEvaluator) -> None:
@@ -113,7 +114,19 @@ class HigherLowPattern:
         swing_high = float(window["high"].iloc[swing_high_pos])
         drop_pct = (1 - earlier_low / swing_high) * 100
         rise_pct = (later_low / earlier_low - 1) * 100
-        if drop_pct < cls.MIN_DROP_PCT or rise_pct < cls.MIN_RISE_PCT:
+        if drop_pct < cls.MIN_DROP_PCT or later_low <= earlier_low * (
+            1 + cls.MIN_RISE_PCT / 100
+        ):
+            return None
+        slope = regression_slope(
+            [
+                (float(timestamp) / 1000, float(close))
+                for timestamp, close in zip(
+                    window["open_time"], window["close"], strict=True
+                )
+            ]
+        )
+        if slope is None or slope <= 0:
             return None
 
         confirmation_pos = later_pos + cls.FRACTAL_WING
@@ -123,6 +136,7 @@ class HigherLowPattern:
             "swing_high": swing_high,
             "drop_pct": drop_pct,
             "rise_pct": rise_pct,
+            "trend_slope_per_hour": slope,
             "swing_high_open_time": int(window["open_time"].iloc[swing_high_pos]),
             "later_open_time": int(window["open_time"].iloc[later_pos]),
             "confirmation_open_time": int(window["open_time"].iloc[confirmation_pos]),
@@ -183,6 +197,7 @@ class HigherLowPattern:
             - Second trough: {round(pattern["later_low"], self.price_precision)} ({round(pattern["rise_pct"], 2)}% above first trough)
             - Drop into first trough: {round(pattern["drop_pct"], 2)}% from swing high {round(pattern["swing_high"], self.price_precision)}
             - Current price: {round(current_price, self.price_precision)}
+            - Trend slope: {pattern["trend_slope_per_hour"]:+.6g} per hour (40 completed closes)
             - Evaluation time: {evaluation_time.strftime("%Y-%m-%d %H:%M:%S UTC")}
             {self.ti.regime_telegram_lines()}
             - Interpretation: downward momentum is fading; watch for a reversal or a consolidation range

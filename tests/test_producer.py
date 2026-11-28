@@ -384,7 +384,6 @@ def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
 
 
 ALL_NOTIFICATION_STRATEGIES = {
-    "LowerHighPattern",
     "HigherLowPattern",
     "TopGainerShort",
     "DarkKnight",
@@ -437,7 +436,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
             "TopGainerEarlyMomentum",
             "TopGainerMomentumRecovery",
             "FailedSpikeFade",
-            "LowerHighPattern",
             "HigherLowPattern",
             "LiquidationSweepPump",
             "LadderDeployer",
@@ -469,9 +467,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
         )
         evaluator.failed_spike_fade = SimpleNamespace(
             signal=strategy_signals["FailedSpikeFade"]
-        )
-        evaluator.lower_high_pattern = SimpleNamespace(
-            signal=strategy_signals["LowerHighPattern"]
         )
         evaluator.higher_low_pattern = SimpleNamespace(
             signal=strategy_signals["HigherLowPattern"]
