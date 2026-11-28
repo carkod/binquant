@@ -4,10 +4,9 @@ The [Binbot](https://github.com/carkod/binbot) quantitative analyses tool.
 
 Performs technical, statistical, AI analysis and feeds it to the signal and telegram systems to eventually create autotrades for Binbot.
 
-Telegram signal policy lives in `shared/telegram_signal_notifier.py`.
-Delivery and credential loading are provided by `TelegramDelivery` in pybinbot;
-the Telegram library is installed transitively. Deploy pybinbot 1.13.7 with this
-change and refresh this application's lockfile after publishing that release.
+`notifiers/` handles Telegram delivery and price-pattern notifications.
+Notifications respect `telegram_signals` and suppress duplicates.
+Telegram transport is provided by the published pybinbot package.
 
 Potential replacement of binbot-research, now running as a single-process websocket ingest and strategy pipeline connected by an in-memory `asyncio.Queue`.
 
@@ -75,6 +74,18 @@ Messages are still processed one at a time. Strategy state, cooldowns, portfolio
 selection and trading decisions remain on the main asyncio loop, preserving
 their ordering. The websocket input queue is separate and retains its existing
 behaviour.
+
+### Swing-pattern gates
+
+Lower highs require the second peak to be strictly more than 5% below the first
+and a negative least-squares slope across all 40 completed candle closes. Higher
+lows require a rise strictly greater than 5% and a positive slope. The shared
+higher-low helper applies the same rule to its full completed sample window
+(BTC lows or market breadth). For signed breadth, the rise is measured against
+the absolute first trough; a zero trough requires a positive rise. Flat slopes
+fail. Existing fractal confirmation, freshness and unbroken-trough checks remain.
+Lower-high detection feeds trading strategies; only the standalone higher-low
+pattern sends pattern notifications.
 
 Binquant requires free-threaded Python 3.15. The `.python-version` file selects
 `3.15t` for local development, CI and the Docker dependency build. Use a recent uv

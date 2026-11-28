@@ -384,8 +384,6 @@ def test_finalize_signal_bot_params_rejects_snapshot_stale_at_signal_time():
 
 
 ALL_NOTIFICATION_STRATEGIES = {
-    "MacroregimeDirectionalNotifier",
-    "LowerHighPattern",
     "HigherLowPattern",
     "TopGainerShort",
     "DarkKnight",
@@ -438,8 +436,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
             "TopGainerEarlyMomentum",
             "TopGainerMomentumRecovery",
             "FailedSpikeFade",
-            "MacroregimeDirectionalNotifier",
-            "LowerHighPattern",
             "HigherLowPattern",
             "LiquidationSweepPump",
             "LadderDeployer",
@@ -454,7 +450,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
     evaluator.symbol = "TESTUSDTM"
     evaluator.latest_market_context = None
     evaluator.market_breadth_data = None
-    evaluator.last_macroregime_directional = None
     evaluator.symbol_dependent_data = Mock()
     evaluator.refresh_grid_only_policy = Mock()
     evaluator.bb_spreads = lambda df: HABollinguerSpread(
@@ -472,13 +467,6 @@ async def test_process_data_runs_only_enabled_strategies_in_every_environment(
         )
         evaluator.failed_spike_fade = SimpleNamespace(
             signal=strategy_signals["FailedSpikeFade"]
-        )
-        evaluator.macroregime_directional_notifier = SimpleNamespace(
-            signal=strategy_signals["MacroregimeDirectionalNotifier"],
-            last_macroregime_directional=None,
-        )
-        evaluator.lower_high_pattern = SimpleNamespace(
-            signal=strategy_signals["LowerHighPattern"]
         )
         evaluator.higher_low_pattern = SimpleNamespace(
             signal=strategy_signals["HigherLowPattern"]

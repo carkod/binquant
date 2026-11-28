@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from pybinbot import ExchangeId, SymbolModel
 
-from calibrators.leverage_calibrator import LeverageCalibrator
+from consumers.leverage_calibrator import LeverageCalibrator
 from market_regime.models import (
     DerivativesPositioningFeatures,
     LiveMarketContext,

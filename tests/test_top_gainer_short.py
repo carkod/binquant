@@ -31,7 +31,7 @@ from strategies.top_gainer_short import TopGainerShort
 from tests.cvd_fixtures import cvd_snapshot
 
 NOW = datetime(2026, 9, 23, 10, 20, tzinfo=UTC)
-HIGHER_LOW_BREADTH = [0.3] * 30 + [
+HIGHER_LOW_BREADTH = [-1 + i * 0.01 for i in range(30)] + [
     -0.1,
     -0.3,
     -0.5,
@@ -85,7 +85,7 @@ def make_btc_df(*, downtrend: bool = True) -> pd.DataFrame:
 
 def make_btc_higher_low_df(lows: list[float] | None = None) -> pd.DataFrame:
     values = (
-        lows if lows is not None else [100 + value * 10 for value in HIGHER_LOW_BREADTH]
+        lows if lows is not None else [100 + value * 30 for value in HIGHER_LOW_BREADTH]
     )
     end = int(NOW.timestamp() * 1000) // BAR_MS * BAR_MS
     open_times = [end - (len(values) - i) * BAR_MS for i in range(len(values))]
@@ -101,8 +101,8 @@ def make_btc_higher_low_df(lows: list[float] | None = None) -> pd.DataFrame:
 
 
 def make_lower_high_df(*, fresh: bool = True) -> pd.DataFrame:
-    highs = [100.0 + index for index in range(30)]
-    highs.extend([140.0, 132.0, 124.0, 120.0, 125.0, 130.0, 133.0, 136.0, 130.0, 124.0])
+    highs = [141.0 - index * 0.1 for index in range(30)]
+    highs.extend([145.0, 132.0, 124.0, 120.0, 125.0, 130.0, 133.0, 136.0, 130.0, 124.0])
     lows = [high - 2 for high in highs]
     lows[20] = 115.0
     closes = [high - 1 for high in highs]
@@ -344,7 +344,7 @@ async def test_signal_emits_protected_short_for_complete_bearish_setup() -> None
     assert "Breadth higher low confirmed: -0.5 -> -0.3" in msg
     assert "BTC higher low confirmed: No" in msg
     assert "Breadth falling" not in msg
-    assert indicators["lower_high_first_peak"] == 140.0
+    assert indicators["lower_high_first_peak"] == 145.0
     assert indicators["lower_high_second_peak"] == 136.0
     assert indicators["price_crossings_six_hours"] == 0
     assert not any(key.startswith("weekly_") for key in indicators)
@@ -938,7 +938,7 @@ async def test_repeated_crossings_reject_a_real_confirmed_lower_high():
         price_crossings_six_hours(
             context.df_15m, 124.0, now_ms=NOW.timestamp() * 1000, interval_ms=BAR_MS
         )
-        == 6
+        == 5
     )
 
     await strategy.signal(124.0, 140.0, 132.0, 120.0)
@@ -1161,9 +1161,9 @@ async def test_signal_passes_if_either_btc_or_breadth_has_confirmed_higher_low(
     msg = context.telegram_notifier.dispatch_signal.call_args.args[0]
     assert "BTC or the breadth index has a confirmed higher low" in msg
     if btc_confirmed:
-        assert indicators["btc_higher_low_first_trough"] == 95
-        assert indicators["btc_higher_low_second_trough"] == 97
-        assert "BTC higher low confirmed: 95.0 -> 97.0" in msg
+        assert indicators["btc_higher_low_first_trough"] == 85
+        assert indicators["btc_higher_low_second_trough"] == 91
+        assert "BTC higher low confirmed: 85.0 -> 91.0" in msg
     else:
         assert "btc_higher_low_first_trough" not in indicators
         assert "BTC higher low confirmed: No" in msg
@@ -1216,7 +1216,7 @@ async def test_valid_btc_higher_low_passes_when_breadth_is_unavailable_or_invali
 async def test_invalid_btc_higher_low_does_not_confirm_and_cannot_veto_valid_breadth(
     case, breadth_confirmed
 ):
-    values = [100 + value * 10 for value in HIGHER_LOW_BREADTH]
+    values = [100 + value * 30 for value in HIGHER_LOW_BREADTH]
     frame = make_btc_higher_low_df()
     if case == "stale":
         frame["close_time"] -= 31 * 60 * 1000
@@ -1233,9 +1233,9 @@ async def test_invalid_btc_higher_low_does_not_confirm_and_cannot_veto_valid_bre
     elif case == "missing_columns":
         frame = frame.drop(columns=["low"])
     elif case in {"lower_low", "equal_low"}:
-        frame.loc[37, "low"] = 94 if case == "lower_low" else 95
+        frame.loc[37, "low"] = 84 if case == "lower_low" else 85
     elif case == "breached":
-        frame = make_btc_higher_low_df(values + [96])
+        frame = make_btc_higher_low_df(values + [90])
     elif case == "unconfirmed":
         frame = make_btc_higher_low_df(values[:-1])
     context = make_context(
@@ -1262,7 +1262,7 @@ async def test_invalid_btc_higher_low_does_not_confirm_and_cannot_veto_valid_bre
 
 
 def test_btc_higher_low_uses_completed_candles_and_remains_valid_after_confirmation():
-    values = [100 + value * 10 for value in HIGHER_LOW_BREADTH]
+    values = [100 + value * 30 for value in HIGHER_LOW_BREADTH]
     frame = make_btc_higher_low_df(values + [101, 102])
     current_open = int(NOW.timestamp() * 1000) // BAR_MS * BAR_MS
     # A forming wick below the trough cannot invalidate completed structure.
@@ -1273,8 +1273,8 @@ def test_btc_higher_low_uses_completed_candles_and_remains_valid_after_confirmat
         strategy.ti.df_btc_15m, now_seconds=NOW.timestamp()
     )
     assert pattern is not None
-    assert pattern["btc_higher_low_first_trough"] == 95
-    assert pattern["btc_higher_low_second_trough"] == 97
+    assert pattern["btc_higher_low_first_trough"] == 85
+    assert pattern["btc_higher_low_second_trough"] == 91
     assert pattern["btc_latest"] == 102
 
 

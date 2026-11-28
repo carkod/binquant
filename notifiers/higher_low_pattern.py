@@ -4,38 +4,46 @@ from typing import TYPE_CHECKING
 
 from pandas import DataFrame, to_numeric
 
+from shared.trend import regression_slope
+
 if TYPE_CHECKING:
     from producers.context_evaluator import ContextEvaluator
 
 
-class LowerHighPattern:
+class HigherLowPattern:
     """
-    Detects a lower-high price-structure pattern on 15m candles: after an
-    uptrend forms a swing high, price pulls back and rallies again but the
-    new swing high fails to exceed the prior one. This is a classic early
-    signal that upward momentum is fading, often preceding a reversal or a
-    consolidation range.
+    Detects a higher-low price-structure pattern on 15m candles: after a
+    downtrend forms a swing low, price bounces and dips again but the new
+    swing low fails to break below the prior one. This is a classic early
+    signal that downward momentum is fading, often preceding a reversal or
+    a consolidation range.
+
+    Exact sign-mirror of LowerHighPattern (shared/lower_high_pattern.py):
+    swing highs become swing lows, "rise into the peak" becomes "drop into
+    the trough", and "drop below the first peak" becomes "rise above the
+    first trough".
 
     Notification only: this strategy never builds a SignalsConsumer/BotBase
     payload and never reaches AutotradeConsumer, so no bot can be opened
     from it.
 
-    Swing highs are found with a simple fractal rule: a candle's high must
-    strictly exceed the highs of FRACTAL_WING candles on each side of it.
-    Only the two most recent confirmed fractal highs in the lookback window
+    Swing lows are found with a simple fractal rule: a candle's low must
+    strictly fall below the lows of FRACTAL_WING candles on each side of it.
+    Only the two most recent confirmed fractal lows in the lookback window
     are compared.
     """
 
-    ALGO = "lower_high_pattern"
+    ALGO = "higher_low_pattern"
 
     FRACTAL_WING = 2
     LOOKBACK_BARS = 40
-    # Minimum rise (%) from the swing low into the first peak: confirms the
-    # first peak actually capped a genuine uptrend leg, not just noise.
-    MIN_RISE_PCT = 2.0
-    # Minimum drop (%) of the second peak below the first: filters out
-    # peaks that are equal within noise (which would just be a double top).
-    MIN_DROP_PCT = 2.5
+    # Minimum drop (%) from the swing high into the first trough: confirms
+    # the first trough actually capped a genuine downtrend leg, not just
+    # noise.
+    MIN_DROP_PCT = 2.0
+    # Require strictly more than 5% separation and an upward regression
+    # across the full completed lookback, so two wicks cannot define a trend.
+    MIN_RISE_PCT = 5.0
     ALERT_COOLDOWN_MINUTES = 240
 
     def __init__(self, cls: ContextEvaluator) -> None:
@@ -47,20 +55,6 @@ class LowerHighPattern:
         self.strategy_cooldowns = cls.strategy_cooldowns
         self._last_emitted_open_time: int | None = None
         self._last_emitted_at: int | None = None
-
-    @classmethod
-    def _fractal_highs(cls, window: DataFrame) -> list[int]:
-        wing = cls.FRACTAL_WING
-        high = window["high"]
-        positions = []
-        for i in range(wing, len(high) - wing):
-            neighborhood = high.iloc[i - wing : i + wing + 1]
-            if (
-                high.iloc[i] == neighborhood.max()
-                and (neighborhood == neighborhood.max()).sum() == 1
-            ):
-                positions.append(i)
-        return positions
 
     @classmethod
     def _fractal_lows(cls, window: DataFrame) -> list[int]:
@@ -77,6 +71,20 @@ class LowerHighPattern:
         return positions
 
     @classmethod
+    def _fractal_highs(cls, window: DataFrame) -> list[int]:
+        wing = cls.FRACTAL_WING
+        high = window["high"]
+        positions = []
+        for i in range(wing, len(high) - wing):
+            neighborhood = high.iloc[i - wing : i + wing + 1]
+            if (
+                high.iloc[i] == neighborhood.max()
+                and (neighborhood == neighborhood.max()).sum() == 1
+            ):
+                positions.append(i)
+        return positions
+
+    @classmethod
     def detect(cls, df: DataFrame | None) -> dict[str, float | int] | None:
         if df is None or "close_time" not in df.columns:
             return None
@@ -87,34 +95,49 @@ class LowerHighPattern:
             return None
 
         window = completed_candles.iloc[-cls.LOOKBACK_BARS :].reset_index(drop=True)
-        peak_positions = cls._fractal_highs(window)
-        if len(peak_positions) < 2:
+        trough_positions = cls._fractal_lows(window)
+        if len(trough_positions) < 2:
             return None
 
-        earlier_pos, later_pos = peak_positions[-2], peak_positions[-1]
-        preceding_lows = [
-            position for position in cls._fractal_lows(window) if position < earlier_pos
+        earlier_pos, later_pos = trough_positions[-2], trough_positions[-1]
+        preceding_highs = [
+            position
+            for position in cls._fractal_highs(window)
+            if position < earlier_pos
         ]
-        if not preceding_lows:
+        if not preceding_highs:
             return None
 
-        swing_low_pos = preceding_lows[-1]
-        earlier_high = float(window["high"].iloc[earlier_pos])
-        later_high = float(window["high"].iloc[later_pos])
-        swing_low = float(window["low"].iloc[swing_low_pos])
-        rise_pct = (earlier_high / swing_low - 1) * 100
-        drop_pct = (1 - later_high / earlier_high) * 100
-        if rise_pct < cls.MIN_RISE_PCT or drop_pct < cls.MIN_DROP_PCT:
+        swing_high_pos = preceding_highs[-1]
+        earlier_low = float(window["low"].iloc[earlier_pos])
+        later_low = float(window["low"].iloc[later_pos])
+        swing_high = float(window["high"].iloc[swing_high_pos])
+        drop_pct = (1 - earlier_low / swing_high) * 100
+        rise_pct = (later_low / earlier_low - 1) * 100
+        if drop_pct < cls.MIN_DROP_PCT or later_low <= earlier_low * (
+            1 + cls.MIN_RISE_PCT / 100
+        ):
+            return None
+        slope = regression_slope(
+            [
+                (float(timestamp) / 1000, float(close))
+                for timestamp, close in zip(
+                    window["open_time"], window["close"], strict=True
+                )
+            ]
+        )
+        if slope is None or slope <= 0:
             return None
 
         confirmation_pos = later_pos + cls.FRACTAL_WING
         return {
-            "earlier_high": earlier_high,
-            "later_high": later_high,
-            "swing_low": swing_low,
-            "rise_pct": rise_pct,
+            "earlier_low": earlier_low,
+            "later_low": later_low,
+            "swing_high": swing_high,
             "drop_pct": drop_pct,
-            "swing_low_open_time": int(window["open_time"].iloc[swing_low_pos]),
+            "rise_pct": rise_pct,
+            "trend_slope_per_hour": slope,
+            "swing_high_open_time": int(window["open_time"].iloc[swing_high_pos]),
             "later_open_time": int(window["open_time"].iloc[later_pos]),
             "confirmation_open_time": int(window["open_time"].iloc[confirmation_pos]),
         }
@@ -167,15 +190,17 @@ class LowerHighPattern:
 
         current_price = float(df["close"].iloc[-1])
         msg = f"""
-            - 📉 [{self.config.env}] <strong>#{self.ALGO} pattern</strong> #{self.symbol}
-            - Event: lower high
-            - First peak: {round(pattern["earlier_high"], self.price_precision)}
-            - Second peak: {round(pattern["later_high"], self.price_precision)} ({round(pattern["drop_pct"], 2)}% below first peak)
-            - Rise into first peak: {round(pattern["rise_pct"], 2)}% from swing low {round(pattern["swing_low"], self.price_precision)}
+            - 📈 [{self.config.env}] <strong>#{self.ALGO} pattern</strong> #{self.symbol}
+            - Event: higher low
+            - Event ID: {later_open_time}
+            - First trough: {round(pattern["earlier_low"], self.price_precision)}
+            - Second trough: {round(pattern["later_low"], self.price_precision)} ({round(pattern["rise_pct"], 2)}% above first trough)
+            - Drop into first trough: {round(pattern["drop_pct"], 2)}% from swing high {round(pattern["swing_high"], self.price_precision)}
             - Current price: {round(current_price, self.price_precision)}
+            - Trend slope: {pattern["trend_slope_per_hour"]:+.6g} per hour (40 completed closes)
             - Evaluation time: {evaluation_time.strftime("%Y-%m-%d %H:%M:%S UTC")}
             {self.ti.regime_telegram_lines()}
-            - Interpretation: upward momentum is fading; watch for a reversal or a consolidation range
+            - Interpretation: downward momentum is fading; watch for a reversal or a consolidation range
             - Autotrade: disabled, notification only
             """
 

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from shared.telegram_signal_notifier import TelegramSignalNotifier
+from notifiers.telegram_signal_notifier import TelegramSignalNotifier
 
 
 def notifier() -> Any:
@@ -34,32 +34,33 @@ async def test_matching_signals_are_deduplicated_despite_price_changes():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "algorithm", ["higher_low_pattern", "top_gainer_early_momentum"]
+    "heading",
+    [
+        "top_gainer_short algorithm",
+        "dark_knight algorithm",
+        "top_loser_early_momentum algorithm",
+        "higher_low_pattern pattern",
+        "another_strategy algorithm",
+    ],
 )
-async def test_disabled_strategies_do_not_send_signals(algorithm):
+async def test_signal_messages_are_delivered_without_pacing_or_retries(heading):
     sender = notifier()
-    assert (
-        await sender.dispatch_signal(
-            f"<strong>#{algorithm} algorithm</strong> #TAUSDTM"
-        )
-        is False
-    )
-    sender.delivery.send.assert_not_awaited()
+    message = f"<strong>#{heading}</strong> #TAUSDTM"
+    assert await sender.dispatch_signal(message) is True
+    sender.delivery.send.assert_awaited_once_with(message, retry_on_rate_limit=False)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "algorithm", ["top_gainer_short", "dark_knight", "top_loser_early_momentum"]
-)
-async def test_selected_strategies_send_signals(algorithm):
+async def test_different_patterns_on_the_same_symbol_have_independent_duplicates():
     sender = notifier()
-    assert (
-        await sender.dispatch_signal(
-            f"<strong>#{algorithm} algorithm</strong> #TAUSDTM"
-        )
-        is True
-    )
-    sender.delivery.send.assert_awaited_once()
+    other = "<strong>#another_pattern pattern</strong> #TAUSDTM\n- Event ID: 100"
+    higher = "<strong>#higher_low_pattern pattern</strong> #TAUSDTM\n- Event ID: 100"
+    assert await sender.dispatch_signal(other) is True
+    assert await sender.dispatch_signal(higher) is True
+    assert await sender.dispatch_signal(other) is False
+    assert await sender.dispatch_signal(higher) is False
+    assert await sender.dispatch_signal(other.replace("100", "200")) is True
+    assert sender.delivery.send.await_count == 3
 
 
 @pytest.mark.asyncio

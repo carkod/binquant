@@ -6,17 +6,17 @@ from unittest.mock import AsyncMock, Mock
 import pandas as pd
 import pytest
 
-from strategies.higher_low_pattern import HigherLowPattern
+from notifiers.higher_low_pattern import HigherLowPattern
 
 BASE_OPEN_TIME_MS = 1_700_000_000_000
 BAR_MS = 15 * 60 * 1000
 
 
-def make_higher_low_df(*, second_trough_low: float = 104) -> pd.DataFrame:
+def make_higher_low_df(*, second_trough_low: float = 106) -> pd.DataFrame:
     """
     40 x 15m bars shaping a higher low: a clean downtrend into a first swing
     low (bar 14, low=100), a bounce to a peak (bar 17), a second dip into a
-    swing low at bar 21 (default 104, i.e. above 100), then a clean rally.
+    swing low at bar 21 (default 106, i.e. above 100), then a clean rally.
     Passing a lower `second_trough_low` turns bar 21 into a lower low
     instead.
     """
@@ -87,7 +87,7 @@ async def test_higher_low_pattern_emits_on_confirmed_higher_low():
     msg = algo.telegram_notifier.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
     assert "higher low" in msg
     assert "100" in msg
-    assert "104" in msg
+    assert "106" in msg
     assert "Regime measures: test" in msg
     assert "Autotrade: disabled" in msg
 
@@ -102,7 +102,7 @@ async def test_higher_low_pattern_skips_when_second_trough_is_lower():
 
 
 @pytest.mark.asyncio
-async def test_higher_low_pattern_skips_sub_half_percent_rise():
+async def test_higher_low_pattern_skips_rise_below_five_percent():
     algo = make_algo(make_higher_low_df(second_trough_low=100.4), strategy_cooldowns={})
 
     await algo.signal()
@@ -156,8 +156,8 @@ async def test_higher_low_pattern_rounds_prices_and_includes_evaluation_time(
         def now(cls, tz=None):
             return evaluation_time
 
-    monkeypatch.setattr("strategies.higher_low_pattern.datetime", FrozenDateTime)
-    frame = make_higher_low_df(second_trough_low=104.12346)
+    monkeypatch.setattr("notifiers.higher_low_pattern.datetime", FrozenDateTime)
+    frame = make_higher_low_df(second_trough_low=106.12346)
     frame.loc[14, "low"] = 100.12346
     frame.loc[8, "high"] = 135.12346
     frame.loc[frame.index[-1], "close"] = 224.12346
@@ -167,7 +167,7 @@ async def test_higher_low_pattern_rounds_prices_and_includes_evaluation_time(
 
     msg = algo.telegram_notifier.dispatch_signal.call_args.args[0]  # type: ignore[attr-defined]
     assert "First trough: 100.1235" in msg
-    assert "Second trough: 104.1235" in msg
+    assert "Second trough: 106.1235" in msg
     assert "swing high 135.1235" in msg
     assert "Current price: 224.1235" in msg
     assert "Evaluation time: 2026-09-27 14:05:06 UTC" in msg
@@ -186,7 +186,7 @@ async def test_higher_low_pattern_applies_four_hour_symbol_cooldown(
         def now(cls, tz=None):
             return cls.current
 
-    monkeypatch.setattr("strategies.higher_low_pattern.datetime", FrozenDateTime)
+    monkeypatch.setattr("notifiers.higher_low_pattern.datetime", FrozenDateTime)
     shared_cooldowns: dict = {}
     first = make_algo(make_higher_low_df(), strategy_cooldowns=shared_cooldowns)
 
@@ -240,3 +240,27 @@ async def test_higher_low_pattern_waits_for_confirmation_candle_to_close():
     await algo.signal()
 
     algo.telegram_notifier.dispatch_signal.assert_not_called()  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "second_trough,passes", [(104.99, False), (105, False), (105.01, True)]
+)
+def test_higher_low_pattern_requires_rise_strictly_above_five_percent(
+    second_trough, passes
+):
+    pattern = HigherLowPattern.detect(
+        make_higher_low_df(second_trough_low=second_trough)
+    )
+
+    assert (pattern is not None) is passes
+    if pattern is not None:
+        assert pattern["rise_pct"] > 5
+        assert pattern["trend_slope_per_hour"] > 0
+
+
+@pytest.mark.parametrize("slope", [0, -1])
+def test_higher_low_pattern_rejects_flat_or_falling_full_window(slope):
+    frame = make_higher_low_df()
+    frame["close"] = [200 + slope * i for i in range(len(frame))]
+
+    assert HigherLowPattern.detect(frame) is None

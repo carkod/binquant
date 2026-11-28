@@ -39,7 +39,7 @@ from pybinbot import (
 )
 
 from consumers.autotrade_consumer import AutotradeConsumer
-from shared.telegram_signal_notifier import TelegramSignalNotifier
+from notifiers.telegram_signal_notifier import TelegramSignalNotifier
 from market_regime.grid_only_policy import GridOnlyPolicy
 from market_regime.models import LiveMarketContext
 from market_regime.open_interest_order_sizing import (
@@ -50,13 +50,11 @@ from market_regime.signal_context_scorer import SignalContextScorer
 from shared.config import Config
 from shared.calculation_pool import CalculationPool
 from shared.candle_calculations import calculate_candles
-from shared.macroregime_directional_notifier import MacroregimeDirectionalNotifier
 from shared.order_book_liquidity import LiquidityAssessment, assess_futures_order_book
 from shared.utils import format_context_timestamp_line
-from strategies.higher_low_pattern import HigherLowPattern
+from notifiers.higher_low_pattern import HigherLowPattern
 from strategies.liquidation_sweep_pump import LiquidationSweepPortfolioSelector
 from strategies.dark_knight import DarkKnight
-from strategies.lower_high_pattern import LowerHighPattern
 from strategies.top_gainer_short import TopGainerShort
 from strategies.top_loser_early_momentum import TopLoserEarlyMomentum
 
@@ -94,7 +92,6 @@ class ContextEvaluator:
         kucoin_symbol=None,
         market_type: MarketType = MarketType.SPOT,
         latest_market_context: LiveMarketContext | None = None,
-        last_macroregime_directional: str | None = None,
         top_gainer_recovery_bots: list[BotModel] | None = None,
         top_gainer_recovery_attempted_source_ids: set[str] | None = None,
     ) -> None:
@@ -154,7 +151,6 @@ class ContextEvaluator:
         self.macroregime_oscillation_intensity: float | None = None
         self.microregime_directional: Literal["UP", "DOWN", "NONE"] | None = None
         self.microregime_oscillation_intensity: float | None = None
-        self.last_macroregime_directional = last_macroregime_directional
         self.grid_only_policy = GridOnlyPolicy.disabled("not_evaluated")
         self.at_consumer.grid_only_policy = self.grid_only_policy
         self.signal_context_scorer = SignalContextScorer(
@@ -412,12 +408,10 @@ class ContextEvaluator:
         """
         Initialize the temporarily enabled 15m algorithms.
         """
-        self.macroregime_directional_notifier = MacroregimeDirectionalNotifier(cls=self)
         self.top_gainer_short = TopGainerShort(cls=self)
         self.dark_knight = DarkKnight(cls=self)
         # TopGainerEarlyMomentum signals disabled after inconsistent opportunities.
         self.top_loser_early_momentum = TopLoserEarlyMomentum(cls=self)
-        self.lower_high_pattern = LowerHighPattern(cls=self)
         self.higher_low_pattern = HigherLowPattern(cls=self)
 
     async def _safe_signal(self, name: str, coro: Awaitable[None]) -> None:
@@ -701,19 +695,6 @@ class ContextEvaluator:
                     bb_mid=spreads.bb_mid,
                     bb_low=spreads.bb_low,
                 ),
-            )
-
-            await self._safe_signal(
-                "MacroregimeDirectionalNotifier",
-                self.macroregime_directional_notifier.signal(),
-            )
-            self.last_macroregime_directional = (
-                self.macroregime_directional_notifier.last_macroregime_directional
-            )
-
-            await self._safe_signal(
-                "LowerHighPattern",
-                self.lower_high_pattern.signal(),
             )
 
             await self._safe_signal(
